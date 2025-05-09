@@ -5074,120 +5074,6 @@ def check_monthly_leader_bonus():
 leader_thread = threading.Thread(target=check_monthly_leader_bonus, daemon=True)
 leader_thread.start()
 
-# ---------- 12. КУРСЫ ВАЛЮТ ----------
-
-def fetch_exchange_rates_cbr():
-    url = 'https://www.cbr-xml-daily.ru/daily_json.js'
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        rates = data['Valute']
-        return {
-            'USD': rates['USD']['Value'],
-            'EUR': rates['EUR']['Value'],
-            'GBP': rates['GBP']['Value'],
-            'CHF': rates['CHF']['Value'],
-            'JPY': rates['JPY']['Value'] / 100,
-            'CNY': rates['CNY']['Value'] / 10,
-            'AUD': rates['AUD']['Value'],
-            'CAD': rates['CAD']['Value'],
-            'BYN': rates['BYN']['Value'],
-            'KRW': rates['KRW']['Value'] / 1000,
-            'SGD': rates['SGD']['Value'],
-            'NZD': rates['NZD']['Value'],
-            'RUB': 1
-        }
-    except Exception:
-        return fetch_exchange_rates_moex()
-
-def fetch_exchange_rates_moex():
-    url = 'https://iss.moex.com/iss/statistics/engines/futures/markets/indicativerates.json'
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        rates = data['securities']['data']
-        exchange_rates = get_default_rates()
-        for rate in rates:
-            currency_pair = rate[0]
-            value = rate[2]
-            if currency_pair == 'USD/RUB':
-                exchange_rates['USD'] = value
-            elif currency_pair == 'EUR/RUB':
-                exchange_rates['EUR'] = value
-            elif currency_pair == 'GBP/RUB':
-                exchange_rates['GBP'] = value
-            elif currency_pair == 'CHF/RUB':
-                exchange_rates['CHF'] = value
-            elif currency_pair == 'JPY/RUB':
-                exchange_rates['JPY'] = value / 100
-            elif currency_pair == 'CNY/RUB':
-                exchange_rates['CNY'] = value / 10
-        return exchange_rates
-    except Exception:
-        return get_default_rates()
-
-def get_default_rates():
-    return {
-        'USD': 83.6813,
-        'EUR': 89.6553,
-        'GBP': 104.3210,
-        'CHF': 94.1234,
-        'JPY': 0.55,
-        'CNY': 11.46,
-        'AUD': 55.4321,
-        'CAD': 60.9876,
-        'BYN': 27.34,
-        'KRW': 0.05705,
-        'SGD': 61.2345,
-        'NZD': 50.8765,
-        'RUB': 1
-    }
-
-CURRENCY_NAMES = {
-    'USD': ('Доллар США', '🇺🇸'),
-    'EUR': ('Евро', '🇪🇺'),
-    'GBP': ('Британский фунт', '🇬🇧'),
-    'CHF': ('Швейцарский франк', '🇨🇭'),
-    'JPY': ('Японская иена', '🇯🇵'),
-    'CNY': ('Китайский юань', '🇨🇳'),
-    'AUD': ('Австралийский доллар', '🇦🇺'),
-    'CAD': ('Канадский доллар', '🇨🇦'),
-    'BYN': ('Белорусский рубль', '🇧🇾'),
-    'KRW': ('Южнокорейская вона', '🇰🇷'),
-    'SGD': ('Сингапурский доллар', '🇸🇬'),
-    'NZD': ('Новозеландский доллар', '🇳🇿'),
-    'RUB': ('Российский рубль', '🇷🇺')
-}
-
-@bot.message_handler(func=lambda message: message.text == "Курсы валют")
-@check_function_state_decorator('Курсы валют')
-@track_usage('Курсы валют')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@text_only_handler
-@rate_limit_with_captcha
-def view_exchange_rates(message):
-
-    initialize_user_notifications(message.chat.id)
-
-    exchange_rates = fetch_exchange_rates_cbr()
-
-    current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-    rates_message = f"📊 *Актуальные курсы валют на {current_time}*\n\n"
-    for currency, rate in exchange_rates.items():
-        if currency in CURRENCY_NAMES:
-            name, emoji = CURRENCY_NAMES[currency]
-            rates_message += f"{emoji} {name} - {rate:.2f} руб.\n"
-
-    bot.send_message(message.chat.id, rates_message, parse_mode='Markdown')
-
 # ---------- 13. ПОСЛЕ ОБНОВЛЕНИЕ НАЧАЛО БУДЕТ С 13-ГО ПУНКТА!!! ----------
 
 # ---------- 9. РАСХОД ТОПЛИВА ----------
@@ -12194,642 +12080,6 @@ def parse_fuel_prices():
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
-# ---------- 16. УВЕДОМЛЕНИЯ ПОГОДА + ЦЕНЫ НА ТОПЛИВО + КУРСЫ ВАЛЮТ ----------
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
-OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
-WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004' 
-OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
-OPENMETEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
-WEATHERAPI_CURRENT_URL = 'https://api.weatherapi.com/v1/current.json'
-
-def ensure_directory_exists(file_path):
-    directory = os.path.dirname(file_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-def initialize_user_notifications(chat_id):
-    ensure_directory_exists(NOTIFICATIONS_PATH)
-
-    try:
-        with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
-            notifications = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        notifications = {}
-
-    str_chat_id = str(chat_id)
-    if str_chat_id not in notifications:
-        notifications[str_chat_id] = {
-            "latitude": None,
-            "longitude": None,
-            "city_code": None,
-            "notifications": {
-                "weather": True,
-                "fuel_prices": True,
-                "exchange_rates": True 
-            }
-        }
-    else:
-        if "notifications" not in notifications[str_chat_id]:
-            notifications[str_chat_id]["notifications"] = {
-                "weather": True,
-                "fuel_prices": True,
-                "exchange_rates": True  
-            }
-        else:
-            if "exchange_rates" not in notifications[str_chat_id]["notifications"]:
-                notifications[str_chat_id]["notifications"]["exchange_rates"] = True
-
-    with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(notifications, f, ensure_ascii=False, indent=4)
-
-    return notifications
-
-def save_user_location(chat_id, latitude, longitude, city_code):
-    ensure_directory_exists(NOTIFICATIONS_PATH)
-    
-    notifications = initialize_user_notifications(chat_id)
-    str_chat_id = str(chat_id)
-
-    if latitude is not None:
-        notifications[str_chat_id]["latitude"] = float(latitude)  
-    if longitude is not None:
-        notifications[str_chat_id]["longitude"] = float(longitude) 
-    if city_code is not None:
-        notifications[str_chat_id]["city_code"] = city_code
-
-    try:
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(notifications, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"Ошибка сохранения местоположения: {e}")
-
-def load_user_locations():
-    ensure_directory_exists(NOTIFICATIONS_PATH)
-    
-    try:
-        with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
-            json.dump({}, f)
-        return {}
-
-def toggle_notification(chat_id, notification_type):
-    ensure_directory_exists(NOTIFICATIONS_PATH)
-    
-    notifications = initialize_user_notifications(chat_id)
-    user_notifications = notifications.get(str(chat_id), {}).get("notifications", {})
-
-    if notification_type in user_notifications:
-        user_notifications[notification_type] = not user_notifications[notification_type]
-        notifications[str(chat_id)]["notifications"] = user_notifications
-
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f: 
-            json.dump(notifications, f, ensure_ascii=False, indent=4)
-        
-        return user_notifications[notification_type]
-
-def get_notification_status(chat_id):
-    notifications = load_user_locations()
-    return notifications.get(str(chat_id), {}).get("notifications", {
-        "weather": True, 
-        "fuel_prices": True, 
-        "exchange_rates": True
-    })
-
-def get_notification_status_message(chat_id):
-    status = get_notification_status(chat_id)
-    weather_status = "включены" if status.get("weather", True) else "выключены"
-    fuel_status = "включены" if status.get("fuel_prices", True) else "выключены"
-    exchange_status = "включены" if status.get("exchange_rates", True) else "выключены"
-    
-    return f"📬 Текущий статус уведомлений:\n\n" \
-           f"🌤️ Погода: {weather_status}\n" \
-           f"⛽ Цены на топливо: {fuel_status}\n" \
-           f"💱 Курсы валют: {exchange_status}\n\n"
-
-@bot.message_handler(func=lambda message: message.text == "Уведомления")
-@check_function_state_decorator('Уведомления')
-@track_usage('Уведомления')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@text_only_handler
-@rate_limit_with_captcha
-def toggle_notifications_handler(message, show_description=True):
-    chat_id = message.chat.id
-    initialize_user_notifications(chat_id)
-    notification_status = get_notification_status(chat_id)
-
-    weather_button_text = "Выключить погоду" if notification_status.get("weather") else "Включить погоду"
-    fuel_button_text = "Выключить цены" if notification_status.get("fuel_prices") else "Включить цены"
-    exchange_button_text = "Выключить курсы" if notification_status.get("exchange_rates") else "Включить курсы"
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(types.KeyboardButton(weather_button_text), types.KeyboardButton(fuel_button_text))
-    markup.add(types.KeyboardButton(exchange_button_text))
-    markup.add(types.KeyboardButton("Выключить все" if any(notification_status.values()) else "Включить все"))
-    markup.add(types.KeyboardButton("В главное меню"))
-
-    info_message = (
-        "ℹ️ *Краткая справка по уведомлениям*\n\n"
-        "📌 *Сохранение данных:*\n"
-        "Ваши последние *координаты для погоды* и *последний введенный город* сохраняются для отправки уведомлений\n\n"
-        "📌 *Переключение уведомлений:*\n"
-        "Вы можете *включать* или *отключать* уведомления\n\n"
-        "📌 *Получение уведомлений:*\n"
-        "Вы получаете *актуальную информацию* в установленное время _(7:30, 13:00, 17:00)_\n"
-    )
-
-    if show_description:
-        bot.send_message(chat_id, info_message, parse_mode="Markdown")
-
-    status_message = get_notification_status_message(chat_id)
-    bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
-                    reply_markup=markup, parse_mode="Markdown")
-
-
-@bot.message_handler(func=lambda message: message.text in [
-    "Включить погоду", "Выключить погоду", 
-    "Включить цены", "Выключить цены", 
-    "Включить курсы", "Выключить курсы", 
-    "Включить все", "Выключить все"
-])
-@check_function_state_decorator('Включить погоду')
-@check_function_state_decorator('Выключить погоду')
-@check_function_state_decorator('Включить цены')
-@check_function_state_decorator('Выключить цены')
-@check_function_state_decorator('Включить курсы')
-@check_function_state_decorator('Выключить курсы')
-@check_function_state_decorator('Включить все')
-@check_function_state_decorator('Выключить все')
-@track_usage('Включить погоду')
-@track_usage('Выключить погоду')
-@track_usage('Включить цены')
-@track_usage('Выключить цены')
-@track_usage('Включить курсы')
-@track_usage('Выключить курсы')
-@track_usage('Включить все')
-@track_usage('Выключить все')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@text_only_handler
-@rate_limit_with_captcha
-def handle_notification_toggle(message):
-    chat_id = message.chat.id
-    notification_messages = []
-
-    if message.text == "Включить погоду":
-        new_status = toggle_notification(chat_id, "weather")
-        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Выключить погоду":
-        new_status = toggle_notification(chat_id, "weather")
-        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Включить цены":
-        new_status = toggle_notification(chat_id, "fuel_prices")
-        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Выключить цены":
-        new_status = toggle_notification(chat_id, "fuel_prices")
-        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Включить курсы":
-        new_status = toggle_notification(chat_id, "exchange_rates")
-        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Выключить курсы":
-        new_status = toggle_notification(chat_id, "exchange_rates")
-        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
-    elif message.text == "Включить все":
-        weather_status = toggle_notification(chat_id, "weather")
-        fuel_status = toggle_notification(chat_id, "fuel_prices")
-        exchange_status = toggle_notification(chat_id, "exchange_rates")
-        if weather_status or fuel_status or exchange_status:
-            notification_messages.append("📬 Все уведомления включены!")
-        else:
-            notification_messages.append("📬 Все уведомления уже включены!")
-    elif message.text == "Выключить все":
-        weather_status = toggle_notification(chat_id, "weather")
-        fuel_status = toggle_notification(chat_id, "fuel_prices")
-        exchange_status = toggle_notification(chat_id, "exchange_rates")
-        if not weather_status and not fuel_status and not exchange_status:
-            notification_messages.append("📬 Все уведомления выключены!")
-        else:
-            notification_messages.append("📬 Все уведомления уже выключены!")
-
-    if notification_messages:
-        bot.send_message(chat_id, "\n".join(notification_messages), parse_mode="Markdown")
-
-    toggle_notifications_handler(message, show_description=False)
-
-@bot.message_handler(func=lambda message: message.text in [
-    "Включить погоду", "Выключить погоду", 
-    "Включить цены", "Выключить цены", 
-    "Включить курсы", "Выключить курсы", 
-    "Включить все", "Выключить все"
-])
-@check_function_state_decorator('Включить погоду')
-@check_function_state_decorator('Выключить погоду')
-@check_function_state_decorator('Включить цены')
-@check_function_state_decorator('Выключить цены')
-@check_function_state_decorator('Включить курсы')
-@check_function_state_decorator('Выключить курсы')
-@check_function_state_decorator('Включить все')
-@check_function_state_decorator('Выключить все')
-@track_usage('Включить погоду')
-@track_usage('Выключить погоду')
-@track_usage('Включить цены')
-@track_usage('Выключить цены')
-@track_usage('Включить курсы')
-@track_usage('Выключить курсы')
-@track_usage('Включить все')
-@track_usage('Выключить все')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def handle_notification_toggle(message):
-    chat_id = message.chat.id
-    if message.text == "Включить погоду":
-        toggle_notification(chat_id, "weather")
-    elif message.text == "Выключить погоду":
-        toggle_notification(chat_id, "weather")
-    elif message.text == "Включить цены":
-        toggle_notification(chat_id, "fuel_prices")
-    elif message.text == "Выключить цены":
-        toggle_notification(chat_id, "fuel_prices")
-    elif message.text == "Включить курсы":
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Выключить курсы":
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Включить все":
-        toggle_notification(chat_id, "weather")
-        toggle_notification(chat_id, "fuel_prices")
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Выключить все":
-        toggle_notification(chat_id, "weather")
-        toggle_notification(chat_id, "fuel_prices")
-        toggle_notification(chat_id, "exchange_rates")
-
-    toggle_notifications_handler(message, show_description=False)
-
-def get_city_name(latitude, longitude):
-    try:
-        geocode_url = "https://eu1.locationiq.com/v1/reverse.php"
-        params = {
-            'key': 'pk.fa5c52bb6b9e1b801d72b75d151aea63', 
-            'lat': latitude,
-            'lon': longitude,
-            'format': 'json',
-            'accept-language': 'ru'
-        }
-        response = requests.get(geocode_url, params=params, timeout=5)
-        response.raise_for_status()  
-        data = response.json()
-
-        if response.status_code == 200:
-            city = data.get("address", {}).get("city", None)
-            if city:
-                return city
-            town = data.get("address", {}).get("town", None)
-            village = data.get("address", {}).get("village", None)
-            return town or village or f"неизвестное место ({latitude}, {longitude})"
-        return None
-    except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"Ошибка LocationIQ: {e}")
-
-    try:
-        time.sleep(1)  
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
-        headers = {
-            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'  
-        }
-        response = requests.get(url, headers=headers, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-
-        address = data.get('address', {})
-        city = address.get('city') or address.get('town') or address.get('village')
-        return city or f"неизвестное место ({latitude}, {longitude})"
-    except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"Ошибка Nominatim: {e}")
-        return f"неизвестное место ({latitude}, {longitude})"
-
-def fetch_weather_data(url_type, params, api_type='openweathermap'):
-    try:
-        if api_type == 'openweathermap':
-            response = requests.get(params['url'], params=params['params'], timeout=10)
-            if response.status_code == 200:
-                return response.json(), 'openweathermap'
-            return None, 'openweathermap'
-
-        elif api_type == 'openmeteo':
-            openmeteo_params = {
-                'latitude': params['params'].get('lat') or params['params'].get('latitude'),
-                'longitude': params['params'].get('lon') or params['params'].get('longitude'),
-                'current_weather': 'true' if url_type == 'weather' else 'false',
-                'hourly': 'temperature_2m,relativehumidity_2m,pressure_msl,windspeed_10m,weathercode' if url_type == 'forecast' else '',
-                'daily': 'temperature_2m_max,temperature_2m_min,weathercode' if url_type == 'forecast' else '',
-                'timezone': 'auto'
-            }
-            response = requests.get(OPENMETEO_FORECAST_URL, params=openmeteo_params, timeout=10)
-            if response.status_code == 200:
-                return response.json(), 'openmeteo'
-            return None, 'openmeteo'
-
-        elif api_type == 'weatherapi':
-            weatherapi_params = {
-                'key': WEATHERAPI_API_KEY,
-                'q': params['params'].get('q', f"{params['params'].get('lat')},{params['params'].get('lon')}"),
-                'lang': 'ru'
-            }
-            if url_type == 'forecast':
-                weatherapi_params['days'] = params.get('days', 7)
-            url = WEATHERAPI_CURRENT_URL if url_type == 'weather' else WEATHERAPI_FORECAST_URL
-            response = requests.get(url, params=weatherapi_params, timeout=10)
-            if response.status_code == 200:
-                return response.json(), 'weatherapi'
-            return None, 'weatherapi'
-
-    except Exception:
-        return None, api_type
-
-def normalize_weather_data(data, api_type, url_type):
-    if not data:
-        return None
-
-    if api_type == 'openweathermap':
-        return data
-
-    elif api_type == 'openmeteo':
-        if url_type == 'weather':
-            weather_code = data['current_weather']['weathercode']
-            description = {
-                0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
-                45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
-                95: 'thunderstorm'
-            }.get(weather_code, 'unknown')
-            return {
-                'main': {
-                    'temp': data['current_weather']['temperature'],
-                    'feels_like': data['current_weather']['temperature'],
-                    'humidity': data.get('hourly', {}).get('relativehumidity_2m', [0])[0],
-                    'pressure': data.get('hourly', {}).get('pressure_msl', [0])[0]
-                },
-                'wind': {'speed': data['current_weather']['windspeed']},
-                'weather': [{'description': description}]
-            }
-        elif url_type == 'forecast':
-            forecasts = []
-            for i, time in enumerate(data['hourly']['time']):
-                weather_code = data['hourly']['weathercode'][i]
-                description = {
-                    0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
-                    45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
-                    95: 'thunderstorm'
-                }.get(weather_code, 'unknown')
-                forecasts.append({
-                    'dt_txt': time,
-                    'main': {
-                        'temp': data['hourly']['temperature_2m'][i],
-                        'feels_like': data['hourly']['temperature_2m'][i],
-                        'humidity': data['hourly']['relativehumidity_2m'][i],
-                        'pressure': data['hourly']['pressure_msl'][i]
-                    },
-                    'wind': {'speed': data['hourly']['windspeed_10m'][i]},
-                    'weather': [{'description': description}]
-                })
-            return {'list': forecasts}
-
-    elif api_type == 'weatherapi':
-        if url_type == 'weather':
-            return {
-                'main': {
-                    'temp': data['current']['temp_c'],
-                    'feels_like': data['current']['feelslike_c'],
-                    'humidity': data['current']['humidity'],
-                    'pressure': data['current']['pressure_mb']
-                },
-                'wind': {'speed': data['current']['wind_kph'] / 3.6},
-                'weather': [{'description': data['current']['condition']['text']}]
-            }
-        elif url_type == 'forecast':
-            forecasts = []
-            for day in data['forecast']['forecastday']:
-                for hour in day['hour']:
-                    forecasts.append({
-                        'dt_txt': hour['time'],
-                        'main': {
-                            'temp': hour['temp_c'],
-                            'feels_like': hour['feelslike_c'],
-                            'humidity': hour['humidity'],
-                            'pressure': hour['pressure_mb']
-                        },
-                        'wind': {'speed': hour['wind_kph'] / 3.6},
-                        'weather': [{'description': hour['condition']['text']}]
-                    })
-            return {'list': forecasts}
-
-    return None
-
-def get_current_weather(coords):
-    try:
-        city_name = get_city_name(coords['latitude'], coords['longitude'])
-        params = {
-            'url': OPENWEATHERMAP_WEATHER_URL,
-            'params': {
-                'lat': coords['latitude'],
-                'lon': coords['longitude'],
-                'appid': OPENWEATHERMAP_API_KEY,
-                'units': 'metric',
-                'lang': 'ru'
-            }
-        }
-
-        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
-            data, api_type = fetch_weather_data('weather', params, api)
-            if data:
-                data = normalize_weather_data(data, api_type, 'weather')
-                if data:
-                    temperature = round(data['main']['temp'])
-                    feels_like = round(data['main']['feels_like'])
-                    humidity = data['main']['humidity']
-                    pressure = data['main']['pressure']
-                    wind_speed = data['wind']['speed']
-                    description = translate_weather_description(data['weather'][0]['description'])
-
-                    current_time = datetime.now().strftime("%H:%M")
-                    current_date = datetime.now().strftime("%d.%m.%Y")
-
-                    return (
-                        f"*Погода на {current_date} в {current_time}*:\n"
-                        f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
-                        f"🌡️ *Температура:* {temperature}°C\n"
-                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                        f"💧 *Влажность:* {humidity}%\n"
-                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                        f"☁️ *Описание:* {description}\n\n"
-                    )
-        return None
-    except Exception as e:
-        print(f"Ошибка в get_current_weather: {e}")
-        return None
-
-def get_average_fuel_prices(city_code):
-    fuel_prices = {}
-    file_path = f'data base/azs/{city_code}_table_azs_data.json'
-
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            prices_data = json.load(f)
-
-            for entry in prices_data:
-                fuel_type = entry[1]  
-                price = entry[2]  
-
-                try:
-                    price = float(price) 
-                except ValueError:
-                    continue  
-
-                if fuel_type not in fuel_prices:
-                    fuel_prices[fuel_type] = []
-
-                fuel_prices[fuel_type].append(price)
-
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
-        return None
-
-    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
-    return average_prices
-
-def get_exchange_rates_message():
-    try:
-        exchange_rates = fetch_exchange_rates_cbr()
-        current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-        rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
-        for currency, rate in exchange_rates.items():
-            if currency in CURRENCY_NAMES:
-                name, emoji = CURRENCY_NAMES[currency]
-                rates_message += f"{emoji} *{name}:* {rate:.2f} руб.\n"
-        return rates_message
-    except:
-        return None
-
-def load_city_names(file_path):
-    city_names = {}
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                city_data = line.strip().split(' - ')
-                if len(city_data) == 2:
-                    city_name, city_code = city_data
-                    city_names[city_code] = city_name 
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        pass
-    
-    return city_names
-
-def send_weather_notifications():
-    user_locations = load_user_locations()
-    city_names = load_city_names('files/combined_cities.txt')
-    blocked_users = load_blocked_users()
-    data = load_payment_data()
-
-    for chat_id, coords in user_locations.items():
-        if chat_id in blocked_users:
-            continue
-
-        user_data = data['subscriptions']['users'].get(str(chat_id), {})
-        has_active_subscription = False
-
-        if 'plans' in user_data:
-            for plan in user_data['plans']:
-                if plan['end_date'] and datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now():
-                    has_active_subscription = True
-                    break
-
-        if not has_active_subscription:
-            continue
-
-        notification_status = get_notification_status(chat_id)
-        messages = []
-
-        if notification_status.get("weather"):
-            weather_message = get_current_weather(coords)
-            if weather_message:
-                messages.append(weather_message)
-
-        if notification_status.get("fuel_prices"):
-            city_code = coords.get('city_code')
-            city_name = city_names.get(city_code, city_code)
-            average_prices = get_average_fuel_prices(city_code)
-
-            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-
-            if average_prices:
-                fuel_prices_message = "*Актуальные цены на топливо (г. {}) на дату {}:*\n\n".format(city_name, current_time)
-
-                fuel_types_order = [
-                    "Аи-92", "Премиум 92", "Аи-95", "Премиум 95", "Аи-98", "Премиум 98",
-                    "Аи-100", "Премиум 100", "ДТ", "Премиум ДТ", "Газ"
-                ]
-
-                for fuel_type in fuel_types_order:
-                    if fuel_type in average_prices:
-                        fuel_prices_message += f"⛽ *{fuel_type}:* {average_prices[fuel_type]:.2f} руб./л.\n"
-
-                messages.append(fuel_prices_message)
-
-        if notification_status.get("exchange_rates"):
-            exchange_message = get_exchange_rates_message()
-            if exchange_message:
-                messages.append(exchange_message)
-
-        if messages:
-            try:
-                final_message = "🔔 *Вам пришло новое уведомление!*\n\n" + "\n".join(messages)
-                bot.send_message(chat_id, final_message, parse_mode="Markdown")
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    if chat_id not in blocked_users:
-                        blocked_users.append(chat_id)
-                        save_blocked_users(blocked_users)
-                else:
-                    raise e
-
-schedule.every().day.at("07:30").do(send_weather_notifications)
-schedule.every().day.at("13:00").do(send_weather_notifications)
-schedule.every().day.at("17:00").do(send_weather_notifications)
-
-def schedule_tasks():
-    while True:
-        now = datetime.now()
-        if now.hour == 0 and now.minute == 0:
-            parse_fuel_prices()
-            time.sleep(60 * 5)
-        schedule.run_pending()
-        time.sleep(300)
-
-threading.Thread(target=schedule_tasks, daemon=True).start()
-
 # ---------- 17. ВАШ ТРАНСПОРТ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14306,8 +13556,8 @@ error_codes = load_error_codes()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
-@rate_limit_with_captcha
 @text_only_handler
+@rate_limit_with_captcha
 def obd2_request(message, show_description=True):
 
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -14392,6 +13642,7 @@ def process_error_codes(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -14400,6 +13651,1476 @@ def view_others(message):
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
 
+# ---------- 31. НОВОСТИ ----------
+
+@bot.message_handler(func=lambda message: message.text == 'Новости')
+@check_function_state_decorator('Новости')
+@track_usage('Новости')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def show_news_menu(message, show_description=True):
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    markup.add('3 новости', '5 новостей', '7 новостей')
+    markup.add('10 новостей', '15 новостей')
+    markup.add('В главное меню')
+
+    description = (
+        "ℹ️ *Краткая справка по отображению новостей*\n\n"
+        "📌 Вы можете выбрать *количество новостей* для показа *(3, 5, 7, 10, 15)*\n"
+        "📌 Они сортируются от новых к старым\n"
+        "📌 Если новости закончились, то вы вернетесь в меню прочее\n\n"
+        "_P.S. Новости публикует редактор или администратор (разработчик). По техническим причинам новости могут не публиковаться!_"
+    )
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
+
+    bot.send_message(message.chat.id, "Выберите количество новостей:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
+@check_function_state_decorator('3 новости')
+@check_function_state_decorator('5 новостей')
+@check_function_state_decorator('7 новостей')
+@check_function_state_decorator('10 новостей')
+@check_function_state_decorator('15 новостей')
+@track_usage('3 новости')
+@track_usage('5 новостей')
+@track_usage('7 новостей')
+@track_usage('10 новостей')
+@track_usage('15 новостей')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def handle_news_selection(message):
+
+    count = int(message.text.split()[0])
+    news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+
+    if len(news_list) == 0:
+        bot.send_message(message.chat.id, "❌ Новостей нет!")
+        view_others(message)
+        return
+
+    for i in range(min(count, len(news_list))):
+        news_item = news_list[i]
+        if 'files' in news_item and news_item['files']:
+            media_group = []
+            caption = None
+            for file in news_item['files']:
+                if file.get('caption'):
+                    caption = file['caption']
+                    break
+
+            if caption and len(caption) > 200:
+                caption = caption[:200] + "..."
+
+            first_file = True
+            for file in news_item['files']:
+                if file['type'] == 'photo':
+                    media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'video':
+                    media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'document':
+                    media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'animation':
+                    media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'voice':
+                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+                first_file = False
+            if media_group:
+                bot.send_media_group(message.chat.id, media_group)
+        if news_item['text']:
+            bot.send_message(message.chat.id, news_item['text'])
+
+    if len(news_list) > count:
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Еще новости')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Хотите посмотреть еще новости?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        bot.send_message(message.chat.id, "✅ Новости закончились!")
+        view_others(message)
+
+@text_only_handler
+def handle_more_news(message, start_index):
+
+    if message.text == 'Еще новости':
+        news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+        if start_index >= len(news_list):
+            bot.send_message(message.chat.id, "✅ Новости закончились!")
+            view_others(message)
+            return
+
+        end_index = min(start_index + 3, len(news_list))
+        for i in range(start_index, end_index):
+            news_item = news_list[i]
+            if 'files' in news_item and news_item['files']:
+                media_group = []
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'video':
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'document':
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'animation':
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'voice':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
+            if news_item['text']:
+                bot.send_message(message.chat.id, news_item['text'])
+
+        if end_index < len(news_list):
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Еще новости')
+            markup.add('В главное меню')
+            bot.send_message(message.chat.id, "Хотите посмотреть еще новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, end_index)
+        else:
+            bot.send_message(message.chat.id, "✅ Новости закончились!")
+            view_others(message)
+    else:
+        view_others(message)
+
+# ---------- 12. КУРСЫ ВАЛЮТ ----------
+
+def fetch_exchange_rates_cbr():
+    url = 'https://www.cbr-xml-daily.ru/daily_json.js'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        rates = data['Valute']
+        return {
+            'USD': rates['USD']['Value'],
+            'EUR': rates['EUR']['Value'],
+            'GBP': rates['GBP']['Value'],
+            'CHF': rates['CHF']['Value'],
+            'JPY': rates['JPY']['Value'] / 100,
+            'CNY': rates['CNY']['Value'] / 10,
+            'AUD': rates['AUD']['Value'],
+            'CAD': rates['CAD']['Value'],
+            'BYN': rates['BYN']['Value'],
+            'KRW': rates['KRW']['Value'] / 1000,
+            'SGD': rates['SGD']['Value'],
+            'NZD': rates['NZD']['Value'],
+            'RUB': 1
+        }
+    except Exception:
+        return fetch_exchange_rates_moex()
+
+def fetch_exchange_rates_moex():
+    url = 'https://iss.moex.com/iss/statistics/engines/futures/markets/indicativerates.json'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        rates = data['securities']['data']
+        exchange_rates = get_default_rates()
+        for rate in rates:
+            currency_pair = rate[0]
+            value = rate[2]
+            if currency_pair == 'USD/RUB':
+                exchange_rates['USD'] = value
+            elif currency_pair == 'EUR/RUB':
+                exchange_rates['EUR'] = value
+            elif currency_pair == 'GBP/RUB':
+                exchange_rates['GBP'] = value
+            elif currency_pair == 'CHF/RUB':
+                exchange_rates['CHF'] = value
+            elif currency_pair == 'JPY/RUB':
+                exchange_rates['JPY'] = value / 100
+            elif currency_pair == 'CNY/RUB':
+                exchange_rates['CNY'] = value / 10
+        return exchange_rates
+    except Exception:
+        return get_default_rates()
+
+def get_default_rates():
+    return {
+        'USD': 83.6813,
+        'EUR': 89.6553,
+        'GBP': 104.3210,
+        'CHF': 94.1234,
+        'JPY': 0.55,
+        'CNY': 11.46,
+        'AUD': 55.4321,
+        'CAD': 60.9876,
+        'BYN': 27.34,
+        'KRW': 0.05705,
+        'SGD': 61.2345,
+        'NZD': 50.8765,
+        'RUB': 1
+    }
+
+CURRENCY_NAMES = {
+    'USD': ('Доллар США', '🇺🇸'),
+    'EUR': ('Евро', '🇪🇺'),
+    'GBP': ('Британский фунт', '🇬🇧'),
+    'CHF': ('Швейцарский франк', '🇨🇭'),
+    'JPY': ('Японская иена', '🇯🇵'),
+    'CNY': ('Китайский юань', '🇨🇳'),
+    'AUD': ('Австралийский доллар', '🇦🇺'),
+    'CAD': ('Канадский доллар', '🇨🇦'),
+    'BYN': ('Белорусский рубль', '🇧🇾'),
+    'KRW': ('Южнокорейская вона', '🇰🇷'),
+    'SGD': ('Сингапурский доллар', '🇸🇬'),
+    'NZD': ('Новозеландский доллар', '🇳🇿'),
+    'RUB': ('Российский рубль', '🇷🇺')
+}
+
+@bot.message_handler(func=lambda message: message.text == "Курсы валют")
+@check_function_state_decorator('Курсы валют')
+@track_usage('Курсы валют')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def view_exchange_rates(message):
+
+    initialize_user_notifications(message.chat.id)
+
+    exchange_rates = fetch_exchange_rates_cbr()
+
+    current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+    rates_message = f"📊 *Актуальные курсы валют на {current_time}*\n\n"
+    for currency, rate in exchange_rates.items():
+        if currency in CURRENCY_NAMES:
+            name, emoji = CURRENCY_NAMES[currency]
+            rates_message += f"{emoji} {name} - {rate:.2f} руб.\n"
+
+    bot.send_message(message.chat.id, rates_message, parse_mode='Markdown')
+
+
+# ---------- 16. УВЕДОМЛЕНИЯ ПОГОДА + ЦЕНЫ НА ТОПЛИВО + КУРСЫ ВАЛЮТ ----------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
+OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
+WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004' 
+OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
+OPENMETEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+WEATHERAPI_CURRENT_URL = 'https://api.weatherapi.com/v1/current.json'
+
+def ensure_directory_exists(file_path):
+    directory = os.path.dirname(file_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+def initialize_user_notifications(chat_id):
+    ensure_directory_exists(NOTIFICATIONS_PATH)
+
+    try:
+        with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
+            notifications = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        notifications = {}
+
+    str_chat_id = str(chat_id)
+    if str_chat_id not in notifications:
+        notifications[str_chat_id] = {
+            "latitude": None,
+            "longitude": None,
+            "city_code": None,
+            "notifications": {
+                "weather": True,
+                "fuel_prices": True,
+                "exchange_rates": True 
+            }
+        }
+    else:
+        if "notifications" not in notifications[str_chat_id]:
+            notifications[str_chat_id]["notifications"] = {
+                "weather": True,
+                "fuel_prices": True,
+                "exchange_rates": True  
+            }
+        else:
+            if "exchange_rates" not in notifications[str_chat_id]["notifications"]:
+                notifications[str_chat_id]["notifications"]["exchange_rates"] = True
+
+    with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(notifications, f, ensure_ascii=False, indent=4)
+
+    return notifications
+
+def save_user_location(chat_id, latitude, longitude, city_code):
+    ensure_directory_exists(NOTIFICATIONS_PATH)
+    
+    notifications = initialize_user_notifications(chat_id)
+    str_chat_id = str(chat_id)
+
+    if latitude is not None:
+        notifications[str_chat_id]["latitude"] = float(latitude)  
+    if longitude is not None:
+        notifications[str_chat_id]["longitude"] = float(longitude) 
+    if city_code is not None:
+        notifications[str_chat_id]["city_code"] = city_code
+
+    try:
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(notifications, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка сохранения местоположения: {e}")
+
+def load_user_locations():
+    ensure_directory_exists(NOTIFICATIONS_PATH)
+    
+    try:
+        with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+            json.dump({}, f)
+        return {}
+
+def toggle_notification(chat_id, notification_type):
+    ensure_directory_exists(NOTIFICATIONS_PATH)
+    
+    notifications = initialize_user_notifications(chat_id)
+    user_notifications = notifications.get(str(chat_id), {}).get("notifications", {})
+
+    if notification_type in user_notifications:
+        user_notifications[notification_type] = not user_notifications[notification_type]
+        notifications[str(chat_id)]["notifications"] = user_notifications
+
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f: 
+            json.dump(notifications, f, ensure_ascii=False, indent=4)
+        
+        return user_notifications[notification_type]
+
+def get_notification_status(chat_id):
+    notifications = load_user_locations()
+    return notifications.get(str(chat_id), {}).get("notifications", {
+        "weather": True, 
+        "fuel_prices": True, 
+        "exchange_rates": True
+    })
+
+def get_notification_status_message(chat_id):
+    status = get_notification_status(chat_id)
+    weather_status = "включены" if status.get("weather", True) else "выключены"
+    fuel_status = "включены" if status.get("fuel_prices", True) else "выключены"
+    exchange_status = "включены" if status.get("exchange_rates", True) else "выключены"
+    
+    return f"📬 Текущий статус уведомлений:\n\n" \
+           f"🌤️ Погода: {weather_status}\n" \
+           f"⛽ Цены на топливо: {fuel_status}\n" \
+           f"💱 Курсы валют: {exchange_status}\n\n"
+
+@bot.message_handler(func=lambda message: message.text == "Уведомления")
+@check_function_state_decorator('Уведомления')
+@track_usage('Уведомления')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def toggle_notifications_handler(message, show_description=True):
+    chat_id = message.chat.id
+    initialize_user_notifications(chat_id)
+    notification_status = get_notification_status(chat_id)
+
+    weather_button_text = "Выключить погоду" if notification_status.get("weather") else "Включить погоду"
+    fuel_button_text = "Выключить цены" if notification_status.get("fuel_prices") else "Включить цены"
+    exchange_button_text = "Выключить курсы" if notification_status.get("exchange_rates") else "Включить курсы"
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(types.KeyboardButton(weather_button_text), types.KeyboardButton(fuel_button_text))
+    markup.add(types.KeyboardButton(exchange_button_text))
+    markup.add(types.KeyboardButton("Выключить все" if any(notification_status.values()) else "Включить все"))
+    markup.add(types.KeyboardButton("В главное меню"))
+
+    info_message = (
+        "ℹ️ *Краткая справка по уведомлениям*\n\n"
+        "📌 *Сохранение данных:*\n"
+        "Ваши последние *координаты для погоды* и *последний введенный город* сохраняются для отправки уведомлений\n\n"
+        "📌 *Переключение уведомлений:*\n"
+        "Вы можете *включать* или *отключать* уведомления\n\n"
+        "📌 *Получение уведомлений:*\n"
+        "Вы получаете *актуальную информацию* в установленное время _(7:30, 13:00, 17:00)_\n"
+    )
+
+    if show_description:
+        bot.send_message(chat_id, info_message, parse_mode="Markdown")
+
+    status_message = get_notification_status_message(chat_id)
+    bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
+                    reply_markup=markup, parse_mode="Markdown")
+
+
+@bot.message_handler(func=lambda message: message.text in [
+    "Включить погоду", "Выключить погоду", 
+    "Включить цены", "Выключить цены", 
+    "Включить курсы", "Выключить курсы", 
+    "Включить все", "Выключить все"
+])
+@check_function_state_decorator('Включить погоду')
+@check_function_state_decorator('Выключить погоду')
+@check_function_state_decorator('Включить цены')
+@check_function_state_decorator('Выключить цены')
+@check_function_state_decorator('Включить курсы')
+@check_function_state_decorator('Выключить курсы')
+@check_function_state_decorator('Включить все')
+@check_function_state_decorator('Выключить все')
+@track_usage('Включить погоду')
+@track_usage('Выключить погоду')
+@track_usage('Включить цены')
+@track_usage('Выключить цены')
+@track_usage('Включить курсы')
+@track_usage('Выключить курсы')
+@track_usage('Включить все')
+@track_usage('Выключить все')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def handle_notification_toggle(message):
+    chat_id = message.chat.id
+    notification_messages = []
+
+    if message.text == "Включить погоду":
+        new_status = toggle_notification(chat_id, "weather")
+        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить погоду":
+        new_status = toggle_notification(chat_id, "weather")
+        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить цены":
+        new_status = toggle_notification(chat_id, "fuel_prices")
+        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить цены":
+        new_status = toggle_notification(chat_id, "fuel_prices")
+        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить курсы":
+        new_status = toggle_notification(chat_id, "exchange_rates")
+        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить курсы":
+        new_status = toggle_notification(chat_id, "exchange_rates")
+        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить все":
+        weather_status = toggle_notification(chat_id, "weather")
+        fuel_status = toggle_notification(chat_id, "fuel_prices")
+        exchange_status = toggle_notification(chat_id, "exchange_rates")
+        if weather_status or fuel_status or exchange_status:
+            notification_messages.append("📬 Все уведомления включены!")
+        else:
+            notification_messages.append("📬 Все уведомления уже включены!")
+    elif message.text == "Выключить все":
+        weather_status = toggle_notification(chat_id, "weather")
+        fuel_status = toggle_notification(chat_id, "fuel_prices")
+        exchange_status = toggle_notification(chat_id, "exchange_rates")
+        if not weather_status and not fuel_status and not exchange_status:
+            notification_messages.append("📬 Все уведомления выключены!")
+        else:
+            notification_messages.append("📬 Все уведомления уже выключены!")
+
+    if notification_messages:
+        bot.send_message(chat_id, "\n".join(notification_messages), parse_mode="Markdown")
+
+    toggle_notifications_handler(message, show_description=False)
+
+@bot.message_handler(func=lambda message: message.text in [
+    "Включить погоду", "Выключить погоду", 
+    "Включить цены", "Выключить цены", 
+    "Включить курсы", "Выключить курсы", 
+    "Включить все", "Выключить все"
+])
+@check_function_state_decorator('Включить погоду')
+@check_function_state_decorator('Выключить погоду')
+@check_function_state_decorator('Включить цены')
+@check_function_state_decorator('Выключить цены')
+@check_function_state_decorator('Включить курсы')
+@check_function_state_decorator('Выключить курсы')
+@check_function_state_decorator('Включить все')
+@check_function_state_decorator('Выключить все')
+@track_usage('Включить погоду')
+@track_usage('Выключить погоду')
+@track_usage('Включить цены')
+@track_usage('Выключить цены')
+@track_usage('Включить курсы')
+@track_usage('Выключить курсы')
+@track_usage('Включить все')
+@track_usage('Выключить все')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@rate_limit_with_captcha
+def handle_notification_toggle(message):
+    chat_id = message.chat.id
+    if message.text == "Включить погоду":
+        toggle_notification(chat_id, "weather")
+    elif message.text == "Выключить погоду":
+        toggle_notification(chat_id, "weather")
+    elif message.text == "Включить цены":
+        toggle_notification(chat_id, "fuel_prices")
+    elif message.text == "Выключить цены":
+        toggle_notification(chat_id, "fuel_prices")
+    elif message.text == "Включить курсы":
+        toggle_notification(chat_id, "exchange_rates")
+    elif message.text == "Выключить курсы":
+        toggle_notification(chat_id, "exchange_rates")
+    elif message.text == "Включить все":
+        toggle_notification(chat_id, "weather")
+        toggle_notification(chat_id, "fuel_prices")
+        toggle_notification(chat_id, "exchange_rates")
+    elif message.text == "Выключить все":
+        toggle_notification(chat_id, "weather")
+        toggle_notification(chat_id, "fuel_prices")
+        toggle_notification(chat_id, "exchange_rates")
+
+    toggle_notifications_handler(message, show_description=False)
+
+def get_city_name(latitude, longitude):
+    try:
+        geocode_url = "https://eu1.locationiq.com/v1/reverse.php"
+        params = {
+            'key': 'pk.fa5c52bb6b9e1b801d72b75d151aea63', 
+            'lat': latitude,
+            'lon': longitude,
+            'format': 'json',
+            'accept-language': 'ru'
+        }
+        response = requests.get(geocode_url, params=params, timeout=5)
+        response.raise_for_status()  
+        data = response.json()
+
+        if response.status_code == 200:
+            city = data.get("address", {}).get("city", None)
+            if city:
+                return city
+            town = data.get("address", {}).get("town", None)
+            village = data.get("address", {}).get("village", None)
+            return town or village or f"неизвестное место ({latitude}, {longitude})"
+        return None
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"Ошибка LocationIQ: {e}")
+
+    try:
+        time.sleep(1)  
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
+        headers = {
+            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'  
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+
+        address = data.get('address', {})
+        city = address.get('city') or address.get('town') or address.get('village')
+        return city or f"неизвестное место ({latitude}, {longitude})"
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"Ошибка Nominatim: {e}")
+        return f"неизвестное место ({latitude}, {longitude})"
+
+def fetch_weather_data(url_type, params, api_type='openweathermap'):
+    try:
+        if api_type == 'openweathermap':
+            response = requests.get(params['url'], params=params['params'], timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openweathermap'
+            return None, 'openweathermap'
+
+        elif api_type == 'openmeteo':
+            openmeteo_params = {
+                'latitude': params['params'].get('lat') or params['params'].get('latitude'),
+                'longitude': params['params'].get('lon') or params['params'].get('longitude'),
+                'current_weather': 'true' if url_type == 'weather' else 'false',
+                'hourly': 'temperature_2m,relativehumidity_2m,pressure_msl,windspeed_10m,weathercode' if url_type == 'forecast' else '',
+                'daily': 'temperature_2m_max,temperature_2m_min,weathercode' if url_type == 'forecast' else '',
+                'timezone': 'auto'
+            }
+            response = requests.get(OPENMETEO_FORECAST_URL, params=openmeteo_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openmeteo'
+            return None, 'openmeteo'
+
+        elif api_type == 'weatherapi':
+            weatherapi_params = {
+                'key': WEATHERAPI_API_KEY,
+                'q': params['params'].get('q', f"{params['params'].get('lat')},{params['params'].get('lon')}"),
+                'lang': 'ru'
+            }
+            if url_type == 'forecast':
+                weatherapi_params['days'] = params.get('days', 7)
+            url = WEATHERAPI_CURRENT_URL if url_type == 'weather' else WEATHERAPI_FORECAST_URL
+            response = requests.get(url, params=weatherapi_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'weatherapi'
+            return None, 'weatherapi'
+
+    except Exception:
+        return None, api_type
+
+def normalize_weather_data(data, api_type, url_type):
+    if not data:
+        return None
+
+    if api_type == 'openweathermap':
+        return data
+
+    elif api_type == 'openmeteo':
+        if url_type == 'weather':
+            weather_code = data['current_weather']['weathercode']
+            description = {
+                0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                95: 'thunderstorm'
+            }.get(weather_code, 'unknown')
+            return {
+                'main': {
+                    'temp': data['current_weather']['temperature'],
+                    'feels_like': data['current_weather']['temperature'],
+                    'humidity': data.get('hourly', {}).get('relativehumidity_2m', [0])[0],
+                    'pressure': data.get('hourly', {}).get('pressure_msl', [0])[0]
+                },
+                'wind': {'speed': data['current_weather']['windspeed']},
+                'weather': [{'description': description}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for i, time in enumerate(data['hourly']['time']):
+                weather_code = data['hourly']['weathercode'][i]
+                description = {
+                    0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                    45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                    95: 'thunderstorm'
+                }.get(weather_code, 'unknown')
+                forecasts.append({
+                    'dt_txt': time,
+                    'main': {
+                        'temp': data['hourly']['temperature_2m'][i],
+                        'feels_like': data['hourly']['temperature_2m'][i],
+                        'humidity': data['hourly']['relativehumidity_2m'][i],
+                        'pressure': data['hourly']['pressure_msl'][i]
+                    },
+                    'wind': {'speed': data['hourly']['windspeed_10m'][i]},
+                    'weather': [{'description': description}]
+                })
+            return {'list': forecasts}
+
+    elif api_type == 'weatherapi':
+        if url_type == 'weather':
+            return {
+                'main': {
+                    'temp': data['current']['temp_c'],
+                    'feels_like': data['current']['feelslike_c'],
+                    'humidity': data['current']['humidity'],
+                    'pressure': data['current']['pressure_mb']
+                },
+                'wind': {'speed': data['current']['wind_kph'] / 3.6},
+                'weather': [{'description': data['current']['condition']['text']}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for day in data['forecast']['forecastday']:
+                for hour in day['hour']:
+                    forecasts.append({
+                        'dt_txt': hour['time'],
+                        'main': {
+                            'temp': hour['temp_c'],
+                            'feels_like': hour['feelslike_c'],
+                            'humidity': hour['humidity'],
+                            'pressure': hour['pressure_mb']
+                        },
+                        'wind': {'speed': hour['wind_kph'] / 3.6},
+                        'weather': [{'description': hour['condition']['text']}]
+                    })
+            return {'list': forecasts}
+
+    return None
+
+def get_current_weather(coords):
+    try:
+        city_name = get_city_name(coords['latitude'], coords['longitude'])
+        params = {
+            'url': OPENWEATHERMAP_WEATHER_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
+        }
+
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data('weather', params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, 'weather')
+                if data:
+                    temperature = round(data['main']['temp'])
+                    feels_like = round(data['main']['feels_like'])
+                    humidity = data['main']['humidity']
+                    pressure = data['main']['pressure']
+                    wind_speed = data['wind']['speed']
+                    description = translate_weather_description(data['weather'][0]['description'])
+
+                    current_time = datetime.now().strftime("%H:%M")
+                    current_date = datetime.now().strftime("%d.%m.%Y")
+
+                    return (
+                        f"*Погода на {current_date} в {current_time}*:\n"
+                        f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
+                    )
+        return None
+    except Exception as e:
+        print(f"Ошибка в get_current_weather: {e}")
+        return None
+
+def get_average_fuel_prices(city_code):
+    fuel_prices = {}
+    file_path = f'data base/azs/{city_code}_table_azs_data.json'
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            prices_data = json.load(f)
+
+            for entry in prices_data:
+                fuel_type = entry[1]  
+                price = entry[2]  
+
+                try:
+                    price = float(price) 
+                except ValueError:
+                    continue  
+
+                if fuel_type not in fuel_prices:
+                    fuel_prices[fuel_type] = []
+
+                fuel_prices[fuel_type].append(price)
+
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+
+    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
+    return average_prices
+
+def get_exchange_rates_message():
+    try:
+        exchange_rates = fetch_exchange_rates_cbr()
+        current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+        rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
+        for currency, rate in exchange_rates.items():
+            if currency in CURRENCY_NAMES:
+                name, emoji = CURRENCY_NAMES[currency]
+                rates_message += f"{emoji} *{name}:* {rate:.2f} руб.\n"
+        return rates_message
+    except:
+        return None
+
+def load_city_names(file_path):
+    city_names = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                city_data = line.strip().split(' - ')
+                if len(city_data) == 2:
+                    city_name, city_code = city_data
+                    city_names[city_code] = city_name 
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        pass
+    
+    return city_names
+
+def send_weather_notifications():
+    user_locations = load_user_locations()
+    city_names = load_city_names('files/combined_cities.txt')
+    blocked_users = load_blocked_users()
+    data = load_payment_data()
+
+    for chat_id, coords in user_locations.items():
+        if chat_id in blocked_users:
+            continue
+
+        user_data = data['subscriptions']['users'].get(str(chat_id), {})
+        has_active_subscription = False
+
+        if 'plans' in user_data:
+            for plan in user_data['plans']:
+                if plan['end_date'] and datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now():
+                    has_active_subscription = True
+                    break
+
+        if not has_active_subscription:
+            continue
+
+        notification_status = get_notification_status(chat_id)
+        messages = []
+
+        if notification_status.get("weather"):
+            weather_message = get_current_weather(coords)
+            if weather_message:
+                messages.append(weather_message)
+
+        if notification_status.get("fuel_prices"):
+            city_code = coords.get('city_code')
+            city_name = city_names.get(city_code, city_code)
+            average_prices = get_average_fuel_prices(city_code)
+
+            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+
+            if average_prices:
+                fuel_prices_message = "*Актуальные цены на топливо (г. {}) на дату {}:*\n\n".format(city_name, current_time)
+
+                fuel_types_order = [
+                    "Аи-92", "Премиум 92", "Аи-95", "Премиум 95", "Аи-98", "Премиум 98",
+                    "Аи-100", "Премиум 100", "ДТ", "Премиум ДТ", "Газ"
+                ]
+
+                for fuel_type in fuel_types_order:
+                    if fuel_type in average_prices:
+                        fuel_prices_message += f"⛽ *{fuel_type}:* {average_prices[fuel_type]:.2f} руб./л.\n"
+
+                messages.append(fuel_prices_message)
+
+        if notification_status.get("exchange_rates"):
+            exchange_message = get_exchange_rates_message()
+            if exchange_message:
+                messages.append(exchange_message)
+
+        if messages:
+            try:
+                final_message = "🔔 *Вам пришло новое уведомление!*\n\n" + "\n".join(messages)
+                bot.send_message(chat_id, final_message, parse_mode="Markdown")
+            except ApiTelegramException as e:
+                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                    if chat_id not in blocked_users:
+                        blocked_users.append(chat_id)
+                        save_blocked_users(blocked_users)
+                else:
+                    raise e
+
+schedule.every().day.at("07:30").do(send_weather_notifications)
+schedule.every().day.at("13:00").do(send_weather_notifications)
+schedule.every().day.at("17:00").do(send_weather_notifications)
+
+def schedule_tasks():
+    while True:
+        now = datetime.now()
+        if now.hour == 0 and now.minute == 0:
+            parse_fuel_prices()
+            time.sleep(60 * 5)
+        schedule.run_pending()
+        time.sleep(300)
+
+threading.Thread(target=schedule_tasks, daemon=True).start()
+
+# --- ДЛЯ РЕКЛАМЫ ---
+
+@bot.message_handler(func=lambda message: message.text == "Для рекламы")
+@check_function_state_decorator('Для рекламы')
+@track_usage('Для рекламы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def view_add_menu(message, show_description=True):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Заявка на рекламу', 'Ваши заявки')
+    markup.add('В главное меню')
+
+    description = (
+        "ℹ️ *Краткая справка по рекламе*\n\n"
+        "📌 *Заявка:*\n"
+        "Вы можете отправить заявку на рекламу в боте по кнопке, где нужно заполнить определенные поля\n\n"
+        "📌 *Ваши заявки:*\n"
+        "Вы можете посмотреть свои заявки на рекламу, а если нужно, то и отозвать\n\n"
+        "📌 *Оплата и вопросы:*\n"
+        "Заявки на рекламу и оплату принимает *администратор (разработчик)* - [@x_evgenyalex_x](https://t.me/x_evgenyalex_x). Если что-то не понятно, то вы можете обратиться к нему!\n\n"
+    )
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
+
+    bot.send_message(message.chat.id, "Выберите действие с рекламой:", reply_markup=markup)
+
+
+# ---------- 30.1 РЕКЛАМА (ЗАЯВКА НА РЕКЛАМУ) ----------
+
+@bot.message_handler(func=lambda message: message.text == 'Заявка на рекламу')
+@check_function_state_decorator('Заявка на рекламу')
+@track_usage('Заявка на рекламу')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def handle_advertisement_request(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Вернуться в меню для рекламы')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_advertisement_theme)
+
+@text_only_handler
+def set_advertisement_theme(message):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    advertisement_theme = message.text
+    bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ, на которую вы хотите разместить рекламу:")
+    bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+
+@text_only_handler
+def set_advertisement_date(message, advertisement_theme):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    expected_date = message.text
+    if expected_date is None or not validate_date_format(expected_date):
+        bot.send_message(message.chat.id, "Неверный формат даты!\nПожалуйста, введите дату в формате ДД.ММ.ГГГГ")
+        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+        return
+
+    if not validate_future_date(expected_date):
+        bot.send_message(message.chat.id, "Дата не может быть раньше текущей даты!\nПожалуйста, введите корректную дату")
+        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+        return
+
+    bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ, на которое вы хотите разместить рекламу:")
+    bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+
+@text_only_handler
+def set_advertisement_time(message, advertisement_theme, expected_date):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    expected_time = message.text
+    if not validate_time_format(expected_time):
+        bot.send_message(message.chat.id, "Неверный формат времени!\nПожалуйста, введите время в формате ЧЧ:ММ")
+        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+        return
+
+    if not validate_future_time(expected_date, expected_time):
+        bot.send_message(message.chat.id, "Время не может быть раньше текущего времени!\nПожалуйста, введите корректное время")
+        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+        return
+
+    bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ для окончания действия рекламы:")
+    bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+
+@text_only_handler
+def set_advertisement_end_date(message, advertisement_theme, expected_date, expected_time):
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    if message.text == 'Вернуться в меню для рекламы':
+        view_add_menu(message, show_description=False)
+        return
+
+    end_date = message.text
+    if not validate_date_format(end_date):
+        bot.send_message(message.chat.id, "Неверный формат даты!\nПожалуйста, введите дату в формате ДД.ММ.ГГГГ")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    if not validate_future_date(end_date):
+        bot.send_message(message.chat.id, "Дата окончания не может быть раньше текущей даты!\nПожалуйста, введите корректную дату")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
+    end_datetime = datetime.strptime(f"{end_date} 23:59", "%d.%m.%Y %H:%M")  
+    if end_datetime.date() < start_datetime.date():
+        bot.send_message(message.chat.id, "Дата окончания не может быть раньше даты начала!\nПожалуйста, введите корректную дату")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для окончания действия рекламы:")
+    bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+
+@text_only_handler
+def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    end_time = message.text
+    if not validate_time_format(end_time):
+        bot.send_message(message.chat.id, "Неверный формат времени!\nПожалуйста, введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+        return
+
+    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
+    end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
+    if end_datetime <= start_datetime:
+        bot.send_message(message.chat.id, "Дата и время окончания должны быть позже даты и времени начала!\nПожалуйста, введите корректное время")
+        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+        return
+
+    bot.send_message(message.chat.id, "Отправьте текст рекламы:")
+    bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+@text_only_handler
+def collect_advertisement_text(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    temp_advertisement['text'] = message.text
+    temp_advertisement['chat_id'] = message.chat.id
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Пропустить медиафайлы')
+    markup.add('Вернуться в меню для рекламы')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Отправьте мультимедийные файлы (если есть):", reply_markup=markup)
+    bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+def collect_advertisement_media(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    if message.text == "Пропустить медиафайлы":
+        temp_advertisement['files'] = []
+        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+        return
+
+    content_type = message.content_type
+    file_id = None
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    if file_id:
+        if 'files' not in temp_advertisement:
+            temp_advertisement['files'] = []
+        temp_advertisement['files'].append({
+            'type': content_type,
+            'file_id': file_id,
+            'caption': temp_advertisement.get('text', '')
+        })
+
+        if len(temp_advertisement['files']) >= 10:
+            save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+            return
+
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Добавить еще', 'Завершить отправку')
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, отправьте мультимедийный файл!")
+        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+def handle_advertisement_media_options(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()
+        return_to_menu(message)
+        return
+
+    if message.text == "Добавить еще":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Пропустить медиафайлы')
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
+        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    elif message.text == "Завершить отправку":
+        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, выберите действие!")
+        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+def save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+    user_id = message.chat.id
+    username = message.from_user.username
+    advertisement_id = str(len(advertisements['advertisements']) + 1)
+    advertisements['advertisements'][advertisement_id] = {
+        'user_id': user_id,
+        'username': username,
+        'theme': advertisement_theme,
+        'expected_date': expected_date,
+        'expected_time': expected_time,
+        'end_date': end_date,
+        'end_time': end_time,
+        'text': temp_advertisement['text'],
+        'files': temp_advertisement['files'],
+        'status': 'pending',
+        'user_ids': [],
+        'message_ids': []
+    }
+
+    save_advertisements()
+    bot.send_message(message.chat.id, "✅ Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
+
+    with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+        admin_data = json.load(file)
+        admin_ids = admin_data['admin_sessions']
+
+    for admin_id in admin_ids:
+        try:
+            bot.send_message(admin_id, f"⚠️ У вас новая заявка на рекламу от пользователя `{user_id}` по теме *{advertisement_theme.lower()}* на {expected_date} в {expected_time} до {end_date} в {end_time}!", parse_mode="Markdown")
+        except ApiTelegramException as e:
+            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                pass
+                if admin_id not in blocked_users:
+                    blocked_users.append(admin_id)
+                    save_blocked_users(blocked_users)
+            else:
+                raise e
+
+    temp_advertisement.clear()
+    view_others(message)
+
+def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
+    try:
+        end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
+        delay = (end_datetime - datetime.now()).total_seconds()
+        if delay > 0:
+            threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
+            logging.info(f"Удаление рекламы {advertisement_id} запланировано на {end_datetime}")
+        else:
+            logging.warning(f"Время удаления рекламы {advertisement_id} уже прошло, удаляем немедленно")
+            delete_advertisement_messages(advertisement_id)
+    except ValueError as e:
+        logging.error(f"Ошибка формата даты/времени для рекламы {advertisement_id}: {str(e)}")
+
+def delete_advertisement_messages(advertisement_id):
+    if advertisement_id not in advertisements['advertisements']:
+        logging.warning(f"Реклама {advertisement_id} не найдена при попытке удаления")
+        return
+
+    advertisement = advertisements['advertisements'][advertisement_id]
+    user_ids = advertisement['user_ids']
+    message_ids = advertisement['message_ids']
+
+    if len(user_ids) != len(message_ids):
+        logging.error(f"Несоответствие длины user_ids ({len(user_ids)}) и message_ids ({len(message_ids)}) для рекламы {advertisement_id}")
+
+    for user_id, message_id in zip(user_ids, message_ids):
+        try:
+            bot.delete_message(user_id, message_id)
+            logging.info(f"Сообщение {message_id} удалено для пользователя {user_id}")
+        except ApiTelegramException as e:
+            if e.result_json['error_code'] == 400 and 'message to delete not found' in e.result_json['description']:
+                logging.warning(f"Сообщение {message_id} не найдено для пользователя {user_id}")
+            elif e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                logging.warning(f"Бот заблокирован пользователем {user_id}")
+                if user_id not in blocked_users:
+                    blocked_users.append(user_id)
+                    save_blocked_users(blocked_users)
+            else:
+                logging.error(f"Ошибка удаления сообщения {message_id} для пользователя {user_id}: {str(e)}")
+
+    del advertisements['advertisements'][advertisement_id]
+    save_advertisements()
+    logging.info(f"Реклама {advertisement_id} удалена из базы")
+
+# ---------- 30.4 РЕКЛАМА (ВАШИ ЗАЯВКИ) ----------
+
+@bot.message_handler(func=lambda message: message.text == 'Ваши заявки')
+@check_function_state_decorator('Ваши заявки')
+@track_usage('Ваши заявки')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def show_user_advertisement_requests(message):
+    user_id = message.chat.id
+    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+
+    status_translation = {
+        'pending': 'Ожидает',
+        'accepted': 'Запланирована',
+        'sent': 'Отправлена'
+    }
+
+    if user_advertisements:
+        advertisement_list = [
+            f"⭐ №{i + 1}\n\n"
+            f"📝 *Тема*: {adv['theme'].lower()}\n"
+            f"📅 *Начало*: {adv['expected_date']} в {adv['expected_time']}\n"
+            f"⌛ *Конец*: {adv.get('end_date', 'N/A')} в {adv.get('end_time', 'N/A')}\n"
+            f"📍 *Статус*: {status_translation.get(adv['status'], 'Неизвестен')}\n"
+            for i, adv in enumerate(user_advertisements)
+        ]
+        full_message = "*Ваши заявки на рекламу*:\n\n" + "\n\n".join(advertisement_list)
+
+        max_length = 4096
+        if len(full_message) > max_length:
+            parts = [full_message[i:i + max_length] for i in range(0, len(full_message), max_length)]
+            for part in parts:
+                bot.send_message(message.chat.id, part, parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, full_message, parse_mode="Markdown")
+
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Введите номер заявки для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, show_user_advertisement_request_details)
+    else:
+        bot.send_message(message.chat.id, "❌ У вас нет активных заявок на рекламу!", parse_mode="Markdown")
+
+@text_only_handler
+def show_user_advertisement_request_details(message):
+    if message.text == "Вернуться в меню для рекламы":
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    status_translation = {
+        'pending': 'Ожидает',
+        'accepted': 'Запланирована',
+        'sent': 'Отправлена'
+    }
+
+    try:
+        index = int(message.text) - 1
+        user_id = message.chat.id
+        user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+
+        if 0 <= index < len(user_advertisements):
+            advertisement = user_advertisements[index]
+            text = advertisement['text']
+
+            info_message = (
+                f"⭐ *Основная информация о рекламе*:\n\n"
+                f"📝 *Тема*: {advertisement['theme'].lower()}\n"
+                f"📅 *Начало*: {advertisement['expected_date']} в {advertisement['expected_time']}\n"
+                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n"
+                f"📍 *Статус*: {status_translation.get(advertisement['status'], 'Неизвестен')}\n\n"
+            )
+
+            bot.send_message(message.chat.id, info_message, parse_mode="Markdown")
+
+            if text and text != 'None':
+                message_text = f"📝 Текст рекламы 📝\n\n{text}"
+            else:
+                message_text = ""
+
+            if 'files' in advertisement and advertisement['files']:
+                media_group = []
+                first_file = True
+                for file in advertisement['files']:
+                    if first_file:
+                        caption = message_text
+                    else:
+                        caption = None
+                    if file['type'] == 'photo':
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
+                    elif file['type'] == 'video':
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
+                    elif file['type'] == 'document':
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
+                    elif file['type'] == 'animation':
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'voice':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+                    first_file = False
+
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
+            else:
+                if message_text:
+                    bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+
+            markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            if advertisement['status'] == 'pending':
+                markup.add('Отозвать рекламу')
+            markup.add('Вернуться в меню для рекламы')
+            markup.add('В главное меню')
+            bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_user_advertisement_request_action, index)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер заявки!\nПопробуйте снова")
+            show_user_advertisement_requests(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер заявки!")
+        show_user_advertisement_requests(message)
+
+@text_only_handler
+def handle_user_advertisement_request_action(message, index):
+    if message.text == "Вернуться в меню для рекламы":
+        view_add_menu(message, show_description=False)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    user_id = message.chat.id
+    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+    advertisement_id = list(advertisements['advertisements'].keys())[list(advertisements['advertisements'].values()).index(user_advertisements[index])]
+    advertisement = user_advertisements[index]
+
+    if message.text == 'Отозвать рекламу':
+        if advertisement['status'] != 'pending':
+            bot.send_message(message.chat.id, "❌ Ошибка: Реклама уже запланирована или отправлена и не может быть отозвана!")
+            show_user_advertisement_requests(message)
+            return
+
+        del advertisements['advertisements'][advertisement_id]
+        save_advertisements()
+        bot.send_message(message.chat.id, "✅ Ваша заявка была успешно отозвана!")
+
+        with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+            admin_data = json.load(file)
+            admin_ids = admin_data['admin_sessions']
+
+        for admin_id in admin_ids:
+            try:
+                bot.send_message(admin_id, f"✅ Заявка на рекламу от пользователя `{user_id}` по теме *{advertisement['theme'].lower()}* была отозвана!", parse_mode="Markdown")
+            except ApiTelegramException as e:
+                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                    if admin_id not in blocked_users:
+                        blocked_users.append(admin_id)
+                        save_blocked_users(blocked_users)
+                else:
+                    raise e
+
+        return_to_menu(message)
+    else:
+        bot.send_message(message.chat.id, "Неверное действие!\nПопробуйте снова")
+        show_user_advertisement_request_details(message)
 
 # --------------------------------------------------------------------------------------------------------------------------------
 
@@ -19703,7 +20424,7 @@ def view_nalog_calc(message, show_description=True):
         "ℹ️ *Краткая справка по расчету транспортного налога*\n\n"
         "📌 *Расчет налога:*\n"
         "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n\n"
-        "_P.S. Региональный коэффициент завышен. Мы работаем над этим. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
+        "_P.S. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
         "_Сумма налога (руб.) = налоговая база (л.с.) × ставка (руб.) × (количество полных месяцев владения / 12 месяцев)_\n\n"
         "📌 *Просмотр налогов:*\n"
         "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
@@ -19731,7 +20452,7 @@ user_history_nalog = {}
 user_data = {}
 expensive_cars = []
 tax_rates = {}
-available_years = [2021, 2022, 2023, 2024, 2025] 
+available_years = [2021, 2022, 2023, 2024, 2025] # https://its.1c.ru/db/taxtrans#content:209:hdoc
 
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -25635,332 +26356,6 @@ def load_advertisements():
 advertisements = load_advertisements()
 blocked_users = load_blocked_users()
 
-# ---------- 30.1 РЕКЛАМА (ЗАЯВКА НА РЕКЛАМУ) ----------
-
-@bot.message_handler(func=lambda message: message.text == 'Заявка на рекламу')
-@check_function_state_decorator('Заявка на рекламу')
-@track_usage('Заявка на рекламу')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def handle_advertisement_request(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('Вернуться в меню для рекламы')
-    markup.add('В главное меню')
-    bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
-    bot.register_next_step_handler(message, set_advertisement_theme)
-
-@text_only_handler
-def set_advertisement_theme(message):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    advertisement_theme = message.text
-    bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ, на которую вы хотите разместить рекламу:")
-    bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
-
-@text_only_handler
-def set_advertisement_date(message, advertisement_theme):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    expected_date = message.text
-    if expected_date is None or not validate_date_format(expected_date):
-        bot.send_message(message.chat.id, "Неверный формат даты! Пожалуйста, введите дату в формате ДД.ММ.ГГГГ")
-        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
-        return
-
-    if not validate_future_date(expected_date):
-        bot.send_message(message.chat.id, "Дата не может быть раньше текущей даты! Пожалуйста, введите корректную дату:")
-        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
-        return
-
-    bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ, на которое вы хотите разместить рекламу:")
-    bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
-
-@text_only_handler
-def set_advertisement_time(message, advertisement_theme, expected_date):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    expected_time = message.text
-    if not validate_time_format(expected_time):
-        bot.send_message(message.chat.id, "Неверный формат времени! Пожалуйста, введите время в формате ЧЧ:ММ")
-        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
-        return
-
-    if not validate_future_time(expected_date, expected_time):
-        bot.send_message(message.chat.id, "Время не может быть раньше текущего времени! Пожалуйста, введите корректное время:")
-        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
-        return
-
-    bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ для окончания действия рекламы:")
-    bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
-
-@text_only_handler
-def set_advertisement_end_date(message, advertisement_theme, expected_date, expected_time):
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    if message.text == 'Вернуться в меню для рекламы':
-        view_add_menu(message, show_description=False)
-        return
-
-    end_date = message.text
-    if not validate_date_format(end_date):
-        bot.send_message(message.chat.id, "Неверный формат даты! Пожалуйста, введите дату в формате ДД.ММ.ГГГГ")
-        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
-        return
-
-    if not validate_future_date(end_date):
-        bot.send_message(message.chat.id, "Дата окончания не может быть раньше текущей даты! Пожалуйста, введите корректную дату:")
-        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
-        return
-
-    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
-    end_datetime = datetime.strptime(f"{end_date} 23:59", "%d.%m.%Y %H:%M")  
-    if end_datetime.date() < start_datetime.date():
-        bot.send_message(message.chat.id, "Дата окончания не может быть раньше даты начала! Пожалуйста, введите корректную дату:")
-        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
-        return
-
-    bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для окончания действия рекламы:")
-    bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
-
-@text_only_handler
-def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    end_time = message.text
-    if not validate_time_format(end_time):
-        bot.send_message(message.chat.id, "Неверный формат времени! Пожалуйста, введите время в формате ЧЧ:ММ:")
-        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
-        return
-
-    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
-    end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
-    if end_datetime <= start_datetime:
-        bot.send_message(message.chat.id, "Дата и время окончания должны быть позже даты и времени начала! Пожалуйста, введите корректное время:")
-        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
-        return
-
-    bot.send_message(message.chat.id, "Отправьте текст рекламы:")
-    bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
-
-@text_only_handler
-def collect_advertisement_text(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        return_to_menu(message)
-        return
-
-    temp_advertisement['text'] = message.text
-    temp_advertisement['chat_id'] = message.chat.id
-
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('Пропустить медиафайлы')
-    markup.add('Вернуться в меню для рекламы')
-    markup.add('В главное меню')
-    bot.send_message(message.chat.id, "Отправьте мультимедийные файлы (если есть):", reply_markup=markup)
-    bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
-
-def collect_advertisement_media(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    if message.text == "Пропустить медиафайлы":
-        temp_advertisement['files'] = []
-        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
-        return
-
-    content_type = message.content_type
-    file_id = None
-
-    if content_type == 'photo':
-        file_id = message.photo[-1].file_id
-    elif content_type == 'video':
-        file_id = message.video.file_id
-    elif content_type == 'document':
-        file_id = message.document.file_id
-    elif content_type == 'animation':
-        file_id = message.animation.file_id
-    elif content_type == 'sticker':
-        file_id = message.sticker.file_id
-    elif content_type == 'audio':
-        file_id = message.audio.file_id
-    elif content_type == 'voice':
-        file_id = message.voice.file_id
-    elif content_type == 'video_note':
-        file_id = message.video_note.file_id
-
-    if file_id:
-        if 'files' not in temp_advertisement:
-            temp_advertisement['files'] = []
-        temp_advertisement['files'].append({
-            'type': content_type,
-            'file_id': file_id,
-            'caption': temp_advertisement.get('text', '')
-        })
-
-        if len(temp_advertisement['files']) >= 10:
-            save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
-            return
-
-        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add('Добавить еще', 'Завершить отправку')
-        markup.add('Вернуться в меню для рекламы')
-        markup.add('В главное меню')
-        bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
-        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
-    else:
-        bot.send_message(message.chat.id, "Пожалуйста, отправьте мультимедийный файл!")
-        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
-
-def handle_advertisement_media_options(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
-
-    if message.text == 'Вернуться в меню для рекламы':
-        temp_advertisement.clear()
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == 'В главное меню':
-        temp_advertisement.clear()
-        return_to_menu(message)
-        return
-
-    if message.text == "Добавить еще":
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('Пропустить медиафайлы')
-        markup.add('Вернуться в меню для рекламы')
-        markup.add('В главное меню')
-        bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
-        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
-    elif message.text == "Завершить отправку":
-        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
-    else:
-        bot.send_message(message.chat.id, "Пожалуйста, выберите действие!")
-        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
-
-def save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
-    user_id = message.chat.id
-    username = message.from_user.username
-    advertisement_id = str(len(advertisements['advertisements']) + 1)
-    advertisements['advertisements'][advertisement_id] = {
-        'user_id': user_id,
-        'username': username,
-        'theme': advertisement_theme,
-        'expected_date': expected_date,
-        'expected_time': expected_time,
-        'end_date': end_date,
-        'end_time': end_time,
-        'text': temp_advertisement['text'],
-        'files': temp_advertisement['files'],
-        'status': 'pending',
-        'user_ids': [],
-        'message_ids': []
-    }
-
-    save_advertisements()
-    bot.send_message(message.chat.id, "✅ Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
-
-    with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
-        admin_data = json.load(file)
-        admin_ids = admin_data['admin_sessions']
-
-    for admin_id in admin_ids:
-        try:
-            bot.send_message(admin_id, f"⚠️ У вас новая заявка на рекламу от пользователя `{user_id}` по теме *{advertisement_theme.lower()}* на {expected_date} в {expected_time} до {end_date} в {end_time}!", parse_mode="Markdown")
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if admin_id not in blocked_users:
-                    blocked_users.append(admin_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
-
-    temp_advertisement.clear()
-    return_to_menu(message)
-
-def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
-    end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
-    delay = (end_datetime - datetime.now()).total_seconds()
-    threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
-
-def delete_advertisement_messages(advertisement_id):
-    advertisement = advertisements['advertisements'][advertisement_id]
-    user_ids = advertisement['user_ids']
-    message_ids = advertisement['message_ids']
-
-    for user_id, message_id in zip(user_ids, message_ids):
-        try:
-            bot.delete_message(user_id, message_id)
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 400 and 'message to delete not found' in e.result_json['description']:
-                pass
-            elif e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if user_id not in blocked_users:
-                    blocked_users.append(user_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
-
-    del advertisements['advertisements'][advertisement_id]
-    save_advertisements()
-
 # ---------- 30.2 РЕКЛАМА (ЗАПРОСЫ НА РЕКЛАМУ) ----------
 
 def validate_date_format(date_str):
@@ -26072,6 +26467,12 @@ def show_advertisement_request_details(message):
         show_admin_panel(message)
         return
 
+    status_translation = {
+        'pending': 'Ожидает',
+        'accepted': 'Запланирована',
+        'sent': 'Отправлена'
+    }
+
     try:
         index = int(message.text) - 1
         advertisement_list = list(advertisements['advertisements'].values())
@@ -26083,7 +26484,8 @@ def show_advertisement_request_details(message):
                 f"⭐ *Основная информация о рекламе*:\n\n"
                 f"📝 *Тема*: {advertisement['theme'].lower()}\n"
                 f"📅 *Начало*: {advertisement['expected_date']} в {advertisement['expected_time']}\n"
-                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n\n"
+                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n"
+                f"📍 *Статус*: {status_translation.get(advertisement['status'], 'Неизвестен')}\n\n"
             )
 
             bot.send_message(message.chat.id, info_message, parse_mode="Markdown")
@@ -26148,6 +26550,11 @@ def handle_advertisement_request_action(message, index):
         return
 
     advertisement_id = list(advertisements['advertisements'].keys())[index]
+    if advertisement_id not in advertisements['advertisements']:
+        bot.send_message(message.chat.id, "❌ Ошибка: Реклама не найдена!")
+        show_advertisement_menu(message)
+        return
+
     advertisement = advertisements['advertisements'][advertisement_id]
 
     if message.text == 'Принять рекламу':
@@ -26178,7 +26585,7 @@ def handle_user_withdraw_advertisement(message):
             bot.send_message(message.chat.id, "✅ Ваша заявка на рекламу была успешно отозвана!")
             return
 
-    bot.send_message(message.chat.id, "❌ Вы не можете отозвать рекламу, так как она уже была принята администратором или не существует!")
+    bot.send_message(message.chat.id, "❌ Вы не можете отозвать рекламу, так как она уже запланирована, отправлена или не существует!")
 
 def schedule_advertisement(message, advertisement_id):
     if message.text == "Вернуться в рекламу":
@@ -26278,9 +26685,17 @@ def schedule_notification(message, advertisement_id):
         show_admin_panel(message)
         return
 
+    if advertisement_id not in advertisements['advertisements']:
+        bot.send_message(message.chat.id, "❌ Ошибка: Реклама не найдена!")
+        show_admin_panel(message)
+        return
+
     advertisement = advertisements['advertisements'][advertisement_id]
     expected_datetime = datetime.strptime(f"{advertisement['expected_date']} {advertisement['expected_time']}", "%d.%m.%Y %H:%M")
     current_time = datetime.now()
+
+    advertisement['status'] = 'accepted'  
+    save_advertisements()
 
     if current_time >= expected_datetime:
         send_advertisement_to_all(message, advertisement_id)
@@ -26299,10 +26714,14 @@ def send_advertisement_to_all(message, advertisement_id):
         show_admin_panel(message)
         return
 
+    if advertisement_id not in advertisements['advertisements']:
+        bot.send_message(message.chat.id, "❌ Ошибка: Реклама не найдена!")
+        show_admin_panel(message)
+        return
+
     advertisement = advertisements['advertisements'][advertisement_id]
     users = load_users()
-    user_ids = []
-    message_ids = []
+    user_message_pairs = []  # Список пар (user_id, message_id)
 
     for user_id in users.keys():
         if user_id in blocked_users:
@@ -26333,41 +26752,31 @@ def send_advertisement_to_all(message, advertisement_id):
                 bot.send_video_note(user_id, file['file_id'])
             first_file = False
 
-        if media_group:
-            try:
+        try:
+            if media_group:
                 sent_messages = bot.send_media_group(user_id, media_group)
                 for sent_message in sent_messages:
-                    message_ids.append(sent_message.message_id)
-                    user_ids.append(user_id)
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    pass
-                    if user_id not in blocked_users:
-                        blocked_users.append(user_id)
-                        save_blocked_users(blocked_users)
-                else:
-                    raise e
-        else:
-            try:
+                    user_message_pairs.append((user_id, sent_message.message_id))
+            else:
                 sent_message = bot.send_message(user_id, advertisement['text'])
-                message_ids.append(sent_message.message_id)
-                user_ids.append(user_id)
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    pass
-                    if user_id not in blocked_users:
-                        blocked_users.append(user_id)
-                        save_blocked_users(blocked_users)
-                else:
-                    raise e
+                user_message_pairs.append((user_id, sent_message.message_id))
+        except ApiTelegramException as e:
+            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                if user_id not in blocked_users:
+                    blocked_users.append(user_id)
+                    save_blocked_users(blocked_users)
+            else:
+                logging.error(f"Ошибка отправки рекламы пользователю {user_id}: {str(e)}")
+                continue
 
-    advertisement['user_ids'] = user_ids
-    advertisement['message_ids'] = message_ids
-    advertisement['status'] = 'accepted'
+    advertisement['user_ids'] = [pair[0] for pair in user_message_pairs]
+    advertisement['message_ids'] = [pair[1] for pair in user_message_pairs]
+    advertisement['status'] = 'sent'
     save_advertisements()
 
     bot.send_message(message.chat.id, "✅ Реклама отправлена всем пользователям!")
     show_admin_panel(message)
+    schedule_advertisement_deletion(advertisement_id, advertisement['end_date'], advertisement['end_time'])
 
 def check_advertisement_expiration():
     while True:
@@ -26487,194 +26896,7 @@ def show_advertisement_menu(message):
 
     handle_admin_advertisement_requests(message)
 
-# ---------- 30.4 РЕКЛАМА (ВАШИ ЗАЯВКИ) ----------
-
-@bot.message_handler(func=lambda message: message.text == 'Ваши заявки')
-@check_function_state_decorator('Ваши заявки')
-@track_usage('Ваши заявки')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-@text_only_handler
-def show_user_advertisement_requests(message):
-    user_id = message.chat.id
-    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
-
-    if user_advertisements:
-        advertisement_list = [
-            f"⭐ №{i + 1}\n\n"
-            f"📝 *Тема*: {adv['theme'].lower()}\n"
-            f"📅 *Начало*: {adv['expected_date']} в {adv['expected_time']}\n"
-            f"⌛ *Конец*: {adv.get('end_date', 'N/A')} в {adv.get('end_time', 'N/A')}\n"
-            for i, adv in enumerate(user_advertisements)
-        ]
-        full_message = "*Ваши заявки на рекламу*:\n\n" + "\n\n".join(advertisement_list)
-
-        max_length = 4096
-        if len(full_message) > max_length:
-            parts = [full_message[i:i + max_length] for i in range(0, len(full_message), max_length)]
-            for part in parts:
-                bot.send_message(message.chat.id, part, parse_mode="Markdown")
-        else:
-            bot.send_message(message.chat.id, full_message, parse_mode="Markdown")
-
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('Вернуться в меню для рекламы')
-        markup.add('В главное меню')
-        bot.send_message(message.chat.id, "Введите номер заявки для просмотра:", reply_markup=markup)
-        bot.register_next_step_handler(message, show_user_advertisement_request_details)
-    else:
-        bot.send_message(message.chat.id, "❌ У вас нет активных заявок на рекламу!", parse_mode="Markdown")
-
-@text_only_handler
-def show_user_advertisement_request_details(message):
-
-    if message.text == "Вернуться в меню для рекламы":
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    try:
-        index = int(message.text) - 1
-        user_id = message.chat.id
-        user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
-
-        if 0 <= index < len(user_advertisements):
-            advertisement = user_advertisements[index]
-            text = advertisement['text']
-
-            info_message = (
-                f"⭐ *Основная информация о рекламе*:\n\n"
-                f"📝 *Тема*: {advertisement['theme'].lower()}\n"
-                f"📅 *Начало*: {advertisement['expected_date']} в {advertisement['expected_time']}\n"
-                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n\n"
-            )
-
-            bot.send_message(message.chat.id, info_message, parse_mode="Markdown")
-
-            if text and text != 'None':
-                message_text = f"📝 Текст рекламы 📝\n\n{text}"
-            else:
-                message_text = ""
-
-            if 'files' in advertisement and advertisement['files']:
-                media_group = []
-                first_file = True
-                for file in advertisement['files']:
-                    if first_file:
-                        caption = message_text
-                    else:
-                        caption = None
-                    if file['type'] == 'photo':
-                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
-                    elif file['type'] == 'video':
-                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
-                    elif file['type'] == 'document':
-                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
-                    elif file['type'] == 'animation':
-                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
-                    elif file['type'] == 'voice':
-                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-                    first_file = False
-
-                if media_group:
-                    bot.send_media_group(message.chat.id, media_group)
-            else:
-                if message_text:
-                    bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
-
-            markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Отозвать рекламу')
-            markup.add('Вернуться в меню для рекламы')
-            markup.add('В главное меню')
-            bot.send_message(message.chat.id, "Выберите отозвать заявку или вернуться в меню:", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_user_advertisement_request_action, index)
-        else:
-            bot.send_message(message.chat.id, "Неверный номер заявки! Попробуйте снова")
-            show_user_advertisement_requests(message)
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер заявки!")
-        show_user_advertisement_requests(message)
-
-@text_only_handler
-def handle_user_advertisement_request_action(message, index):
-
-    if message.text == "Вернуться в меню для рекламы":
-        view_add_menu(message, show_description=False)
-        return
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    user_id = message.chat.id
-    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
-    advertisement_id = list(advertisements['advertisements'].keys())[index]
-    advertisement = user_advertisements[index]
-
-    if message.text == 'Отозвать рекламу':
-        del advertisements['advertisements'][advertisement_id]
-        save_advertisements()
-        bot.send_message(message.chat.id, "✅ Ваша заявка была успешно отозвана!")
-
-        with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
-            admin_data = json.load(file)
-            admin_ids = admin_data['admin_sessions']
-
-        for admin_id in admin_ids:
-            bot.send_message(admin_id, f"✅ Заявка на рекламу от пользователя `{user_id}` по теме *{advertisement['theme'].lower()}* была отозвана!", parse_mode="Markdown")
-
-        return_to_menu(message)
-    else:
-        bot.send_message(message.chat.id, "Неверное действие! Попробуйте снова")
-        show_user_advertisement_request_details(message)
-
-@bot.message_handler(func=lambda message: message.text == "Для рекламы")
-@check_function_state_decorator('Для рекламы')
-@track_usage('Для рекламы')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def view_add_menu(message, show_description=True):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Заявка на рекламу', 'Ваши заявки')
-    markup.add('В главное меню')
-
-    description = (
-        "ℹ️ *Краткая справка по рекламе*\n\n\n"
-        "📌 *Заявка:*\n"
-        "Вы можете отправить заявку на рекламу в боте по кнопке, где нужно заполнить определенные поля\n\n"
-        "📌 *Ваши заявки:*\n"
-        "Вы можете посмотреть свои заявки на рекламу, а если нужно, то и отозвать\n\n"
-        "📌 *Оплата и вопросы:*\n"
-        "Заявки на рекламу и оплату принимает *администратор (разработчик)* - [@x_evgenyalex_x](https://t.me/x_evgenyalex_x). Если что-то не понятно, то вы можете обратиться к нему!\n\n"
-    )
-
-    if show_description:
-        bot.send_message(message.chat.id, description, parse_mode="Markdown")
-
-    bot.send_message(message.chat.id, "Выберите действие с рекламой:", reply_markup=markup)
-
-# ---------- 31. НОВОСТИ ----------
+# ---- РЕДАКЦИЯ ДЛЯ НОВОСТЕЙ ---
 
 NEWS_DATABASE_PATH = 'data base/admin/chats/news.json'
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
@@ -26725,163 +26947,6 @@ def check_admin_access(message):
     else:
         bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции!")
         return False
-
-@bot.message_handler(func=lambda message: message.text == 'Новости')
-@check_function_state_decorator('Новости')
-@track_usage('Новости')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def show_news_menu(message, show_description=True):
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    markup.add('3 новости', '5 новостей', '7 новостей')
-    markup.add('10 новостей', '15 новостей')
-    markup.add('В главное меню')
-
-    description = (
-        "ℹ️ *Краткая справка по отображению новостей*\n\n\n"
-        "📌 *Новости:*\n"
-        "Вы можете выбрать *количество новостей* для показа *(3, 5, 7, 10, 15)*\n"
-        "Они сортируются от новых к старым\n"
-        "Если новости закончились, то вы вернетесь в меню прочее\n\n"
-        "_P.S. Новости публикует редактор или администратор (разработчик). По техническим причинам новости могут не публиковаться!_"
-    )
-
-    if show_description:
-        bot.send_message(message.chat.id, description, parse_mode="Markdown")
-
-    bot.send_message(message.chat.id, "Выберите количество новостей:", reply_markup=markup)
-
-@bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
-@check_function_state_decorator('3 новости')
-@check_function_state_decorator('5 новостей')
-@check_function_state_decorator('7 новостей')
-@check_function_state_decorator('10 новостей')
-@check_function_state_decorator('15 новостей')
-@track_usage('3 новости')
-@track_usage('5 новостей')
-@track_usage('7 новостей')
-@track_usage('10 новостей')
-@track_usage('15 новостей')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-@text_only_handler
-def handle_news_selection(message):
-
-    count = int(message.text.split()[0])
-    news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-
-    if len(news_list) == 0:
-        bot.send_message(message.chat.id, "❌ Новостей нет!")
-        view_others(message)
-        return
-
-    for i in range(min(count, len(news_list))):
-        news_item = news_list[i]
-        if 'files' in news_item and news_item['files']:
-            media_group = []
-            caption = None
-            for file in news_item['files']:
-                if file.get('caption'):
-                    caption = file['caption']
-                    break
-
-            if caption and len(caption) > 200:
-                caption = caption[:200] + "..."
-
-            first_file = True
-            for file in news_item['files']:
-                if file['type'] == 'photo':
-                    media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'video':
-                    media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'document':
-                    media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'animation':
-                    media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'sticker':
-                    bot.send_sticker(message.chat.id, file['file_id'])
-                elif file['type'] == 'audio':
-                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'voice':
-                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
-                elif file['type'] == 'video_note':
-                    bot.send_video_note(message.chat.id, file['file_id'])
-                first_file = False
-            if media_group:
-                bot.send_media_group(message.chat.id, media_group)
-        if news_item['text']:
-            bot.send_message(message.chat.id, news_item['text'])
-
-    if len(news_list) > count:
-        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('Еще новости')
-        markup.add('В главное меню')
-        bot.send_message(message.chat.id, "Хотите посмотреть Еще новости?", reply_markup=markup)
-        bot.register_next_step_handler(message, handle_more_news, count)
-    else:
-        bot.send_message(message.chat.id, "✅ Новости закончились!")
-        view_others(message)
-
-@text_only_handler
-def handle_more_news(message, start_index):
-
-    if message.text == 'Еще новости':
-        news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-        if start_index >= len(news_list):
-            bot.send_message(message.chat.id, "✅ Новости закончились!")
-            view_others(message)
-            return
-
-        end_index = min(start_index + 3, len(news_list))
-        for i in range(start_index, end_index):
-            news_item = news_list[i]
-            if 'files' in news_item and news_item['files']:
-                media_group = []
-                for file in news_item['files']:
-                    if file['type'] == 'photo':
-                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'video':
-                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'document':
-                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'animation':
-                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'voice':
-                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-                if media_group:
-                    bot.send_media_group(message.chat.id, media_group)
-            if news_item['text']:
-                bot.send_message(message.chat.id, news_item['text'])
-
-        if end_index < len(news_list):
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Еще новости')
-            markup.add('В главное меню')
-            bot.send_message(message.chat.id, "Хотите посмотреть Еще новости?", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_more_news, end_index)
-        else:
-            bot.send_message(message.chat.id, "✅ Новости закончились!")
-            view_others(message)
-    else:
-        view_others(message)
 
 # ---------- 31.1 НОВОСТИ (РЕДАКЦИЯ) ----------
 
@@ -33467,6 +33532,7 @@ dialog_states = {}
 current_dialogs = {}
 active_user_chats = {}
 active_admin_chats = {}
+user_requests = {}
 
 def load_active_chats():
     global active_chats, user_requests
@@ -33474,7 +33540,16 @@ def load_active_chats():
         with open(ACTIVE_CHATS_PATH, 'r', encoding='utf-8') as file:
             data = json.load(file)
             active_chats = {int(k): v for k, v in data.get("active_chats", {}).items()}
-            user_requests = {int(k): {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in v.items()} for k, v in data.get("user_requests", {}).items()}
+            user_requests_data = data.get("user_requests", {})
+            print(f"Тип user_requests_data: {type(user_requests_data)}")  # Логирование
+            if isinstance(user_requests_data, list):
+                print("Ошибка: user_requests_data является списком, сбрасываем в словарь")
+                user_requests = {}
+            else:
+                user_requests = {
+                    int(k): {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in v.items()}
+                    for k, v in user_requests_data.items()
+                }
     else:
         active_chats = {}
         user_requests = {}
@@ -33494,13 +33569,11 @@ def add_user_request(user_id, date, count):
         user_requests[user_id] = {}
     if date not in user_requests[user_id]:
         user_requests[user_id][date] = 0
-
     if user_requests[user_id][date] >= 3:
         return False
-
     user_requests[user_id][date] += count
     save_active_chats()
-    return True 
+    return True
 
 def load_chat_history():
     if os.path.exists(CHAT_HISTORY_PATH):
@@ -33996,6 +34069,73 @@ def return_admin_to_menu(admin_id):
 
 # ---------- 37.3 ЧАТ МЕЖДУ ПОЛЬЗОВАТЕЛЕМ И АДМИНА ----------
 
+ACTIVE_CHATS_PATH = os.path.join(os.path.dirname(__file__), 'data base', 'admin', 'chats', 'active_chats.json')
+active_chats = {}
+user_requests = {}
+
+def ensure_directories_and_file():
+    directory = os.path.dirname(ACTIVE_CHATS_PATH)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    if not os.path.exists(ACTIVE_CHATS_PATH):
+        with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
+            json.dump({"active_chats": {}, "user_requests": {}}, file, ensure_ascii=False, indent=4)
+
+def check_user_requests_type(func_name):
+    global user_requests
+    if not isinstance(user_requests, dict):
+        user_requests = {}
+
+def load_active_chats():
+    global active_chats, user_requests
+    ensure_directories_and_file()
+    try:
+        with open(ACTIVE_CHATS_PATH, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            active_chats = {int(k): v for k, v in data.get("active_chats", {}).items()}
+            user_requests_data = data.get("user_requests", {})
+            if isinstance(user_requests_data, list):
+                user_requests = {}
+            else:
+                user_requests = {
+                    int(k): {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in v.items()}
+                    for k, v in user_requests_data.items()
+                }
+    except json.JSONDecodeError:
+        active_chats = {}
+        user_requests = {}
+        save_active_chats()
+    check_user_requests_type("load_active_chats")
+
+def save_active_chats():
+    global active_chats, user_requests
+    check_user_requests_type("save_active_chats")
+    ensure_directories_and_file()
+    with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
+        data = {
+            "active_chats": {str(k): v for k, v in active_chats.items()},
+            "user_requests": {
+                str(k): {date.strftime("%d.%m.%Y"): count for date, count in v.items()}
+                for k, v in user_requests.items()
+            }
+        }
+        json.dump(data, file, ensure_ascii=False, indent=4)
+
+def add_user_request(user_id, date, count):
+    global user_requests
+    check_user_requests_type("add_user_request")
+    if user_id not in user_requests:
+        user_requests[user_id] = {}
+    if date not in user_requests[user_id]:
+        user_requests[user_id][date] = 0
+    if user_requests[user_id][date] >= 3:
+        return False
+    user_requests[user_id][date] += count
+    save_active_chats()
+    return True
+
+load_active_chats()
+
 @bot.message_handler(func=lambda message: message.text == "Чат с админом")
 @check_function_state_decorator('Чат с админом')
 @track_usage('Чат с админом')
@@ -34006,8 +34146,13 @@ def return_admin_to_menu(admin_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
+# @rate_limit_with_captcha
 def request_chat_with_admin(message, show_description=True):
-    global active_chats
+    global active_chats, user_requests
+    check_user_requests_type("request_chat_with_admin")
+    if not isinstance(user_requests, dict):
+        user_requests = {}
     if active_chats is None:
         active_chats = {}
 
@@ -34027,7 +34172,7 @@ def request_chat_with_admin(message, show_description=True):
     markup.add(types.KeyboardButton('В главное меню'))
 
     description = (
-        "ℹ️ *Краткая справка по чату*\n\n\n"
+        "ℹ️ *Краткая справка по чату*\n\n"
         "📌 *Чат:*\n"
         "Вы можете отправить запрос на чат с администратором (разработчиком), чтобы лично обсудить *вопросы, которые касаются бота* "
         "*(реклама, баги, что-то не работает и т.д.)*\n"
