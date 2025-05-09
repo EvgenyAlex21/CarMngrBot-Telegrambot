@@ -27,6 +27,7 @@ import threading
 import csv
 import shutil
 import hashlib
+from statistics import mean
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -977,22 +978,74 @@ def clean_price(price):
         cleaned_price = cleaned_price[:cleaned_price.find('.') + 1] + cleaned_price[cleaned_price.find('.') + 1:].replace('.', '')
     return cleaned_price
 
+fuel_type_mapping = {
+    "аи-92": "Аи-92",
+    "аи-95": "Аи-95",
+    "аи-98": "Аи-98",
+    "аи-100": "Аи-100",
+    "дт": "ДТ",
+    "газ": "Газ СПБТ",
+}
+
+def get_average_fuel_price_from_files(fuel_type, directory="data base/azs"):
+    fuel_prices = []
+
+    # Приводим fuel_type к нижнему регистру для унификации
+    fuel_type = fuel_type.lower()
+
+    # Проверяем, существует ли папка
+    if not os.path.exists(directory):
+        return None
+
+    # Перебираем все файлы в папке
+    for filename in os.listdir(directory):
+        if filename.endswith(".json"):
+            file_path = os.path.join(directory, filename)
+
+            # Открываем и читаем файл JSON
+            try:
+                with open(file_path, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+
+                    # Перебираем записи в файле и находим нужные по типу топлива
+                    for entry in data:
+                        if len(entry) == 3:  # Проверка структуры данных
+                            company, fuel, price = entry
+                            # Приводим fuel к нижнему регистру и сравниваем с введенным пользователем
+                            if fuel.lower() == fuel_type:
+                                try:
+                                    price = float(price)
+                                    fuel_prices.append(price)
+                                except ValueError:
+                                    continue  # Если цена не может быть преобразована в число, пропускаем
+            except Exception as e:
+                pass  # Игнорируем ошибку при чтении файла
+
+    # Если есть собранные цены, возвращаем среднее значение
+    if fuel_prices:
+        average_price = sum(fuel_prices) / len(fuel_prices)
+        return average_price
+    else:
+        return None
+
+
 def get_average_fuel_prices(city_code='default_city_code'):
     url = f'https://azsprice.ru/benzin-{city_code}'  # Замените на подходящий URL с использованием city_code
     
     try:
         response = requests.get(url)
         response.raise_for_status()  # Проверка на успешный статус ответа
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         
         table = soup.find('table')
         if not table:
-            raise ValueError("Не найдена таблица с ценами на топливо.")
+            raise ValueError("Не найдена таблица с ценами")
         
         fuel_prices = {}
         rows = table.find_all('tr')
         
-        for row in rows[1:]:
+        for row in rows[1:]:  # Пропускаем заголовок таблицы
             columns = row.find_all('td')
             if len(columns) < 5:
                 continue
@@ -1007,13 +1060,12 @@ def get_average_fuel_prices(city_code='default_city_code'):
                         fuel_prices[fuel_type] = []
                     fuel_prices[fuel_type].append(price)
                 except ValueError:
-                    print(f"Не удалось преобразовать цену: {today_price}")
+                    pass  # Игнорируем ошибки преобразования цены
 
         average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
         return average_prices
     
     except (requests.RequestException, ValueError) as e:
-        print(f"Ошибка при получении данных: {e}")
         return None  # Вернем None в случае ошибки
 
 
@@ -1087,32 +1139,74 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
     
     elif message.text == "Использовать актуальную цену":
+        # Пытаемся получить цену с сайта
         fuel_prices = get_average_fuel_prices(city_code="cheboksary")
         
-        if fuel_prices and fuel_type.lower() in fuel_prices:
-            price_per_liter = fuel_prices[fuel_type.lower()]
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-            item2 = types.KeyboardButton("В главное меню")
-            markup.add(item1, item2)
-            bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
-            sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
-            bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
-        else:
+        if fuel_prices:  # Если сайт доступен и данные получены
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
             item2 = types.KeyboardButton("В главное меню")
             markup.add(item1)
             markup.add(item2)
-            sent = bot.send_message(chat_id, "Не удалось получить актуальную цену. Пожалуйста, введите свою цену.", reply_markup=markup)
-            bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-
+            
+            if fuel_type.lower() in fuel_prices:  # Если выбранный тип топлива существует
+                price = fuel_prices[fuel_type.lower()]
+                bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price:.2f} руб./л.", reply_markup=markup)
+                sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+                bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price)
+            else:
+                # Если для выбранного топлива нет данных на сайте, сразу переходим к проверке файлов
+                price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data base/azs")
+                
+                if price_from_files:  # Если цена найдена в файлах
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+                    item2 = types.KeyboardButton("В главное меню")
+                    markup.add(item1)
+                    markup.add(item2)
+                    
+                    bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price_from_files:.2f} руб./л.", reply_markup=markup)
+                    sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+                    bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_from_files)
+                else:
+                    # Если нет данных в файлах, запрашиваем цену вручную
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+                    item2 = types.KeyboardButton("В главное меню")
+                    markup.add(item1)
+                    markup.add(item2)
+                    sent = bot.send_message(chat_id, f"Для выбранного топлива '{fuel_type}' данных нет. Пожалуйста, введите цену", reply_markup=markup)
+                    bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
+        
+        else:  # Если сайт недоступен
+            # Получаем цены из файлов
+            price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data base/azs")
+            
+            if price_from_files:
+                markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+                item2 = types.KeyboardButton("В главное меню")
+                markup.add(item1)
+                markup.add(item2)
+                
+                bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price_from_files:.2f} руб./л.", reply_markup=markup)
+                sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+                bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_from_files)
+            else:
+                markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+                item2 = types.KeyboardButton("В главное меню")
+                markup.add(item1)
+                markup.add(item2)
+                sent = bot.send_message(chat_id, f"Для выбранного топлива '{fuel_type}' данных нет. Пожалуйста, введите цену", reply_markup=markup)
+                bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
+    
     elif message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
     elif message.text == "В главное меню":
         return_to_menu(message)
     else:
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.")
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов")
         bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, fuel_type)
 
 
@@ -6542,7 +6636,6 @@ def fuel_prices_command(message):
     bot.register_next_step_handler(message, process_city_selection)
     
 # Обработчик выбора города
-# Обработчик выбора города
 def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
@@ -6569,28 +6662,40 @@ def process_city_selection(message):
         notifications = load_user_locations()  # Функция для загрузки notifications.json
         user_info = notifications.get(str_chat_id)
 
+        latitude = None
+        longitude = None
+
         if user_info:
             latitude = user_info.get('latitude')
             longitude = user_info.get('longitude')
-        else:
-            latitude = None
-            longitude = None
 
-        # Сохраняем city_code в notifications.json
+        # Сохраняем city_code и координаты в notifications.json, если координаты есть
         save_user_location(chat_id, latitude, longitude, city_code)
 
+        # Сохранение данных города
         save_citys_users_data()
+
+        # Показываем меню с ценами на топливо
         show_fuel_price_menu(chat_id, city_code)
     else:
         bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
         
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        # Создаем клавиатуру
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)  # row_width=3 — города в строку
+
+        # Добавляем кнопки с последними городами, если они есть
+        recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
+        if recent_cities:
+            markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])  # Добавляем города в одну строку
+
+        # Добавляем кнопку "В главное меню" в конце
         markup.add(types.KeyboardButton("В главное меню"))
+
         bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
+
+        # Повторный вызов обработчика для ввода города
         bot.register_next_step_handler(message, process_city_selection)
 
-# Функция для обновления списка последних городов
-# В функции update_recent_cities добавьте вызов сохранения данных
 # Функция для обновления списка последних городов
 def update_recent_cities(chat_id, city_name):
     # Убедитесь, что данные о пользователе существуют
@@ -6676,8 +6781,8 @@ def process_fuel_price_selection(message, city_code):
         averaged_prices = {brand: sum(prices) / len(prices) for brand, prices in brand_prices.items()}
         sorted_prices = sorted(averaged_prices.items(), key=lambda x: x[1])
 
-        prices_message = "\n\n".join([f"{i + 1}. {brand} - {avg_price:.2f} руб./л" for i, (brand, avg_price) in enumerate(sorted_prices)])
-        bot.send_message(chat_id, f"*Актуальные цены на {actual_fuel_type.upper()}:*\n\n{prices_message}", parse_mode='Markdown')
+        prices_message = "\n\n".join([f"⛽ {i + 1}. {brand} - {avg_price:.2f} руб./л." for i, (brand, avg_price) in enumerate(sorted_prices)])
+        bot.send_message(chat_id, f"*Актуальные цены на {actual_fuel_type.upper()}:*\n\n\n{prices_message}", parse_mode='Markdown')
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         another_fuel_button = types.KeyboardButton("Посмотреть цены на другое топливо")
@@ -6692,7 +6797,7 @@ def process_fuel_price_selection(message, city_code):
         bot.register_next_step_handler(sent, process_next_action)
 
     except Exception as e:
-        bot.send_message(chat_id, f"Ошибка получения цен: {e}\nПопробуйте выбрать другой тип топлива.")
+        bot.send_message(chat_id, f"Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
         show_fuel_price_menu(chat_id, city_code)
 
 # Обработчик следующих действий (посмотреть другое топливо или выбрать другой город)
@@ -6700,27 +6805,23 @@ def process_next_action(message):
     chat_id = message.chat.id
     text = message.text.strip().lower()
 
-    if text == "посмотреть цены на другое топливо":
-        city_code = user_data.get(chat_id, {}).get('city_code')
-        if city_code:
-            show_fuel_price_menu(chat_id, city_code)
-        else:
-            bot.send_message(chat_id, "Город не выбран. Пожалуйста, начните сначала.")
-            return_to_menu(message)
-    elif text == "выбрать другой город":
+    if text == "выбрать другой город":
         user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
+
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-        # Добавляем кнопки с последними городами, если они есть
-        if chat_id in user_data and 'recent_cities' in user_data[chat_id]:
-            recent_cities = user_data[chat_id]['recent_cities']
-            city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
-            markup.row(*city_buttons)  # Все кнопки городов будут в одной строке
+        # Загружаем последние города для пользователя
+        recent_cities = user_data.get(str(chat_id), {}).get('recent_cities', [])
 
-        # Добавляем кнопку "В главное меню" на отдельную строку
+        # Если есть последние города, создаем кнопки
+        city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
+        if city_buttons:
+            markup.row(*city_buttons)
+
         markup.add(types.KeyboardButton("В главное меню"))
-
         bot.send_message(chat_id, "Введите название города или выберите из последних:", reply_markup=markup)
+        
+        # Передаем управление process_city_selection для выбора города
         bot.register_next_step_handler(message, process_city_selection)
     elif text == "в главное меню":
         return_to_menu(message)
@@ -6753,7 +6854,7 @@ def process_city_fuel_data(city_code, selected_fuel_type):
                             (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
                         ]
                     # Если данных нет, вызываем ту же ошибку
-                    raise ValueError("Ошибка получения цен: Не найдена таблица с ценами. Попробуйте выбрать другой тип топлива.")
+                    raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
                 fuel_prices = remove_duplicate_prices(fuel_prices)
                 all_fuel_prices.extend(fuel_prices)
@@ -6770,7 +6871,7 @@ def process_city_fuel_data(city_code, selected_fuel_type):
                 fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
             except ValueError:
                 # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
-                raise ValueError("Ошибка получения цен: Не найдена таблица с ценами. Попробуйте выбрать другой тип топлива.")
+                raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
             fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
@@ -6804,7 +6905,7 @@ def get_fuel_prices_from_site(selected_fuel_type, city_code):
 
     table = soup.find('table')
     if not table:
-        raise ValueError("Не найдена таблица с ценами.")
+        raise ValueError("Не найдена таблица с ценами")
 
     fuel_prices = []
 
