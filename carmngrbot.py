@@ -1298,7 +1298,9 @@ def handle_expenses_and_repairs(message):
     item5 = types.KeyboardButton("Удалить траты")
     item6 = types.KeyboardButton("Удалить ремонты")
     item7 = types.KeyboardButton("В главное меню")
+    item8 = types.KeyboardButton("Ваш транспорт")
 
+    markup.add(item8)
     markup.add(item1, item3)
     markup.add(item2, item4)
     markup.add(item5, item6)
@@ -1325,7 +1327,9 @@ def send_menu(user_id):
     item5 = types.KeyboardButton("Удалить траты")
     item6 = types.KeyboardButton("Удалить ремонты")
     item7 = types.KeyboardButton("В главное меню")
-
+    item8 = types.KeyboardButton("Ваш транспорт")
+    
+    markup.add(item8)
     markup.add(item1, item3)
     markup.add(item2, item4)
     markup.add(item5, item6)
@@ -3907,10 +3911,294 @@ def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
     return cleaned_price
 
+
+
+
+# Определение состояний
+class States:
+    ADDING_TRANSPORT = 1
+    CONFIRMING_DELETE = 2
+
+# Функции для работы с файлами
+def save_transport_data(user_id, user_data):
+    folder_path = "data base"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    
+    # Сохраняем данные о транспорте
+    with open(os.path.join(folder_path, f"transport_{user_id}.json"), "w", encoding="utf-8") as file:
+        json.dump(user_data, file, ensure_ascii=False, indent=4)
+
+def load_transport_data(user_id):
+    folder_path = "data base"
+    try:
+        # Загружаем данные о транспорте
+        with open(os.path.join(folder_path, f"transport_{user_id}.json"), "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        data = []
+    return data
+
+# Хранение данных о транспорте в памяти
+user_transport = {}
+
+# Загрузка данных о транспорте при старте бота
+def load_all_transport():
+    users = os.listdir("data base")
+    for user_file in users:
+        if user_file.startswith("transport_"):
+            user_id = user_file.split("_")[1].replace(".json", "")
+            user_transport[user_id] = load_transport_data(user_id)
+
+load_all_transport()
+
+# Команда для управления транспортом
+@bot.message_handler(func=lambda message: message.text == "Ваш транспорт")
+def manage_transport(message):
+    user_id = str(message.chat.id)
+    
+    # Создаем клавиатуру с тремя кнопками в первом ряду и двумя в следующих строках
+    keyboard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    
+    # Добавляем три кнопки в первый ряд
+    keyboard.add("Добавить транспорт", "Удалить транспорт", "Посмотреть транспорт")
+    
+    # Добавляем кнопки для возвращения в меню трат и в главное меню в следующих строках
+    keyboard.add("Вернуться в меню трат и ремонтов")
+    keyboard.add("В главное меню")
+    
+    bot.send_message(user_id, "Выберите действие:", reply_markup=keyboard)
+
+# Функция для проверки наличия мультимедийных файлов
+def check_media(message, user_id, next_step_handler=None, *args):
+    if (message.photo or message.video or message.document or message.animation or 
+        message.sticker or message.location or message.audio or 
+        message.contact or message.voice or message.video_note):
+        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        if next_step_handler:
+            bot.register_next_step_handler(message, next_step_handler, *args)  # Вернуться к следующему шагу
+        return True
+    return False
+
+# Функция для создания новой клавиатуры
+def create_transport_keyboard():
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return)
+    markup.add(item_main_menu)
+    return markup
+
+@bot.message_handler(func=lambda message: message.text == "Добавить транспорт")
+def add_transport(message):
+    user_id = str(message.chat.id)
+    if check_media(message, user_id): return
+    bot.send_message(user_id, "Введите марку транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_brand)
+
+def process_brand(message):
+    user_id = str(message.chat.id)
+    if check_media(message, user_id, process_brand): return
+
+    # Обработка кнопок
+    if message.text == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    brand = message.text
+    bot.send_message(user_id, "Введите модель транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_model, brand)
+
+def process_model(message, brand):
+    user_id = str(message.chat.id)
+    if check_media(message, user_id, process_model, brand): return
+
+    # Обработка кнопок
+    if message.text == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    model = message.text
+    bot.send_message(user_id, "Введите год транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_year, brand, model)
+
+def process_year(message, brand, model):
+    user_id = str(message.chat.id)
+    if check_media(message, user_id, process_year, brand, model): return
+
+    # Обработка кнопок
+    if message.text == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    # Проверка на корректность года
+    try:
+        year = int(message.text)
+        if year < 1960 or year > 3000:  # Проверка диапазона
+            raise ValueError("Год должен быть в диапазоне от 1960 г. до 3000 г.")
+    except ValueError:
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите корректный год (диапазон от 1960 г. до 3000 г.). Попробуйте снова.", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_year, brand, model)
+        return
+
+    bot.send_message(user_id, "Введите госномер:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+
+def process_license_plate(message, brand, model, year):
+    user_id = str(message.chat.id)
+    if check_media(message, user_id, process_license_plate, brand, model, year): return
+
+    # Обработка кнопок
+    if message.text == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    license_plate = message.text
+
+    # Проверка на длину ГОС.НОМЕРА (8 или 9 символов)
+    if len(license_plate) not in [8, 9]:
+        bot.send_message(user_id, "Ошибка! Госномер должен содержать 8 или 9 символов. Попробуйте снова.", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+        return
+
+    # Сохраняем транспорт в память
+    if user_id not in user_transport:
+        user_transport[user_id] = []
+    
+    user_transport[user_id].append({"brand": brand, "model": model, "year": year, "license_plate": license_plate})
+    save_transport_data(user_id, user_transport[user_id])  # Сохранение данных о транспорте
+    
+    bot.send_message(user_id, f"Транспорт добавлен: {brand} - {model} - {year} - {license_plate}", reply_markup=create_transport_keyboard())
+
+    # Переход в меню "Ваш транспорт"
+    manage_transport(message)
+
+@bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
+def delete_transport(message):
+    user_id = str(message.chat.id)
+    if user_id in user_transport and user_transport[user_id]:
+        keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        transport_list = user_transport[user_id]
+        
+        # Формирование списка транспорта для удаления
+        for index, item in enumerate(transport_list, start=1):
+            keyboard.add(f"{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
+        
+        # Добавление кнопок "Вернуться в меню трат и ремонтов" и "В главное меню"
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        keyboard.add(item_return)
+        keyboard.add(item_main_menu)
+        
+        bot.send_message(user_id, "Выберите транспорт для удаления или вернитесь:", reply_markup=keyboard)
+        bot.register_next_step_handler(message, process_transport_selection)
+    else:
+        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+
+def process_transport_selection(message):
+    user_id = str(message.chat.id)
+    selected_transport = message.text.strip()
+
+    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
+    if selected_transport == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+    elif selected_transport == "В главное меню":
+        return_to_menu(message)
+        return
+
+    # Проверяем, выбрал ли пользователь транспорт из списка
+    transport_list = user_transport.get(user_id, [])
+    if transport_list:
+        # Получаем возможные индексы транспорта
+        possible_indices = [f"{i + 1}." for i in range(len(transport_list))]
+        
+        # Проверка, начинается ли текст с одного из возможных индексов
+        if any(selected_transport.startswith(index) for index in possible_indices):
+            index = int(selected_transport.split('.')[0]) - 1  # Определяем индекс транспорта
+            
+            if 0 <= index < len(transport_list):  # Проверяем, существует ли транспорт с таким индексом
+                transport_to_delete = transport_list[index]
+                
+                # Отправка сообщения с подтверждением удаления
+                bot.send_message(user_id, f"Вы точно хотите удалить данный транспорт: {transport_to_delete['brand']} - {transport_to_delete['model']} - {transport_to_delete['year']} - {transport_to_delete['license_plate']}?\nПожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.", reply_markup=get_return_menu_keyboard())
+                bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
+            else:
+                bot.send_message(user_id, "Неверный выбор. Попробуйте снова.")
+                delete_transport(message)  # Возврат к выбору удаления транспорта
+        else:
+            bot.send_message(user_id, "Ошибка! Пожалуйста, выберите транспорт для удаления из списка.")
+            delete_transport(message)  # Возврат к выбору удаления транспорта
+    else:
+        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+
+def process_confirmation(message, transport_to_delete):
+    user_id = str(message.chat.id)
+    confirmation = message.text.strip().upper()  # Приводим к верхнему регистру для удобства проверки
+
+    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
+    if confirmation == "ВЕРНУТЬСЯ В МЕНЮ ТРАТ И РЕМОНТОВ":
+        send_menu(user_id)  # Возвращаем в меню трат и ремонтов
+        return
+    elif confirmation == "В ГЛАВНОЕ МЕНЮ":
+        return_to_menu(message)  # Возвращаем в главное меню
+        return
+
+    # Проверка на текстовое подтверждение "ДА" или "НЕТ"
+    if confirmation == "ДА":
+        if user_id in user_transport:
+            user_transport[user_id].remove(transport_to_delete)  # Удаление элемента
+            save_transport_data(user_id, user_transport[user_id])  # Сохранение после удаления
+            bot.send_message(user_id, "Транспорт успешно удалён.")
+        else:
+            bot.send_message(user_id, "Неверный выбор.")
+    elif confirmation == "НЕТ":
+        bot.send_message(user_id, "Удаление отменено.")
+    else:
+        # Если введено что-то другое, ожидаем повторного ввода
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
+        bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))  # Ожидание повторного ввода
+
+    manage_transport(message)
+
+# Функция для создания клавиатуры с кнопками возврата
+def get_return_menu_keyboard():
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return, item_main_menu)
+    return markup
+
+@bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
+def view_transport(message):
+    user_id = str(message.chat.id)
+    if user_id in user_transport and user_transport[user_id]:
+        transport_list = user_transport[user_id]
+        response = "\n\n".join([f"{index + 1}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}" for index, item in enumerate(transport_list)])
+        bot.send_message(user_id, "Ваш транспорт:\n\n" + response)
+    else:
+        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+
+
+
+
+
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
 # Функция для обработки повторных попыток
-def start_bot_with_retries(retries=100, delay=100):
+def start_bot_with_retries(retries=5, delay=5):
     attempt = 0
     while attempt < retries:
         try:
@@ -3934,7 +4222,7 @@ start_bot_with_retries()
 # Ваши обработчики сообщений остаются как обычно
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Добро пожаловать! Выберите действие из меню:")
+    bot.reply_to(message, "Привет! Я бот.")
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
