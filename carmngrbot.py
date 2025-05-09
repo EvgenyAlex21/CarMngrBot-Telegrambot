@@ -378,9 +378,8 @@ def process_end_location_step(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
-    item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
-    markup.add(item3)
-    markup.add(item1, item2)
+    markup.add(item1)
+    markup.add(item2)
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -418,92 +417,72 @@ def process_end_location_step(message):
             bot.register_next_step_handler(sent, process_end_location_step)
             return
 
+    # Рассчитать расстояние между точками
+    start_coords = (trip_data[chat_id]["start_location"]["latitude"], trip_data[chat_id]["start_location"]["longitude"])
+    end_coords = (trip_data[chat_id]["end_location"]["latitude"], trip_data[chat_id]["end_location"]["longitude"])
+    distance_km = geodesic(start_coords, end_coords).kilometers
+
+    # Сообщаем пользователю расстояние
+    bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.")
+
+    # Переходим к шагу ввода даты поездки
     sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_date_step)
-		
+    bot.register_next_step_handler(sent, process_date_step, distance_km)
 
 
-# (9.6) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ОБРАБОТЧИК "РАСЧЕТА ТОПЛИВА") ---------------
-
-
-
-# (9.7) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ДАТЫ ПОЕЗДКИ) ---------------
-
-def process_date_step(message):
+def process_date_step(message, distance):
     chat_id = message.chat.id
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
         return    
     if message.text == "В главное меню":
         return_to_menu(message) 
         return    
+
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(sent, process_date_step) 
         return
+
     date = message.text
+    date_pattern = r"\d{2}\.\d{2}\.\d{4}"
+    
     if re.match(date_pattern, date):
         day, month, year = map(int, date.split('.'))
         try:
-            datetime(year, month, day) 
-            sent = bot.send_message(chat_id, "Введите расстояние (в километрах):")
-            bot.register_next_step_handler(sent, process_distance_step, date)  
+            datetime(year, month, day)  # Проверяем правильность даты
+            
+            # Переходим сразу к выбору топлива, передавая рассчитанное расстояние и дату
+            show_fuel_types(chat_id, date, distance)
         except ValueError:
             sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ.")
-            bot.register_next_step_handler(sent, process_date_step) 
+            bot.register_next_step_handler(sent, process_date_step, distance)
     else:
         sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(sent, process_date_step)
+        bot.register_next_step_handler(sent, process_date_step, distance)
 
-# (9.8) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ДИСТАНЦИИ) ---------------
 
-def process_distance_step(message, date):
-    chat_id = message.chat.id
-    if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
-        return  
-    if message.text == "В главное меню":
-        return_to_menu(message) 
-        return    
-    if message.text is None:
-        sent = bot.send_message(chat_id, "Пожалуйста, введите положительное число для расстояния:")
-        bot.register_next_step_handler(sent, process_distance_step, date)
-        return
-    input_text = message.text.replace(',', '.')  
-    try:
-        distance = float(input_text)
-        if distance <= 0:
-            raise ValueError
-        
-        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
-        row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
-        markup.add(*row1, *row2)  
-        
-        sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
-        bot.clear_step_handler_by_chat_id(chat_id) 
-        bot.register_next_step_handler(sent, process_fuel_type, date, distance)
-    except ValueError:
-        sent = bot.send_message(chat_id, "Пожалуйста, введите положительное число для расстояния:")
-        bot.register_next_step_handler(sent, process_distance_step, date)
+def show_fuel_types(chat_id, date, distance):
+    # Спрашиваем у пользователя тип топлива, передавая рассчитанное расстояние и дату
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
+    row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
+    markup.add(*row1, *row2)  
 
-# (9.9) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ВЫБОРА ТОПЛИВА) ---------------
+    sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_fuel_type, date, distance)
+
 
 def process_fuel_type(message, date, distance):
     chat_id = message.chat.id
-    
-    if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message) 
-        return   
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance)
-        return
-    
     fuel_type = message.text
+    
     if fuel_type not in fuel_types:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов.")
         bot.register_next_step_handler(sent, process_fuel_type, date, distance)
@@ -514,18 +493,10 @@ def process_fuel_type(message, date, distance):
     item6 = types.KeyboardButton("В главное меню")
     markup.add(item5)
     markup.add(item6)
+    
     bot.send_message(chat_id, "Вы выбрали тип топлива: " + fuel_type, reply_markup=types.ReplyKeyboardRemove())
     sent = bot.send_message(chat_id, "Введите цену топлива за литр:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-
-def show_fuel_types(chat_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    for fuel in fuel_types:
-        markup.add(types.KeyboardButton(fuel))
-    markup.add(types.KeyboardButton("Вернуться в меню расчета топлива"))
-    markup.add(types.KeyboardButton("В главное меню"))
-    sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_fuel_type)
 
 # (9.10) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ВВОДА РАСХОДА НА 100 КМ) ---------------
 
@@ -668,7 +639,7 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
     summary_message += f"Начальное местоположение:\n{start_location['address']}\n"
     summary_message += f"Конечное местоположение:\n{end_location['address']}\n"
     summary_message += f"Дата поездки: {date}\n"
-    summary_message += f"Расстояние: {distance} км.\n"
+    summary_message += f"Расстояние: {distance:.2f} км.\n"
     summary_message += f"Тип топлива: {fuel_type}\n"
     summary_message += f"Цена топлива за литр: {price_per_liter} руб.\n"
     summary_message += f"Расход топлива на 100 км: {fuel_consumption} л.\n"
@@ -764,7 +735,7 @@ def view_data(message):
                 summary_message += f"Начальное местоположение:\n\n{start_address}\n\n"
                 summary_message += f"Конечное местоположение:\n\n{end_address}\n\n"
                 summary_message += f"Дата поездки: {trip['date']}\n\n"
-                summary_message += f"Расстояние: {trip['distance']} км.\n\n"
+                summary_message += f"Расстояние: {trip['distance']:.2f} км.\n\n"
                 summary_message += f"Тип топлива: {trip['fuel_type']}\n\n"
                 summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n\n"
                 summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n\n"
