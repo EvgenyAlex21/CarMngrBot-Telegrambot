@@ -4001,8 +4001,11 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
 
 # ЦЕНЫ НА ТОПЛИВО
 
-# Словарь для отслеживания состояния пользователя
 user_state = {}
+user_data = {}  # Словарь для хранения данных пользователей
+
+os.makedirs(os.path.join('data base', 'azs'), exist_ok=True)
+
 
 # Функция для чтения городов и создания словаря для их URL
 def load_cities():
@@ -4012,7 +4015,7 @@ def load_cities():
             for line in file:
                 if '-' in line:  # Проверяем, что в строке есть дефис
                     city, city_code = line.strip().split(' - ')
-                    cities[city] = city_code  # Сохраняем в словаре
+                    cities[city.lower()] = city_code  # Приводим название города к нижнему регистру
     except FileNotFoundError:
         print("Файл 'combined_cities.txt' не найден.")
     return cities
@@ -4022,7 +4025,33 @@ cities_dict = load_cities()
 
 # Функция для получения кода города на английском по его названию на русском
 def get_city_code(city_name):
-    return cities_dict.get(city_name)
+    # Здесь не нужно дополнительно приводить к нижнему регистру, так как он уже приведен в load_cities
+    return cities_dict.get(city_name.lower())  # Приводим введённое название города к нижнему регистру
+
+# Функция для создания имени файла на основе города и даты
+def create_filename(city_code, date):
+    date_str = date.strftime('%d_%m_%Y')  # Преобразуем дату в строку формата 'день_месяц_год'
+    return f"{city_code}_table_azs_data_{date_str}.json"
+
+# Функция для сохранения данных в JSON
+def save_data(city_code, fuel_prices):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
+
+    # Сохраняем данные в файл, заменяя содержимое
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
+
+# Функция для загрузки сохранённых данных из JSON
+def load_saved_data(city_code):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
+    
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
 
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
@@ -4037,15 +4066,13 @@ def fuel_prices_command(message):
     
     # Отправляем сообщение с просьбой ввести город и клавиатурой
     bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
-
-    # Регистрация следующего шага
     bot.register_next_step_handler(message, process_city_selection)
 
+# Обработчик выбора города
 # Обработчик выбора города
 def process_city_selection(message):
     chat_id = message.chat.id
 
-    # Проверяем состояние пользователя
     if user_state.get(chat_id) != "choosing_city":
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
         return
@@ -4054,32 +4081,23 @@ def process_city_selection(message):
         return_to_menu(message)
         return
 
-    # Проверяем, есть ли текст в сообщении
-    if not message.text:
-        bot.send_message(chat_id, "Пожалуйста, введите название города.")
-        # Запросить ввод города снова
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
-        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Отправляем сообщение с клавиатурой
-        bot.register_next_step_handler(message, process_city_selection)
-        return
-
-    city_name = message.text.strip()  # Получаем название города
+    city_name = message.text.strip().lower()  # Приводим к нижнему регистру
     cities = load_cities()  # Загружаем словарь городов
     
-    # Проверяем, существует ли город в словаре
-    city_code = cities.get(city_name)
+    city_code = get_city_code(city_name)  # Поиск кода города
     if city_code:
-        # Вместо вывода сообщения о найденном городе, открываем меню выбора топлива
+        # Обновляем город в данных пользователя
+        user_data[chat_id] = {'city_code': city_code}  # Сохраняем новый код города
         show_fuel_price_menu(chat_id, city_code)
     else:
         bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
-        # Запросить ввод города снова
+        
+        # Создаем клавиатуру с одной кнопкой "В главное меню"
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Отправляем сообщение с клавиатурой
+
+        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
         bot.register_next_step_handler(message, process_city_selection)
 
 # Определяем доступные типы топлива
@@ -4089,7 +4107,6 @@ fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
 def show_fuel_price_menu(chat_id, city_code):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     
-    # Добавляем кнопки с типами топлива
     row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
     row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
     row3 = [types.KeyboardButton("В главное меню")]
@@ -4103,34 +4120,24 @@ def show_fuel_price_menu(chat_id, city_code):
 def process_fuel_price_selection(message, city_code):
     chat_id = message.chat.id
 
-    # Проверка, существует ли chat_id в user_data
     if chat_id not in user_data:
-        # Инициализация user_data для нового пользователя
         user_data[chat_id] = {'city_code': city_code}
-    
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    # Запрет на мультимедийные сообщения
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, мультимедийные файлы не разрешены. Пожалуйста, отправьте текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_fuel_price_selection)
-        return
-
     selected_fuel_type = message.text.strip().lower()
 
-    # Соответствие типов топлива
     fuel_type_mapping = {
-        "аи-92": "аи-92",
-        "аи-95": "аи-95",
-        "аи-98": "аи-98",
-        "аи-100": "аи-100",		
-        "дт": "дт",
-        "газ": "газ спбт",		
+        "аи-92": "АИ-92",
+        "аи-95": "АИ-95",
+        "аи-98": "АИ-98",
+        "аи-100": "АИ-100",
+        "дт": "ДТ",
+        "газ": "Газ",
     }
 
-    # Проверка корректности выбранного топлива
     if selected_fuel_type not in fuel_type_mapping:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов.")
         bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code))
@@ -4138,97 +4145,109 @@ def process_fuel_price_selection(message, city_code):
 
     actual_fuel_type = fuel_type_mapping[selected_fuel_type]
 
-    # Обработка и отправка данных о ценах
     try:
-        fuel_prices = get_fuel_prices_from_site(actual_fuel_type, city_code)
+        # Проверяем наличие сохранённых данных или парсим сайт
+        fuel_prices = process_city_fuel_data(city_code, actual_fuel_type)
+        
         if not fuel_prices:
             raise ValueError("Нет данных по ценам.")
 
-        # Группировка цен по брендам
         brand_prices = {}
         for brand, fuel_type, price in fuel_prices:
-            price = float(price)  # Преобразуем цену в число
+            price = float(price)
             if brand not in brand_prices:
                 brand_prices[brand] = []
             brand_prices[brand].append(price)
 
-        # Вычисление средней цены для каждого бренда
         averaged_prices = {brand: sum(prices) / len(prices) for brand, prices in brand_prices.items()}
-
-        # Сортировка по средней цене (от меньшей к большей)
         sorted_prices = sorted(averaged_prices.items(), key=lambda x: x[1])
 
-        # Формируем нумерованный список с пробелами
         prices_message = "\n\n".join([f"{i + 1}. {brand} - {avg_price:.2f} руб./л" for i, (brand, avg_price) in enumerate(sorted_prices)])
+        bot.send_message(chat_id, f"*Актуальные цены на {actual_fuel_type.upper()}:*\n\n{prices_message}", parse_mode='Markdown')
 
-        # Отправляем сообщение с результатом
-        bot.send_message(chat_id, f"Актуальные цены на {actual_fuel_type.upper()}:\n\n{prices_message}")
-
-        # Создание клавиатуры с кнопками
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         another_fuel_button = types.KeyboardButton("Посмотреть цены на другое топливо")
-        choose_another_city_button = types.KeyboardButton("Выбрать другой город")  # Новая кнопка
+        choose_another_city_button = types.KeyboardButton("Выбрать другой город")
         main_menu_button = types.KeyboardButton("В главное меню")
-        markup.add(another_fuel_button)
+        markup.add(another_fuel_button) 
         markup.add(choose_another_city_button)
         markup.add(main_menu_button)
-        
-        # Обновляем состояние пользователя
-        user_state[chat_id] = "next_action"
 
-        # Отправляем сообщение с клавиатурой
+        user_state[chat_id] = "next_action"
         sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или выбрать другой город.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_next_action)
 
     except Exception as e:
         bot.send_message(chat_id, f"Ошибка получения цен: {e}\nПопробуйте выбрать другой тип топлива.")
-        # Возвращаем пользователя к выбору топлива
-        user_state[chat_id] = "choosing_fuel"
         show_fuel_price_menu(chat_id, city_code)
 
-# Обработчик для следующего шага
+# Обработчик следующих действий (посмотреть другое топливо или выбрать другой город)
 def process_next_action(message):
     chat_id = message.chat.id
+    text = message.text.strip().lower()
 
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-    elif message.text == "Выбрать другой город":  # Обработка нажатия кнопки "Выбрать другой город"
+    if text == "посмотреть цены на другое топливо":
+        city_code = user_data.get(chat_id, {}).get('city_code')
+        if city_code:
+            show_fuel_price_menu(chat_id, city_code)
+        else:
+            bot.send_message(chat_id, "Город не выбран. Пожалуйста, начните сначала.")
+            return_to_menu(message)
+    elif text == "выбрать другой город":
         user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
-        # Создаем клавиатуру с кнопкой "В главное меню"
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        
-        # Отправляем сообщение с просьбой ввести город и клавиатурой
-        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
-        
-        # Регистрация следующего шага
-        bot.register_next_step_handler(message, process_city_selection)
-        return
 
-    # Сброс состояния перед новым выбором топлива
-    user_state[chat_id] = "waiting_for_fuel_selection"
+        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Добавляем клавиатуру
+        bot.register_next_step_handler(message, process_city_selection)  # Правильное перенаправление
+    elif text == "в главное меню":
+        return_to_menu(message)
+    else:
+        bot.send_message(chat_id, "Пожалуйста, выберите одно из предложенных действий.")
+        bot.register_next_step_handler(message, process_next_action)
 
-    # Создаем клавиатуру для выбора топлива
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
-    row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
-    row3 = [types.KeyboardButton("В главное меню")]
-    markup.add(*row1, *row2, *row3)
+# Функция для обработки данных по всем видам топлива и их сохранения
+def process_city_fuel_data(city_code, selected_fuel_type):
+    today = datetime.now().date()
 
-    sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
-    bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, user_data[chat_id]['city_code']))
+    saved_data = load_saved_data(city_code)
 
-# Возврат в главное меню
-def return_to_menu(message):
-    chat_id = message.chat.id
-    user_state.pop(chat_id, None)  # Очищаем состояние пользователя
-    start(message)
+    # Если данные уже сохранены, обновляем их только для выбранного типа топлива
+    if saved_data:
+        # Фильтруем сохраненные данные по выбранному типу топлива
+        filtered_prices = [
+            item for item in saved_data 
+            if item[1].lower() == selected_fuel_type.lower() or
+            (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
+        ]
+        return remove_duplicate_prices(filtered_prices)  # Удаляем дублирующиеся цены из сохранённых данных
+    else:
+        all_fuel_prices = []
 
-# Функция для получения данных с сайта
+        # Проходим по каждому типу топлива и получаем цены
+        for fuel_type in fuel_types:
+            fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+            fuel_prices = remove_duplicate_prices(fuel_prices)  # Удаляем дубликаты после парсинга
+            all_fuel_prices.extend(fuel_prices)  # Добавляем данные по каждому топливу в общий список
+
+        # Сохраняем все данные в JSON
+        save_data(city_code, all_fuel_prices)  # Убрали today из вызова
+        return all_fuel_prices
+
+# Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
+def remove_duplicate_prices(fuel_prices):
+    unique_prices = {}
+    for brand, fuel_type, price in fuel_prices:
+        price = float(price)
+        key = (brand, fuel_type)  # Используем комбинацию бренда и типа топлива как уникальный ключ
+        if key not in unique_prices or price < unique_prices[key]:
+            unique_prices[key] = price  # Сохраняем минимальную цену для каждого бренда и типа топлива
+    return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
+
+# Функция для парсинга данных с сайта
 def get_fuel_prices_from_site(selected_fuel_type, city_code):
-    url = f'https://azsprice.ru/benzin-{city_code}'  # Используем код города в URL
+    url = f'https://azsprice.ru/benzin-{city_code}'
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -4244,21 +4263,20 @@ def get_fuel_prices_from_site(selected_fuel_type, city_code):
         if len(columns) < 5:
             continue
         
-        brand = columns[1].text.strip()  # Бренд
-        fuel_type = columns[2].text.strip()  # Марка топлива
-        today_price = clean_price(columns[3].text.strip())  # Цена
+        brand = columns[1].text.strip()
+        fuel_type = columns[2].text.strip()
+        today_price = clean_price(columns[3].text.strip())
 
-        # Сравниваем тип топлива с выбранным
-        if fuel_type.lower() == selected_fuel_type.lower() and today_price:
+        # Добавьте условие для учета ГАЗа
+        if fuel_type.lower() == selected_fuel_type.lower() or (fuel_type.lower() == "газ спбт" and selected_fuel_type.lower() == "газ"):
             fuel_prices.append((brand, fuel_type, today_price))
     
     return fuel_prices
 
-# Функция для очистки цены от лишних символов
+# Функция для очистки цены
 def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
     return cleaned_price
-
 
 
 
