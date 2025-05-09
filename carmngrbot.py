@@ -611,7 +611,7 @@ def load_payment_data():
         if promo_code not in data['promo_codes']:
             data['promo_codes'][promo_code] = promo_data
 
-    # Добавляем новые поля для каждого пользователя, если их нет
+    # Добавляем новые поля для каждого пользователя
     for user_id in data['subscriptions']['users']:
         data['subscriptions']['users'][user_id].setdefault('referral_points', 0)
         data['subscriptions']['users'][user_id].setdefault('free_feature_trials', {})
@@ -619,6 +619,8 @@ def load_payment_data():
         data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
         data['subscriptions']['users'][user_id].setdefault('points_history', [])
         data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
+        # Добавляем last_promo_used
+        data['subscriptions']['users'][user_id].setdefault('last_promo_used', None)
 
     return data
 
@@ -664,7 +666,9 @@ def load_users_data():
             data[user_id].setdefault('username', 'неизвестный')
             data[user_id].setdefault('usage_stats', {})
             data[user_id].setdefault('activity', {})
-            data[user_id].setdefault('last_promo_used', None)
+            # Удаляем last_promo_used и auto_renew из структуры
+            data[user_id].pop('last_promo_used', None)
+            data[user_id].pop('auto_renew', None)
         
         save_users_data(data)
         return data
@@ -701,7 +705,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
     current_time = datetime.now().strftime('%d.%m.%Y в %H:%M:%S')
     now = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
-    user_data = load_user_data()
+    user_data = load_user_data()  # Предполагается, что эта функция существует в вашем коде
     statistics = load_statistics()
     data = load_payment_data()
     users_data = load_users_data()
@@ -734,7 +738,6 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             "activity": {},
             "usage_stats": {},
             "join_date": now,
-            "last_promo_used": None,
             "user_id": user_id,
             "first_name": first_name or "",
             "last_name": last_name or "",
@@ -754,7 +757,6 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         users_data[user_id_str].setdefault('activity', {})
         users_data[user_id_str].setdefault('usage_stats', {})
         users_data[user_id_str].setdefault('join_date', now)
-        users_data[user_id_str].setdefault('last_promo_used', None)
 
     if user_id_str not in data['subscriptions']['users']:
         data['subscriptions']['users'][user_id_str] = {
@@ -765,10 +767,12 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             "free_feature_trials": {},
             "promo_usage_history": [],
             "referral_milestones": {},
-            "points_history": []
+            "points_history": [],
+            "last_promo_used": None
         }
     else:
         data['subscriptions']['users'][user_id_str]['username'] = formatted_username or data['subscriptions']['users'][user_id_str].get('username', "неизвестный")
+        data['subscriptions']['users'][user_id_str].setdefault('last_promo_used', None)
 
     today = datetime.now().strftime('%d.%m.%Y')
     if today not in statistics:
@@ -1225,7 +1229,7 @@ def start(message):
             combined_message = (
                 "🎉 <b>Поздравляем!</b>\n\n"
                 "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
-                f"⏳ Активно до: *{new_end_trial.strftime('%d.%m.%Y в %H:%M')}*\n\n"
+                f"⏳ Активно до: <b>{new_end_trial.strftime('%d.%m.%Y в %H:%M')}</b>\n\n"
                 "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
                 f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
                 "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
@@ -1404,9 +1408,9 @@ def view_subscription(message):
 
     user_id = message.from_user.id
     data = load_payment_data()
-    users_data = load_users_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    if 'plans' not in user_data:
+
+    if 'plans' not in user_data or not user_data['plans']:
         bot.send_message(user_id, (
             "⚠️ У вас *нет* подписок!\n\n"
             "🚀 Попробуйте оформить первую подписку прямо сейчас!\n\n"
@@ -1417,7 +1421,7 @@ def view_subscription(message):
     active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()]
     if not active_plans:
         bot.send_message(user_id, (
-            "❌ У вас *нет активных* подписок!\n\n"
+            "❗ У вас *нет активных* подписок!\n\n"
             "🚀 Подключите подписку, чтобы воспользоваться функциями бота!\n\n"
             "👉 Перейдите в раздел *«Купить подписку»*!"
         ), parse_mode="Markdown")
@@ -1434,10 +1438,25 @@ def view_subscription(message):
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
 
-        period_type = f"💳 №{idx + 1}. *Платный период:*" if plan['plan_name'] in ["weekly", "monthly", "yearly"] else f"🎁 №{idx + 1}. *Бонусный период:*"
-        subscription_type = escape_markdown(translate_plan_name(plan['plan_name']))  # Экранируем тип подписки
-        start_date = escape_markdown(plan['start_date'])  # Экранируем даты
-        end_date_str = escape_markdown(plan['end_date'])
+        if plan['plan_name'] == "free":
+            period_type = f"🎁 №{idx + 1}. *Пробный период:*"
+            subscription_type = "3 дня бесплатно"
+        elif plan['plan_name'] == "referral_bonus":
+            period_type = f"🎁 №{idx + 1}. *Бонусный период:*"
+            subscription_type = "бонус за реферала"
+        elif plan['plan_name'] == "points_bonus":
+            period_type = f"🎁 №{idx + 1}. *Бонусный период:*"
+            subscription_type = "бонус за баллы"
+        elif plan['plan_name'] == "ad_bonus":
+            period_type = f"🎁 №{idx + 1}. *Бонусный период:*"
+            subscription_type = "рекламный бонус"
+        else:
+            period_type = f"💳 №{idx + 1}. *Платный период:*"
+            subscription_type = translate_plan_name(plan['plan_name']).lower()  # Приводим к нижнему регистру
+
+        start_date = plan['start_date']  # Убираем escape_markdown
+        end_date_str = plan['end_date']  # Убираем escape_markdown
+        price_formatted = f"{plan['price']:.2f}"
 
         plans_summary += (
             f"{period_type}\n\n"
@@ -1445,35 +1464,47 @@ def view_subscription(message):
             f"📅 *Дней осталось:* {days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
             f"🕒 *Начало:* {start_date}\n"
             f"⌛ *Конец:* {end_date_str}\n"
-            f"💰 *Стоимость подписки:* {plan['price']:.2f} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
         )
         total_days_left += days_left
         total_cost_active += plan['price']
 
     send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
 
+    subtypes = [translate_plan_name(p['plan_name']).lower() for p in active_plans]  # Приводим к нижнему регистру
+    start_date = min(datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans).strftime("%d.%m.%Y в %H:%M")
+    end_date = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans).strftime("%d.%m.%Y в %H:%M")
+    total_amount = user_data.get('total_amount', 0)
+
     total_cost_active_formatted = f"{total_cost_active:.2f}"
+    total_amount_formatted = f"{total_amount:.2f}"
+
     summary_message = (
         "*💎 Итоговая подписочная оценка:*\n\n\n"
+        f"💼 *Типы подписок:* {', '.join(t for t in subtypes)}\n"  # Убираем escape_markdown
         f"📅 *Дней осталось:* {total_days_left} дней\n"
+        f"🕒 *Начало:* {start_date}\n"
+        f"⌛ *Конец:* {end_date}\n"
         f"💰 *Общая стоимость активных подписок:* {total_cost_active_formatted} руб.\n"
+        f"💰 *Общая стоимость всех подписок:* {total_amount_formatted} руб.\n"
     )
     send_long_message(message.chat.id, summary_message, parse_mode="Markdown")
-
-    stats = users_data.get(str(user_id), {}).get('usage_stats', {})
-    if stats:
-        stats_summary = "*📊 Статистика использования:*\n\n"
-        for feature, count in stats.items():
-            stats_summary += f"🔹 {escape_markdown(feature)}: {count} раз\n"  # Экранируем названия функций
-        send_long_message(message.chat.id, stats_summary, parse_mode="Markdown")
 
 def translate_plan_name(plan_name):
     return {"free": "Пробный период", "referral_bonus": "Реферальный бонус", "ad_bonus": "Рекламный бонус", "activity": "Активность", 
             "weekly": "Неделя", "monthly": "Месяц", "yearly": "Год"}.get(plan_name, plan_name)
 
+import requests
+import hashlib
+import base64
+
+# Настройки PayMaster
+PAYMASTER_MERCHANT_ID = "YOUR_MERCHANT_ID"  # Замени на твой Merchant ID
+PAYMASTER_SECRET_KEY = "YOUR_SECRET_KEY"    # Замени на твой секретный ключ
+PAYMASTER_API_URL = "https://paymaster.ru/api/v2/"
+
 @bot.message_handler(func=lambda message: message.text == "Отменить подписку")
 def cancel_subscription(message):
-
     if message.text == "Вернуться в подписку":
         payments_function(message)
         return
@@ -1484,45 +1515,40 @@ def cancel_subscription(message):
     user_id = message.from_user.id
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    paid_plans = [p for p in user_data.get('plans', []) if p['plan_name'] in ['weekly', 'monthly', 'yearly'] and p['source'] == 'user']
-    if not paid_plans:
-        bot.send_message(user_id, (
-            "❌ У вас нет платных подписок для отмены!\n\n"
-            "🚀 Оформите подписку, чтобы начать пользоваться всеми функциями!\n\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
-        ), parse_mode="Markdown")
+
+    if 'plans' not in user_data or not user_data['plans']:
+        bot.send_message(user_id, "❌ У вас нет платных подписок для отмены!", parse_mode="Markdown")
         return
 
-    plans_summary = "*Список платных подписок:*\n\n\n"
+    paid_plans = [p for p in user_data['plans'] if p['plan_name'] in ['weekly', 'monthly', 'yearly'] and p['source'] == 'user']
+    if not paid_plans:
+        bot.send_message(user_id, "❌ У вас нет платных подписок для отмены!", parse_mode="Markdown")
+        return
+
+    plans_summary = "*Ваши платные подписки:*\n\n"
     for idx, plan in enumerate(paid_plans):
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M")
         remaining_time = end_date - datetime.now()
-        days_left = remaining_time.days
-        hours_left, remainder = divmod(remaining_time.seconds, 3600)
-        minutes_left = remainder // 60
+        days_left = max(0, remaining_time.days)
+        hours_left = remaining_time.seconds // 3600
+        minutes_left = (remaining_time.seconds % 3600) // 60
 
         plans_summary += (
-            f"💳 №{idx + 1}. *Платный период:*\n\n"
-            f"💼 *Тип подписки:* {translate_plan_name(plan['plan_name'])}\n"
-            f"📅 *Дней осталось:* {days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
-            f"🕒 *Начало:* {plan['start_date']}\n"
-            f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость подписки:* {plan['price']} руб.\n\n\n"
+            f"💳 *№{idx + 1}. {translate_plan_name(plan['plan_name']).capitalize()}:*\n"
+            f"📅 Осталось: {days_left} дней, {hours_left:02}:{minutes_left:02} часов\n"
+            f"🕒 Начало: {escape_markdown(plan['start_date'])}\n"
+            f"⌛ Конец: {escape_markdown(plan['end_date'])}\n"
+            f"💰 Стоимость: {plan['price']:.2f} руб.\n\n"
         )
-    send_long_message(user_id, plans_summary, parse_mode="Markdown")
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_back = types.KeyboardButton("Вернуться в подписку")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_back)
-    markup.add(item_main)
-    bot.send_message(user_id, (
-        "✍️ Введите номера подписок, которые хотите отменить (через запятую):\n\n"
-        "🔒 Укажите номера для отмены и возврата средств!\n\n"
-        "🚀 Подтвердите действие ниже!"
-    ), reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, process_cancel_subscription, user_id, paid_plans)
 
-def process_cancel_subscription(message, user_id, paid_plans):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Вернуться в подписку", "В главное меню")
+    send_long_message(user_id, plans_summary, parse_mode="Markdown")
+    bot.send_message(user_id, "Введите номера подписок для отмены (через запятую):", reply_markup=markup)
+    bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+
+def confirm_cancellation(message, user_id, paid_plans):
     if message.text == "Вернуться в подписку":
         payments_function(message)
         return
@@ -1531,69 +1557,130 @@ def process_cancel_subscription(message, user_id, paid_plans):
         return
 
     try:
-        numbers = [int(n.strip()) - 1 for n in message.text.split(',')]
-        invalid_numbers = [n for n in numbers if n < 0 or n >= len(paid_plans)]
-        if invalid_numbers:
-            raise ValueError("Некоторые номера подписок некорректны")
-        
-        data = load_payment_data()
-        user_plans = data['subscriptions']['users'][str(user_id)]['plans']
-        refund_amount = 0
-        
-        for n in sorted(numbers, reverse=True):
-            plan = paid_plans[n]
-            refund_amount += plan['price']
-            user_plans.remove(plan)
-        
-        if refund_amount > 0:
-            refund_payment(user_id, refund_amount, plan)
-        
-        save_payments_data(data)
-        username = message.from_user.username or data['subscriptions']['users'][str(user_id)].get('username', 'неизвестный')
-        bot.send_message(user_id, (
-            "✅ *Подписка успешно отменена!*\n\n"
-            f"👤 Пользователь: *@{username}*\n"
-            f"💰 Возвращено: *{refund_amount:.2f} ₽*\n\n"
-            "😊 Спасибо за использование!"
-        ), parse_mode="Markdown")
-        payments_function(message)
+        subscription_numbers = [int(num) for num in message.text.split(',')]
+        if any(num < 1 or num > len(paid_plans) for num in subscription_numbers):
+            raise ValueError("Неверный номер подписки!")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Подтвердить", "Отменить")
+        bot.send_message(user_id, "Вы уверены, что хотите отменить выбранные подписки?", reply_markup=markup)
+        bot.register_next_step_handler(message, process_subscription_cancellation, user_id, paid_plans, subscription_numbers)
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item_back = types.KeyboardButton("Вернуться в подписку")
-        item_main = types.KeyboardButton("В главное меню")
-        markup.add(item_back, item_main)
-        bot.send_message(user_id, (
-            "⚠️ *Неверный формат ввода или номер подписки!*\n\n"
-            "🔒 Пожалуйста, введите номера подписок через запятую!\n\n"
-            "🚀 Попробуйте снова!"
-        ), reply_markup=markup, parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_cancel_subscription, user_id, paid_plans)
-    except Exception as e:
-        print(f"Ошибка при отмене подписки для пользователя {user_id}: {e}")
-        bot.send_message(user_id, "❌ Произошла ошибка при отмене подписки. Обратитесь в поддержку.")
+        markup.add("Вернуться в подписку", "В главное меню")
+        bot.send_message(user_id, "⚠️ Неверный формат или номер подписки. Введите номера через запятую:", reply_markup=markup)
+        bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
 
-def refund_payment(user_id, refund_amount, plan):
+def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
+    if message.text == "Отменить":
+        return_to_menu(message)
+        return
+    if message.text != "Подтвердить":
+        bot.send_message(user_id, "Действие отменено.", parse_mode="Markdown")
+        return_to_menu(message)
+        return
+
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    username = user_data.get('username', 'неизвестный')  # Берем из базы
-    
-    start_date = plan['start_date']
-    end_date = plan['end_date']
-    refund_amount_str = f"{float(refund_amount):.2f}"
-    
-    message_text = (
-        "💸 *Возврат средств выполнен!*\n\n"
-        f"👤 Пользователь: *@{username}*\n"
-        f"📅 Период подписки: *{start_date} - {end_date}*\n"
-        f"💰 Сумма возврата: *{refund_amount_str} ₽*\n\n"
-        "😊 Если у вас есть вопросы, обратитесь в поддержку!"
-    )
-    bot.send_message(user_id, message_text, parse_mode="Markdown")
+    total_refunded = 0.0
+    refunds = []
 
+    for num in subscription_numbers:
+        plan = paid_plans[num - 1]
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M")
+        now = datetime.now()
+
+        if now >= end_date:
+            bot.send_message(user_id, f"❌ Подписка №{num} уже истекла и не может быть отменена!", parse_mode="Markdown")
+            continue
+
+        total_days = (end_date - start_date).days
+        remaining_days = (end_date - now).days
+        daily_cost = plan['price'] / total_days
+        refund_amount = round(daily_cost * remaining_days, 2)
+        if refund_amount < 1.0:
+            bot.send_message(user_id, f"❌ Сумма возврата для подписки №{num} слишком мала!", parse_mode="Markdown")
+            continue
+
+        total_refunded += refund_amount
+        user_data['plans'].remove(plan)
+        user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - refund_amount)
+        data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - refund_amount)
+
+        refund_data = {
+            'user_id': user_id,
+            'plan_name': plan['plan_name'],
+            'refund_amount': refund_amount,
+            'refund_date': now.strftime("%d.%m.%Y в %H:%M"),
+            'telegram_payment_charge_id': plan.get('telegram_payment_charge_id', ''),
+            'provider_payment_charge_id': plan.get('provider_payment_charge_id', '')
+        }
+        if 'refunds' not in data:
+            data['refunds'] = []
+        data['refunds'].append(refund_data)
+        refunds.append((plan, refund_amount))
+
+    data['subscriptions']['users'][str(user_id)] = user_data
+    save_payments_data(data)
+
+    for plan, refund_amount in refunds:
+        refund_payment(user_id, refund_amount, plan)
+
+    bot.send_message(user_id, (
+        f"✅ Подписки отменены! Возвращено: *{total_refunded:.2f} руб.*\n\n"
+        "💸 Средства будут зачислены на ваш счет в течение 3-5 рабочих дней.\n"
+        "📩 Если у вас есть вопросы, обратитесь в поддержку!"
+    ), parse_mode="Markdown")
+    return_to_menu(message)
+
+def refund_payment(user_id, refund_amount, plan):
+    payment_id = plan.get('provider_payment_charge_id', '')
+    if not payment_id:
+        bot.send_message(user_id, f"❌ Ошибка: отсутствует ID платежа для возврата!", parse_mode="Markdown")
+        bot.send_message(ADMIN_CHAT_ID, f"Ошибка возврата для user_id={user_id}: отсутствует provider_payment_charge_id", parse_mode="Markdown") #type: ignore
+        return
+
+    refund_data = {
+        "merchantId": PAYMASTER_MERCHANT_ID,
+        "paymentId": payment_id,
+        "amount": str(refund_amount),
+        "currency": "RUB"
+    }
+    # Альтернативная подпись, если требуется SHA256
+    sign_string = f"{PAYMASTER_MERCHANT_ID}:{payment_id}:{refund_amount}:RUB:{PAYMASTER_SECRET_KEY}"
+    sign = hashlib.sha256(sign_string.encode()).hexdigest()
+    refund_data["signature"] = sign
+
+    try:
+        response = requests.post(f"{PAYMASTER_API_URL}payment/refund", json=refund_data)
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get('status') == 'success':  # Предполагаемый формат ответа
+            data = load_payment_data()
+            for refund in data['refunds']:
+                if refund['user_id'] == user_id and refund['refund_amount'] == refund_amount and refund['provider_payment_charge_id'] == payment_id:
+                    refund['status'] = 'success'
+                    break
+            save_payments_data(data)
+            bot.send_message(user_id, f"✅ Возврат на сумму *{refund_amount:.2f} руб.* успешно выполнен!", parse_mode="Markdown")
+            print(f"Возврат успешен для user_id={user_id}: {result}")
+        else:
+            raise Exception(f"PayMaster вернул ошибку: {result.get('message', 'Неизвестная ошибка')}")
+
+    except Exception as e:
+        data = load_payment_data()
+        for refund in data['refunds']:
+            if refund['user_id'] == user_id and refund['refund_amount'] == refund_amount and refund['provider_payment_charge_id'] == payment_id:
+                refund['status'] = 'failed'
+                break
+        save_payments_data(data)
+        bot.send_message(user_id, f"❌ Ошибка при возврате: {str(e)}", parse_mode="Markdown")
+        bot.send_message(ADMIN_CHAT_ID, f"Ошибка возврата для user_id={user_id}: {str(e)}", parse_mode="Markdown") #type: ignore
+        print(f"Ошибка возврата для user_id={user_id}: {str(e)}")
 
 @bot.message_handler(func=lambda message: message.text == "История подписок")
 def view_subscription_history(message):
-
     if message.text == "Вернуться в подписку":
         payments_function(message)
         return
@@ -1604,34 +1691,60 @@ def view_subscription_history(message):
     user_id = message.from_user.id
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    expired_plans = [p for p in user_data.get('plans', []) if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < datetime.now()]
+
+    if 'plans' not in user_data or not user_data['plans']:
+        bot.send_message(user_id, (
+            "❌ У вас *нет истории* подписок!\n\n"
+            "🚀 Попробуйте оформить подписку и начните использовать все возможности бота!"
+        ), parse_mode="Markdown")
+        return
+
+    expired_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < datetime.now()]
     if not expired_plans:
         bot.send_message(user_id, (
-            "📜 У вас нет истекших подписок! 📜\n\n"
-            "🚀 Оформите подписку и начните пользоваться преимуществами!\n\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+            "📜 У вас нет истекших подписок!\n\n"
+            "🚀 Оформите подписку и начните пользоваться преимуществами!"
         ), parse_mode="Markdown")
         return
 
     plans_summary = "*История подписок:*\n\n"
     for idx, plan in enumerate(expired_plans):
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-        remaining_time = end_date - datetime.now()
-        days_left = abs(remaining_time.days) if remaining_time.total_seconds() < 0 else 0
-        hours_left = abs(remaining_time.seconds // 3600) if remaining_time.total_seconds() < 0 else 0
-        minutes_left = abs((remaining_time.seconds % 3600) // 60) if remaining_time.total_seconds() < 0 else 0
+        remaining_time = datetime.now() - end_date  # Время с момента окончания
+        days_left = abs(remaining_time.days)
+        hours_left = abs(remaining_time.seconds // 3600)
+        minutes_left = abs((remaining_time.seconds % 3600) // 60)
 
-        period_type = f"💳 *№{idx + 1}. Платный период:*" if plan['plan_name'] in ["weekly", "monthly", "yearly"] else f"🎁 *№{idx + 1}. Бонусный период:*"
-        subscription_type = translate_plan_name(plan['plan_name'])
+        if plan['plan_name'] == "free":
+            period_type = f"🎁 *№{idx + 1}. Пробный период:*"
+            subscription_type = "3 дня бесплатно"
+        elif plan['plan_name'] == "referral_bonus":
+            period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
+            subscription_type = "Бонус за реферала"
+        elif plan['plan_name'] == "points_bonus":
+            period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
+            subscription_type = "Бонус за баллы"
+        elif plan['plan_name'] == "ad_bonus":
+            period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
+            subscription_type = "Рекламный бонус"
+        else:
+            period_type = f"💳 *№{idx + 1}. Платный период:*"
+            subscription_type = translate_plan_name(plan['plan_name'])
+
+        subscription_type = escape_markdown(subscription_type)
+        start_date = escape_markdown(plan['start_date'])
+        end_date_str = escape_markdown(plan['end_date'])
+        price_formatted = f"{plan['price']:.2f}"
 
         plans_summary += (
             f"{period_type}\n"
-            f"💼 *Тип подписки:* *{subscription_type}*\n"
-            f"📅 *Дней прошло:* *{days_left} дней и {hours_left:02}:{minutes_left:02} часов*\n"
-            f"🕒 *Начало:* *{plan['start_date']}*\n"
-            f"⌛ *Конец:* *{plan['end_date']}*\n"
-            f"💰 *Стоимость подписки:* *{plan['price']} руб.*\n\n"
+            f"💼 *Тип подписки:* {subscription_type}\n"
+            f"📅 *Дней прошло:* {days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
+            f"🕒 *Начало:* {start_date}\n"
+            f"⌛ *Конец:* {end_date_str}\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
+
     send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Реферальная система")
@@ -1647,6 +1760,14 @@ def refferal_payments_function(message):
 @bot.message_handler(func=lambda message: message.text == "Вернуться в реферальную систему")
 def return_to_referral_menu(message):
     refferal_payments_function(message)
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в баллы")
+def return_to_scores_menu(message):
+    points_menu(message)
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в подарки")
+def return_to_gifts_menu(message):
+    gifts_menu(message)
 
 @bot.message_handler(func=lambda message: message.text == "Ваша ссылка")
 def send_referral_link_message(message):
@@ -1922,6 +2043,7 @@ def exchange_points_handler(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в баллы"))
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -1937,6 +2059,12 @@ def exchange_points_handler(message):
     bot.register_next_step_handler(message, process_points_exchange)
 
 def process_points_exchange(message):
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
     if message.text == "Вернуться в реферальную систему":
         return_to_referral_menu(message)
         return
@@ -2005,6 +2133,7 @@ def process_points_exchange(message):
     
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2018,32 +2147,32 @@ def process_points_exchange(message):
 @bot.message_handler(func=lambda message: message.text == "Ввести промокод")
 def enter_promo_code(message):
     user_id = str(message.from_user.id)
-    users_data = load_users_data()
     data = load_payment_data()
+    users_data = load_users_data()
 
-    if user_id in users_data:
-        last_promo_used = users_data[user_id].get('last_promo_used')
-        current_discount = users_data[user_id].get('discount', 0)
+    # Проверяем last_promo_used и скидку в payments.json
+    last_promo_used = data['subscriptions']['users'].get(user_id, {}).get('last_promo_used')
+    current_discount = users_data.get(user_id, {}).get('discount', 0)
 
-        if last_promo_used and current_discount > 0:
-            last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
-            now = datetime.now()
-            days_since_last_use = (now - last_used_date).days
+    if last_promo_used and current_discount > 0:
+        last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
+        now = datetime.now()
+        days_since_last_use = (now - last_used_date).days
 
-            user_subscriptions = data['subscriptions']['users'].get(user_id, {}).get('plans', [])
-            has_active_subscription = any(
-                datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > now
-                for plan in user_subscriptions
-            )
+        user_subscriptions = data['subscriptions']['users'].get(user_id, {}).get('plans', [])
+        has_active_subscription = any(
+            datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > now
+            for plan in user_subscriptions
+        )
 
-            if days_since_last_use >= 30 and not has_active_subscription:
-                users_data[user_id]['discount'] = 0
-                save_users_data(users_data)
-                bot.send_message(message.chat.id, (
-                    "⚠️ Ваша скидка от предыдущего промокода истекла!\n\n"
-                    "⏳ Прошло более 30 дней, и подписка не была приобретена.\n"
-                    "Введите новый промокод, если он есть, чтобы получить скидку!"
-                ), parse_mode="Markdown")
+        if days_since_last_use >= 30 and not has_active_subscription:
+            users_data[user_id]['discount'] = 0
+            save_users_data(users_data)
+            bot.send_message(message.chat.id, (
+                "⚠️ Ваша скидка от предыдущего промокода истекла!\n\n"
+                "⏳ Прошло более 30 дней, и подписка не была приобретена.\n"
+                "Введите новый промокод, если он есть, чтобы получить скидку!"
+            ), parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
@@ -2081,7 +2210,8 @@ def process_promo_code(message):
     users_data = load_users_data()
     promo_codes = data.get('promo_codes', {})
     
-    last_promo_used = users_data[str(user_id)].get('last_promo_used')
+    # Проверяем last_promo_used в payments.json
+    last_promo_used = data['subscriptions']['users'].get(str(user_id), {}).get('last_promo_used')
     if last_promo_used:
         last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
         now = datetime.now()
@@ -2122,7 +2252,9 @@ def process_promo_code(message):
         })
         
         now = datetime.now().strftime("%d.%m.%Y в %H:%M")
-        users_data[str(user_id)]['last_promo_used'] = now
+        # Сохраняем last_promo_used в payments.json
+        data['subscriptions']['users'].setdefault(str(user_id), {}).setdefault('last_promo_used', None)
+        data['subscriptions']['users'][str(user_id)]['last_promo_used'] = now
         
         data['subscriptions']['users'].setdefault(str(user_id), {}).setdefault('promo_usage_history', [])
         data['subscriptions']['users'][str(user_id)]['promo_usage_history'].append({
@@ -2188,6 +2320,8 @@ def gift_points_handler(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в подарки"))
+    markup.add(types.KeyboardButton("Вернуться в баллы"))
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -2198,6 +2332,12 @@ def gift_points_handler(message):
     bot.register_next_step_handler(message, process_gift_recipient, points)
 
 def process_gift_recipient(message, sender_points):
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
     if message.text == "Вернуться в реферальную систему":
         return_to_referral_menu(message)
         return
@@ -2224,6 +2364,8 @@ def process_gift_recipient(message, sender_points):
     
     if not recipient_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2236,6 +2378,8 @@ def process_gift_recipient(message, sender_points):
     
     if recipient_id == user_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2249,6 +2393,8 @@ def process_gift_recipient(message, sender_points):
     recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в подарки"))
+    markup.add(types.KeyboardButton("Вернуться в баллы"))
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -2260,6 +2406,12 @@ def process_gift_recipient(message, sender_points):
     bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
 
 def process_gift_amount(message, recipient_id, sender_points):
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
     if message.text == "Вернуться в реферальную систему":
         return_to_referral_menu(message)
         return
@@ -2319,6 +2471,8 @@ def process_gift_amount(message, recipient_id, sender_points):
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2327,6 +2481,12 @@ def process_gift_amount(message, recipient_id, sender_points):
         bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
 
 def process_gift_amount(message, recipient_id, sender_points):
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
     if message.text == "Вернуться в реферальную систему":
         return_to_referral_menu(message)
         return
@@ -2385,6 +2545,8 @@ def process_gift_amount(message, recipient_id, sender_points):
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2447,6 +2609,8 @@ def gift_time_handler(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в подарки"))
+    markup.add(types.KeyboardButton("Вернуться в баллы"))    
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -2462,8 +2626,20 @@ def gift_time_handler(message):
     bot.register_next_step_handler(message, process_gift_time_recipient, total_remaining_minutes)
 
 def process_gift_time_recipient(message, total_available_minutes):
-    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
-        globals()[message.text.lower().replace(" ", "_")](message)
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
     
     user_id = str(message.from_user.id)
@@ -2483,6 +2659,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     
     if not recipient_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2495,6 +2673,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     
     if recipient_id == user_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))        
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2519,6 +2699,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     # Добавляем кнопки для выбора единиц времени
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("Минуты"), types.KeyboardButton("Часы"), types.KeyboardButton("Дни"))
+    markup.add(types.KeyboardButton("Вернуться в подарки"))
+    markup.add(types.KeyboardButton("Вернуться в баллы"))    
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -2531,8 +2713,20 @@ def process_gift_time_recipient(message, total_available_minutes):
     bot.register_next_step_handler(message, process_gift_time_unit, recipient_id, total_available_minutes)
 
 def process_gift_time_unit(message, recipient_id, total_available_minutes):
-    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
-        globals()[message.text.lower().replace(" ", "_")](message)
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
     
     unit = message.text
@@ -2542,6 +2736,8 @@ def process_gift_time_unit(message, recipient_id, total_available_minutes):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в подарки"))
+    markup.add(types.KeyboardButton("Вернуться в баллы"))       
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
@@ -2560,8 +2756,20 @@ def process_gift_time_unit(message, recipient_id, total_available_minutes):
     bot.register_next_step_handler(message, process_gift_time_amount, recipient_id, total_available_minutes, unit)
 
 def process_gift_time_amount(message, recipient_id, total_available_minutes, unit):
-    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
-        globals()[message.text.lower().replace(" ", "_")](message)
+    if message.text == "Вернуться в баллы":
+        return_to_scores_menu(message)
+        return
+    if message.text == "Вернуться в подарки":
+        return_to_gifts_menu(message)
+        return
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
     
     user_id = str(message.from_user.id)
@@ -2680,6 +2888,8 @@ def process_gift_time_amount(message, recipient_id, total_available_minutes, uni
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в подарки"))
+        markup.add(types.KeyboardButton("Вернуться в баллы"))
         markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
@@ -2689,8 +2899,14 @@ def process_gift_time_amount(message, recipient_id, total_available_minutes, uni
 
 @bot.message_handler(func=lambda message: message.text == "Рекламные каналы")
 def get_day_for_ad(message):
-    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
-        globals()[message.text.lower().replace(" ", "_")](message)
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
 
     user_id = message.from_user.id
@@ -11871,8 +12087,13 @@ def load_alko_data():
             alko_data['drinks'] = sorted(alko_data['drinks'], key=lambda x: x['strength'])
         else:
             print("Ключ 'drinks' не найден в данных!")
+        if 'food' not in alko_data:
+            print("Ключ 'food' не найден в данных!")
+        else:
+            pass
     except Exception as e:
         print(f"Ошибка при загрузке файла alko.json: {e}")
+        alko_data = {}
 
 def load_user_history_alko():
     global user_history
@@ -12284,16 +12505,21 @@ def process_food(message):
 
     try:
         food_name = message.text.strip()
-        food = next((f for f in alko_data['food'] if f['name'] == food_name), None)
+        print(f"Введено: '{food_name}'")
+        print(f"Доступные варианты еды: {[f['name'] for f in alko_data['food']]}")
+        
+        food = next((f for f in alko_data['food'] if f['name'].lower().strip() == food_name.lower().strip()), None)
 
         if not food:
-            raise ValueError
+            raise ValueError(f"Еда '{food_name}' не найдена в списке")
 
+        print(f"Выбрана еда: {food['name']} (ID: {food['id']})")
         user_data[user_id]['food'] = food['id']
 
         calculate_and_show_result(chat_id)
 
-    except:
+    except Exception as e:
+        print(f"Ошибка в process_food: {e}")
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         food_buttons = [food['name'] for food in alko_data['food']]
         markup.row(*food_buttons)
@@ -12306,6 +12532,8 @@ def process_food(message):
 def calculate_and_show_result(chat_id):
     user_id = user_data[chat_id]['user_id']
     data = user_data[user_id]
+
+    print(f"Данные для расчёта: {data}")  # Отладочный вывод
 
     r = 0.70 if data['gender'] == 'мужской' else 0.60
 
@@ -12363,7 +12591,8 @@ def calculate_and_show_result(chat_id):
     else:
         result = "📊 *Итоговый расчёт*\n\n✅ Вы уже трезвы или алкоголь еще не поступил в кровь!"
 
-    save_calculation_to_history(chat_id, c)
+    print(f"Перед сохранением: chat_id={chat_id}, promille={c}")  # Отладочный вывод
+    save_alcohol_calculation_to_history(chat_id, c)
     user_data[user_id] = data
     bot.send_message(chat_id, result, parse_mode='Markdown')
     view_alc_calc(stored_message)
@@ -12446,7 +12675,7 @@ def format_timestamp(timestamp):
     dt = datetime.strptime(timestamp, "%d.%m.%Y в %H:%M")
     return dt.strftime("%d.%m.%Y в %H:%M")
 
-def save_calculation_to_history(chat_id, promille):
+def save_alcohol_calculation_to_history(chat_id, promille):
     user_id = user_data[chat_id]['user_id']
     username = user_data[chat_id].get('username', 'unknown')
 
@@ -12546,22 +12775,27 @@ def process_view_selection(message):
             if 0 <= index < len(calculations):
                 valid_indices.append(index)
             else:
-                invalid_indices.append(index + 1) 
+                invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:  
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_alc_calc(message)
-                return
-            else: 
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_alc_calc(message)
+        if not valid_indices and invalid_indices:
+            # Если все номера некорректны, запрашиваем ввод снова
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в алкоголь')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_selection)
             return
 
+        if invalid_indices:
+            # Если есть некорректные номера, но есть и корректные, сообщаем о пропущенных
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        # Обрабатываем корректные номера
         for index in valid_indices:
             calc = calculations[index]
             timestamp = calc['timestamp']
@@ -12578,11 +12812,20 @@ def process_view_selection(message):
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
+        # Возвращаемся в меню только после успешного просмотра
         view_alc_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-        view_alc_calc(message)
+        # Если ввод не является числом, запрашиваем снова
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в алкоголь')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Пожалуйста, введите номера расчетов через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_selection)
 
 # ---------- n.n АЛКОГОЛЬ (УДАЛЕНИЕ АЛКОГОЛЯ) ----------
 
@@ -12653,33 +12896,48 @@ def process_delete_selection(message):
             if 0 <= index < len(calculations):
                 valid_indices.append(index)
             else:
-                invalid_indices.append(index + 1)  
+                invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1: 
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_alc_calc(message)
-                return
-            else: 
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_alc_calc(message)
+        if not valid_indices and invalid_indices:
+            # Если все номера некорректны, запрашиваем ввод снова
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в алкоголь')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_selection)
             return
 
-        valid_indices.sort(reverse=True)  
+        if invalid_indices:
+            # Если есть некорректные номера, но есть и корректные, сообщаем о пропущенных
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        # Удаляем корректные номера
+        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
         for index in valid_indices:
             del calculations[index]
 
         save_user_history_alko()
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
+
+        # Возвращаемся в меню только после успешного удаления
         view_alc_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-        view_alc_calc(message)
+        # Если ввод не является числом, запрашиваем снова
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в алкоголь')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Пожалуйста, введите номера расчетов через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_selection)
 
 # -------------------- РАСТАМОЖКА --------------
 
@@ -12914,13 +13172,13 @@ def process_engine_type_step(message):
         markup.add("В главное меню")
 
         msg = bot.send_message(message.chat.id, "Выберите измерения мощности двигателя:", reply_markup=markup)
-        bot.register_next_step_handler(msg, process_engine_power_step)
+        bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)
 
     except ValueError:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
-        bot.register_next_step_handler(msg, process_engine_type_step)
+        bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)
 
-def process_engine_power_step(message):
+def process_engine_type_rastamozka_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
@@ -13119,7 +13377,7 @@ def calculate_customs(message):
     )
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_calculation_to_history(user_id, total_cost)
+    save_osago_calculation_to_history(user_id, total_cost)
     view_rastamozka_calc(message)
 
 def calculate_customs_fee(car_cost_rub):
@@ -13377,10 +13635,10 @@ def calculate_nds(car_cost_rub, customs_duty, excise, car_importer):
         return 0
     return (car_cost_rub + customs_duty + excise) * 0.2
 
-def save_calculation_to_history(user_id, total_cost):
+def save_osago_calculation_to_history(user_id, total_cost):
     username = user_data[user_id].get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
-    
+
     calculation_data = {
         'car_importer': user_data[user_id]['car_importer'],
         'car_age': user_data[user_id]['car_age'],
@@ -13391,7 +13649,7 @@ def save_calculation_to_history(user_id, total_cost):
         'car_cost_currency': user_data[user_id]['car_cost_currency'],
         'car_cost_value': user_data[user_id]['car_cost_value'],
         'total_cost': total_cost,
-        'timestamp': timestamp  
+        'timestamp': timestamp
     }
 
     if str(user_id) not in user_history:
@@ -13450,7 +13708,6 @@ def process_view_rastamozka_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message)
         return
@@ -13464,6 +13721,8 @@ def process_view_rastamozka_selection(message):
         view_rastamozka_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (растаможки, просмотр): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -13475,19 +13734,23 @@ def process_view_rastamozka_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_rastamozka_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_rastamozka_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в растаможку')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_rastamozka_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         for index in valid_indices:
             calc = calculations[index]
@@ -13520,11 +13783,20 @@ def process_view_rastamozka_selection(message):
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
+        # Возвращаемся в меню после успешной обработки
         view_rastamozka_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_rastamozka_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в растаможку')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_rastamozka_selection)
 
 # ---------- УДАЛЕНИЕ РАСТАМОЖЕК ----------
 
@@ -13586,6 +13858,8 @@ def process_delete_rastamozka_selection(message):
         view_rastamozka_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (растаможки, удаление): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -13597,19 +13871,23 @@ def process_delete_rastamozka_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_rastamozka_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_rastamozka_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в растаможку')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_rastamozka_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         valid_indices.sort(reverse=True)
         for index in valid_indices:
@@ -13620,9 +13898,16 @@ def process_delete_rastamozka_selection(message):
         view_rastamozka_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_rastamozka_calc(message)
-
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в растаможку')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_rastamozka_selection)
 
 # ---------- РАСЕТ ОСАГО ----------
 
@@ -14462,7 +14747,6 @@ def process_view_osago_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message)
         return
@@ -14476,6 +14760,8 @@ def process_view_osago_selection(message):
         view_osago_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (ОСАГО, просмотр): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -14487,28 +14773,30 @@ def process_view_osago_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_osago_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_osago_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в ОСАГО')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_osago_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         for index in valid_indices:
             calc = calculations[index]
-            # Получаем vehicle_id из vehicle_type
             vehicle = next((vt for vt in osago_data['vehicle_types'] if vt['name'] == calc['vehicle_type']), None)
-            vehicle_id = vehicle['id'] if vehicle else 2  # По умолчанию легковые авто физ. лиц
+            vehicle_id = vehicle['id'] if vehicle else 2
             base_tariff_min, base_tariff_max = get_base_tariff(vehicle_id)
 
-            # Форматируем результат в стиле calculate_osago
             if calc['driver_restriction'] == "Без ограничений по водителям":
                 result_message = (
                     f"*📊 Итоговый расчет по ОСАГО №{index + 1} (без ограничений):*\n\n\n"
@@ -14545,7 +14833,7 @@ def process_view_osago_selection(message):
                     f"💪 *Мощность двигателя:* {calc['engine_power']}\n"
                     f"📅 *Период использования:* {calc['usage_period']}\n"
                     f"🚗 *Лица, допущенные к управлению:* {calc['driver_restriction']}\n"
-                    "\n*Данные водителей:*\n"  # Заголовок вынесен за цикл
+                    "\n*Данные водителей:*\n"
                 )
                 
                 for i, driver in enumerate(calc['drivers'], 1):
@@ -14581,14 +14869,20 @@ def process_view_osago_selection(message):
 
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
+        # Возвращаемся в меню после успешной обработки
         view_osago_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_osago_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
-        view_osago_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в ОСАГО')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_osago_selection)
 
 # ---------- УДАЛЕНИЕ ОСАГО ----------
 
@@ -14650,6 +14944,8 @@ def process_delete_osago_selection(message):
         view_osago_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (ОСАГО, удаление): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -14661,37 +14957,43 @@ def process_delete_osago_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_osago_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_osago_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в ОСАГО')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_osago_selection)
             return
 
-        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
-        deleted_count = 0
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        valid_indices.sort(reverse=True)
         for index in valid_indices:
             del calculations[index]
-            deleted_count += 1
 
         save_user_history_osago()
-        bot.send_message(chat_id, f"✅ Выбранные расчеты ОСАГО успешно удалены!")
+        bot.send_message(chat_id, "✅ Выбранные расчеты ОСАГО успешно удалены!")
         view_osago_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_osago_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
-        view_osago_calc(message)
-
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в ОСАГО')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_osago_selection)
 
 # ---------- РАСЧЕТ АВТОКРЕДИТА ----------
 
@@ -15511,7 +15813,6 @@ def process_view_autokredit_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message)
         return
@@ -15525,6 +15826,8 @@ def process_view_autokredit_selection(message):
         view_autokredit_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (автокредиты, просмотр): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -15536,24 +15839,26 @@ def process_view_autokredit_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_autokredit_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_autokredit_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в автокредит')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_autokredit_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         for index in valid_indices:
             calc = calculations[index]
-            
-            # Формируем сообщение с данными
             result_message = (
                 f"*📊 Итоговый расчет по автокредиту №{index + 1}:*\n\n\n"
                 f"*Ваши данные:*\n\n"
@@ -15587,7 +15892,6 @@ def process_view_autokredit_selection(message):
             
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
             
-            # Отправляем соответствующий Excel-файл
             timestamp = calc['timestamp'].replace(' в ', '_').replace('.', '_').replace(':', '_')
             excel_path = EXCEL_PATH_TEMPLATE.format(user_id=user_id, timestamp=timestamp)
             if os.path.exists(excel_path):
@@ -15596,14 +15900,20 @@ def process_view_autokredit_selection(message):
             else:
                 bot.send_message(chat_id, "❌ Excel-файл для этого расчета не найден!")
 
+        # Возвращаемся в меню после успешной обработки
         view_autokredit_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_autokredit_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
-        view_autokredit_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в автокредит')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_autokredit_selection)
 
 # ---------- УДАЛЕНИЕ АВТОКРЕДИТОВ ----------
 
@@ -15665,6 +15975,8 @@ def process_delete_autokredit_selection(message):
         view_autokredit_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (автокредиты, удаление): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -15676,43 +15988,48 @@ def process_delete_autokredit_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_autokredit_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_autokredit_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в автокредит')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_autokredit_selection)
             return
 
-        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
-        deleted_count = 0
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        valid_indices.sort(reverse=True)
         for index in valid_indices:
             calc = calculations[index]
-            # Удаляем соответствующий Excel-файл
             timestamp = calc['timestamp'].replace(' в ', '_').replace('.', '_').replace(':', '_')
             excel_path = EXCEL_PATH_TEMPLATE.format(user_id=user_id, timestamp=timestamp)
             if os.path.exists(excel_path):
                 os.remove(excel_path)
-            # Удаляем запись из истории
             del calculations[index]
-            deleted_count += 1
 
         save_user_history_kredit()
-        bot.send_message(chat_id, f"✅ Выбранные расчеты автокредитов успешно удалены!")
+        bot.send_message(chat_id, "✅ Выбранные расчеты автокредитов успешно удалены!")
         view_autokredit_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_autokredit_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
-        view_autokredit_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в автокредит')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_autokredit_selection)
 
 # ---------- РАСЧЕТ ШИН ----------
 
@@ -16065,37 +16382,26 @@ def calculate_tire(message):
     user_id = message.from_user.id
     data = user_data[user_id]
 
-    # Перевод дюймов в мм (1 дюйм = 25.4 мм)
     current_diameter_mm = data['current_diameter'] * 25.4
     new_diameter_mm = data['new_diameter'] * 25.4
     current_rim_width_mm = data['current_rim_width'] * 25.4
     new_rim_width_mm = data['new_rim_width'] * 25.4
 
-    # Высота профиля
     current_profile_height = data['current_width'] * (data['current_profile'] / 100)
     new_profile_height = data['new_width'] * (data['new_profile'] / 100)
 
-    # Общий диаметр шины
     current_total_diameter = current_diameter_mm + 2 * current_profile_height
     new_total_diameter = new_diameter_mm + 2 * new_profile_height
 
-    # Разница в диаметре
     diameter_diff_mm = new_total_diameter - current_total_diameter
     diameter_diff_percent = (diameter_diff_mm / current_total_diameter) * 100
 
-    # Влияние на клиренс (половина разницы в диаметре)
     clearance_diff = diameter_diff_mm / 2
-
-    # Влияние на спидометр
     speed_diff_percent = -diameter_diff_percent
-
-    # Разница в ширине обода
     rim_width_diff_mm = new_rim_width_mm - current_rim_width_mm
 
-    # Рекомендации по совместимости
     recommendation = "✅ Подходит" if abs(diameter_diff_percent) <= 3 and abs(rim_width_diff_mm) <= 25.4 else "⚠️ Не рекомендуется (отклонение > 3% или ширина обода сильно отличается)"
 
-    # Преимущества и недостатки
     width_effects = ""
     if data['new_width'] > data['current_width']:
         width_effects = (
@@ -16148,7 +16454,6 @@ def calculate_tire(message):
             f"❌ Спидометр завышает на {abs(speed_diff_percent):.1f}%\n"
         )
 
-    # Формирование результата
     result_message = (
         "*Результат расчета шин и дисков:*\n\n\n"
         "*Текущие параметры:*\n\n"
@@ -16177,14 +16482,13 @@ def calculate_tire(message):
     )
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)
-    view_tire_calc(message)  # Возвращаем пользователя в меню шинного калькулятора
+    save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)  # Изменённый вызов
+    view_tire_calc(message)
 
 # Сохранение в историю
-def save_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
+def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
-    # Вычисления для сохранения
     current_profile_height = data['current_width'] * (data['current_profile'] / 100)
     new_profile_height = data['new_width'] * (data['new_profile'] / 100)
     current_rim_width_mm = data['current_rim_width'] * 25.4
@@ -16196,7 +16500,6 @@ def save_calculation_to_history(user_id, data, current_diameter, new_diameter, d
     rim_width_diff_mm = new_rim_width_mm - current_rim_width_mm
     recommendation = "✅ Подходит" if abs(diameter_diff_percent) <= 3 and abs(rim_width_diff_mm) <= 25.4 else "⚠️ Не рекомендуется (отклонение > 3% или ширина обода сильно отличается)"
 
-    # Полная структура данных для сохранения
     calculation_data = {
         'current_tire': f"{data['current_width']}/{data['current_profile']} R{data['current_diameter']}",
         'current_rim': f"{data['current_rim_width']}x{data['current_diameter']} ET {data['current_et']}",
@@ -16279,7 +16582,6 @@ def process_view_tire_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в шины":
         view_tire_calc(message)
         return
@@ -16293,6 +16595,8 @@ def process_view_tire_selection(message):
         view_tire_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (шины, просмотр): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -16304,35 +16608,36 @@ def process_view_tire_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_tire_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_tire_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в шины')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_tire_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         for index in valid_indices:
             calc = calculations[index]
-            
-            # Проверка на наличие всех ключей, с обратной совместимостью
             required_keys = ['current_width', 'new_width', 'current_profile_height', 'new_profile_height', 
-                             'current_diameter', 'new_diameter', 'current_rim_width_mm', 'new_rim_width_mm',
-                             'diameter_diff_mm', 'diameter_diff_percent', 'clearance_diff', 'speed_diff_percent',
-                             'rim_width_diff_mm', 'recommendation']
+                            'current_diameter', 'new_diameter', 'current_rim_width_mm', 'new_rim_width_mm',
+                            'diameter_diff_mm', 'diameter_diff_percent', 'clearance_diff', 'speed_diff_percent',
+                            'rim_width_diff_mm', 'recommendation']
             for key in required_keys:
                 if key not in calc:
                     bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены. Выполните новый расчет.")
                     view_tire_calc(message)
                     return
 
-            # Преимущества и недостатки
             width_effects = ""
             if calc['new_width'] > calc['current_width']:
                 width_effects = (
@@ -16385,7 +16690,6 @@ def process_view_tire_selection(message):
                     f"❌ Спидометр завышает на {abs(calc['speed_diff_percent']):.1f}%\n"
                 )
 
-            # Формирование полного результата
             result_message = (
                 f"*📊 Результат расчета шин №{index + 1}:*\n\n\n"
                 f"*Текущие параметры:*\n\n"
@@ -16416,14 +16720,20 @@ def process_view_tire_selection(message):
             
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
+        # Возвращаемся в меню после успешной обработки
         view_tire_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_tire_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
-        view_tire_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_tire_selection)
 
 # ---------- УДАЛЕНИЕ РАСЧЕТОВ ШИН ----------
 
@@ -16469,15 +16779,13 @@ def delete_tire_calculations(chat_id):
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
 def process_delete_tire_selection(message):
-
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в шины":
         view_tire_calc(message)
         return
-    
+
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
@@ -16486,6 +16794,8 @@ def process_delete_tire_selection(message):
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message)
         return
+
+    print(f"Ввод пользователя {user_id} (шины, удаление): {message.text}")  # Логирование
 
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
@@ -16498,36 +16808,43 @@ def process_delete_tire_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_tire_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_tire_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в шины')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_tire_selection)
             return
 
-        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
-        deleted_count = 0
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        valid_indices.sort(reverse=True)
         for index in valid_indices:
             del calculations[index]
-            deleted_count += 1
 
         save_user_history_tires()
-        bot.send_message(chat_id, f"✅ Выбранные расчеты шин успешно удалены!")
+        bot.send_message(chat_id, "✅ Выбранные расчеты шин успешно удалены!")
         view_tire_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_tire_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
-        view_tire_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_tire_selection)
 
 
 # ---------- РАСЧЕТ НАЛОГА ----------
@@ -16795,10 +17112,10 @@ def process_ownership_months_step(message):
     markup.add("Вернуться в налог")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Вид транспортного средства:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_vehicle_type_step)
+    bot.register_next_step_handler(msg, process_vehicle_type_nalog_step)
 
 # Step 4: Vehicle type
-def process_vehicle_type_step(message):
+def process_vehicle_type_nalog_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
@@ -16812,7 +17129,7 @@ def process_vehicle_type_step(message):
     vehicle_type = message.text.strip()
     if vehicle_type not in tax_rates[user_data[user_id]['region']]:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
-        bot.register_next_step_handler(msg, process_vehicle_type_step)
+        bot.register_next_step_handler(msg, process_vehicle_type_nalog_step)
         return
 
     user_data[user_id]['vehicle_type'] = vehicle_type
@@ -17181,7 +17498,6 @@ def process_view_nalog_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
     if message.text == "Вернуться в налог":
         view_nalog_calc(message)
         return
@@ -17195,6 +17511,8 @@ def process_view_nalog_selection(message):
         view_nalog_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (налоги, просмотр): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -17206,19 +17524,23 @@ def process_view_nalog_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_nalog_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_nalog_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в налог')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_view_nalog_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         for index in valid_indices:
             calc = calculations[index]
@@ -17254,14 +17576,20 @@ def process_view_nalog_selection(message):
             )
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
+        # Возвращаемся в меню после успешной обработки
         view_nalog_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_nalog_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
-        view_nalog_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в налог')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_view_nalog_selection)
 
 # Удаление расчетов
 @bot.message_handler(func=lambda message: message.text == "Удаление налогов")
@@ -17322,6 +17650,8 @@ def process_delete_nalog_selection(message):
         view_nalog_calc(message)
         return
 
+    print(f"Ввод пользователя {user_id} (налоги, удаление): {message.text}")  # Логирование
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -17333,34 +17663,43 @@ def process_delete_nalog_selection(message):
             else:
                 invalid_indices.append(index + 1)
 
-        if invalid_indices:
-            if len(indices) == 1:
-                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-                view_nalog_calc(message)
-                return
-            else:
-                invalid_str = ", ".join(map(str, invalid_indices))
-                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
-
-        if not valid_indices:
-            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
-            view_nalog_calc(message)
+        if not valid_indices and invalid_indices:
+            # Все номера некорректны, запрашиваем повторный ввод
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Вернуться в налог')
+            markup.add('В главное меню')
+            msg = bot.send_message(
+                chat_id,
+                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_delete_nalog_selection)
             return
+
+        if invalid_indices:
+            # Есть некорректные номера, но есть и корректные
+            invalid_str = ", ".join(map(str, invalid_indices))
+            bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
         valid_indices.sort(reverse=True)
         for index in valid_indices:
             del calculations[index]
 
         save_user_history_nalog()
-        bot.send_message(chat_id, f"✅ Выбранные расчеты налога успешно удалены!")
+        bot.send_message(chat_id, "✅ Выбранные расчеты налога успешно удалены!")
         view_nalog_calc(message)
 
     except ValueError:
-        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
-        view_nalog_calc(message)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
-        view_nalog_calc(message)
+        # Некорректный формат ввода, запрашиваем повторный ввод
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Вернуться в налог')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "❌ Некорректный ввод! Введите числа через запятую:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_delete_nalog_selection)
 
 
 
