@@ -2518,36 +2518,6 @@ def check_monthly_leader_bonus():
             leaderboard = sorted(leaderboard_data, key=lambda x: (-x[1], x[2]))
             now = datetime.now()
             
-            # Награды для топ-3
-            for idx, (uid, ref_count, _) in enumerate(leaderboard[:3], 1):
-                bonus_days = {1: 7, 2: 5, 3: 3}.get(idx, 0)
-                if bonus_days > 0:
-                    new_end = set_free_trial_period(int(uid), bonus_days, f"leaderboard_top_{idx}")
-                    bot.send_message(uid, (
-                        f"🎉 *Поздравляем!*\n\n"
-                        f"✨ Вы на {idx}-м месте в топе рефералов!\n"
-                        f"🎁 Вы получили *+{bonus_days} дней* к использованию!\n"
-                        f"⏳ *Активно до:* {new_end.strftime('%d.%m.%Y в %H:%M')}!"
-                    ), parse_mode="Markdown")
-            
-            # Награды для топ-10 каждые 30 дней
-            last_bonus_date = data['referrals'].get('last_top10_bonus', "01.01.2000")
-            if (now - datetime.strptime(last_bonus_date, "%d.%m.%Y")).days >= 30:
-                for uid, _, _ in leaderboard[:10]:
-                    data['subscriptions']['users'].setdefault(uid, {}).setdefault('referral_points', 0)
-                    data['subscriptions']['users'][uid]['referral_points'] += 1
-                    data['subscriptions']['users'][uid].setdefault('points_history', []).append({
-                        "action": "earned",
-                        "points": 1,
-                        "reason": "Топ-10 рефералов за месяц",
-                        "date": now.strftime("%d.%m.%Y в %H:%M")
-                    })
-                    bot.send_message(uid, (
-                        "🎉 *Вы в топ-10 рефералов месяца!*\n"
-                        "✨ Получите *+1 балл*! Продолжайте приглашать!"
-                    ), parse_mode="Markdown")
-                data['referrals']['last_top10_bonus'] = now.strftime("%d.%m.%Y")
-            
             # Проверка лидера
             current_top_user, top_referrals, _ = leaderboard[0]
             leader_history = data['referrals']['leaderboard_history']
@@ -2574,6 +2544,37 @@ def check_monthly_leader_bonus():
                         ), parse_mode="Markdown")
                         leader_history['leader_start_date'] = now.strftime("%d.%m.%Y в %H:%M")
                         leader_history['days_at_top'] = 1
+            
+            # Награды для топ-10 каждые 30 дней
+            last_bonus_date = data['referrals'].get('last_top10_bonus', "01.01.2000")
+            last_bonus_dt = datetime.strptime(last_bonus_date, "%d.%m.%Y")
+            if (now - last_bonus_dt).days >= 30:
+                for idx, (uid, ref_count, _) in enumerate(leaderboard[:10], 1):
+                    bonus_days = {1: 7, 2: 5, 3: 3}.get(idx, 0)
+                    if bonus_days > 0:
+                        new_end = set_free_trial_period(int(uid), bonus_days, f"leaderboard_top_{idx}")
+                        bot.send_message(uid, (
+                            f"🎉 *Поздравляем!*\n\n"
+                            f"✨ Вы на {idx}-м месте в топе рефералов!\n"
+                            f"🎁 Вы получили *+{bonus_days} дней* к использованию!\n"
+                            f"⏳ *Активно до:* {new_end.strftime('%d.%m.%Y в %H:%M')}!"
+                        ), parse_mode="Markdown")
+                    
+                    # Начисление 1 балла для топ-10
+                    data['subscriptions']['users'].setdefault(uid, {}).setdefault('referral_points', 0)
+                    data['subscriptions']['users'][uid]['referral_points'] += 1
+                    data['subscriptions']['users'][uid].setdefault('points_history', []).append({
+                        "action": "earned",
+                        "points": 1,
+                        "reason": "Топ-10 рефералов за месяц",
+                        "date": now.strftime("%d.%m.%Y в %H:%M")
+                    })
+                    bot.send_message(uid, (
+                        "🎉 *Вы в топ-10 рефералов месяца!*\n"
+                        "✨ Получите *+1 балл*! Продолжайте приглашать!"
+                    ), parse_mode="Markdown")
+                
+                data['referrals']['last_top10_bonus'] = now.strftime("%d.%m.%Y")
             
             save_payments_data(data)
         
