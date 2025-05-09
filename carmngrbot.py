@@ -10042,11 +10042,11 @@ def shorten_url(original_url):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def send_welcome(message, show_description=True):
+def placesearch(message, show_description=True):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
     button_azs = types.KeyboardButton("АЗС")
     button_car_wash = types.KeyboardButton("Автомойки")
     button_auto_service = types.KeyboardButton("Автосервисы")
@@ -10055,15 +10055,13 @@ def send_welcome(message, show_description=True):
     button_gibdd_mreo = types.KeyboardButton("ГИБДД")
     button_accident_commissioner = types.KeyboardButton("Комиссары")
     button_impound = types.KeyboardButton("Штрафстоянка")
-
     item1 = types.KeyboardButton("В главное меню")
-
     markup.add(button_azs, button_car_wash, button_auto_service)
     markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner, button_impound)
     markup.add(item1)
 
     help_message = (
-        "ℹ️ *Краткая справка по поиску мест*\n\n\n"
+        "ℹ️ *Краткая справка по поиску мест*\n\n"
         "📌 *Выбор поиска:*\n"
         "Выбираете категорию для поиска из кнопок\n\n"
         "📌 *Отправка геопозиции:*\n"
@@ -10079,6 +10077,7 @@ def send_welcome(message, show_description=True):
 
 @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
 @check_function_state_decorator('Выбрать категорию заново')
+@track_usage('Выбрать категорию заново')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -10086,11 +10085,12 @@ def send_welcome(message, show_description=True):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_reset_category(message):
     global selected_category
     selected_category = None
-    send_welcome(message, show_description=False)
+    placesearch(message, show_description=False)
 
 selected_category = None
 
@@ -10117,10 +10117,10 @@ selected_category = None
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def handle_menu_buttons(message):
+def handle_menu_category_buttons(message):
     global selected_category
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:
         selected_category = message.text
@@ -10134,7 +10134,7 @@ def handle_menu_buttons(message):
         bot.send_message(message.chat.id, f"Отправьте свою геолокацию!\nВам будет выдан список ближайших мест по категории - *{selected_category.lower()}:*", reply_markup=keyboard, parse_mode="Markdown")
     else:
         selected_category = None
-        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню")
+        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню!")
 
 @bot.message_handler(content_types=['location'])
 @check_function_state_decorator('Функция для обработки локации')
@@ -10142,6 +10142,7 @@ def handle_menu_buttons(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_user_blocked
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
@@ -10184,7 +10185,7 @@ def handle_location(message):
         except Exception as e:
             bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
     else:
-        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню")
+        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню!")
 
 # ---------- 12. ПОИСК ТРАНСПОРТА ----------
 
@@ -10232,6 +10233,7 @@ location_data = load_location_data()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_transport_search(message, show_description=True):
     global location_data
@@ -10249,6 +10251,7 @@ def start_transport_search(message, show_description=True):
     else:
         start_new_transport_search(message, show_description=show_description)
 
+@text_only_handler
 def start_new_transport_search(message, show_description=True):
     global location_data
     user_id = str(message.from_user.id)
@@ -10256,6 +10259,7 @@ def start_new_transport_search(message, show_description=True):
     save_location_data(location_data)
     request_transport_location(message, show_description=show_description)
 
+@text_only_handler
 def request_transport_location(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
@@ -10264,7 +10268,7 @@ def request_transport_location(message, show_description=True):
     markup.add(item2)
 
     help_message = (
-        "ℹ️ *Краткая справка по поиску транспорта*\n\n\n"
+        "ℹ️ *Краткая справка по поиску транспорта*\n\n"
         "📌 *Отправка геопозиций:*\n"
         "Отправляется две геопозиции, *транспорта* и *ваша*\n\n"
         "📌 *Поиск:*\n"
@@ -10277,6 +10281,7 @@ def request_transport_location(message, show_description=True):
     bot.send_message(message.chat.id, "Отправьте геопозицию транспорта:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_car_location)
 
+@text_only_handler
 def continue_or_restart(message):
     if message.text == "Продолжить":
         request_user_location(message)
@@ -10285,6 +10290,7 @@ def continue_or_restart(message):
     else:
         return_to_menu(message)
 
+@text_only_handler
 def request_user_location(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
@@ -10301,6 +10307,7 @@ def request_user_location(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_user_blocked
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
@@ -10349,12 +10356,13 @@ def handle_car_location(message):
         else:
             handle_location_error(message)
 
+@text_only_handler
 def handle_location_error(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию. Попробуйте еще раз")
+    bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию!\nПопробуйте еще раз")
     bot.register_next_step_handler(message, handle_car_location)
 
 def send_map_link(chat_id, start_location, end_location):
@@ -10400,10 +10408,11 @@ if regions_file_path:
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def handle_start4(message, show_description=True):
+def regioncode(message, show_description=True):
     description = (
-        "ℹ️ *Краткая справка по поиску кода региона и госномера авто*\n\n\n"
+        "ℹ️ *Краткая справка по поиску кода региона и госномера авто*\n\n"
         "📌 *Код региона:*\n"
         "Вводится в формате цифр *(2-3 цифры)* - *21* или *121*\n\n"
         "📌 *Госномер:*\n"
@@ -10417,7 +10426,7 @@ def handle_start4(message, show_description=True):
     if show_description:
         bot.send_message(message.chat.id, description, parse_mode="Markdown")
 
-    bot.send_message(message.chat.id, "Введите коды регионов или госномера автомобилей через запятую:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Введите коды регионов или госномера автомобилей:", reply_markup=markup)
     bot.register_next_step_handler(message, process_input)
 
 @text_only_handler
@@ -10460,7 +10469,7 @@ def process_input(message):
                 response = f"❌ Не удалось определить регион для номера: `{car_number}`\n\n\n"
 
         else:
-            response = f"❌ Неверный формат для `{input_item}`! Пожалуйста, введите правильный госномер или код региона\n\n\n"
+            response = f"❌ Неверный формат для `{input_item}`!\nПожалуйста, введите правильный госномер или код региона\n\n\n"
 
         responses.append(response)
 
@@ -10471,11 +10480,17 @@ def process_input(message):
 
 # ---------- 14. ПОГОДА ----------
 
-API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
-WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
-FORECAST_URL = 'http://api.openweathermap.org/data/2.5/forecast'
+OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
+WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004'  
+OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
+OPENWEATHERMAP_FORECAST_URL = 'http://api.openweathermap.org/data/2.5/forecast'
+OPENMETEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+WEATHERAPI_CURRENT_URL = 'https://api.weatherapi.com/v1/current.json'
+WEATHERAPI_FORECAST_URL = 'https://api.weatherapi.com/v1/forecast.json'
+NOMINATIM_URL = 'https://nominatim.openstreetmap.org/reverse'
+
 MAX_MESSAGE_LENGTH = 4096
-user_data = {}  
+user_data = {}
 
 def load_cities_from_file(file_path="files/combined_cities.txt"):
     cities = {}
@@ -10502,8 +10517,211 @@ def translate_weather_description(english_description):
         'light snow': 'небольшой снег',
         'overcast clouds': 'пасмурно',
         'heavy snow': 'сильный снегопад',
+        'sunny': 'ясное небо',
+        'partly cloudy': 'небольшая облачность',
+        'cloudy': 'облачно',
+        'overcast': 'пасмурно',
+        'light rain': 'небольшой дождь',
+        'moderate rain': 'дождь',
+        'heavy rain': 'сильный дождь',
+        'patchy rain possible': 'возможен небольшой дождь',
+        'light snow showers': 'небольшой снег',
+        'heavy snow showers': 'сильный снегопад',
+        'fog': 'туман',
+        'thundery outbreaks possible': 'возможна гроза'
     }
-    return translation_dict.get(english_description, english_description)
+    return translation_dict.get(english_description.lower(), english_description)
+
+def get_city_coordinates(city):
+    try:
+        params = {'q': city, 'format': 'json', 'limit': 1}
+        headers = {'User-Agent': 'TelegramWeatherBot/1.0'}
+        response = requests.get('https://nominatim.openstreetmap.org/search', params=params, headers=headers, timeout=5)
+        data = response.json()
+        if data and len(data) > 0:
+            return {'latitude': float(data[0]['lat']), 'longitude': float(data[0]['lon'])}
+        return None
+    except Exception:
+        return None
+
+def get_city_name(latitude, longitude):
+    try:
+        params = {
+            'lat': latitude,
+            'lon': longitude,
+            'format': 'json',
+            'zoom': 10 
+        }
+        headers = {'User-Agent': 'TelegramWeatherBot/1.0'}
+        response = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=5)
+        data = response.json()
+        if data and 'address' in data:
+            city = data['address'].get('city') or data['address'].get('town') or data['address'].get('village') or 'Неизвестный город'
+            return city
+        return 'Неизвестный город'
+    except Exception:
+        return 'Неизвестный город'
+
+def fetch_weather_data(url_type, params, api_type='openweathermap'):
+    try:
+        if api_type == 'openweathermap':
+            response = requests.get(params['url'], params=params['params'], timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openweathermap'
+            return None, 'openweathermap'
+
+        elif api_type == 'openmeteo':
+            openmeteo_params = {
+                'latitude': params['params'].get('lat') or params['params'].get('latitude'),
+                'longitude': params['params'].get('lon') or params['params'].get('longitude'),
+                'current_weather': 'true' if url_type == 'weather' else 'false',
+                'hourly': 'temperature_2m,relativehumidity_2m,pressure_msl,windspeed_10m,weathercode' if url_type == 'forecast' else '',
+                'daily': 'temperature_2m_max,temperature_2m_min,weathercode' if url_type == 'forecast' else '',
+                'timezone': 'auto'
+            }
+            response = requests.get(OPENMETEO_FORECAST_URL, params=openmeteo_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openmeteo'
+            return None, 'openmeteo'
+
+        elif api_type == 'weatherapi':
+            weatherapi_params = {
+                'key': WEATHERAPI_API_KEY,
+                'q': params['params'].get('q', f"{params['params'].get('lat')},{params['params'].get('lon')}"),
+                'lang': 'ru'
+            }
+            if url_type == 'forecast':
+                weatherapi_params['days'] = params.get('days', 7)
+            url = WEATHERAPI_CURRENT_URL if url_type == 'weather' else WEATHERAPI_FORECAST_URL
+            response = requests.get(url, params=weatherapi_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'weatherapi'
+            return None, 'weatherapi'
+
+    except Exception:
+        return None, api_type
+
+def normalize_weather_data(data, api_type, url_type):
+    if not data:
+        return None
+
+    if api_type == 'openweathermap':
+        return data
+
+    elif api_type == 'openmeteo':
+        if url_type == 'weather':
+            weather_code = data['current_weather']['weathercode']
+            description = {
+                0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                95: 'thunderstorm'
+            }.get(weather_code, 'unknown')
+            return {
+                'main': {
+                    'temp': data['current_weather']['temperature'],
+                    'feels_like': data['current_weather']['temperature'],
+                    'humidity': data.get('hourly', {}).get('relativehumidity_2m', [0])[0],
+                    'pressure': data.get('hourly', {}).get('pressure_msl', [0])[0]
+                },
+                'wind': {'speed': data['current_weather']['windspeed']},
+                'weather': [{'description': description}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for i, time in enumerate(data['hourly']['time']):
+                weather_code = data['hourly']['weathercode'][i]
+                description = {
+                    0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                    45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                    95: 'thunderstorm'
+                }.get(weather_code, 'unknown')
+                forecasts.append({
+                    'dt_txt': time,
+                    'main': {
+                        'temp': data['hourly']['temperature_2m'][i],
+                        'feels_like': data['hourly']['temperature_2m'][i],
+                        'humidity': data['hourly']['relativehumidity_2m'][i],
+                        'pressure': data['hourly']['pressure_msl'][i]
+                    },
+                    'wind': {'speed': data['hourly']['windspeed_10m'][i]},
+                    'weather': [{'description': description}]
+                })
+            return {'list': forecasts}
+
+    elif api_type == 'weatherapi':
+        if url_type == 'weather':
+            return {
+                'main': {
+                    'temp': data['current']['temp_c'],
+                    'feels_like': data['current']['feelslike_c'],
+                    'humidity': data['current']['humidity'],
+                    'pressure': data['current']['pressure_mb']
+                },
+                'wind': {'speed': data['current']['wind_kph'] / 3.6},
+                'weather': [{'description': data['current']['condition']['text']}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for day in data['forecast']['forecastday']:
+                for hour in day['hour']:
+                    forecasts.append({
+                        'dt_txt': hour['time'],
+                        'main': {
+                            'temp': hour['temp_c'],
+                            'feels_like': hour['feelslike_c'],
+                            'humidity': hour['humidity'],
+                            'pressure': hour['pressure_mb']
+                        },
+                        'wind': {'speed': hour['wind_kph'] / 3.6},
+                        'weather': [{'description': hour['condition']['text']}]
+                    })
+            return {'list': forecasts}
+
+    return None
+
+def get_current_weather(coords):
+    try:
+        city_name = get_city_name(coords['latitude'], coords['longitude'])
+        params = {
+            'url': OPENWEATHERMAP_WEATHER_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
+        }
+
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data('weather', params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, 'weather')
+                if data:
+                    temperature = round(data['main']['temp'])
+                    feels_like = round(data['main']['feels_like'])
+                    humidity = data['main']['humidity']
+                    pressure = data['main']['pressure']
+                    wind_speed = data['wind']['speed']
+                    description = translate_weather_description(data['weather'][0]['description'])
+
+                    current_time = datetime.now().strftime("%H:%M")
+                    current_date = datetime.now().strftime("%d.%m.%Y")
+
+                    return (
+                        f"*Погода на {current_date} в {current_time}*:\n"
+                        f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
+                    )
+        return None
+    except Exception as e:
+        print(f"Ошибка в get_current_weather: {e}")
+        return None
 
 @bot.message_handler(func=lambda message: message.text == "Погода")
 @check_function_state_decorator('Погода')
@@ -10515,11 +10733,12 @@ def translate_weather_description(english_description):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def handle_start_5(message, show_description=True):
+def weather(message, show_description=True):
     try:
         help_message = (
-            "ℹ️ *Краткая справка по отображению погоды*\n\n\n"
+            "ℹ️ *Краткая справка по отображению погоды*\n\n"
             "📌 *Отправка геопозиции или ввод города:*\n"
             "Нажмите на кнопку ниже, чтобы отправить вашу геопозицию или введите город самостоятельно\n\n"
             "📌 *Выбор периода:*\n"
@@ -10539,8 +10758,9 @@ def handle_start_5(message, show_description=True):
         bot.register_next_step_handler(message, handle_input_5)
 
     except Exception as e:
-        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса! Попробуйте позже")
+        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса!\nПопробуйте позже")
 
+@text_only_handler
 def handle_input_5(message):
     try:
         if message.text == "В главное меню":
@@ -10580,13 +10800,13 @@ def handle_input_5(message):
             markup.row('Неделя', 'Месяц')
             markup.row('Другое место')
             markup.row('В главное меню')
-            bot.send_message(message.chat.id, f"Вы выбрали город: {city_rus}\nТеперь выберите период:", reply_markup=markup)
+            bot.send_message(message.chat.id, f"Вы выбрали город: *{city_rus}*\nТеперь выберите период:", reply_markup=markup, parse_mode="Markdown")
         else:
-            bot.send_message(message.chat.id, "Город не найден! Пожалуйста, введите название города еще раз или отправьте геопозицию")
+            bot.send_message(message.chat.id, "❌ Город не найден!\nПожалуйста, введите название города еще раз или отправьте геопозицию")
             bot.register_next_step_handler(message, handle_input_5)
 
     except Exception as e:
-        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего ввода! Попробуйте позже")
+        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего ввода!\nПопробуйте позже")
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Другое место'])
 @check_function_state_decorator('Сегодня')
@@ -10606,6 +10826,7 @@ def handle_input_5(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_period_5(message):
     period = message.text.lower()
@@ -10616,14 +10837,14 @@ def handle_period_5(message):
     city_data = user_data.get(chat_id, {})
 
     if not coords and not city_data:
-        bot.send_message(chat_id, "Не удалось получить данные о местоположении или городе! Пожалуйста, начните сначала...")
-        handle_start_5(message, show_description=False)
+        bot.send_message(chat_id, "❌ Не удалось получить данные о местоположении или городе!\nПожалуйста, начните сначала...")
+        weather(message, show_description=False)
         return
 
     if period == 'другое место':
         user_data.pop(chat_id, None)
         user_locations.pop(str(chat_id), None)
-        handle_start_5(message, show_description=False)
+        weather(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -10632,86 +10853,110 @@ def handle_period_5(message):
 
     if coords:
         if period == 'сегодня':
-            send_weather(chat_id, coords, WEATHER_URL)
+            send_weather(chat_id, coords, 'weather')
         elif period == 'завтра':
-            send_forecast_daily(chat_id, coords, FORECAST_URL, 1)
+            send_forecast_daily(chat_id, coords, 'forecast', 1)
         elif period == 'неделя':
-            send_forecast_weekly(chat_id, coords, FORECAST_URL, 8)
+            send_forecast_weekly(chat_id, coords, 'forecast', 8)
         elif period == 'месяц':
-            send_forecast_monthly(chat_id, coords, FORECAST_URL, 31)
+            send_forecast_monthly(chat_id, coords, 'forecast', 31)
     elif city_data:
         city = city_data.get('city')
         city_rus = city_data.get('city_rus')
         if period == 'сегодня':
-            send_weather_by_city(chat_id, city, city_rus, WEATHER_URL)
+            send_weather_by_city(chat_id, city, city_rus, 'weather')
         elif period == 'завтра':
-            send_forecast_daily_by_city(chat_id, city, city_rus, FORECAST_URL, 1)
+            send_forecast_daily_by_city(chat_id, city, city_rus, 'forecast', 1)
         elif period == 'неделя':
-            send_forecast_weekly_by_city(chat_id, city, city_rus, FORECAST_URL, 8)
+            send_forecast_weekly_by_city(chat_id, city, city_rus, 'forecast', 8)
         elif period == 'месяц':
-            send_forecast_monthly_by_city(chat_id, city, city_rus, FORECAST_URL, 31)
+            send_forecast_monthly_by_city(chat_id, city, city_rus, 'forecast', 31)
 
-def send_weather(chat_id, coords, url):
+def send_weather(chat_id, coords, url_type):
     try:
-        params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
-        }
-        response = requests.get(url, params=params)
-        data = response.json()
-
-        if response.status_code == 200:
-            temperature = round(data['main']['temp'])
-            feels_like = round(data['main']['feels_like'])
-            humidity = data['main']['humidity']
-            pressure = data['main']['pressure']
-            wind_speed = data['wind']['speed']
-            description = translate_weather_description(data['weather'][0]['description'])
-
-            current_time = datetime.now().strftime("%H:%M")
-            current_date = datetime.now().strftime("%d.%m.%Y")
-
-            message = (
-                f"*Погода на {current_date} в {current_time}:*\n\n"
-                f"🌡️ *Температура:* {temperature}°C\n"
-                f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                f"💧 *Влажность:* {humidity}%\n"
-                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n"
-            )
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-            send_forecast_remaining_day(chat_id, coords, FORECAST_URL)
+        weather_message = get_current_weather(coords)
+        if weather_message:
+            bot.send_message(chat_id, weather_message, parse_mode="Markdown")
+            send_forecast_remaining_day(chat_id, coords, 'forecast')
         else:
-            bot.send_message(chat_id, "Не удалось получить текущую погоду!")
+            bot.send_message(chat_id, "❌ Не удалось получить текущую погоду!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды!\nПопробуйте позже")
 
-def send_forecast_remaining_day(chat_id, coords, url):
+def send_forecast_remaining_day(chat_id, coords, url_type):
     try:
         params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecasts = data['list']
-            now = datetime.now()
-            message = "*Прогноз на оставшуюся часть дня:*\n\n"
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    now = datetime.now()
+                    message = "*Прогноз на оставшуюся часть дня:*\n\n"
 
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                if now.date() == date_time.date() and date_time > now:
-                    formatted_date = date_time.strftime("%d.%m.%Y")
-                    formatted_time = date_time.strftime("%H:%M")
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        if now.date() == date_time.date() and date_time > now:
+                            formatted_date = date_time.strftime("%d.%m.%Y")
+                            formatted_time = date_time.strftime("%H:%M")
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            message += (
+                                f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                                f"🌡️ *Температура:* {temperature}°C\n"
+                                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                                f"💧 *Влажность:* {humidity}%\n"
+                                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                                f"☁️ *Описание:* {description}\n\n"
+                            )
+
+                    if message == "*Прогноз на оставшуюся часть дня:*\n\n":
+                        message = "❌ Нет доступного прогноза на оставшуюся часть дня!"
+
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на оставшуюся часть дня!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня!\nПопробуйте позже")
+
+def send_forecast_daily(chat_id, coords, url_type, days_ahead):
+    try:
+        params = {
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            },
+            'days': days_ahead
+        }
+
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecast = data['list'][min(days_ahead * 8, len(data['list']) - 1)]
+                    date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
                     temperature = round(forecast['main']['temp'])
                     feels_like = round(forecast['main']['feels_like'])
                     humidity = forecast['main']['humidity']
@@ -10719,300 +10964,341 @@ def send_forecast_remaining_day(chat_id, coords, url):
                     wind_speed = forecast['wind']['speed']
                     description = translate_weather_description(forecast['weather'][0]['description'])
 
-                    message += (
-                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                    message = (
+                        f"*Прогноз на {date_time.strftime('%d.%m.%Y')}*\n\n"
                         f"🌡️ *Температура:* {temperature}°C\n"
                         f"🌬️ *Ощущается как:* {feels_like}°C\n"
                         f"💧 *Влажность:* {humidity}%\n"
                         f"〽️ *Давление:* {pressure} мм рт. ст.\n"
                         f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                        f"☁️ *Описание:* {description}\n\n"
+                        f"☁️ *Описание:* {description}\n"
                     )
-
-            if message == "*Прогноз на оставшуюся часть дня:*\n\n":
-                message = "Нет доступного прогноза на оставшуюся часть дня"
-
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня!")
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    send_hourly_forecast_tomorrow(chat_id, coords, url_type)
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на завтра!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра!\nПопробуйте позже")
 
-def send_forecast_daily(chat_id, coords, url, days_ahead):
+def send_hourly_forecast_tomorrow(chat_id, coords, url_type):
     try:
         params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecast = data['list'][days_ahead * 8]
-            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-            temperature = round(forecast['main']['temp'])
-            feels_like = round(forecast['main']['feels_like'])
-            humidity = forecast['main']['humidity']
-            pressure = forecast['main']['pressure']
-            wind_speed = forecast['wind']['speed']
-            description = translate_weather_description(forecast['weather'][0]['description'])
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    now = datetime.now()
+                    tomorrow = now + timedelta(days=1)
+                    message = "*Почасовой прогноз на завтра:*\n\n\n"
 
-            message = (
-                f"*Прогноз на {date_time.strftime('%d.%m.%Y')}*\n\n"
-                f"🌡️ *Температура:* {temperature}°C\n"
-                f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                f"💧 *Влажность:* {humidity}%\n"
-                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n"
-            )
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-            send_hourly_forecast_tomorrow(chat_id, coords, url)
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на завтра!")
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        if tomorrow.date() == date_time.date():
+                            formatted_time = date_time.strftime("%H:%M")
+                            formatted_date = date_time.strftime("%d.%m.%Y")
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            message += (
+                                f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                                f"🌡️ *Температура:* {temperature}°C\n"
+                                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                                f"💧 *Влажность:* {humidity}%\n"
+                                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                                f"☁️ *Описание:* {description}\n\n"
+                            )
+
+                    if message == "*Почасовой прогноз на завтра:*\n\n\n":
+                        message = "❌ Нет доступного почасового прогноза на завтра!"
+
+                    message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+                    for chunk in message_chunks:
+                        bot.send_message(chat_id, chunk, parse_mode="Markdown")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить почасовой прогноз на завтра!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра!\nПопробуйте позже")
 
-def send_hourly_forecast_tomorrow(chat_id, coords, url):
+def send_forecast_weekly(chat_id, coords, url_type, retries=3):
     try:
         params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
-        }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
-
-        if response.status_code == 200:
-            forecasts = data['list']
-            now = datetime.now()
-            tomorrow = now + timedelta(days=1)
-            message = "*Почасовой прогноз на завтра:*\n\n\n"
-
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                if tomorrow.date() == date_time.date():
-                    formatted_time = date_time.strftime("%H:%M")
-                    formatted_date = date_time.strftime("%d.%m.%Y")
-                    temperature = round(forecast['main']['temp'])
-                    feels_like = round(forecast['main']['feels_like'])
-                    humidity = forecast['main']['humidity']
-                    pressure = forecast['main']['pressure']
-                    wind_speed = forecast['wind']['speed']
-                    description = translate_weather_description(forecast['weather'][0]['description'])
-
-                    message += (
-                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
-                        f"🌡️ *Температура:* {temperature}°C\n"
-                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                        f"💧 *Влажность:* {humidity}%\n"
-                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                        f"☁️ *Описание:* {description}\n\n"
-                    )
-
-            if message == "*Почасовой прогноз на завтра:*\n\n":
-                message = "Нет доступного почасового прогноза на завтра"
-
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра!")
-    except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра! Попробуйте позже")
-
-def send_forecast_weekly(chat_id, coords, url, retries=3):
-    try:
-        params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
 
         daily_forecasts = defaultdict(list)
         message = "*Прогноз на неделю:*\n\n\n"
 
-        for attempt in range(retries):
-            try:
-                response = requests.get(url, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    forecasts = data['list']
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            for attempt in range(retries):
+                data, api_type = fetch_weather_data(url_type, params, api)
+                if data:
+                    data = normalize_weather_data(data, api_type, url_type)
+                    if data:
+                        forecasts = data['list']
+                        for forecast in forecasts:
+                            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                            date_str = date_time.strftime('%d.%m.%Y')
 
+                            if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
+                                break
+
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            daily_forecasts[date_str].append({
+                                'temperature': temperature,
+                                'feels_like': feels_like,
+                                'humidity': humidity,
+                                'pressure': pressure,
+                                'wind_speed': wind_speed,
+                                'description': description
+                            })
+
+                        for date, forecasts in daily_forecasts.items():
+                            temp_sum = sum(f['temperature'] for f in forecasts)
+                            feels_like_sum = sum(f['feels_like'] for f in forecasts)
+                            count = len(forecasts)
+                            avg_temp = round(temp_sum / count)
+                            avg_feels_like = round(feels_like_sum / count)
+
+                            message += (
+                                f"*Погода на {date}:*\n\n"
+                                f"🌡️ *Температура:* {avg_temp}°C\n"
+                                f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
+                                f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
+                                f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
+                                f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
+                            )
+
+                        bot.send_message(chat_id, message, parse_mode="Markdown")
+                        return
+                if attempt == retries - 1:
+                    break
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на неделю!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю!\nПопробуйте позже")
+
+def send_forecast_monthly(chat_id, coords, url_type, days=31):
+    try:
+        params = {
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            },
+            'days': days
+        }
+
+        for api in ['openweathermap', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    message = "*Прогноз на месяц:*\n\n\n"
+
+                    daily_forecasts = {}
                     for forecast in forecasts:
                         date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
                         date_str = date_time.strftime('%d.%m.%Y')
 
-                        if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
-                            break
+                        if date_str not in daily_forecasts:
+                            daily_forecasts[date_str] = {
+                                'temperature': round(forecast['main']['temp']),
+                                'feels_like': round(forecast['main']['feels_like'])
+                            }
 
-                        temperature = round(forecast['main']['temp'])
-                        feels_like = round(forecast['main']['feels_like'])
-                        humidity = forecast['main']['humidity']
-                        pressure = forecast['main']['pressure']
-                        wind_speed = forecast['wind']['speed']
-                        description = translate_weather_description(forecast['weather'][0]['description'])
-
-                        daily_forecasts[date_str].append({
-                            'temperature': temperature,
-                            'feels_like': feels_like,
-                            'humidity': humidity,
-                            'pressure': pressure,
-                            'wind_speed': wind_speed,
-                            'description': description
-                        })
-
-                    for date, forecasts in daily_forecasts.items():
-                        temp_sum = sum(f['temperature'] for f in forecasts)
-                        feels_like_sum = sum(f['feels_like'] for f in forecasts)
-                        count = len(forecasts)
-                        avg_temp = round(temp_sum / count)
-                        avg_feels_like = round(feels_like_sum / count)
-
+                    for date, values in daily_forecasts.items():
                         message += (
-                            f"*Погода на {date}:*\n\n"
-                            f"🌡️ *Температура:* {avg_temp}°C\n"
-                            f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
-                            f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
-                            f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
-                            f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
-                            f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
+                            f"*{date}:*\n\n"
+                            f"🌡️ *Температура:* {values['temperature']}°C\n"
+                            f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
                         )
 
+                    unavailable_dates = [
+                        date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
+                        if date not in daily_forecasts
+                    ]
+
+                    if unavailable_dates:
+                        start_date = unavailable_dates[0]
+                        end_date = unavailable_dates[-1]
+                        message += (
+                            f"*С {start_date} по {end_date}:*\n\n_"
+                            f"Данные недоступны из-за ограничений_\n\n"
+                        )
+
+                    if message == "*Прогноз на месяц:*\n\n\n":
+                        message = "❌ Нет доступного прогноза на месяц!"
+
                     bot.send_message(chat_id, message, parse_mode="Markdown")
-                    break
-                else:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю!")
-                    break
-            except Exception as e:
-                if attempt == retries - 1:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток!")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на месяц!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц!\nПопробуйте позже")
 
-def send_forecast_monthly(chat_id, coords, url, days=31):
+def send_weather_by_city(chat_id, city, city_rus, url_type):
     try:
         params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_WEATHER_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecasts = data['list']
-            message = "*Прогноз на месяц:*\n\n\n"
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
 
-            daily_forecasts = {}
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                date_str = date_time.strftime('%d.%m.%Y')
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    temperature = round(data['main']['temp'])
+                    feels_like = round(data['main']['feels_like'])
+                    humidity = data['main']['humidity']
+                    pressure = data['main']['pressure']
+                    wind_speed = data['wind']['speed']
+                    description = translate_weather_description(data['weather'][0]['description'])
 
-                if date_str not in daily_forecasts:
-                    daily_forecasts[date_str] = {
-                        'temperature': round(forecast['main']['temp']),
-                        'feels_like': round(forecast['main']['feels_like'])
-                    }
+                    current_time = datetime.now().strftime("%H:%M")
+                    current_date = datetime.now().strftime("%d.%m.%Y")
 
-            for date, values in daily_forecasts.items():
-                message += (
-                    f"*{date}:*\n\n"
-                    f"🌡️ *Температура:* {values['temperature']}°C\n"
-                    f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
-                )
-
-            unavailable_dates = [
-                date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
-                if date not in daily_forecasts
-            ]
-
-            if unavailable_dates:
-                start_date = unavailable_dates[0]
-                end_date = unavailable_dates[-1]
-                message += (
-                    f"*С {start_date} по {end_date}:*\n\n_"
-                    f"Данные недоступны из-за ограничений_\n\n"
-                )
-
-            if message == "*Прогноз на месяц:*\n\n":
-                message = "Нет доступного прогноза на месяц"
-
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на месяц!")
+                    message = (
+                        f"*Погода в {city_rus} на {current_date} в {current_time}:*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n"
+                    )
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    send_forecast_remaining_day_by_city(chat_id, city, city_rus, 'forecast')
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить текущую погоду для города!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды!\nПопробуйте позже")
 
-def send_weather_by_city(chat_id, city, city_rus, url):
+def send_forecast_remaining_day_by_city(chat_id, city, city_rus, url_type):
     try:
         params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params)
-        data = response.json()
 
-        if response.status_code == 200:
-            temperature = round(data['main']['temp'])
-            feels_like = round(data['main']['feels_like'])
-            humidity = data['main']['humidity']
-            pressure = data['main']['pressure']
-            wind_speed = data['wind']['speed']
-            description = translate_weather_description(data['weather'][0]['description'])
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
 
-            current_time = datetime.now().strftime("%H:%M")
-            current_date = datetime.now().strftime("%d.%m.%Y")
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    now = datetime.now()
+                    message = "*Прогноз на оставшуюся часть дня:*\n\n"
 
-            message = (
-                f"*Погода в {city_rus} на {current_date} в {current_time}:*\n\n"
-                f"🌡️ *Температура:* {temperature}°C\n"
-                f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                f"💧 *Влажность:* {humidity}%\n"
-                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n"
-            )
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-            send_forecast_remaining_day_by_city(chat_id, city, city_rus, FORECAST_URL)
-        else:
-            bot.send_message(chat_id, "Не удалось получить текущую погоду для города!")
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        if now.date() == date_time.date() and date_time > now:
+                            formatted_date = date_time.strftime("%d.%m.%Y")
+                            formatted_time = date_time.strftime("%H:%M")
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            message += (
+                                f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                                f"🌡️ *Температура:* {temperature}°C\n"
+                                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                                f"💧 *Влажность:* {humidity}%\n"
+                                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                                f"☁️ *Описание:* {description}\n\n"
+                            )
+
+                    if message == "*Прогноз на оставшуюся часть дня:*\n\n":
+                        message = "❌ Нет доступного прогноза на оставшуюся часть дня!"
+
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на оставшуюся часть дня!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня!\nПопробуйте позже")
 
-def send_forecast_remaining_day_by_city(chat_id, city, city_rus, url):
+def send_forecast_daily_by_city(chat_id, city, city_rus, url_type, days_ahead):
     try:
         params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            },
+            'days': days_ahead
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecasts = data['list']
-            now = datetime.now()
-            message = "*Прогноз на оставшуюся часть дня:*\n\n"
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
 
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                if now.date() == date_time.date() and date_time > now:
-                    formatted_date = date_time.strftime("%d.%m.%Y")
-                    formatted_time = date_time.strftime("%H:%M")
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecast = data['list'][min(days_ahead * 8, len(data['list']) - 1)]
+                    date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
                     temperature = round(forecast['main']['temp'])
                     feels_like = round(forecast['main']['feels_like'])
                     humidity = forecast['main']['humidity']
@@ -11020,236 +11306,222 @@ def send_forecast_remaining_day_by_city(chat_id, city, city_rus, url):
                     wind_speed = forecast['wind']['speed']
                     description = translate_weather_description(forecast['weather'][0]['description'])
 
-                    message += (
-                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                    message = (
+                        f"*Прогноз для {city_rus} на {date_time.strftime('%d.%m.%Y')}*\n\n"
                         f"🌡️ *Температура:* {temperature}°C\n"
                         f"🌬️ *Ощущается как:* {feels_like}°C\n"
                         f"💧 *Влажность:* {humidity}%\n"
                         f"〽️ *Давление:* {pressure} мм рт. ст.\n"
                         f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                        f"☁️ *Описание:* {description}\n\n"
+                        f"☁️ *Описание:* {description}\n"
                     )
-
-            if message == "*Прогноз на оставшуюся часть дня:*\n\n":
-                message = "Нет доступного прогноза на оставшуюся часть дня"
-
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня!")
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url_type)
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на завтра!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра!\nПопробуйте позже")
 
-def send_forecast_daily_by_city(chat_id, city, city_rus, url, days_ahead):
+def send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url_type):
     try:
         params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecast = data['list'][days_ahead * 8]
-            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-            temperature = round(forecast['main']['temp'])
-            feels_like = round(forecast['main']['feels_like'])
-            humidity = forecast['main']['humidity']
-            pressure = forecast['main']['pressure']
-            wind_speed = forecast['wind']['speed']
-            description = translate_weather_description(forecast['weather'][0]['description'])
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
 
-            message = (
-                f"*Прогноз для {city_rus} на {date_time.strftime('%d.%m.%Y')}*\n\n"
-                f"🌡️ *Температура:* {temperature}°C\n"
-                f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                f"💧 *Влажность:* {humidity}%\n"
-                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n"
-            )
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-            send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url)
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на завтра!")
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    now = datetime.now()
+                    tomorrow = now + timedelta(days=1)
+                    message = "*Почасовой прогноз на завтра:*\n\n\n"
+
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        if tomorrow.date() == date_time.date():
+                            formatted_time = date_time.strftime("%H:%M")
+                            formatted_date = date_time.strftime("%d.%m.%Y")
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            message += (
+                                f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                                f"🌡️ *Температура:* {temperature}°C\n"
+                                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                                f"💧 *Влажность:* {humidity}%\n"
+                                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                                f"☁️ *Описание:* {description}\n\n"
+                            )
+
+                    if message == "*Почасовой прогноз на завтра:*\n\n\n":
+                        message = "❌ Нет доступного почасового прогноза на завтра!"
+
+                    message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+                    for chunk in message_chunks:
+                        bot.send_message(chat_id, chunk, parse_mode="Markdown")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить почасовой прогноз на завтра!")
     except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра!\nПопробуйте позже")
 
-def send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url):
+def send_forecast_weekly_by_city(chat_id, city, city_rus, url_type, retries=3):
     try:
         params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecasts = data['list']
-            now = datetime.now()
-            tomorrow = now + timedelta(days=1)
-            message = "*Почасовой прогноз на завтра:*\n\n\n"
-
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                if tomorrow.date() == date_time.date():
-                    formatted_time = date_time.strftime("%H:%M")
-                    formatted_date = date_time.strftime("%d.%m.%Y")
-                    temperature = round(forecast['main']['temp'])
-                    feels_like = round(forecast['main']['feels_like'])
-                    humidity = forecast['main']['humidity']
-                    pressure = forecast['main']['pressure']
-                    wind_speed = forecast['wind']['speed']
-                    description = translate_weather_description(forecast['weather'][0]['description'])
-
-                    message += (
-                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
-                        f"🌡️ *Температура:* {temperature}°C\n"
-                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                        f"💧 *Влажность:* {humidity}%\n"
-                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                        f"☁️ *Описание:* {description}\n\n"
-                    )
-
-            if message == "*Почасовой прогноз на завтра:*\n\n":
-                message = "Нет доступного почасового прогноза на завтра"
-
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра!")
-    except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра! Попробуйте позже")
-
-def send_forecast_weekly_by_city(chat_id, city, city_rus, url, retries=3):
-    try:
-        params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
-        }
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
 
         daily_forecasts = defaultdict(list)
         message = "*Прогноз на неделю:*\n\n\n"
 
-        for attempt in range(retries):
-            try:
-                response = requests.get(url, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    forecasts = data['list']
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            for attempt in range(retries):
+                data, api_type = fetch_weather_data(url_type, params, api)
+                if data:
+                    data = normalize_weather_data(data, api_type, url_type)
+                    if data:
+                        forecasts = data['list']
+                        for forecast in forecasts:
+                            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                            date_str = date_time.strftime('%d.%m.%Y')
 
+                            if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
+                                break
+
+                            temperature = round(forecast['main']['temp'])
+                            feels_like = round(forecast['main']['feels_like'])
+                            humidity = forecast['main']['humidity']
+                            pressure = forecast['main']['pressure']
+                            wind_speed = forecast['wind']['speed']
+                            description = translate_weather_description(forecast['weather'][0]['description'])
+
+                            daily_forecasts[date_str].append({
+                                'temperature': temperature,
+                                'feels_like': feels_like,
+                                'humidity': humidity,
+                                'pressure': pressure,
+                                'wind_speed': wind_speed,
+                                'description': description
+                            })
+
+                        for date, forecasts in daily_forecasts.items():
+                            temp_sum = sum(f['temperature'] for f in forecasts)
+                            feels_like_sum = sum(f['feels_like'] for f in forecasts)
+                            count = len(forecasts)
+                            avg_temp = round(temp_sum / count)
+                            avg_feels_like = round(feels_like_sum / count)
+
+                            message += (
+                                f"*Погода на {date}:*\n\n"
+                                f"🌡️ *Температура:* {avg_temp}°C\n"
+                                f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
+                                f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
+                                f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
+                                f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
+                                f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
+                            )
+
+                        bot.send_message(chat_id, message, parse_mode="Markdown")
+                        return
+                if attempt == retries - 1:
+                    break
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на неделю!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю!\nПопробуйте позже")
+
+def send_forecast_monthly_by_city(chat_id, city, city_rus, url_type, days=31):
+    try:
+        params = {
+            'url': OPENWEATHERMAP_FORECAST_URL,
+            'params': {
+                'q': city,
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            },
+            'days': days
+        }
+
+        coords = get_city_coordinates(city_rus)
+        if coords:
+            params['params']['lat'] = coords['latitude']
+            params['params']['lon'] = coords['longitude']
+
+        for api in ['openweathermap', 'weatherapi']:
+            data, api_type = fetch_weather_data(url_type, params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, url_type)
+                if data:
+                    forecasts = data['list']
+                    message = "*Прогноз на месяц:*\n\n\n"
+
+                    daily_forecasts = {}
                     for forecast in forecasts:
                         date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
                         date_str = date_time.strftime('%d.%m.%Y')
 
-                        if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
-                            break
+                        if date_str not in daily_forecasts:
+                            daily_forecasts[date_str] = {
+                                'temperature': round(forecast['main']['temp']),
+                                'feels_like': round(forecast['main']['feels_like'])
+                            }
 
-                        temperature = round(forecast['main']['temp'])
-                        feels_like = round(forecast['main']['feels_like'])
-                        humidity = forecast['main']['humidity']
-                        pressure = forecast['main']['pressure']
-                        wind_speed = forecast['wind']['speed']
-                        description = translate_weather_description(forecast['weather'][0]['description'])
-
-                        daily_forecasts[date_str].append({
-                            'temperature': temperature,
-                            'feels_like': feels_like,
-                            'humidity': humidity,
-                            'pressure': pressure,
-                            'wind_speed': wind_speed,
-                            'description': description
-                        })
-
-                    for date, forecasts in daily_forecasts.items():
-                        temp_sum = sum(f['temperature'] for f in forecasts)
-                        feels_like_sum = sum(f['feels_like'] for f in forecasts)
-                        count = len(forecasts)
-                        avg_temp = round(temp_sum / count)
-                        avg_feels_like = round(feels_like_sum / count)
-
+                    for date, values in daily_forecasts.items():
                         message += (
-                            f"*Погода на {date}:*\n\n"
-                            f"🌡️ *Температура:* {avg_temp}°C\n"
-                            f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
-                            f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
-                            f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
-                            f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
-                            f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
+                            f"*{date}:*\n\n"
+                            f"🌡️ *Температура:* {values['temperature']}°C\n"
+                            f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
                         )
 
+                    unavailable_dates = [
+                        date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
+                        if date not in daily_forecasts
+                    ]
+
+                    if unavailable_dates:
+                        start_date = unavailable_dates[0]
+                        end_date = unavailable_dates[-1]
+                        message += (
+                            f"*С {start_date} по {end_date}:*\n\n_"
+                            f"Данные недоступны из-за ограничений_\n\n"
+                        )
+
+                    if message == "*Прогноз на месяц:*\n\n\n":
+                        message = "❌ Нет доступного прогноза на месяц!"
+
                     bot.send_message(chat_id, message, parse_mode="Markdown")
-                    break
-                else:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю!")
-                    break
-            except Exception as e:
-                if attempt == retries - 1:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток!")
+                    return
+        bot.send_message(chat_id, "❌ Не удалось получить прогноз на месяц!")
     except Exception as e:
-        bot.send_message(chat_id, "ПроTrades on the web! Попробуйте позже")
-
-def send_forecast_monthly_by_city(chat_id, city, city_rus, url, days=31):
-    try:
-        params = {
-            'q': city,
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
-        }
-        response = requests.get(url, params=params, timeout=30)
-        data = response.json()
-
-        if response.status_code == 200:
-            forecasts = data['list']
-            message = "*Прогноз на месяц:*\n\n\n"
-
-            daily_forecasts = {}
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                date_str = date_time.strftime('%d.%m.%Y')
-
-                if date_str not in daily_forecasts:
-                    daily_forecasts[date_str] = {
-                        'temperature': round(forecast['main']['temp']),
-                        'feels_like': round(forecast['main']['feels_like'])
-                    }
-
-            for date, values in daily_forecasts.items():
-                message += (
-                    f"*{date}:*\n\n"
-                    f"🌡️ *Температура:* {values['temperature']}°C\n"
-                    f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
-                )
-
-            unavailable_dates = [
-                date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
-                if date not in daily_forecasts
-            ]
-
-            if unavailable_dates:
-                start_date = unavailable_dates[0]
-                end_date = unavailable_dates[-1]
-                message += (
-                    f"*С {start_date} по {end_date}:*\n\n_"
-                    f"Данные недоступны из-за ограничений_\n\n"
-                )
-
-            if message == "*Прогноз на месяц:*\n\n":
-                message = "Нет доступного прогноза на месяц"
-
-            bot.send_message(chat_id, message, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на месяц!")
-    except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц! Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц!\nПопробуйте позже")
 
 # ---------- 15. ЦЕНЫ НА ТОПЛИВО ----------
 
@@ -11925,6 +12197,11 @@ def parse_fuel_prices():
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
+OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
+WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004' 
+OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
+OPENMETEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+WEATHERAPI_CURRENT_URL = 'https://api.weatherapi.com/v1/current.json'
 
 def ensure_directory_exists(file_path):
     directory = os.path.dirname(file_path)
@@ -12033,6 +12310,17 @@ def get_notification_status_message(chat_id):
            f"💱 Курсы валют: {exchange_status}\n\n"
 
 @bot.message_handler(func=lambda message: message.text == "Уведомления")
+@check_function_state_decorator('Уведомления')
+@track_usage('Уведомления')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def toggle_notifications_handler(message, show_description=True):
     chat_id = message.chat.id
     initialize_user_notifications(chat_id)
@@ -12049,7 +12337,7 @@ def toggle_notifications_handler(message, show_description=True):
     markup.add(types.KeyboardButton("В главное меню"))
 
     info_message = (
-        "ℹ️ *Краткая справка по уведомлениям*\n\n\n"
+        "ℹ️ *Краткая справка по уведомлениям*\n\n"
         "📌 *Сохранение данных:*\n"
         "Ваши последние *координаты для погоды* и *последний введенный город* сохраняются для отправки уведомлений\n\n"
         "📌 *Переключение уведомлений:*\n"
@@ -12065,12 +12353,38 @@ def toggle_notifications_handler(message, show_description=True):
     bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
                     reply_markup=markup, parse_mode="Markdown")
 
+
 @bot.message_handler(func=lambda message: message.text in [
     "Включить погоду", "Выключить погоду", 
     "Включить цены", "Выключить цены", 
     "Включить курсы", "Выключить курсы", 
     "Включить все", "Выключить все"
 ])
+@check_function_state_decorator('Включить погоду')
+@check_function_state_decorator('Выключить погоду')
+@check_function_state_decorator('Включить цены')
+@check_function_state_decorator('Выключить цены')
+@check_function_state_decorator('Включить курсы')
+@check_function_state_decorator('Выключить курсы')
+@check_function_state_decorator('Включить все')
+@check_function_state_decorator('Выключить все')
+@track_usage('Включить погоду')
+@track_usage('Выключить погоду')
+@track_usage('Включить цены')
+@track_usage('Выключить цены')
+@track_usage('Включить курсы')
+@track_usage('Выключить курсы')
+@track_usage('Включить все')
+@track_usage('Выключить все')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_notification_toggle(message):
     chat_id = message.chat.id
     notification_messages = []
@@ -12121,6 +12435,22 @@ def handle_notification_toggle(message):
     "Включить курсы", "Выключить курсы", 
     "Включить все", "Выключить все"
 ])
+@check_function_state_decorator('Включить погоду')
+@check_function_state_decorator('Выключить погоду')
+@check_function_state_decorator('Включить цены')
+@check_function_state_decorator('Выключить цены')
+@check_function_state_decorator('Включить курсы')
+@check_function_state_decorator('Выключить курсы')
+@check_function_state_decorator('Включить все')
+@check_function_state_decorator('Выключить все')
+@track_usage('Включить погоду')
+@track_usage('Выключить погоду')
+@track_usage('Включить цены')
+@track_usage('Выключить цены')
+@track_usage('Включить курсы')
+@track_usage('Выключить курсы')
+@track_usage('Включить все')
+@track_usage('Выключить все')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -12179,7 +12509,6 @@ def get_city_name(latitude, longitude):
     except (requests.exceptions.RequestException, ValueError) as e:
         print(f"Ошибка LocationIQ: {e}")
 
-    # Резервный вариант: OpenStreetMap (Nominatim)
     try:
         time.sleep(1)  
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
@@ -12197,43 +12526,165 @@ def get_city_name(latitude, longitude):
         print(f"Ошибка Nominatim: {e}")
         return f"неизвестное место ({latitude}, {longitude})"
 
+def fetch_weather_data(url_type, params, api_type='openweathermap'):
+    try:
+        if api_type == 'openweathermap':
+            response = requests.get(params['url'], params=params['params'], timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openweathermap'
+            return None, 'openweathermap'
+
+        elif api_type == 'openmeteo':
+            openmeteo_params = {
+                'latitude': params['params'].get('lat') or params['params'].get('latitude'),
+                'longitude': params['params'].get('lon') or params['params'].get('longitude'),
+                'current_weather': 'true' if url_type == 'weather' else 'false',
+                'hourly': 'temperature_2m,relativehumidity_2m,pressure_msl,windspeed_10m,weathercode' if url_type == 'forecast' else '',
+                'daily': 'temperature_2m_max,temperature_2m_min,weathercode' if url_type == 'forecast' else '',
+                'timezone': 'auto'
+            }
+            response = requests.get(OPENMETEO_FORECAST_URL, params=openmeteo_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'openmeteo'
+            return None, 'openmeteo'
+
+        elif api_type == 'weatherapi':
+            weatherapi_params = {
+                'key': WEATHERAPI_API_KEY,
+                'q': params['params'].get('q', f"{params['params'].get('lat')},{params['params'].get('lon')}"),
+                'lang': 'ru'
+            }
+            if url_type == 'forecast':
+                weatherapi_params['days'] = params.get('days', 7)
+            url = WEATHERAPI_CURRENT_URL if url_type == 'weather' else WEATHERAPI_FORECAST_URL
+            response = requests.get(url, params=weatherapi_params, timeout=10)
+            if response.status_code == 200:
+                return response.json(), 'weatherapi'
+            return None, 'weatherapi'
+
+    except Exception:
+        return None, api_type
+
+def normalize_weather_data(data, api_type, url_type):
+    if not data:
+        return None
+
+    if api_type == 'openweathermap':
+        return data
+
+    elif api_type == 'openmeteo':
+        if url_type == 'weather':
+            weather_code = data['current_weather']['weathercode']
+            description = {
+                0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                95: 'thunderstorm'
+            }.get(weather_code, 'unknown')
+            return {
+                'main': {
+                    'temp': data['current_weather']['temperature'],
+                    'feels_like': data['current_weather']['temperature'],
+                    'humidity': data.get('hourly', {}).get('relativehumidity_2m', [0])[0],
+                    'pressure': data.get('hourly', {}).get('pressure_msl', [0])[0]
+                },
+                'wind': {'speed': data['current_weather']['windspeed']},
+                'weather': [{'description': description}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for i, time in enumerate(data['hourly']['time']):
+                weather_code = data['hourly']['weathercode'][i]
+                description = {
+                    0: 'clear sky', 1: 'few clouds', 2: 'scattered clouds', 3: 'broken clouds',
+                    45: 'fog', 51: 'light rain', 61: 'rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow',
+                    95: 'thunderstorm'
+                }.get(weather_code, 'unknown')
+                forecasts.append({
+                    'dt_txt': time,
+                    'main': {
+                        'temp': data['hourly']['temperature_2m'][i],
+                        'feels_like': data['hourly']['temperature_2m'][i],
+                        'humidity': data['hourly']['relativehumidity_2m'][i],
+                        'pressure': data['hourly']['pressure_msl'][i]
+                    },
+                    'wind': {'speed': data['hourly']['windspeed_10m'][i]},
+                    'weather': [{'description': description}]
+                })
+            return {'list': forecasts}
+
+    elif api_type == 'weatherapi':
+        if url_type == 'weather':
+            return {
+                'main': {
+                    'temp': data['current']['temp_c'],
+                    'feels_like': data['current']['feelslike_c'],
+                    'humidity': data['current']['humidity'],
+                    'pressure': data['current']['pressure_mb']
+                },
+                'wind': {'speed': data['current']['wind_kph'] / 3.6},
+                'weather': [{'description': data['current']['condition']['text']}]
+            }
+        elif url_type == 'forecast':
+            forecasts = []
+            for day in data['forecast']['forecastday']:
+                for hour in day['hour']:
+                    forecasts.append({
+                        'dt_txt': hour['time'],
+                        'main': {
+                            'temp': hour['temp_c'],
+                            'feels_like': hour['feelslike_c'],
+                            'humidity': hour['humidity'],
+                            'pressure': hour['pressure_mb']
+                        },
+                        'wind': {'speed': hour['wind_kph'] / 3.6},
+                        'weather': [{'description': hour['condition']['text']}]
+                    })
+            return {'list': forecasts}
+
+    return None
+
 def get_current_weather(coords):
     try:
         city_name = get_city_name(coords['latitude'], coords['longitude'])
         params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-            'units': 'metric',
-            'lang': 'ru'
+            'url': OPENWEATHERMAP_WEATHER_URL,
+            'params': {
+                'lat': coords['latitude'],
+                'lon': coords['longitude'],
+                'appid': OPENWEATHERMAP_API_KEY,
+                'units': 'metric',
+                'lang': 'ru'
+            }
         }
-        response = requests.get(WEATHER_URL, params=params, timeout=30)
-        data = response.json()
 
-        if response.status_code == 200:
-            temperature = round(data['main']['temp'])
-            feels_like = round(data['main']['feels_like'])
-            humidity = data['main']['humidity']
-            pressure = data['main']['pressure']
-            wind_speed = data['wind']['speed']
-            description = translate_weather_description(data['weather'][0]['description'])
+        for api in ['openweathermap', 'openmeteo', 'weatherapi']:
+            data, api_type = fetch_weather_data('weather', params, api)
+            if data:
+                data = normalize_weather_data(data, api_type, 'weather')
+                if data:
+                    temperature = round(data['main']['temp'])
+                    feels_like = round(data['main']['feels_like'])
+                    humidity = data['main']['humidity']
+                    pressure = data['main']['pressure']
+                    wind_speed = data['wind']['speed']
+                    description = translate_weather_description(data['weather'][0]['description'])
 
-            current_time = datetime.now().strftime("%H:%M")
-            current_date = datetime.now().strftime("%d.%m.%Y")
+                    current_time = datetime.now().strftime("%H:%M")
+                    current_date = datetime.now().strftime("%d.%m.%Y")
 
-            return (
-                f"*Погода на {current_date} в {current_time}*:\n"
-                f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
-                f"🌡️ *Температура:* {temperature}°C\n"
-                f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                f"💧 *Влажность:* {humidity}%\n"
-                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
-                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n\n"
-            )
-        else:
-            return None
-    except:
+                    return (
+                        f"*Погода на {current_date} в {current_time}*:\n"
+                        f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
+                    )
+        return None
+    except Exception as e:
+        print(f"Ошибка в get_current_weather: {e}")
         return None
 
 def get_average_fuel_prices(city_code):
@@ -12270,7 +12721,7 @@ def get_exchange_rates_message():
     try:
         exchange_rates = fetch_exchange_rates_cbr()
         current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-        rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
+        rates_message = f"\n*Актуальные курсы валют на {current_time}:*\n\n"
         for currency, rate in exchange_rates.items():
             if currency in CURRENCY_NAMES:
                 name, emoji = CURRENCY_NAMES[currency]
@@ -12907,6 +13358,7 @@ def start_antiradar(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_user_blocked
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
@@ -22170,9 +22622,9 @@ new_functions = {
     "Код региона": [
         "Код региона"
     ],
-    "Уведомления": [
-        "Выключить погоду", "Включить погоду", "Выключить цены", "Включить цены", 
-        "Выключить все", "Включить все"
+    "Уведомления": [ 
+        "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", 
+        "Включить курсы", "Выключить курсы", "Включить все", "Выключить все"
     ],
     "Калькуляторы": [
         "Вернуться в калькуляторы", "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя",
