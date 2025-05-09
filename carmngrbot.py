@@ -8070,6 +8070,7 @@ def admin_logout(message):
 # (FEEDBACK) ------------------------------------------ "ОТЗЫВЫ" ---------------------------------------------------
 
 FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
+ADMIN_FILE_PATH = 'data base/admin/admin_sessions.json'
 
 # Функции для загрузки и сохранения данных
 def load_feedback():
@@ -8078,35 +8079,195 @@ def load_feedback():
             return json.load(file)
     return {}
 
+def save_feedback_data(feedback_data):
+    try:
+        with open(FEEDBACK_FILE_PATH, 'w', encoding='utf-8') as file:
+            json.dump(feedback_data, file, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка при сохранении данных: {e}")
+
+def load_admins():
+    if os.path.exists(ADMIN_FILE_PATH):
+        with open(ADMIN_FILE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return []
+
+def notify_admins(feedback_entry):
+    admins = load_admins()
+    feedback_message = f"Новый отзыв:\nТекст: {feedback_entry['text']}\nОценка: {feedback_entry['rating']}\nКатегория: {feedback_entry['category']}\nДата: {feedback_entry['date']}"
+    for admin_id in admins:
+        bot.send_message(admin_id, feedback_message)
+
 @bot.message_handler(commands=['feedback'])
 def get_feedback(message):
     update_user_activity(message.from_user.id)  # Обновляем активность пользователя
-    bot.send_message(message.chat.id, "Напишите ваш отзыв:")
-    bot.register_next_step_handler(message, save_feedback)
+    bot.send_message(message.chat.id, "Напишите ваш отзыв (или введите /cancel для отмены):")
+    bot.register_next_step_handler(message, ask_category)
 
-def save_feedback(message):
+def ask_category(message):
+    if message.text == '/cancel':
+        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
+        return
+
+    feedback_text = message.text
+    bot.send_message(message.chat.id, "Укажите категорию отзыва (например, 'Поддержка', 'Продукт', 'Общий'):")
+    bot.register_next_step_handler(message, lambda m: ask_rating(m, feedback_text))
+
+def ask_rating(message, feedback_text):
+    if message.text == '/cancel':
+        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
+        return
+
+    category = message.text
+    bot.send_message(message.chat.id, "Поставьте оценку от 1 до 5:")
+    bot.register_next_step_handler(message, lambda m: confirm_feedback(m, feedback_text, category))
+
+def confirm_feedback(message, feedback_text, category):
+    if message.text == '/cancel':
+        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
+        return
+
+    try:
+        rating = int(message.text)
+        if rating < 1 or rating > 5:
+            raise ValueError("Оценка должна быть от 1 до 5.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректную оценку от 1 до 5:")
+        bot.register_next_step_handler(message, lambda m: confirm_feedback(m, feedback_text, category))
+        return
+
+    # Подтверждение отправки
+    bot.send_message(message.chat.id, f"Вы оставили отзыв: \"{feedback_text}\" с оценкой {rating} в категории \"{category}\". Подтвердите отправку? (да/нет)")
+    bot.register_next_step_handler(message, lambda m: save_feedback(m, feedback_text, rating, category))
+
+def save_feedback(message, feedback_text, rating, category):
+    if message.text.lower() == 'нет':
+        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
+        return
+
+    if message.text.lower() != 'да':
+        bot.send_message(message.chat.id, "Пожалуйста, ответьте 'да' или 'нет'.")
+        bot.register_next_step_handler(message, lambda m: save_feedback(m, feedback_text, rating, category))
+        return
+
     feedback_data = load_feedback()
     user_id = str(message.from_user.id)
-    feedback_data.setdefault(user_id, []).append(message.text)
 
-    with open(FEEDBACK_FILE_PATH, 'w', encoding='utf-8') as file:
-        json.dump(feedback_data, file, ensure_ascii=False, indent=4)
+    # Проверка на существование пользователя и инициализация, если необходимо
+    if user_id not in feedback_data:
+        feedback_data[user_id] = []
+
+    # Создание нового отзыва с необходимыми полями
+    feedback_entry = {
+        'text': feedback_text,
+        'rating': rating,
+        'category': category,
+        'responses': [],
+        'helpfulness': 0,
+        'date': datetime.now().isoformat(),  # Сохраняем дату отправки отзыва
+        'status': 'на рассмотрении'  # Статус отзыва
+    }
+    feedback_data[user_id].append(feedback_entry)
+
+    save_feedback_data(feedback_data)
+    notify_admins(feedback_entry)  # Уведомляем администраторов о новом отзыве
     bot.send_message(message.chat.id, "Спасибо за ваш отзыв!")
 
-@bot.message_handler(func=lambda message: True)
-def handle_all_messages(message):
-    update_user_activity(message.from_user.id)
-    # Здесь можно добавить любые дополнительные обработки сообщений
+@bot.message_handler(commands=['my_feedback'])
+def show_my_feedback(message):
+    feedback_data = load_feedback()
+    user_id = str(message.from_user.id)
 
-# Переменные для хранения состояния чата
-active_chats = {}
+    if user_id not in feedback_data or not feedback_data[user_id]:
+        bot.send_message(message.chat.id, "У вас нет оставленных отзывов.")
+        return
 
-# Функция загрузки данных из файла отзывов
-def load_feedback():
-    if os.path.exists(FEEDBACK_FILE_PATH):
-        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
+    user_feedback = feedback_data[user_id]
+    feedback_messages = [
+        f"Отзыв: {entry['text']}, Оценка: {entry['rating']}, Категория: {entry['category']}, Полезность: {entry['helpfulness']}, Дата: {entry['date']}, Статус: {entry['status']}" 
+        for entry in user_feedback
+    ]
+    bot.send_message(message.chat.id, "\n".join(feedback_messages))
+
+@bot.message_handler(commands=['edit_feedback'])
+def edit_feedback(message):
+    feedback_data = load_feedback()
+    user_id = str(message.from_user.id)
+
+    if user_id not in feedback_data or not feedback_data[user_id]:
+        bot.send_message(message.chat.id, "У вас нет оставленных отзывов для редактирования.")
+        return
+
+    feedback_messages = [f"{i+1}. {entry['text']} (Оценка: {entry['rating']})" for i, entry in enumerate(feedback_data[user_id])]
+    bot.send_message(message.chat.id, "Выберите номер отзыва для редактирования:\n" + "\n".join(feedback_messages))
+    bot.register_next_step_handler(message, lambda m: confirm_edit_feedback(m, feedback_data))
+
+def confirm_edit_feedback(message, feedback_data):
+    try:
+        feedback_index = int(message.text) - 1
+        user_id = str(message.from_user.id)
+
+        if user_id in feedback_data and 0 <= feedback_index < len(feedback_data[user_id]):
+            entry = feedback_data[user_id][feedback_index]
+            bot.send_message(message.chat.id, f"Текущий текст отзыва: \"{entry['text']}\". Введите новый текст отзыва:")
+            bot.register_next_step_handler(message, lambda m: save_edited_feedback(m, entry, feedback_index, feedback_data))
+        else:
+            bot.send_message(message.chat.id, "Неправильный номер отзыва.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер отзыва.")
+
+def save_edited_feedback(message, entry, feedback_index, feedback_data):
+    new_text = message.text
+    user_id = str(message.from_user.id)
+    feedback_data[user_id][feedback_index]['text'] = new_text  # Обновляем текст отзыва
+    save_feedback_data(feedback_data)
+    bot.send_message(message.chat.id, "Ваш отзыв успешно обновлен!")
+
+@bot.message_handler(commands=['view_feedback'])
+def view_all_feedback(message):
+    admins = load_admins()
+    if message.from_user.id not in admins:
+        bot.send_message(message.chat.id, "У вас нет доступа к этой команде.")
+        return
+
+    feedback_data = load_feedback()
+    if not feedback_data:
+        bot.send_message(message.chat.id, "Отзывов еще нет.")
+        return
+
+    all_feedback = []
+    for user_id, user_feedback in feedback_data.items():
+        for entry in user_feedback:
+            all_feedback.append(f"Пользователь {user_id}: Отзыв: \"{entry['text']}\", Оценка: {entry['rating']}, Категория: {entry['category']}, Дата: {entry['date']}, Статус: {entry['status']}")
+
+    bot.send_message(message.chat.id, "\n".join(all_feedback))
+
+@bot.message_handler(commands=['delete_feedback'])
+def delete_feedback(message):
+    feedback_data = load_feedback()
+    user_id = str(message.from_user.id)
+
+    if user_id not in feedback_data or not feedback_data[user_id]:
+        bot.send_message(message.chat.id, "У вас нет оставленных отзывов для удаления.")
+        return
+
+    feedback_messages = [f"{i+1}. {entry['text']}" for i, entry in enumerate(feedback_data[user_id])]
+    bot.send_message(message.chat.id, "Выберите номер отзыва для удаления:\n" + "\n".join(feedback_messages))
+    bot.register_next_step_handler(message, lambda m: confirm_delete_feedback(m, feedback_data))
+
+def confirm_delete_feedback(message, feedback_data):
+    try:
+        feedback_index = int(message.text) - 1
+        user_id = str(message.from_user.id)
+
+        if user_id in feedback_data and 0 <= feedback_index < len(feedback_data[user_id]):
+            del feedback_data[user_id][feedback_index]  # Удаляем отзыв
+            save_feedback_data(feedback_data)
+            bot.send_message(message.chat.id, "Ваш отзыв успешно удален!")
+        else:
+            bot.send_message(message.chat.id, "Неправильный номер отзыва.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер отзыва.")
 
 
             
