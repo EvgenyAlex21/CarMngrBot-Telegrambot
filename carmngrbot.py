@@ -534,89 +534,114 @@ def get_average_fuel_prices():
 
 def process_fuel_type(message, date, distance):
     chat_id = message.chat.id
-    fuel_type = message.text.strip().lower()  # Приводим тип топлива к нижнему регистру
+    fuel_type = message.text.strip().lower()
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
         return    
     if message.text == "В главное меню":
-        return_to_menu(message) 
-        return   
+        return_to_menu(message)
+        return
 
-    # Создаём словарь для сопоставления пользовательских названий топлива с названиями на сайте
     fuel_type_mapping = {
         "газ": "газ спбт",
         "аи-92": "аи-92",
         "аи-95": "аи-95",
         "аи-98": "аи-98",
-        "дт": "дт",  # дизельное топливо
-        # Добавьте другие сопоставления при необходимости
+        "дт": "дт",
     }
 
-    # Проверяем, существует ли введённый тип топлива в сопоставлении
     if fuel_type not in fuel_type_mapping:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов.")
         bot.register_next_step_handler(sent, process_fuel_type, date, distance)
         return
     
-    # Получаем соответствующее название топлива для сайта
     actual_fuel_type = fuel_type_mapping[fuel_type]
-
-    fuel_prices = get_average_fuel_prices()  # Получаем актуальные цены на топливо
     
-    # Проверяем, есть ли доступные цены на топливо
-    if not fuel_prices:
-        bot.send_message(chat_id, "К сожалению, не удалось получить актуальные данные о ценах на топливо. Попробуйте позже.")
-        return
+    try:
+        fuel_prices = get_average_fuel_prices()
+        fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
+        price_per_liter = fuel_prices_lower.get(actual_fuel_type.lower())
 
-    # Приводим ключи в fuel_prices к нижнему регистру и ищем нужную цену
-    fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
-    price_per_liter = fuel_prices_lower.get(actual_fuel_type.lower())
-    
-    if price_per_liter is None:
-        bot.send_message(chat_id, "Не удалось найти цену для выбранного типа топлива.")
-        return
+        if price_per_liter is None:
+            raise ValueError("Price not found")
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item5 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item6 = types.KeyboardButton("В главное меню")
-    markup.add(item5)
-    markup.add(item6)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item5 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item6 = types.KeyboardButton("В главное меню")
+        markup.add(item5)
+        markup.add(item6)
 
-    # Отправляем первое сообщение с типом топлива
-    bot.send_message(chat_id, f"Вы выбрали тип топлива: {fuel_type.upper()}.", reply_markup=types.ReplyKeyboardRemove())
+        bot.send_message(chat_id, f"Вы выбрали тип топлива: {fuel_type.upper()}.", reply_markup=types.ReplyKeyboardRemove())
+        bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
+        
+        sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
+
+    except Exception as e:
+        print(f"Ошибка получения цены: {e}")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Ввести свою цену")
+        item2 = types.KeyboardButton("Повторить выбор топлива")
+        item3 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item4 = types.KeyboardButton("В главное меню")
+        markup.add(item1, item2, item3, item4)
+        
+        sent = bot.send_message(chat_id, "Не удалось получить цену для выбранного типа топлива. Вы можете ввести свою цену или повторить выбор топлива.", reply_markup=markup)
+        bot.register_next_step_handler(sent, handle_price_input_or_retry, date, distance, fuel_type)
+
+def handle_price_input_or_retry(message, date, distance, fuel_type):
+    chat_id = message.chat.id
     
-    # Форматируем цену с двумя знаками после запятой и отправляем второе сообщение
-    bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
-    
-    # Переходим к следующему шагу с готовой ценой
-    sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
+    if message.text == "Ввести свою цену":
+        sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:")
+        bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
+    elif message.text == "Повторить выбор топлива":
+        show_fuel_types(chat_id, date, distance)
+    elif message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+    else:
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.")
+        bot.register_next_step_handler(sent, handle_price_input_or_retry, date, distance, fuel_type)
 
 # (9.10) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ВВОДА РАСХОДА НА 100 КМ) ---------------
 
 def process_price_per_liter_step(message, date, distance, fuel_type):
     chat_id = message.chat.id
-    
+
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
         return    
     if message.text == "В главное меню":
         return_to_menu(message) 
         return    
+
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
         return
+
+    input_text = message.text.replace(',', '.')
     
-    input_text = message.text.replace(',', '.') 
     try:
         price_per_liter = float(input_text)
         if price_per_liter <= 0:
             raise ValueError
-        sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:")
-        bot.clear_step_handler_by_chat_id(chat_id)  
+        
+        # Создаем новую клавиатуру с нужными кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        markup.add(item2)
+
+        # Запрашиваем расход топлива
+        sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+        bot.clear_step_handler_by_chat_id(chat_id)  # Очистка предыдущего хендлера
         bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
+        
     except ValueError:
         sent = bot.send_message(chat_id, "Пожалуйста, введите положительное число для цены топлива за литр:")
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
