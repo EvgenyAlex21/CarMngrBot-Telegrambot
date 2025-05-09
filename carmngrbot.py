@@ -202,7 +202,7 @@ def log_to_json(user_id, log_entry):
         else:
             logs = []
     except json.JSONDecodeError:
-        file_logger.warning(f"Файл {log_file} поврежден. Создаем новый файл.")
+        file_logger.warning(f"Файл {log_file} поврежден! Создаем новый файл...")
         logs = []
 
     logs.append(log_entry)
@@ -214,7 +214,7 @@ def clear_logs_and_transfer_errors():
     log_dir = os.path.join(BASE_DIR, "data/admin/log")
     error_log_file = os.path.join(log_dir, "errors_log.json")
 
-    file_logger.info("Начало переноса ошибок из логов пользователей.")
+    file_logger.info("Начало переноса ошибок из логов пользователей!")
 
     try:
         if os.path.exists(error_log_file):
@@ -223,7 +223,7 @@ def clear_logs_and_transfer_errors():
         else:
             errors = []
     except json.JSONDecodeError:
-        file_logger.error("Файл errors_log.json поврежден. Перезаписываем файл.")
+        file_logger.error("Файл errors_log.json поврежден! Перезаписываем файл...")
         errors = []
 
     for filename in os.listdir(log_dir):
@@ -233,7 +233,7 @@ def clear_logs_and_transfer_errors():
                 with open(file_path, 'r', encoding='utf-8') as file:
                     logs = json.load(file)
             except json.JSONDecodeError:
-                file_logger.warning(f"Файл {filename} поврежден. Пропускаем.")
+                file_logger.warning(f"Файл {filename} поврежден! Пропускаем...")
                 continue
 
             error_logs = [log for log in logs if log.get("level") == "ERROR"]
@@ -245,12 +245,12 @@ def clear_logs_and_transfer_errors():
     with open(error_log_file, 'w', encoding='utf-8') as file:
         json.dump(errors, file, ensure_ascii=False, indent=4)
 
-    file_logger.info("Перенос ошибок завершен.")
+    file_logger.info("Перенос ошибок завершен!")
 
 def remove_old_errors():
     error_log_file = os.path.join(BASE_DIR, "data/admin/log/errors_log.json")
 
-    file_logger.info("Начало удаления старых ошибок.")
+    file_logger.info("Начало удаления старых ошибок!")
 
     try:
         if os.path.exists(error_log_file):
@@ -259,7 +259,7 @@ def remove_old_errors():
         else:
             errors = []
     except json.JSONDecodeError:
-        file_logger.error("Файл errors_log.json поврежден. Пропускаем удаление старых ошибок.")
+        file_logger.error("Файл errors_log.json поврежден! Пропускаем удаление старых ошибок...")
         return
 
     current_time = datetime.now()
@@ -271,7 +271,7 @@ def remove_old_errors():
     except Exception as e:
         file_logger.error(f"Ошибка записи в errors_log.json: {e}")
 
-    file_logger.info("Удаление старых ошибок завершено.")
+    file_logger.info("Удаление старых ошибок завершено!")
 
 def log_user_actions(func):
     @wraps(func)
@@ -403,7 +403,6 @@ def check_subscription(func):
         user_id = str(message.from_user.id)
         
         if message.from_user.is_bot:
-            print(f"Получено сообщение от бота {user_id}, игнорируем.")
             return
         
         if message.text in FREE_FEATURES:
@@ -686,20 +685,17 @@ def delete_user_data_from_all_files(user_id, users):
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
 
-                # Специальная обработка для payments.json
                 if file == 'payments.json' and 'data' in root and 'admin' in root:
                     users_section = data.get("subscriptions", {}).get("users", {})
                     if user_id_str in users_section:
                         user_info = users_section[user_id_str]
                         plans = user_info.get("plans", [])
-                        # Оставляем только план "free"
                         filtered_plans = [plan for plan in plans if plan.get("plan_name") == "free"]
                         user_info["plans"] = filtered_plans
                     with open(file_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, ensure_ascii=False, indent=4)
                     continue
 
-                # Для остальных файлов — стандартное удаление
                 remove_user_data(data)
 
                 with open(file_path, 'w', encoding='utf-8') as f:
@@ -763,7 +759,7 @@ inactivity_thread.start()
 @check_subscription_chanal
 @rate_limit_with_captcha
 def send_website_file(message):
-    bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")  # http://carmngrbot.com.swtest.ru/ # https://goo.su/5htqWmk
+    bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")
 
 
 
@@ -1056,12 +1052,10 @@ def load_users_data():
         save_users_data(data)
         return data
     except json.JSONDecodeError as e:
-        print(f"Ошибка декодирования JSON в {USERS_DATABASE_PATH}: {e}")
         with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump({}, f)
         return {}
     except Exception as e:
-        print(f"Ошибка при загрузке {USERS_DATABASE_PATH}: {e}")
         with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump({}, f)
         return {}
@@ -1613,8 +1607,6 @@ def send_subscription_invoice(call):
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
     discount_type = data['subscriptions']['users'].get(user_id, {}).get('discount_type', 'promo')
 
-    print(f"send_subscription_invoice - User ID: {user_id}, Plan Key: {plan_key}, User Discount: {user_discount}, Applicable Items: {applicable_items}, Applicable Category: {applicable_category}, Discount Type: {discount_type}")
-
     discount_applicable = (
         applicable_category == "subscriptions" or
         plan_key in applicable_items or
@@ -1651,7 +1643,6 @@ def send_subscription_invoice(call):
             data['subscriptions']['users'][user_id]['discount_type'] = None
             data['subscriptions']['users'][user_id]['applicable_category'] = None
             data['subscriptions']['users'][user_id]['applicable_items'] = []
-            print(f"send_subscription_invoice - Discount reset for User ID: {user_id}")
 
         save_payments_data(data)
 
@@ -1680,8 +1671,6 @@ def send_subscription_invoice(call):
         fictitious_discount = min(fictitious_discount, remaining_discount)
         fictitious_discount = round(fictitious_discount, 2)
         final_price = MINIMUM_AMOUNT
-
-    print(f"send_subscription_invoice - Base Price: {base_price}, User Discount Amount: {user_discount_amount}, Fictitious Discount: {fictitious_discount}, Final Price: {final_price}")
 
     provider_token = PAYMENT_PROVIDER_TOKEN
     currency = "RUB"
@@ -1712,7 +1701,6 @@ def send_subscription_invoice(call):
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
     total_amount = sum(price.amount for price in prices)
-    print(f"send_subscription_invoice - Total amount in prices (kopecks): {total_amount}")
     if total_amount < MINIMUM_AMOUNT * 100:
         prices = [types.LabeledPrice(f"Подписка на {label}", int(MINIMUM_AMOUNT * 100))]
         description += f"\n⚠️ Цена скорректирована до минимальной ({MINIMUM_AMOUNT} ₽) из-за требований платежной системы!\n"
@@ -1732,7 +1720,6 @@ def send_subscription_invoice(call):
         )
     except Exception as e:
         bot.send_message(user_id, "❌ Произошла ошибка при создании платежа!\nПожалуйста, попробуйте позже или обратитесь в поддержку...")
-        print(f"send_subscription_invoice - Ошибка при отправке инвойса для user_id={user_id}: {e}")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1756,8 +1743,6 @@ def process_successful_payment(message):
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
     discount_type = data['subscriptions']['users'].get(user_id, {}).get('discount_type', 'promo')
-
-    print(f"process_successful_payment - Loaded discount data - User ID: {user_id}, Discount: {user_discount}%, Discount Type: {discount_type}, Applicable Category: {applicable_category}, Applicable Items: {applicable_items}")
 
     if payload in SUBSCRIPTION_PLANS:
         plan_key = payload
@@ -1904,8 +1889,6 @@ def process_successful_payment(message):
         else:
             price = max(1, round(price, 2))
 
-        print(f"process_successful_payment - User ID: {user_id}, Item Key: {payload}, Base Price: {base_price}, User Discount: {applied_discount}%, User Discount Amount: {user_discount_amount}, Fictitious Discount: {fictitious_discount}, Final Price: {price}")
-
         purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
         monthly_key = datetime.now().strftime("%m.%Y")
 
@@ -2006,7 +1989,6 @@ def process_successful_payment(message):
             data['subscriptions']['users'][user_id]['discount_type'] = None
             data['subscriptions']['users'][user_id]['applicable_category'] = None
             data['subscriptions']['users'][user_id]['applicable_items'] = []
-            print(f"process_successful_payment - Discount reset for User ID: {user_id}")
 
         user_data['total_amount'] = user_data.get('total_amount', 0) + price
         data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
@@ -2024,21 +2006,21 @@ def process_successful_payment(message):
 
 def translate_plan_name(plan_name):
     return {
-        "free": "пробный период",           # Бонусный период (🎁)
-        "referral_bonus": "реферальный бонус",  # Бонусный период (🎁)
-        "ad_bonus": "рекламный бонус",      # Бонусный период (🎁)
-        "activity": "активность",           # Бонусный период (🎁)
-        "weekly": "неделя",                 # Платный (💳) или Назначенный (📦)
-        "monthly": "месяц",                 # Платный (💳) или Назначенный (📦)
-        "yearly": "год",                    # Платный (💳) или Назначенный (📦)
-        "points_bonus": "бонус за баллы",   # Бонусный период (🎁)
-        "gift_time": "подаренное время",    # Подаренный период (✨)
-        "referral": "бонус за реферала",    # Бонусный период (🎁)
-        "monthly_leader_bonus": "бонус лидера месяца",  # Бонусный период (🎁)
-        "leaderboard": "бонус топ-1",       # Бонусный период (🎁)
-        "store_time": "время из магазина",  # Платный (💳) или Назначенный (📦)
-        "custom": "индивидуальный",         # Подаренный период (✨)
-        "exchange_time": "обменное время"    # Подаренный период (✨)
+        "free": "пробный период",           
+        "referral_bonus": "реферальный бонус",  
+        "ad_bonus": "рекламный бонус",     
+        "activity": "активность",       
+        "weekly": "неделя",               
+        "monthly": "месяц",                 
+        "yearly": "год",                   
+        "points_bonus": "бонус за баллы",   
+        "gift_time": "подаренное время",   
+        "referral": "бонус за реферала",    
+        "monthly_leader_bonus": "бонус лидера месяца",  
+        "leaderboard": "бонус топ-1",       
+        "store_time": "время из магазина",  
+        "custom": "индивидуальный",        
+        "exchange_time": "обменное время"    
     }.get(plan_name, plan_name)
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
@@ -2286,7 +2268,6 @@ def load_payment_data():
         with open(PAYMENTS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        print(f"Ошибка загрузки payments.json: {str(e)}")
         return {"subscriptions": {"users": {}}, "refunds": [], "all_users_total_amount": 0}
 
 def save_payments_data(data):
@@ -2295,7 +2276,7 @@ def save_payments_data(data):
         with open(PAYMENTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        print(f"Ошибка сохранения payments.json: {str(e)}")
+        pass
 
 def load_admin_chat_id():
     try:
@@ -2305,7 +2286,6 @@ def load_admin_chat_id():
         admin_sessions = data.get('admin_sessions', [])
         return int(admin_sessions[0]) if admin_sessions else None
     except Exception as e:
-        print(f"Ошибка загрузки admin_sessions.json: {str(e)}")
         return None
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
@@ -2369,8 +2349,6 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
 
     try:
         response = requests.post(f"{PAYMASTER_API_URL}refunds", json=refund_data, headers=headers)
-        print(f"Paymaster request: {refund_data}")
-        print(f"Paymaster response: {response.status_code} - {response.text}")
 
         if response.status_code == 200:
             result = response.json()
@@ -2404,7 +2382,6 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
                 f"Request: {json.dumps(refund_data, ensure_ascii=False)}\n"
                 f"Response: {response.text if 'response' in locals() else 'No response'}"
             )
-        print(f"Ошибка возврата для user_id={user_id}: {str(e)}")
         return False
 
 @bot.message_handler(func=lambda message: message.text == "Отменить подписку")
@@ -2641,7 +2618,6 @@ STORE_ITEMS = {
     "points_1000": {"base_price": 1700, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
     "time_1day": {"base_price": 25, "fictitious_discount": 0, "label": "1 день подписки", "duration": 1},
     "time_3days": {"base_price": 70, "fictitious_discount": 0, "label": "3 дня подписки", "duration": 3},
-    "time_7days": {"base_price": 149, "fictitious_discount": 0, "label": "7 дней подписки", "duration": 7},
     "time_15days": {"base_price": 299, "fictitious_discount": 0, "label": "15 дней подписки", "duration": 15},
     "time_182days": {"base_price": 1599, "fictitious_discount": 0, "label": "6 месяцев подписки", "duration": 182}
 }
@@ -2826,7 +2802,7 @@ def back_to_store(call):
     try:
         bot.delete_message(chat_id=user_id, message_id=call.message.message_id)
     except Exception as e:
-        print(f"Ошибка при удалении сообщения: {e}")
+        pass
 
     fake_message = types.Message(
         message_id=call.message.message_id,
@@ -2869,8 +2845,6 @@ def send_store_invoice(call):
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
 
-    print(f"send_store_invoice - User ID: {user_id}, Item Key: {item_key}, User Discount: {user_discount}, Applicable Items: {applicable_items}, Applicable Category: {applicable_category}")
-
     discount_applicable = (
         applicable_category == "store" or
         item_key in applicable_items or
@@ -2893,8 +2867,6 @@ def send_store_invoice(call):
         fictitious_discount = min(fictitious_discount, remaining_discount)
         fictitious_discount = round(fictitious_discount, 2)
         final_price = MINIMUM_AMOUNT
-
-    print(f"Base Price: {base_price}, User Discount Amount: {user_discount_amount}, Fictitious Discount: {fictitious_discount}, Final Price: {final_price}")
 
     provider_token = PAYMENT_PROVIDER_TOKEN
     currency = "RUB"
@@ -2925,7 +2897,6 @@ def send_store_invoice(call):
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
     total_amount = sum(price.amount for price in prices)
-    print(f"Total amount in prices (kopecks): {total_amount}")
     if total_amount < MINIMUM_AMOUNT * 100:
         prices = [types.LabeledPrice(label, int(MINIMUM_AMOUNT * 100))]
         description += f"\n⚠️ Цена скорректирована до минимальной ({MINIMUM_AMOUNT} ₽) из-за требований платежной системы!\n"
@@ -2945,7 +2916,6 @@ def send_store_invoice(call):
         )
     except Exception as e:
         bot.send_message(user_id, "❌ Ошибка при создании платежа!\nПопробуйте позже или обратитесь в поддержку...")
-        print(f"Ошибка при отправке инвойса для user_id={user_id}: {e}")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4433,7 +4403,6 @@ TRANSLATIONS_YOURPROMOCODES = {
     "points_1000": "1000 баллов в магазине",
     "time_1day": "1 день подписки в магазине",
     "time_3days": "3 дня подписки в магазине",
-    "time_7days": "7 дней подписки в магазине",
     "time_15days": "15 дней подписки в магазине",
     "time_182days": "6 месяцев подписки в магазине",
     "weekly_subscription_7": "неделя в подписках",
@@ -4601,10 +4570,8 @@ def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ['member', 'administrator', 'creator'] and member.status != 'kicked'
     except telebot.apihelper.ApiTelegramException as e:
-        print(f"Ошибка при проверке подписки пользователя {user_id} на чат {chat_id}: {e}")
         return False
     except Exception as e:
-        print(f"Неизвестная ошибка при проверке подписки пользователя {user_id}: {e}")
         return False
 
 def initialize_ad_channels():
@@ -4618,10 +4585,8 @@ def is_channel_available(chat_id):
         chat = bot.get_chat(chat_id)
         return chat.type in ['channel', 'group', 'supergroup']
     except telebot.apihelper.ApiTelegramException as e:
-        print(f"Ошибка при проверке канала {chat_id}: {e}")
         return False
     except Exception as e:
-        print(f"Неизвестная ошибка при проверке канала {chat_id}: {e}")
         return False
 
 def background_subscription_check():
@@ -4629,7 +4594,7 @@ def background_subscription_check():
         data = load_payment_data()
         for user_id in data['subscriptions']['users']:
             if not is_user_subscribed(int(user_id)):
-                print(f"👤 Пользователь {user_id} отписался от канала!")
+                pass
         time.sleep(3600)
 
 thread = threading.Thread(target=background_subscription_check, daemon=True)
@@ -4841,7 +4806,7 @@ def apply_referral_bonus(referrer_id):
     data['subscriptions']['users'][referrer_id_str]['points_history'].append({
         "action": "earned",
         "points": points,
-        "reason": f"Реферал #{referral_count}",
+        "reason": f"Реферал №{referral_count}",
         "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
     })
     
@@ -5149,7 +5114,6 @@ def check_monthly_leader_bonus():
             data = load_payment_data()
             
             if 'referrals' not in data or 'stats' not in data['referrals']:
-                print("Ошибка: отсутствует или некорректна структура 'referrals' в payments.json")
                 data['referrals'] = {
                     'links': {},
                     'stats': {},
@@ -5282,7 +5246,6 @@ def check_monthly_leader_bonus():
             save_payments_data(data)
         
         except Exception as e:
-            print(f"Ошибка в check_monthly_leader_bonus: {str(e)}")
             time.sleep(60)
         
         time.sleep(86400)
@@ -5954,7 +5917,6 @@ def get_fuel_prices_from_website(city_code='cheboksary'):
         return fuel_data
 
     except (requests.RequestException, ValueError) as e:
-        print(f"Ошибка при получении данных с сайта: {e}")
         return None
 
 @text_only_handler
@@ -6696,14 +6658,12 @@ def load_transport_data(user_id):
                 if isinstance(data, dict) and "transport" in data:
                     return list(data["transport"].values())
                 elif isinstance(data, list):
-                    return data  # Для обратной совместимости со старым форматом
+                    return data  
                 else:
                     return []
         except json.JSONDecodeError as e:
-            print(f"JSON decode error for user {user_id}: {e}")
             return []
         except Exception as e:
-            print(f"Error loading transport data for user {user_id}: {e}")
             return []
     return []
 
@@ -6711,9 +6671,7 @@ def reload_transport_data(user_id):
     user_id = str(user_id)
     try:
         user_transport[user_id] = load_transport_data(user_id)
-        print(f"Reloaded transport data for user {user_id}: {user_transport[user_id]}")
     except Exception as e:
-        print(f"Error reloading transport data for user {user_id}: {e}")
         user_transport[user_id] = []
 
 def load_all_transport():
@@ -6724,8 +6682,7 @@ def load_all_transport():
                 user_id = user_file.split("_")[0]
                 user_transport[user_id] = load_transport_data(user_id)
             except Exception as e:
-                print(f"Error loading transport file {user_file}: {e}")
-    print(f"Loaded transport data for users: {list(user_transport.keys())}")
+                pass
 
 load_all_transport()
 
@@ -6902,10 +6859,8 @@ def process_license_plate(message, brand, model, year):
 @text_only_handler
 @rate_limit_with_captcha
 def view_transport(message):
-    """Отображает список транспорта пользователя."""
     user_id = str(message.chat.id)
     
-    # Перезагружаем данные транспорта для пользователя
     reload_transport_data(user_id)
     
     if user_id in user_transport and user_transport[user_id]:
@@ -6938,10 +6893,8 @@ def view_transport(message):
 @text_only_handler
 @rate_limit_with_captcha
 def delete_transport(message):
-    """Инициирует удаление транспорта."""
     user_id = str(message.chat.id)
     
-    # Перезагружаем данные транспорта для пользователя
     reload_transport_data(user_id)
     
     if user_id in user_transport and user_transport[user_id]:
@@ -7145,10 +7098,8 @@ def process_delete_all_confirmation(message):
 @text_only_handler
 @rate_limit_with_captcha
 def edit_transport(message):
-    """Инициирует изменение транспорта."""
     user_id = str(message.chat.id)
     
-    # Перезагружаем данные транспорта для пользователя
     reload_transport_data(user_id)
     
     transports = user_transport.get(user_id, [])
@@ -7273,10 +7224,8 @@ def process_new_value(message, selected_transport, field):
     manage_transport(message)
 
 def update_related_data(user_id, old_transport, new_transport, field_key, new_value):
-    """Обновляет данные трат и ремонтов при изменении транспорта, если данные существуют."""
     updated = False
 
-    # Обновление трат
     expense_data = load_expense_data(user_id)
     if str(user_id) in expense_data and (expense_data[str(user_id)].get('expense') or expense_data.get('selected_transport')):
         old_selected = f"{old_transport['brand']} {old_transport['model']} ({old_transport['license_plate']})"
@@ -7294,7 +7243,6 @@ def update_related_data(user_id, old_transport, new_transport, field_key, new_va
         save_expense_data(user_id, expense_data, new_selected)
         updated = True
 
-    # Обновление ремонтов
     repair_data = load_repair_data(user_id)
     if str(user_id) in repair_data and (repair_data[str(user_id)].get('repairs') or repair_data.get('selected_transport')):
         old_selected = f"{old_transport['brand']} {old_transport['model']} ({old_transport['license_plate']})"
@@ -7313,11 +7261,9 @@ def update_related_data(user_id, old_transport, new_transport, field_key, new_va
         updated = True
 
     if not updated:
-        print(f"Нет данных трат или ремонтов для пользователя {user_id}, обновление JSON пропущено.")
+        pass
 
 def update_excel_files_after_transport_change(user_id, old_transport, new_transport):
-    """Обновляет Excel-файлы трат и ремонтов после изменения транспорта, если данные существуют."""
-    # Обновление Excel для трат
     expense_excel_path = os.path.join(EXPENSES_DIR, "excel", f"{user_id}_expenses.xlsx")
     expense_data = load_expense_data(user_id)
     expenses = expense_data.get(str(user_id), {}).get('expense', [])
@@ -7404,14 +7350,11 @@ def update_excel_files_after_transport_change(user_id, old_transport, new_transp
             workbook.save(expense_excel_path)
             workbook.close()
         except Exception as e:
-            print(f"Ошибка при обновлении Excel трат для пользователя {user_id}: {e}")
             bot.send_message(user_id, "❌ Ошибка при обновлении данных трат в Excel!", parse_mode="Markdown")
     else:
         if os.path.exists(expense_excel_path):
             os.remove(expense_excel_path)
-        print(f"Нет трат для пользователя {user_id}, Excel-файл трат не обновляется.")
 
-    # Обновление Excel для ремонтов
     repair_excel_path = os.path.join(REPAIRS_DIR, "excel", f"{user_id}_repairs.xlsx")
     repair_data = load_repair_data(user_id)
     repairs = repair_data.get(str(user_id), {}).get('repairs', [])
@@ -7498,13 +7441,10 @@ def update_excel_files_after_transport_change(user_id, old_transport, new_transp
             workbook.save(repair_excel_path)
             workbook.close()
         except Exception as e:
-            print(f"Ошибка при обновлении Excel ремонтов для пользователя {user_id}: {e}")
             bot.send_message(user_id, "❌ Ошибка при обновлении данных ремонтов в Excel!", parse_mode="Markdown")
     else:
         if os.path.exists(repair_excel_path):
             os.remove(repair_excel_path)
-        print(f"Нет ремонтов для пользователя {user_id}, Excel-файл ремонтов не обновляется.")
-
 
 # ---------- 10. ТРАТЫ И РЕМОНТЫ ----------
 
@@ -8016,7 +7956,6 @@ def save_expense_to_excel(user_id, expense):
 
         workbook.save(excel_path)
     except Exception as e:
-        logging.error(f"Ошибка при сохранении Excel для user_id {user_id}: {str(e)}")
         raise
 
 # ---------- 10.3. ТРАТЫ (ПРОСМОТР ТРАТ) ----------
@@ -8318,7 +8257,6 @@ def get_expense_by_month(message):
         return_to_menu(message)
         return
 
-    # Валидация формата даты
     if not re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2}|2[1-9][0-9]{2}|3000)$", date):
         bot.send_message(user_id, "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ!", parse_mode="Markdown")
         bot.register_next_step_handler(message, get_expense_by_month)
@@ -8342,7 +8280,6 @@ def get_expense_by_month(message):
     for index, exp in enumerate(expense, start=1):
         expense_date = exp.get("date", "")
         if not expense_date or len(expense_date.split(".")) != 3:
-            logging.warning(f"Пропущена трата с некорректной датой для user_id {user_id}: {expense_date}")
             continue
 
         try:
@@ -8364,12 +8301,10 @@ def get_expense_by_month(message):
                     f"📝 *Описание:* {description}\n"
                 )
         except (ValueError, TypeError) as e:
-            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
             continue
 
     if expense_details:
         message_text = f"Траты за *{date}* месяц:\n\n" + "\n\n".join(expense_details)
-        logging.info(f"Отправка трат за {date} для user_id {user_id}, длина сообщения: {len(message_text)}")
         send_message_with_split(user_id, message_text, parse_mode="Markdown")
         bot.send_message(user_id, f"Итоговая сумма трат за *{date}* месяц: *{total_expense}* руб.", parse_mode="Markdown")
     else:
@@ -8518,7 +8453,6 @@ def view_all_expense(message):
 
 # ------------- УДАЛЕНИЕ ТРАТ -------
 
-# Глобальные словари
 selected_transports = {}
 expense_to_delete_dict = {}
 selected_categories = {}
@@ -8993,7 +8927,6 @@ def process_delete_expense_by_month(message):
                 transport['license_plate'] == selected_license_plate):
                 expense_to_delete.append((index, exp))
         except (ValueError, TypeError) as e:
-            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
             continue
 
     if expense_to_delete:
@@ -9200,7 +9133,6 @@ def process_delete_expense_by_year(message):
                 transport['license_plate'] == selected_license_plate):
                 expense_to_delete.append((index, exp))
         except (ValueError, TypeError) as e:
-            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
             continue
 
     if expense_to_delete:
@@ -9445,7 +9377,6 @@ def update_excel_file_expense(user_id):
         for exp in expense:
             transport = exp.get("transport", {})
             if not all(k in transport for k in ['brand', 'model', 'license_plate']):
-                logging.warning(f"Пропущена трата с некорректным транспортом для user_id {user_id}")
                 continue
             unique_transports.add((transport["brand"], transport["model"], transport["license_plate"]))
             valid_expenses.append(exp)
@@ -9469,7 +9400,6 @@ def update_excel_file_expense(user_id):
                     if (brand, model, license_plate) not in unique_transports:
                         del workbook[sheet_name]
                 except ValueError:
-                    logging.warning(f"Некорректное имя листа {sheet_name} для user_id {user_id}")
                     continue
 
         for brand, model, license_plate in unique_transports:
@@ -9506,7 +9436,6 @@ def update_excel_file_expense(user_id):
         workbook.close()
 
     except Exception as e:
-        logging.error(f"Ошибка при обновлении Excel для user_id {user_id}: {str(e)}")
         bot.send_message(user_id, "Ошибка при обновлении Excel-файла трат!", parse_mode="Markdown")
 
 
@@ -9517,16 +9446,14 @@ DATA_BASE_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs")
 REPAIRS_DIR = os.path.join(DATA_BASE_DIR, "repairs")
 
 def ensure_directories():
-    """Создает необходимые директории для хранения данных ремонтов."""
     os.makedirs(REPAIRS_DIR, exist_ok=True)
     os.makedirs(os.path.join(REPAIRS_DIR, "excel"), exist_ok=True)
 
 ensure_directories()
 
-user_transport = {}  # Глобальный словарь для хранения транспорта пользователей
+user_transport = {}  
 
 def format_transport_string(transport):
-    """Форматирует данные транспорта в строку для согласованного сравнения."""
     if isinstance(transport, dict):
         return f"{transport.get('brand', '').strip()} {transport.get('model', '').strip()} ({transport.get('license_plate', '').strip()})".lower()
     return transport.strip().lower()
@@ -9570,7 +9497,6 @@ def load_repair_data(user_id):
             data.setdefault(str(user_id), {"repairs": []})
             return data
     except Exception as e:
-        print(f"Ошибка загрузки данных: {e}")
         return {"user_categories": [], "selected_transport": "", str(user_id): {"repairs": []}}
 
 # ---------- 10.5. РЕМОНТЫ (ЗАПИСЬ РЕМОНТОВ) ----------
@@ -10029,8 +9955,7 @@ def save_repair_to_excel(user_id, repair_data):
         workbook.close()
     
     except Exception as e:
-        print(f"Ошибка при сохранении Excel: {e}")
-        bot.send_message(user_id, "❌ Ошибка при сохранении данных в Excel! Попробуйте снова.", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ Ошибка при сохранении данных в Excel!\nПопробуйте снова", parse_mode="Markdown")
 
 # ---------- 10.6. РЕМОНТЫ (ПРОСМОТР РЕМОНТОВ) ----------
 
@@ -10150,8 +10075,7 @@ def send_repairs_excel(message):
         with open(excel_path, 'rb') as excel_file:
             bot.send_document(user_id, excel_file)
     except Exception as e:
-        bot.send_message(user_id, "❌ Ошибка при отправке файла Excel! Попробуйте снова.", parse_mode="Markdown")
-        print(f"Ошибка при отправке Excel: {e}")
+        bot.send_message(user_id, "❌ Ошибка при отправке файла Excel!\nПопробуйте снова", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
 @check_function_state_decorator('Ремонты (по категориям)')
@@ -10445,7 +10369,6 @@ def view_all_repairs(message):
 
 # ---------- 10.7. РЕМОНТЫ (УДАЛЕНИЕ РЕМОНТОВ) ----------
 
-# Глобальные словари
 selected_repair_transports = {}
 repairs_to_delete_dict = {}
 selected_repair_categories = {}
@@ -10944,7 +10867,6 @@ def delete_repairs_by_month_handler(message):
                 transport["license_plate"] == selected_license_plate):
                 repairs_to_delete.append((index, repair))
         except (ValueError, TypeError) as e:
-            logging.warning(f"Ошибка обработки ремонта для user_id {user_id}: {str(e)}")
             continue
     
     if not repairs_to_delete:
@@ -11140,7 +11062,6 @@ def delete_repairs_by_year_handler(message):
         return
     
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
-    logging.info(f"Загружено {len(repairs)} ремонтов для user_id {user_id}")
     
     if not repairs:
         bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
@@ -11165,7 +11086,6 @@ def delete_repairs_by_year_handler(message):
                 transport["license_plate"] == selected_license_plate):
                 repairs_to_delete.append((index, repair))
         except (ValueError, TypeError) as e:
-            logging.warning(f"Ошибка обработки ремонта для user_id {user_id}: {str(e)}")
             continue
     
     if not repairs_to_delete:
@@ -11356,7 +11276,6 @@ def confirm_delete_all_repairs(message):
     
     if response == "да":
         repairs = user_data.get(str(user_id), {}).get("repairs", [])
-        logging.info(f"Загружено {len(repairs)} ремонтов для user_id {user_id}")
         if not repairs:
             bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
             if user_id in selected_repair_transports:
@@ -11424,7 +11343,6 @@ def update_repairs_excel_file(user_id):
         for repair in repairs:
             transport = repair.get("transport", {})
             if not all(k in transport for k in ['brand', 'model', 'license_plate']):
-                logging.warning(f"Пропущен ремонт с некорректным транспортом для user_id {user_id}")
                 continue
             unique_transports.add((transport["brand"], transport["model"], transport["license_plate"]))
             valid_repairs.append(repair)
@@ -11448,7 +11366,6 @@ def update_repairs_excel_file(user_id):
                     if (brand, model, license_plate) not in unique_transports:
                         del workbook[sheet_name]
                 except ValueError:
-                    logging.warning(f"Некорректное имя листа {sheet_name} для user_id {user_id}")
                     continue
         
         for brand, model, license_plate in unique_transports:
@@ -11860,7 +11777,7 @@ if not os.path.exists(REGIONS_FILE_PATH):
         with open(REGIONS_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("")
     except Exception as e:
-        print(f"Ошибка при создании файла regions.txt: {e}")
+        pass
 
 ALLOWED_LETTERS = "АВЕКМНОРСТУХABEKMHOPCTYX"
 
@@ -11877,9 +11794,9 @@ try:
                 code, name = parts
                 regions[code.strip()] = name.strip()
 except FileNotFoundError:
-    print(f"Файл {REGIONS_FILE_PATH} не найден.")
+    pass
 except Exception as e:
-    print(f"Ошибка при чтении файла regions.txt: {e}")
+    pass
 
 @bot.message_handler(func=lambda message: message.text == "Код региона")
 @check_function_state_decorator('Код региона')
@@ -11983,7 +11900,7 @@ def load_cities_from_file(file_path="files/files_for_price_weather/combined_citi
                 city_name_rus, city_name_eng = line.strip().split(' - ')
                 cities[city_name_eng.lower()] = city_name_rus
     except Exception as e:
-        print(f"Ошибка при чтении файла городов: {e}")
+        pass
     return cities
 
 def translate_weather_description(english_description):
@@ -12203,7 +12120,6 @@ def get_current_weather(coords):
                     )
         return None
     except Exception as e:
-        print(f"Ошибка в get_current_weather: {e}")
         return None
 
 @bot.message_handler(func=lambda message: message.text == "Погода")
@@ -13054,7 +12970,6 @@ def load_citys_users_data():
         user_data = {}
         save_citys_users_data()
     except Exception as e:
-        print(f"Ошибка загрузки данных: {e}")
         user_data = {}
 
 def save_citys_users_data():
@@ -13062,8 +12977,8 @@ def save_citys_users_data():
         with open(DATA_FILE_PATH, "w", encoding="utf-8") as f:
             json.dump(user_data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        print(f"Ошибка сохранения данных: {e}")
-
+        pass
+    
 load_citys_users_data()
 
 def create_filename(city_code, date):
@@ -13118,7 +13033,7 @@ def load_proxies():
                 if proxy:
                     proxies.append(proxy)
     except FileNotFoundError:
-        print("Файл proxy.txt не найден. Продолжаем с текущим IP.")
+        pass
     return proxies
 
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
@@ -13182,7 +13097,6 @@ def get_city_from_coordinates(latitude, longitude):
         city = address.get('city') or address.get('town') or address.get('village')
         return city
     except Exception as e:
-        print(f"Ошибка получения города по координатам: {e}")
         return None
 
 @text_only_handler
@@ -13190,12 +13104,10 @@ def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
 
-    # Проверка на команду "В главное меню"
     if message.text and message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    # Проверка состояния
     if user_state.get(chat_id) != "choosing_city":
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации")
         return
@@ -13203,7 +13115,6 @@ def process_city_selection(message):
     city_name = None
     city_code = None
 
-    # Обработка геопозиции
     if message.location:
         latitude = message.location.latitude
         longitude = message.location.longitude
@@ -13222,7 +13133,6 @@ def process_city_selection(message):
         city_name = city_name.lower()
         city_code = get_city_code(city_name)
     else:
-        # Проверка на наличие текста
         if not message.text:
             bot.send_message(chat_id, "⛔️ Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -13238,7 +13148,6 @@ def process_city_selection(message):
         city_name = message.text.strip().lower()
         city_code = get_city_code(city_name)
 
-    # Проверка на существование кода города
     if not city_code:
         bot.send_message(chat_id, f"Город {city_name.capitalize()} не найден!\nПожалуйста, проверьте правильность написания и попробуйте еще раз")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
@@ -13251,7 +13160,6 @@ def process_city_selection(message):
         bot.register_next_step_handler(message, process_city_selection)
         return
 
-    # Обновление данных пользователя
     if str_chat_id not in user_data:
         user_data[str_chat_id] = {
             'recent_cities': [],
@@ -13266,7 +13174,6 @@ def process_city_selection(message):
     update_recent_cities(str_chat_id, city_name)
     save_citys_users_data()
 
-    # Сохранение геопозиции
     latitude = message.location.latitude if message.location else None
     longitude = message.location.longitude if message.location else None
     save_user_location(chat_id, latitude, longitude, city_code)
@@ -13337,12 +13244,10 @@ def process_fuel_price_selection(message, city_code, site_type):
     if chat_id not in user_data:
         user_data[chat_id] = {'city_code': city_code, 'site_type': site_type}
 
-    # Проверка на команду "В главное меню"
     if message.text and message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    # Проверка на наличие текста
     if not message.text:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов!")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -13511,7 +13416,6 @@ def process_fuel_price_selection(message, city_code, site_type):
     except Exception as e:
         with progress_lock:
             progress = 100
-        print(f"Ошибка: {e}")
 
         bot.send_message(chat_id, "❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
         show_fuel_price_menu(chat_id, city_code, site_type)
@@ -13602,7 +13506,6 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
         item for item in saved_data
         if item[1].lower() in [ft.lower() for ft in actual_fuel_types]
     ]
-    print(f"Отфильтрованные данные для города {city_code} и типа топлива {selected_fuel_type}: {filtered_prices}")
     return remove_duplicate_prices(filtered_prices)
 
 def remove_duplicate_prices(fuel_prices):
@@ -13804,8 +13707,8 @@ def parse_fuel_prices_scheduled():
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
         
-        if i < len(cities_to_parse) - 1:  # Не ждем после последнего города
-            time.sleep(300)  # 5 минут
+        if i < len(cities_to_parse) - 1: 
+            time.sleep(300) 
 
 def schedule_tasks_for_azs():
     schedule.every().day.at("00:00").do(parse_fuel_prices_scheduled)
@@ -13840,11 +13743,9 @@ def read_csv_with_encoding(file_path):
                         'description': row['camera_place'],
                     })
                 except ValueError as e:
-                    print(f"Ошибка преобразования координат: {e}")
                     continue
         return data
     except UnicodeDecodeError:
-        print("Ошибка: Файл не в кодировке UTF-8")
         return []
 
 file_path = os.path.join(script_dir, 'files', 'files_for_cams', 'milestones.csv')
@@ -13853,9 +13754,9 @@ if os.path.exists(file_path):
         camera_data = read_csv_with_encoding(file_path)
         coordinates = [(cam['latitude'], cam['longitude']) for cam in camera_data]
     except Exception as e:
-        print(f"Ошибка чтения файла: {e}")
+        pass
 else:
-    print("Файл milestones.csv отсутствует! Загрузите файл вручную!")
+    pass
 
 if coordinates and all(len(coord) == 2 for coord in coordinates):
     camera_tree = cKDTree(coordinates)
@@ -14091,7 +13992,6 @@ def send_reminders():
     data = load_data()
     blocked_users = load_blocked_users()
     current_time = datetime.now()
-    logging.info(f"Current time: {current_time}")
 
     for user_id, user_data in data["users"].items():
         if user_id in blocked_users:
@@ -14100,7 +14000,6 @@ def send_reminders():
         for reminder in reminders:
             reminder_type = reminder.get("type")
             reminder_datetime = datetime.strptime(reminder["date"] + " " + reminder["time"], "%d.%m.%Y %H:%M")
-            logging.info(f"Checking reminder: {reminder}")
             if reminder["status"] == "active":
                 try:
                     if reminder_type == "один раз":
@@ -15041,7 +14940,7 @@ def save_user_location(chat_id, latitude, longitude, city_code):
         with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
             json.dump(notifications, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        print(f"Ошибка сохранения местоположения: {e}")
+        pass
 
 def load_user_locations():
     ensure_directory_exists(NOTIFICATIONS_PATH)
@@ -15286,7 +15185,7 @@ def get_city_name(latitude, longitude):
             return town or village or f"неизвестное место ({latitude}, {longitude})"
         return None
     except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"Ошибка LocationIQ: {e}")
+        pass
 
     try:
         time.sleep(1)  
@@ -15302,7 +15201,6 @@ def get_city_name(latitude, longitude):
         city = address.get('city') or address.get('town') or address.get('village')
         return city or f"неизвестное место ({latitude}, {longitude})"
     except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"Ошибка Nominatim: {e}")
         return f"неизвестное место ({latitude}, {longitude})"
 
 def fetch_weather_data(url_type, params, api_type='openweathermap'):
@@ -15463,7 +15361,6 @@ def get_current_weather(coords):
                     )
         return None
     except Exception as e:
-        print(f"Ошибка в get_current_weather: {e}")
         return None
 
 def get_average_fuel_prices(city_code):
@@ -15949,16 +15846,13 @@ def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
         delay = (end_datetime - datetime.now()).total_seconds()
         if delay > 0:
             threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
-            logging.info(f"Удаление рекламы {advertisement_id} запланировано на {end_datetime}")
         else:
-            logging.warning(f"Время удаления рекламы {advertisement_id} уже прошло, удаляем немедленно")
             delete_advertisement_messages(advertisement_id)
     except ValueError as e:
-        logging.error(f"Ошибка формата даты/времени для рекламы {advertisement_id}: {str(e)}")
+        pass
 
 def delete_advertisement_messages(advertisement_id):
     if advertisement_id not in advertisements['advertisements']:
-        logging.warning(f"Реклама {advertisement_id} не найдена при попытке удаления")
         return
 
     advertisement = advertisements['advertisements'][advertisement_id]
@@ -15966,26 +15860,23 @@ def delete_advertisement_messages(advertisement_id):
     message_ids = advertisement['message_ids']
 
     if len(user_ids) != len(message_ids):
-        logging.error(f"Несоответствие длины user_ids ({len(user_ids)}) и message_ids ({len(message_ids)}) для рекламы {advertisement_id}")
-
+        pass
+    
     for user_id, message_id in zip(user_ids, message_ids):
         try:
             bot.delete_message(user_id, message_id)
-            logging.info(f"Сообщение {message_id} удалено для пользователя {user_id}")
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 400 and 'message to delete not found' in e.result_json['description']:
-                logging.warning(f"Сообщение {message_id} не найдено для пользователя {user_id}")
+                pass
             elif e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                logging.warning(f"Бот заблокирован пользователем {user_id}")
                 if user_id not in blocked_users:
                     blocked_users.append(user_id)
                     save_blocked_users(blocked_users)
             else:
-                logging.error(f"Ошибка удаления сообщения {message_id} для пользователя {user_id}: {str(e)}")
+                pass
 
     del advertisements['advertisements'][advertisement_id]
     save_advertisements()
-    logging.info(f"Реклама {advertisement_id} удалена из базы")
 
 # ---------- 30.4 РЕКЛАМА (ВАШИ ЗАЯВКИ) ----------
 
@@ -16262,7 +16153,7 @@ def ensure_path_and_file(file_path):
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump({}, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при создании директории или файла {file_path}: {e}")
+        pass
 
 def load_alko_data():
     global alko_data
@@ -16272,13 +16163,12 @@ def load_alko_data():
         if 'drinks' in alko_data:
             alko_data['drinks'] = sorted(alko_data['drinks'], key=lambda x: x['strength'])
         else:
-            print("Ключ 'drinks' не найден в данных!")
+            pass
         if 'food' not in alko_data:
-            print("Ключ 'food' не найден в данных!")
+            pass
         else:
             pass
     except Exception as e:
-        print(f"Ошибка при загрузке файла alko.json: {e}")
         alko_data = {}
 
 def load_user_history_alko():
@@ -16288,19 +16178,16 @@ def load_user_history_alko():
             with open(USER_HISTORY_PATH_ALKO, 'r', encoding='utf-8') as db_file:
                 user_history_alko = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH_ALKO} не найден! Создание нового...")
             user_history_alko = {}
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_alko = {}
 
 def save_user_history_alko():
     try:
-        print(f"Сохранение истории в файл: {USER_HISTORY_PATH_ALKO}")  # Отладка
         with open(USER_HISTORY_PATH_ALKO, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_alko, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории в {USER_HISTORY_PATH_ALKO}: {e}")
+        pass
 
 ensure_path_and_file(ALKO_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH_ALKO)
@@ -16741,33 +16628,21 @@ def process_food(message):
         food_name = message.text.strip()
         food_name_normalized = food_name.lower()
 
-        # Отладка: выводим входной текст и доступные варианты
         available_foods = [f['name'].lower() for f in alko_data.get('food', [])]
-        print(f"Введено: '{food_name}' (нормализовано: '{food_name_normalized}')")
-        print(f"Доступные варианты еды: {available_foods}")
 
         food = next((f for f in alko_data['food'] if f['name'].lower() == food_name_normalized), None)
 
         if not food:
             raise ValueError(f"Еда '{food_name}' не найдена в списке. Доступные варианты: {available_foods}")
 
-        # Проверяем, существует ли user_data[user_id]
         if user_id not in user_data:
             raise ValueError(f"Данные пользователя {user_id} не найдены в user_data")
 
-        # Устанавливаем food в user_data
         user_data[user_id]['food'] = food['id']
-
-        # Отладка: выводим user_data перед вызовом calculate_and_show_result
-        print(f"user_data[{user_id}]: {user_data[user_id]}")
 
         calculate_and_show_result(message)
 
     except Exception as e:
-        # Логируем полную информацию об ошибке
-        import traceback
-        print(f"Ошибка в process_food для user_id {user_id}: {str(e)}")
-        print(traceback.format_exc())  # Выводим стек вызовов
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         food_buttons = [food['name'] for food in alko_data.get('food', [])]
         markup.row(*food_buttons)
@@ -16922,7 +16797,7 @@ def format_timestamp(timestamp):
 
 def save_alcohol_calculation_to_history(message, promille):
     chat_id = message.chat.id
-    user_id = str(user_data[chat_id]['user_id'])  # Приводим к строке
+    user_id = str(user_data[chat_id]['user_id'])  
     username = user_data[chat_id].get('username', 'unknown')
 
     sober_time = datetime.now() + timedelta(hours=promille / 0.15)
@@ -16935,7 +16810,7 @@ def save_alcohol_calculation_to_history(message, promille):
         'drinks': [
             {
                 'name': drink['name'],
-                'volume': user_data[int(user_id)]['drinks_volumes'][drink['id']],  # Приводим user_id к int для user_data
+                'volume': user_data[int(user_id)]['drinks_volumes'][drink['id']], 
                 'strength': drink['strength']
             } for drink in user_data[int(user_id)]['selected_drinks']
         ],
@@ -16953,9 +16828,7 @@ def save_alcohol_calculation_to_history(message, promille):
 
     user_history_alko[user_id]['alcohol_calculations'].append(calculation_data)
     
-    # Проверка пути
     if not USER_HISTORY_PATH_ALKO.endswith('alko_users.json'):
-        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_ALKO}")
         raise ValueError("Попытка сохранить данные алкоголя в неверный файл!")
     
     save_user_history_alko()
@@ -16975,8 +16848,7 @@ def save_alcohol_calculation_to_history(message, promille):
 @text_only_handler
 @rate_limit_with_captcha
 def handle_view_alcohol(message):
-    user_id = str(message.from_user.id)  # Оставляем строку, так как JSON использует строки
-    print(f"Проверка user_id {user_id} в user_history_alko: {user_id in user_history_alko}")  # Отладка
+    user_id = str(message.from_user.id)  
     if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов алкоголя!")
         view_alc_calc(message, show_description=False)
@@ -17095,7 +16967,7 @@ def process_view_alcohol_selection(message):
 @text_only_handler
 @rate_limit_with_captcha
 def handle_delete_alcohol(message):
-    user_id = str(message.from_user.id)  # Оставляем строку
+    user_id = str(message.from_user.id)  
     if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов алкоголя!")
         view_alc_calc(message, show_description=False)
@@ -17252,7 +17124,6 @@ def fetch_exchange_rates_cbr():
             'RUB': 1 
         }
     except Exception as e:
-        print(f"Ошибка при запросе курсов валют ЦБ РФ: {e}")
         return get_default_rates()
 
 def get_default_rates():
@@ -17280,7 +17151,7 @@ def load_rastamozka_data():
         with open(RASTAMOZKA_JSON_PATH, 'r', encoding='utf-8') as file:
             rastamozka_data = json.load(file)
     except Exception as e:
-        print(f"Ошибка при загрузке файла rastamozka.json: {e}")
+        pass
 
 def load_user_history_rastamozka():
     global user_history_raztamozka
@@ -17289,10 +17160,8 @@ def load_user_history_rastamozka():
             with open(USER_HISTORY_PATH_RASTAMOZKA, 'r', encoding='utf-8') as db_file:
                 user_history_raztamozka = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH_RASTAMOZKA} не найден! Создание нового...")
             user_history_raztamozka = {}
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_raztamozka = {}
 
 def save_user_history_rastamozka():
@@ -17300,7 +17169,7 @@ def save_user_history_rastamozka():
         with open(USER_HISTORY_PATH_RASTAMOZKA, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_raztamozka, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        pass
 
 ensure_path_and_file(RASTAMOZKA_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH_RASTAMOZKA)
@@ -17617,8 +17486,8 @@ def process_car_cost_value_step(message):
 @text_only_handler
 def calculate_customs(message):
     try:
-        user_id_int = message.from_user.id  # Для user_data
-        user_id_str = str(user_id_int)  # Для user_history_raztamozka
+        user_id_int = message.from_user.id 
+        user_id_str = str(user_id_int) 
         data = user_data[user_id_int]
 
         car_cost_rub = data['car_cost_value'] * EXCHANGE_RATES.get(data['car_cost_currency'], 1)
@@ -17650,7 +17519,6 @@ def calculate_customs(message):
             f"💰 Стоимость автомобиля + растаможка: {total_cost:,.2f} ₽"
         )
 
-        # Сохранение расчета
         username = data.get('username', 'unknown')
         timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
@@ -17683,20 +17551,16 @@ def calculate_customs(message):
 
         user_history_raztamozka[user_id_str]['rastamozka_calculations'].append(calculation_data)
 
-        # Проверка пути
         if not USER_HISTORY_PATH_RASTAMOZKA.endswith('rastamozka_users.json'):
-            print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_RASTAMOZKA}")
             raise ValueError("Попытка сохранить данные растаможки в неверный файл!")
 
-        print(f"Сохранение расчета растаможки для user_id: {user_id_str}")  # Отладка
         save_user_history_rastamozka()
 
         bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
-        del user_data[user_id_int]  # Очистка user_data
+        del user_data[user_id_int]  
         view_rastamozka_calc(message, show_description=False)
 
     except Exception as e:
-        print(f"Ошибка в calculate_customs: {e}")
         bot.send_message(message.chat.id, "Произошла ошибка при расчете!\nПожалуйста, попробуйте снова")
         view_rastamozka_calc(message, show_description=False)
 
@@ -18014,7 +17878,6 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @rate_limit_with_captcha
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_raztamozka: {user_id in user_history_raztamozka}")  # Отладка
     if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -18026,7 +17889,6 @@ def view_rastamozka_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Просмотр расчетов для user_id {user_id}, user_history_raztamozka: {user_history_raztamozka.get(user_id, {})}")  # Отладка
     if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -18143,7 +18005,6 @@ def process_view_rastamozka_selection(message):
 @rate_limit_with_captcha
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_raztamozka: {user_id in user_history_raztamozka}")  # Отладка
     if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -18155,7 +18016,6 @@ def delete_rastamozka_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Удаление расчетов для user_id {user_id}, user_history_raztamozka: {user_history_raztamozka.get(user_id, {})}")  # Отладка
     if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -18296,7 +18156,7 @@ def load_osago_data():
         with open(OSAGO_JSON_PATH, 'r', encoding='utf-8') as file:
             osago_data = json.load(file)
     except Exception as e:
-        print(f"Ошибка при загрузке файла osago.json: {e}")
+        pass
 
 def load_user_history_osago():
     global user_history_osago
@@ -18305,10 +18165,8 @@ def load_user_history_osago():
             with open(USER_HISTORY_PATH_OSAGO, 'r', encoding='utf-8') as db_file:
                 user_history_osago = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH_OSAGO} не найден! Создание нового...")
             user_history_osago = {}
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_osago = {}
 
 def save_user_history_osago():
@@ -18316,7 +18174,7 @@ def save_user_history_osago():
         with open(USER_HISTORY_PATH_OSAGO, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_osago, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        pass
 
 ensure_path_and_file(OSAGO_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH_OSAGO)
@@ -18926,8 +18784,8 @@ def calculate_restricted_kbm(message):
 
 @text_only_handler
 def calculate_osago(message):
-    user_id_int = message.from_user.id  # Для user_data
-    user_id_str = str(user_id_int)  # Для user_history_osago
+    user_id_int = message.from_user.id  
+    user_id_str = str(user_id_int)  
     data = user_data[user_id_int]
 
     base_tariff_min, base_tariff_max = get_base_tariff(data['vehicle_id'])
@@ -19014,7 +18872,6 @@ def calculate_osago(message):
             f"⭐ *КБМ (коэффициент бонус-малус):* {kbm}\n"
         )
 
-    # Сохранение расчета
     username = data.get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
@@ -19057,16 +18914,13 @@ def calculate_osago(message):
 
     user_history_osago[user_id_str]['osago_calculations'].append(calculation_data)
 
-    # Проверка пути
     if not USER_HISTORY_PATH_OSAGO.endswith('osago_users.json'):
-        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_OSAGO}")
         raise ValueError("Попытка сохранить данные ОСАГО в неверный файл!")
 
-    print(f"Сохранение расчета ОСАГО для user_id: {user_id_str}")  # Отладка
     save_user_history_osago()
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
-    del user_data[user_id_int]  # Очистка user_data
+    del user_data[user_id_int]  
     view_osago_calc(message, show_description=False)
 
 def save_osago_calculation_to_history(user_id, min_cost, max_cost):
@@ -19130,7 +18984,6 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @rate_limit_with_captcha
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_osago: {user_id in user_history_osago}")  # Отладка
     if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -19142,7 +18995,6 @@ def view_osago_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Просмотр расчетов для user_id {user_id}, user_history_osago: {user_history_osago.get(user_id, {})}")  # Отладка
     if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -19333,7 +19185,6 @@ def handle_delete_osago(message):
 @rate_limit_with_captcha
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_osago: {user_id in user_history_osago}")  # Отладка
     if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -19345,7 +19196,6 @@ def delete_osago_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Удаление расчетов для user_id {user_id}, user_history_osago: {user_history_osago.get(user_id, {})}")  # Отладка
     if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -19491,7 +19341,6 @@ def load_user_history_kredit():
         else:
             user_history_kredit = {}
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_kredit = {}
 
 def save_user_history_kredit():
@@ -19499,7 +19348,7 @@ def save_user_history_kredit():
         with open(KREDIT_USERS_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_kredit, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        pass
 
 ensure_path_and_file(KREDIT_USERS_PATH)
 load_user_history_kredit()
@@ -20152,7 +20001,6 @@ def calculate_loan(message):
     os.makedirs(os.path.dirname(excel_path), exist_ok=True)
     save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display)
     
-    print(f"Сохранение автокредита для user_id: {user_id}")  # Отладка
     save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display)
     
     with open(excel_path, 'rb') as file:
@@ -20162,7 +20010,7 @@ def calculate_loan(message):
     view_autokredit_calc(message, show_description=False)
 
 def save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display):
-    user_id_int = int(user_id)  # Для user_data
+    user_id_int = int(user_id)  
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     
@@ -20246,8 +20094,8 @@ def save_to_excel(user_id, principal, total_interest, total_payment, payment_sch
     workbook.save(excel_path)
 
 def save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display):
-    user_id_int = int(user_id)  # Для user_data
-    user_id_str = str(user_id)  # Для user_history_kredit
+    user_id_int = int(user_id) 
+    user_id_str = str(user_id)  
     username = user_data[user_id_int].get('username', 'unknown')
     
     calculation_data = {
@@ -20280,9 +20128,7 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
     
     user_history_kredit[user_id_str]['autokredit_calculations'].append(calculation_data)
     
-    # Проверка пути
     if not KREDIT_USERS_PATH.endswith('kredit_users.json'):
-        print(f"Ошибка: неверный путь для сохранения: {KREDIT_USERS_PATH}")
         raise ValueError("Попытка сохранить данные автокредита в неверный файл!")
     
     save_user_history_kredit()
@@ -20303,7 +20149,6 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @rate_limit_with_captcha
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_kredit: {user_id in user_history_kredit}")  # Отладка
     if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -20315,7 +20160,6 @@ def view_autokredit_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Просмотр расчетов для user_id {user_id}, user_history_kredit: {user_history_kredit.get(user_id, {})}")  # Отладка
     if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -20451,7 +20295,6 @@ def process_view_autokredit_selection(message):
 @rate_limit_with_captcha
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_kredit: {user_id in user_history_kredit}")  # Отладка
     if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -20463,7 +20306,6 @@ def delete_autokredit_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Удаление расчетов для user_id {user_id}, user_history_kredit: {user_history_kredit.get(user_id, {})}")  # Отладка
     if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -20605,10 +20447,8 @@ def load_user_history_tires():
             with open(TIRE_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
                 user_history_tire = json.load(db_file)
         else:
-            print(f"Файл {TIRE_HISTORY_PATH} не найден! Создание нового...")
             user_history_tire = {}
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_tire = {}
 
 def save_user_history_tires():
@@ -20616,7 +20456,7 @@ def save_user_history_tires():
         with open(TIRE_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_tire, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        pass
 
 ensure_path_and_file(TIRE_HISTORY_PATH)
 load_user_history_tires()
@@ -21072,15 +20912,14 @@ def calculate_tire(message):
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
     
-    print(f"Сохранение расчета шин для user_id: {user_id}")  # Отладка
     save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)
     
-    del user_data[user_id]  # Очистка user_data после расчета
+    del user_data[user_id] 
     view_tire_calc(message, show_description=False)
 
 def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
-    user_id_int = int(user_id)  # Для user_data
-    user_id_str = str(user_id)  # Для user_history_tire
+    user_id_int = int(user_id)  
+    user_id_str = str(user_id)  
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
     current_profile_height = data['current_width'] * (data['current_profile'] / 100)
@@ -21130,9 +20969,7 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 
     user_history_tire[user_id_str]['tire_calculations'].append(calculation_data)
     
-    # Проверка пути
     if not TIRE_HISTORY_PATH.endswith('tire_users.json'):
-        print(f"Ошибка: неверный путь для сохранения: {TIRE_HISTORY_PATH}")
         raise ValueError("Попытка сохранить данные шин в неверный файл!")
     
     save_user_history_tires()
@@ -21153,7 +20990,6 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @rate_limit_with_captcha
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_tire: {user_id in user_history_tire}")  # Отладка
     if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -21165,7 +21001,6 @@ def view_tire_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Просмотр расчетов для user_id {user_id}, user_history_tire: {user_history_tire.get(user_id, {})}")  # Отладка
     if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -21354,7 +21189,6 @@ def process_view_tire_selection(message):
 @rate_limit_with_captcha
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_tire: {user_id in user_history_tire}")  # Отладка
     if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -21366,7 +21200,6 @@ def delete_tire_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Удаление расчетов для user_id {user_id}, user_history_tire: {user_history_tire.get(user_id, {})}")  # Отладка
     if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -21499,7 +21332,7 @@ user_history_nalog = {}
 user_data = {}
 expensive_cars = []
 tax_rates = {}
-available_years = [2021, 2022, 2023, 2024, 2025] # https://its.1c.ru/db/taxtrans#content:209:hdoc
+available_years = [2021, 2022, 2023, 2024, 2025] 
 
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -21513,7 +21346,7 @@ def load_nalog_data():
         with open(NALOG_JSON_PATH, 'r', encoding='utf-8') as file:
             nalog_data = json.load(file)
     except Exception as e:
-        print(f"Ошибка при загрузке файла nalog.json: {e}")
+        pass
 
 def load_user_history_nalog():
     global user_history_nalog
@@ -21522,11 +21355,9 @@ def load_user_history_nalog():
             with open(USER_HISTORY_PATH_NALOG, 'r', encoding='utf-8') as db_file:
                 user_history_nalog = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH_NALOG} не найден! Создание нового...")
             user_history_nalog = {}
             save_user_history_nalog()
     except Exception as e:
-        print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history_nalog = {}
 
 def save_user_history_nalog():
@@ -21534,7 +21365,7 @@ def save_user_history_nalog():
         with open(USER_HISTORY_PATH_NALOG, 'w', encoding='utf-8') as db_file:
             json.dump(user_history_nalog, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        pass
 
 def load_expensive_cars():
     global expensive_cars
@@ -21555,9 +21386,9 @@ def load_expensive_cars():
                     })
             expensive_cars = car_data
     except json.JSONDecodeError as e:
-        print(f"Ошибка при разборе JSON в файле auto_10mln_rub_2025.json: {e}")
+        pass
     except Exception as e:
-        print(f"Ошибка при загрузке файла auto_10mln_rub_2025.json: {e}")
+        pass
 
 def load_tax_rates(year):
     global tax_rates
@@ -21568,7 +21399,6 @@ def load_tax_rates(year):
         with open(tax_file_path, 'r', encoding='utf-8') as file:
             tax_rates = json.load(file)
     except Exception as e:
-        print(f"Ошибка при загрузке файла transport_tax_{year}.json: {e}")
         tax_rates = {}
 
 ensure_path_and_file(NALOG_JSON_PATH)
@@ -22035,8 +21865,8 @@ def process_benefits_step(message):
 
 @text_only_handler
 def calculate_tax(message):
-    user_id_int = message.from_user.id  # Для user_data
-    user_id_str = str(user_id_int)  # Для user_history_nalog
+    user_id_int = message.from_user.id  
+    user_id_str = str(user_id_int)  
     data = user_data[user_id_int]
 
     tax_base = data['metric_value']
@@ -22127,17 +21957,14 @@ def calculate_tax(message):
 
     user_history_nalog[user_id_str]['nalog_calculations'].append(calculation_data)
     
-    # Проверка пути
     if not USER_HISTORY_PATH_NALOG.endswith('nalog_users.json'):
-        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_NALOG}")
         raise ValueError("Попытка сохранить данные налога в неверный файл!")
     
-    print(f"Сохранение расчета налога для user_id: {user_id_str}")  # Отладка
     save_user_history_nalog()
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     
-    del user_data[user_id_int]  # Очистка user_data после расчета
+    del user_data[user_id_int]  
     view_nalog_calc(message, show_description=False)
 
 # ---------- ПРОСМОТР РАСЧЕТОВ НАЛОГОВ ----------
@@ -22156,7 +21983,6 @@ def calculate_tax(message):
 @rate_limit_with_captcha
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_nalog: {user_id in user_history_nalog}")  # Отладка
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -22168,7 +21994,6 @@ def view_nalog_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Просмотр расчетов для user_id {user_id}, user_history_nalog: {user_history_nalog.get(user_id, {})}")  # Отладка
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -22295,7 +22120,6 @@ def process_view_nalog_selection(message):
 @rate_limit_with_captcha
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
-    print(f"Проверка user_id {user_id} в user_history_nalog: {user_id in user_history_nalog}")  # Отладка
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -22307,7 +22131,6 @@ def delete_nalog_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    print(f"Удаление расчетов для user_id {user_id}, user_history_nalog: {user_history_nalog.get(user_id, {})}")  # Отладка
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -24765,14 +24588,13 @@ def create_full_backup():
                     try:
                         zipf.write(file_path, arcname)
                     except Exception as e:
-                        print(f"Ошибка при добавлении файла {file_path} в архив: {e}")
+                        pass
 
         if not check_backup_integrity(backup_file):
             return None
 
         return backup_file
     except Exception as e:
-        print(f"Ошибка при создании полной резервной копии: {e}")
         return None
 
 def create_incremental_backup(last_backup_time):
@@ -24805,14 +24627,13 @@ def create_incremental_backup(last_backup_time):
                         try:
                             zipf.write(file_path, arcname)
                         except Exception as e:
-                            print(f"Ошибка при добавлении файла {file_path} в архив: {e}")
+                            pass
 
         if not check_backup_integrity(backup_file):
             return None
 
         return backup_file
     except Exception as e:
-        print(f"Ошибка при создании инкрементальной резервной копии: {e}")
         return None
 
 def restore_latest_backup():
@@ -24820,30 +24641,25 @@ def restore_latest_backup():
 
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     if not backups:
-        print("Резервные копии не найдены!")
         return False
 
     latest_backup = os.path.join(BACKUP_DIR, backups[0])
 
     if not os.path.exists(latest_backup):
-        print("Последняя резервная копия не найдена!")
         return False
 
     with zipfile.ZipFile(latest_backup, 'r') as zipf:
         zipf.extractall(SOURCE_DIR)
 
-    print(f"Данные восстановлены из резервной копии: {latest_backup}")
     return True
 
 def check_backup_integrity(backup_file):
     try:
         with zipfile.ZipFile(backup_file, 'r') as zipf:
             if zipf.testzip() is not None:
-                print(f"Ошибка целостности архива: {backup_file}")
                 return False
         return True
     except Exception as e:
-        print(f"Ошибка при проверке целостности архива {backup_file}: {e}")
         return False
 
 def cleanup_old_backups():
@@ -24856,10 +24672,8 @@ def cleanup_old_backups():
 
         if "full_backup" in filename and (now - file_time) > timedelta(days=30):
             os.remove(file_path)
-            print(f"Удалена старая полная резервная копия: {file_path}")
         elif "incremental_backup" in filename and (now - file_time) > timedelta(days=7):
             os.remove(file_path)
-            print(f"Удалена старая инкрементальная резервная копия: {file_path}")
 
 def monitor_disk_usage():
     total, used, free = shutil.disk_usage(SOURCE_DIR)
@@ -24917,8 +24731,8 @@ def notify_admin(message):
                     blocked_users.append(admin_id)
                     save_blocked_users(blocked_users)
             else:
-                print(f"Ошибка при отправке уведомления: {e}")
-
+                pass
+            
 schedule.every().day.at("00:00").do(scheduled_backup)
 
 # ---------- 28. ВКЛЮЧЕНИЕ И ОТКЛЮЧЕНИЕ ФУНКЦИЙ ----------
@@ -27816,7 +27630,7 @@ def send_advertisement_to_all(message, advertisement_id):
 
     advertisement = advertisements['advertisements'][advertisement_id]
     users = load_users()
-    user_message_pairs = []  # Список пар (user_id, message_id)
+    user_message_pairs = []  
 
     for user_id in users.keys():
         if user_id in blocked_users:
@@ -27861,7 +27675,6 @@ def send_advertisement_to_all(message, advertisement_id):
                     blocked_users.append(user_id)
                     save_blocked_users(blocked_users)
             else:
-                logging.error(f"Ошибка отправки рекламы пользователю {user_id}: {str(e)}")
                 continue
 
     advertisement['user_ids'] = [pair[0] for pair in user_message_pairs]
@@ -32610,7 +32423,7 @@ def process_create_promo_code_items(message, discount, uses):
             show_admin_panel(message)
         return
 
-    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_7days", "time_15days", "time_6months"]
+    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_15days", "time_6months"]
     applicable_items = []
 
     try:
@@ -32870,7 +32683,7 @@ def process_assign_discount_items(message, user_id, discount):
             show_admin_panel(message)
         return
 
-    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_7days", "time_15days", "time_6months"]
+    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_15days", "time_6months"]
     applicable_items = []
 
     try:
@@ -34729,11 +34542,9 @@ def add_user_request(user_id, date, count):
     if today not in user_requests_chat[user_id]:
         user_requests_chat[user_id][today] = []
 
-    # Проверяем лимит в 3 запроса
     if len(user_requests_chat[user_id][today]) >= 3:
         return False
 
-    # Добавляем новый запрос
     user_requests_chat[user_id][today].append(time.time())
     save_active_chats()
     return True
@@ -34961,7 +34772,7 @@ def handle_chat_response(message):
                 active_admin_chats[admin_id] = user_id
                 save_active_chats()
 
-        else:  # Отклонение запроса
+        else:  
             bot.send_message(user_id, "✅ Вы отклонили запрос на чат!", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
             bot.send_message(admin_id, f"❌ Пользователь {escaped_username} - `{user_id}` отклонил запрос на чат!", parse_mode="Markdown")
             del active_chats[user_id]
@@ -35269,12 +35080,10 @@ def request_chat_with_admin(message, show_description=True):
     user_id = message.from_user.id
     today = datetime.now().date().isoformat()
 
-    # Проверяем, есть ли активный запрос в статусе pending
     if any(chat_data.get("user_id") == user_id and chat_data.get("status") == "pending" for chat_data in active_chats.values()):
         bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте...")
         return
 
-    # Проверяем лимит запросов
     user_requests_chat_today = len(user_requests_chat.get(user_id, {}).get(today, []))
     if user_requests_chat_today >= 3:
         bot.send_message(user_id, "❌ Вы исчерпали лимит запросов на сегодня! Попробуйте завтра...")
@@ -35310,7 +35119,6 @@ def handle_chat_topic(message):
     today = datetime.now().date().isoformat()
 
     if user_id in active_chats and active_chats[user_id].get("status") == "waiting_for_topic":
-        # Добавляем запрос в user_requests_chat
         if add_user_request(user_id, today, 1):
             active_chats[user_id] = {
                 "user_id": user_id,
@@ -35535,7 +35343,7 @@ def background_subscription_expiration_check(chat_id):
         if e.result_json.get('description') == "Forbidden: bot was blocked by the user":
             print(f"Пользователь {chat_id} заблокировал бота. Пропускаем отправку сообщения.")
         else:
-            print(f"Ошибка при отправке сообщения: {e}")
+            pass
 
 # ---------- 39. ЗАПУСК БОТА ----------
 
