@@ -1577,6 +1577,7 @@ def get_user_transport_keyboard(user_id):
 
 # Обновленная функция для записи трат
 # Обновленная функция для записи трат
+# Отправка сообщения о записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
 def record_expense(message):
     user_id = message.from_user.id
@@ -1604,15 +1605,12 @@ def handle_transport_selection_for_record(message):
         return_to_menu(message)
         return
 
-    # Проверяем, является ли выбор "Добавить транспорт"
     if message.text == "Добавить транспорт":
         add_transport(message)
         return
 
-    # В данном случае message.text - это информация о выбранном транспорте
     selected_transport = message.text
 
-    # Проверяем, соответствует ли текст выбранного транспорта формату
     for transport in user_transport.get(user_id, []):
         if f"{transport['brand']} {transport['model']} {transport['year']}" == selected_transport:
             brand = transport['brand']
@@ -1620,20 +1618,18 @@ def handle_transport_selection_for_record(message):
             year = transport['year']
             break
     else:
-        # Если не нашли транспорт, уведомляем пользователя
         bot.send_message(user_id, "Не удалось найти указанный транспорт. Пожалуйста, выберите снова.")
         bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=get_user_transport_keyboard(user_id))
         return
 
-    # Продолжаем с записью траты
+    # После выбора транспорта просим ввести название траты
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
-    bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_name, brand, model, year)
-
+    sent = bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
+    bot.register_next_step_handler(sent, get_expense_name, brand, model, year)
 
 # Функция получения названия траты
 def get_expense_name(message, brand, model, year):
@@ -1648,16 +1644,88 @@ def get_expense_name(message, brand, model, year):
         return
 
     expense_name = message.text
+
+    # Далее предложим выбрать способ ввода даты
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_calendar = types.KeyboardButton("Выбрать дату из календаря")
+    item_manual = types.KeyboardButton("Ввести дату вручную")
+    markup.add(item_calendar, item_manual)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return, item_main_menu)
+
+    sent = bot.send_message(user_id, "Выберите способ ввода даты:", reply_markup=markup)
+    bot.register_next_step_handler(sent, handle_date_selection_for_expense, expense_name, brand, model, year)
+
+# Обработка выбора способа ввода даты
+def handle_date_selection_for_expense(message, expense_name, brand, model, year):
+    user_id = message.chat.id
+
+    if message.text == "Выбрать дату из календаря":
+        show_calendar_for_expense(user_id, expense_name, brand, model, year)
+    elif message.text == "Ввести дату вручную":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        markup.add(item_return, item_main_menu)
+
+        sent = bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        bot.register_next_step_handler(sent, get_expense_date_manual, expense_name, brand, model, year)
+    elif message.text == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+    else:
+        sent = bot.send_message(user_id, "Пожалуйста, выберите корректный вариант.")
+        bot.register_next_step_handler(sent, handle_date_selection_for_expense, expense_name, brand, model, year)
+
+# Отображение календаря для записи трат
+def show_calendar_for_expense(user_id, expense_name, brand, model, year):
+    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale="ru").build()
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
-    bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
+    bot.send_message(user_id, "Выберите дату", reply_markup=markup)
+    bot.send_message(user_id, "Календарь:", reply_markup=calendar)
 
-# Функция получения даты траты
-def get_expense_date(message, expense_name, brand, model, transport_year):
+    # Сохраняем параметры для передачи в обработку выбора даты
+    bot.set_state(user_id, {'expense_name': expense_name, 'brand': brand, 'model': model, 'year': year})
+
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+def handle_calendar_for_expense(call):
+    result, key, step = DetailedTelegramCalendar(
+        min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale="ru"
+    ).process(call.data)
+
+    if not result and key:
+        bot.edit_message_text(f"Выберите {step}",
+                              call.message.chat.id,
+                              call.message.message_id,
+                              reply_markup=key)
+    elif result:
+        selected_date = result.strftime('%d.%m.%Y')
+        user_id = call.message.chat.id
+
+        # Получаем сохраненные параметры
+        state = bot.get_state(user_id)
+        expense_name = state['expense_name']
+        brand = state['brand']
+        model = state['model']
+        year = state['year']
+
+        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
+                              call.message.chat.id,
+                              call.message.message_id)
+
+        # Переходим к следующему шагу ввода суммы
+        bot.send_message(call.message.chat.id, "Введите сумму траты:")
+        bot.register_next_step_handler(call.message, get_expense_amount, selected_date, expense_name, brand, model, year)
+
+# Ввод даты вручную
+def get_expense_date_manual(message, expense_name, brand, model, year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
@@ -1670,11 +1738,6 @@ def get_expense_date(message, expense_name, brand, model, transport_year):
 
     expense_date = message.text
 
-    if expense_date is None:
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
-        return
-
     date_parts = expense_date.split(".")
     if len(date_parts) != 3:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1682,14 +1745,13 @@ def get_expense_date(message, expense_name, brand, model, transport_year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
+        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
         return
 
-    day, month, expense_year = date_parts  # Переименовываем year в expense_year
-
+    day, month, expense_year = date_parts
     if not day.isdigit() or not month.isdigit() or not expense_year.isdigit():
         bot.send_message(user_id, "Пожалуйста, введите дату в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
+        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
         return
 
     day = int(day)
@@ -1698,7 +1760,7 @@ def get_expense_date(message, expense_name, brand, model, transport_year):
 
     if len(str(expense_year)) != 4:
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
+        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
         return
 
     if day < 1 or day > 31 or month < 1 or month > 12:
@@ -1707,28 +1769,19 @@ def get_expense_date(message, expense_name, brand, model, transport_year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.", reply_markup=markup)
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
+        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
         return
 
+    # Переход к следующему шагу - вводу суммы траты
     bot.send_message(user_id, "Введите сумму траты:")
-    bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)  # Измените year на transport_year
-
-# Функция для проверки является ли строка числом
-def is_numeric(s):
-    if s is not None:
-        try:
-            float(s)
-            return True
-        except ValueError:
-            return False
-    return False
+    bot.register_next_step_handler(message, get_expense_amount, expense_date, expense_name, brand, model, year)
 
 # Функция получения суммы траты
-def get_expense_amount(message, expense_name, expense_date, brand, model, transport_year):
+def get_expense_amount(message, expense_date, expense_name, brand, model, year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id) 
+        send_menu(user_id)
         return
 
     if message.text == "В главное меню":
@@ -1736,18 +1789,12 @@ def get_expense_amount(message, expense_name, expense_date, brand, model, transp
         return
 
     expense_amount = message.text
-
     if expense_amount is not None:
         expense_amount = expense_amount.replace(",", ".")
 
-    if expense_date is None:
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
-        return
-
     if not is_numeric(expense_amount):
         bot.send_message(user_id, "Пожалуйста, введите сумму траты в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)
+        bot.register_next_step_handler(message, get_expense_amount, expense_date, expense_name, brand, model, year)
         return
 
     data = load_expense_data(user_id)
@@ -1761,7 +1808,7 @@ def get_expense_amount(message, expense_name, expense_date, brand, model, transp
         "name": expense_name,
         "date": expense_date,
         "amount": expense_amount,
-        "transport": {"brand": brand, "model": model, "year": transport_year}  # Добавляем информацию о транспорте
+        "transport": {"brand": brand, "model": model, "year": year}
     })
 
     data[str(user_id)]["expenses"] = expenses
@@ -3160,192 +3207,31 @@ geolocator = Nominatim(user_agent="geo_bot")
 
 user_locations = {}
 
-def calculate_distance(origin, destination):
-    return geodesic(origin, destination).kilometers
+# Функция для генерации ссылки на Yandex.Карты
+def get_yandex_maps_search_url(latitude, longitude, query):
+    base_url = "https://yandex.ru/maps/?"
+    search_params = {
+        'll': f"{longitude},{latitude}",
+        'z': 15,  # Уровень масштабирования карты
+        'text': query,  # Тип объекта, например, 'АЗС'
+        'mode': 'search'
+    }
+    query_string = "&".join([f"{key}={value}" for key, value in search_params.items()])
+    return f"{base_url}{query_string}"
 
-# (12.2) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (СОКРАЩЕНИЕ ССЫЛОК) ---------------
-
+# Функция для сокращения URL
 def shorten_url(original_url):
     endpoint = 'https://clck.ru/--'
     response = requests.get(endpoint, params={'url': original_url})
     return response.text
 
-# (12.3) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АЗС) ---------------
-
-def get_nearby_fuel_stations(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "АЗС",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045", 
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    fuel_stations = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        fuel_stations.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return fuel_stations
-
-# (12.4) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОМОЙКИ) ---------------
-
-def get_nearby_car_washes(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "Автомойка",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045", 
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    car_washes = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        car_washes.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return car_washes
-
-# (12.5) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОСЕРВИС) ---------------
-
-def get_nearby_auto_services(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "Автосервис",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045",
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    auto_services = []
-    for feature in data.get("features", []):
-        coordinates = feature.get("geometry", {}).get("coordinates")
-        name = feature.get("properties", {}).get("name")
-        address = feature.get("properties", {}).get("description", "Адрес не указан")
-        if coordinates and name:
-            auto_services.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return auto_services
-
-# (12.6) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ПАРКОВКИ) ---------------
-
-def get_nearby_parking(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "Парковки",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045",
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    parking_places = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        parking_places.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return parking_places
-
-# (12.7) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ЭВАКУАТОР) ---------------
-
-def get_nearby_evacuation_services(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "Эвакуация",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045",
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    evacuation_services = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        evacuation_services.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return evacuation_services
-
-# (12.8) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ГИБДД) ---------------
-
-def get_nearby_gibdd_mreo(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "ГИБДД",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045",
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    gibdd_mreo_offices = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        gibdd_mreo_offices.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return gibdd_mreo_offices
-
-# (12.9) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (КОМИССАРЫ) ---------------
-
-def get_nearby_accident_commissioner(latitude, longitude, user_coordinates):
-    api_url = "https://search-maps.yandex.ru/v1/"
-    params = {
-        "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-        "text": "Комиссары",
-        "lang": "ru_RU",
-        "ll": f"{longitude},{latitude}",
-        "spn": "0.045,0.045",
-        "type": "biz"
-    }
-    response = requests.get(api_url, params=params)
-    data = response.json()
-
-    accident_commissioners = []
-    for feature in data["features"]:
-        coordinates = feature["geometry"]["coordinates"]
-        name = feature["properties"]["name"]
-        address = feature["properties"]["description"]
-        accident_commissioners.append({"name": name, "coordinates": coordinates, "address": address})
-
-    return accident_commissioners
-
-# (12.10) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ПОИСК МЕСТ") ---------------
-
+# Обработчик для главного меню "Поиск мест"
 @bot.message_handler(func=lambda message: message.text == "Поиск мест")
 def send_welcome(message):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
+    # Кнопки с категориями
     button_azs = types.KeyboardButton("АЗС")
     button_car_wash = types.KeyboardButton("Автомойки")
     button_auto_service = types.KeyboardButton("Автосервисы")
@@ -3354,16 +3240,18 @@ def send_welcome(message):
     button_gibdd_mreo = types.KeyboardButton("ГИБДД")
     button_accident_commissioner = types.KeyboardButton("Комиссары")
 
+    # Кнопка для возврата в главное меню
     item1 = types.KeyboardButton("В главное меню")
 
+    # Добавление кнопок на клавиатуру
     markup.add(button_azs, button_car_wash, button_auto_service)
     markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner)
     markup.add(item1)
 
+    # Отправка пользователю
     bot.send_message(user_id, "Выберите категорию для ближайшего поиска:", reply_markup=markup)
 
-# (12.11) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ВЫБОР КАТЕГОРИИ ЗАНОВО") ---------------
-
+# Обработчик для выбора категории заново
 @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
 def handle_reset_category(message):
     global selected_category
@@ -3372,8 +3260,7 @@ def handle_reset_category(message):
 
 selected_category = None 
 
-# (12.12) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ДЛЯ ВЫБОРА КАТЕГОРИИ") ---------------
-
+# Обработчик для выбора категории
 @bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"})
 def handle_menu_buttons(message):
     global selected_category 
@@ -3391,16 +3278,16 @@ def handle_menu_buttons(message):
         selected_category = None
         bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
 
-# (12.13) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ГЕОЛОКАЦИЯ") ---------------
-
+# Обработчик для получения геолокации
 @bot.message_handler(content_types=['location'])
 def handle_location(message):
-    global selected_category, selected_location, user_locations
+    global selected_category, user_locations
     latitude = message.location.latitude
     longitude = message.location.longitude
     user_id = message.from_user.id
 
     try:
+        # Получение адреса по координатам
         location = geolocator.reverse((latitude, longitude), language='ru', timeout=10)
         address = location.address
 
@@ -3408,43 +3295,24 @@ def handle_location(message):
             bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
             return
 
+        # Сохранение координат пользователя
         user_locations[user_id] = {"address": address, "coordinates": (latitude, longitude)}
 
-        if selected_category == "АЗС":
-            locations = get_nearby_fuel_stations(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "Автомойки":
-            locations = get_nearby_car_washes(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "Автосервисы":
-            locations = get_nearby_auto_services(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "Парковки":
-            locations = get_nearby_parking(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "Эвакуация":
-            locations = get_nearby_evacuation_services(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "ГИБДД":
-            locations = get_nearby_gibdd_mreo(latitude, longitude, user_locations[user_id]["coordinates"])
-        elif selected_category == "Комиссары":
-            locations = get_nearby_accident_commissioner(latitude, longitude, user_locations[user_id]["coordinates"])
+        # Создание ссылки на Yandex.Карты
+        search_url = get_yandex_maps_search_url(latitude, longitude, selected_category)
+        short_search_url = shorten_url(search_url)
 
-        selected_location = {"address": address, "coordinates": (latitude, longitude)}
+        # Формирование сообщения
+        message_text = f"Ближайшие {selected_category.lower()} по адресу:\n\n{address}\n\n"
+        message_text += f"Ссылка на карту: {short_search_url}"
 
-        message_text = f"Ближайшие объекты по адресу:\n\n{address}\n\n"
-        message_text += f"{selected_category}:\n\n"
-
-        for location in locations:
-            name = location["name"]
-            coordinates = location["coordinates"]
-            address = location["address"]
-
-            yandex_maps_url = f"https://yandex.ru/maps/?rtext={user_locations[user_id]['coordinates'][0]},{user_locations[user_id]['coordinates'][1]}~{coordinates[1]},{coordinates[0]}&l=map&rtt=auto&ruri=~ymapsbm1%3A%2F%2Forg%3Foid%3D1847883008%26name%3D{quote(name)}%26address%3D{quote(address)}\n\n"
-
-            short_yandex_maps_url = shorten_url(yandex_maps_url)
-
-            message_text += f"{name} ({address}):\n{short_yandex_maps_url}\n\n"
-
+        # Отправка сообщения
         bot.send_message(message.chat.id, message_text, parse_mode='HTML')
 
+        # Сброс категории
         selected_category = None
 
+        # Клавиатура для выбора новой категории или возврата в главное меню
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         button_reset_category = types.KeyboardButton("Выбрать категорию заново")
         item1 = types.KeyboardButton("В главное меню")
@@ -3672,7 +3540,7 @@ def handle_text(message):
 # (15.1) --------------- КОД ДЛЯ "ПОГОДЫ" (ВВОДНЫЕ ФУНКЦИИ) ---------------
 
 # API ключ от OpenWeatherMap
-API_KEY = '664b0be63fce35aab95f278f77459143'
+API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
 
 WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
 
