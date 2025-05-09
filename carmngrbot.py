@@ -528,7 +528,30 @@ AD_CHANNELS = {
     "-1009876543210": "Drive & Save"
 }
 
-FREE_FEATURES = ["Погода", "Код региона", "Новости", "Уведомления"]
+FREE_FEATURES = [
+    "Код региона",
+    "Напоминания", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминание",
+    "Активные", "Истекшие",
+    "Del Активные", "Del Истекшие",
+    "Один раз (активные)", "Ежедневно (активные)", "Еженедельно (активные)", "Ежемесячно (активные)",
+    "Один раз (истекшие)", "Ежедневно (истекшие)", "Еженедельно (истекшие)", "Ежемесячно (истекшие)",
+    "Del Один раз (активные)", "Del Ежедневно (активные)", "Del Еженедельно (активные)", "Del Ежемесячно (активные)",
+    "Del Один раз (истекшие)", "Del Ежедневно (истекшие)", "Del Еженедельно (истекшие)", "Del Ежемесячно (истекшие)",
+    "Удалить все напоминания",
+    "Калькуляторы", "Вернуться в калькуляторы", "Вернуться в алкоголь", "Вернуться в налог",
+    "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя",
+    "Мужской", "Женский", "Убрать последний", "Убрать все", "Готово", "Медленно", "Быстро", "Нет", "Да", "Еда",
+    "Налог", "Рассчитать налог", "Просмотр налогов", "Удаление налогов",
+    "Легковые автомобили",
+    "Коды OBD2",
+    "Прочее",
+    "Новости", "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей", "Еще новости",
+    "Для рекламы", "Заявка на рекламу", "Ваши заявки",
+    "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
+    "Чат с админом",
+    "Вернуться в главное меню", "Вернуться в меню напоминаний", "Вернуться в меню для рекламы",
+    "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу"
+]
 
 def load_payment_data():
     default_promo_codes = {
@@ -557,7 +580,7 @@ def load_payment_data():
         }, 
         'all_users_total_amount': 0, 
         'promo_codes': default_promo_codes,
-        'ad_channels': default_ad_channels  # Добавляем каналы
+        'ad_channels': default_ad_channels
     }
 
     if not os.path.exists(PAYMENTS_DATABASE_PATH):
@@ -619,11 +642,9 @@ def load_payment_data():
     if 'ad_channels' not in data:
         data['ad_channels'] = default_ad_channels
     else:
-        # Синхронизируем с default_ad_channels
         for chat_id, channel_data in default_ad_channels.items():
             if chat_id not in data['ad_channels']:
                 data['ad_channels'][chat_id] = channel_data
-        # Проверяем удалённые каналы
         for chat_id in list(data['ad_channels'].keys()):
             if chat_id not in default_ad_channels:
                 data['ad_channels'][chat_id]['active'] = False
@@ -635,7 +656,6 @@ def load_payment_data():
     # Добавляем новые поля для каждого пользователя
     for user_id in data['subscriptions']['users']:
         data['subscriptions']['users'][user_id].setdefault('referral_points', 0)
-        data['subscriptions']['users'][user_id].setdefault('free_feature_trials', {})
         data['subscriptions']['users'][user_id].setdefault('promo_usage_history', [])
         data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
         data['subscriptions']['users'][user_id].setdefault('points_history', [])
@@ -741,8 +761,8 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
     total_users.add(user_id)
     user_id_str = str(user_id)
     current_time = datetime.now().strftime('%d.%m.%Y в %H:%M:%S')
-    now = datetime.now().strftime("%d.%m.%Y в %H:%M")
-    today = datetime.now().strftime('%d.%m.%Y')
+    now = datetime.now()
+    today = now.strftime('%d.%m.%Y')
 
     user_data = load_user_data()
     statistics = load_statistics()
@@ -771,18 +791,31 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             'session_time': 0,
             'returning': False,
             'daily_bonus_date': None,
+            'last_bonus_timestamp': None,  # Добавляем поле для точной временной метки
             'streak_days': 0
         }
 
     # Проверка и начисление ежедневного бонуса
-    last_bonus_date = user_data[user_id].get('daily_bonus_date')
-    join_date = users_data.get(user_id_str, {}).get('join_date', now)
-    days_since_join = (datetime.now() - datetime.strptime(join_date, "%d.%m.%Y в %H:%M")).days
+    last_bonus_timestamp = user_data[user_id].get('last_bonus_timestamp')
+    join_date = users_data.get(user_id_str, {}).get('join_date', now.strftime("%d.%m.%Y в %H:%M"))
+    days_since_join = (now - datetime.strptime(join_date, "%d.%m.%Y в %H:%M")).days
     bonus_points = 1.0 if days_since_join <= 7 else 0.5  # Двойные баллы в первые 7 дней
 
-    if not last_bonus_date or last_bonus_date != today:
+    # Проверяем, можно ли начислить бонус
+    can_award_bonus = False
+    if not last_bonus_timestamp:
+        can_award_bonus = True
+    else:
+        last_bonus_dt = datetime.strptime(last_bonus_timestamp, "%d.%m.%Y в %H:%M:%S")
+        time_since_last_bonus = now - last_bonus_dt
+        if time_since_last_bonus.total_seconds() >= 24 * 3600:  # Прошло 24 часа
+            can_award_bonus = True
+
+    if can_award_bonus:
+        user_data[user_id]['last_bonus_timestamp'] = current_time
         user_data[user_id]['daily_bonus_date'] = today
         user_data[user_id]['streak_days'] = user_data[user_id].get('streak_days', 0) + 1
+
         data['subscriptions']['users'].setdefault(user_id_str, {}).setdefault('referral_points', 0)
         data['subscriptions']['users'][user_id_str]['referral_points'] += bonus_points
         data['subscriptions']['users'][user_id_str].setdefault('points_history', []).append({
@@ -806,7 +839,12 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
                 "✨ Вы получили *+2 балла*! Продолжайте в том же духе!"
             ), parse_mode="Markdown")
     else:
-        user_data[user_id]['streak_days'] = max(0, user_data[user_id].get('streak_days', 0) - 1)
+        # Если бонус уже начислен сегодня, сбрасываем стрик только если пропущен день
+        last_bonus_date = user_data[user_id].get('daily_bonus_date')
+        if last_bonus_date and last_bonus_date != today:
+            last_date = datetime.strptime(last_bonus_date, "%d.%m.%Y")
+            if (now - last_date).days > 1:
+                user_data[user_id]['streak_days'] = 0
 
     # Остальной код без изменений
     if user_id_str not in users_data:
@@ -814,7 +852,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             "username": formatted_username or "неизвестный",
             "activity": {},
             "usage_stats": {},
-            "join_date": now,
+            "join_date": now.strftime("%d.%m.%Y в %H:%M"),
             "user_id": user_id,
             "first_name": first_name or "",
             "last_name": last_name or "",
@@ -833,7 +871,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         users_data[user_id_str]['last_active'] = current_time
         users_data[user_id_str].setdefault('activity', {})
         users_data[user_id_str].setdefault('usage_stats', {})
-        users_data[user_id_str].setdefault('join_date', now)
+        users_data[user_id_str].setdefault('join_date', now.strftime("%d.%m.%Y в %H:%M"))
 
     if user_id_str not in data['subscriptions']['users']:
         data['subscriptions']['users'][user_id_str] = {
@@ -851,14 +889,14 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         data['subscriptions']['users'][user_id_str]['username'] = formatted_username or data['subscriptions']['users'][user_id_str].get('username', "неизвестный")
         data['subscriptions']['users'][user_id_str].setdefault('last_promo_used', None)
 
-    today = datetime.now().strftime('%d.%m.%Y')
-    if today not in statistics:
-        statistics[today] = {'users': set(), 'functions': {}}
-    statistics[today]['users'].add(user_id)
+    today_stats = datetime.now().strftime('%d.%m.%Y')
+    if today_stats not in statistics:
+        statistics[today_stats] = {'users': set(), 'functions': {}}
+    statistics[today_stats]['users'].add(user_id)
     if function_name:
-        if function_name not in statistics[today]['functions']:
-            statistics[today]['functions'][function_name] = 0
-        statistics[today]['functions'][function_name] += 1
+        if function_name not in statistics[today_stats]['functions']:
+            statistics[today_stats]['functions'][function_name] = 0
+        statistics[today_stats]['functions'][function_name] += 1
 
     save_user_data(user_data)
     save_statistics(statistics)
@@ -913,16 +951,14 @@ def set_free_trial_period(user_id, days, source="default"):
             "total_amount": 0,
             "username": "неизвестный",
             "referral_points": 0,
-            "free_feature_trials": {},
             "promo_usage_history": [],
             "referral_milestones": {},
             "points_history": [],
-            "ad_bonus_received": False  # Добавляем поле по умолчанию
+            "ad_bonus_received": False
         }
 
     user_data = data['subscriptions']['users'][user_id_str]
 
-    # Убедитесь, что ключ 'plans' существует
     if 'plans' not in user_data:
         user_data['plans'] = []
 
@@ -1046,20 +1082,9 @@ def check_subscription(func):
         if end_date > datetime.now():
             return func(message, *args, **kwargs)
         
-        # Проверяем пробный доступ
-        trials = user_data.get('free_feature_trials', {})
-        last_trial = datetime.strptime(trials.get(message.text, "01.01.2000 в 00:00"), "%d.%m.%Y в %H:%M")
-        if (datetime.now() - last_trial).days >= 7:
-            trials[message.text] = datetime.now().strftime("%d.%m.%Y в %H:%M")
-            data['subscriptions']['users'].setdefault(user_id, {})['free_feature_trials'] = trials
-            data['subscriptions']['users'][user_id]['trial_granted'] = True
-            save_payments_data(data)
-            bot.send_message(user_id, f"🎁 Бесплатное использование «{message.text}» на один раз!", parse_mode="Markdown")
-            return func(message, *args, **kwargs)
-        
         bot.send_message(user_id, (
-            "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n"
-            "🚀 Оформите подписку, обменяйте баллы (1 балл = 1 час) или дождитесь окончания 7-дневного лимита!"
+            "⚠️ Эта функция доступна только премиум-пользователям!\n"
+            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
         ), parse_mode="Markdown")
     return wrapper
 
@@ -1102,15 +1127,9 @@ def restrict_free_users(func):
         if end_date > datetime.now():
             return func(message, *args, **kwargs)
         
-        # Проверяем пробный доступ
-        if user_data.get('trial_granted', False):
-            data['subscriptions']['users'][user_id]['trial_granted'] = False
-            save_payments_data(data)
-            return func(message, *args, **kwargs)
-        
         bot.send_message(message.chat.id, (
-            "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n"
-            "🚀 Оформите подписку, обменяйте баллы (1 балл = 1 час) или дождитесь окончания 7-дневного лимита!"
+            "⚠️ Эта функция доступна только премиум-пользователям!\n"
+            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
         ), parse_mode="Markdown")
     return wrapper
 
@@ -1588,7 +1607,7 @@ def payments_function(message):
 
     description = (
         "ℹ️ *Подписка на бота* ℹ️\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*. Бесплатно доступны: Погода, Код региона, Новости, Уведомления.\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _код региона, напоминания, калькуляторы (алкоголь, налог), прочее (новости, для рекламы, уведомления, чат с админом)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *Неделя:* 149 ₽ — идеально для тестирования всех функций бота!\n"
         "👉 *Месяц:* 399 ₽ — полный доступ ко всем функциям на продолжительный период!\n"
@@ -3870,8 +3889,6 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def restart_handler(message):
     user_id = message.chat.id
@@ -4882,8 +4899,6 @@ def return_to_menu(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def restart_handler(message):
     user_id = message.chat.id
@@ -5255,8 +5270,6 @@ user_transport = {}
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def return_to_menu_2(message):
     user_id = message.from_user.id
@@ -11043,6 +11056,14 @@ def toggle_notifications_handler(message):
     bot.send_message(chat_id, "Выберите, какие уведомления включить или выключить:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@restrict_free_users
+@check_subscription_chanal
 def handle_notification_toggle(message):
     chat_id = message.chat.id
     if message.text == "Включить погоду":
@@ -11713,8 +11734,6 @@ def view_transport(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def return_to_transport_menu(message):
     manage_transport(message)
@@ -11970,8 +11989,6 @@ def save_data(data):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def return_to_reminders_menu(message):
     reminders_menu(message)
@@ -12863,8 +12880,6 @@ def view_calculators(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def return_to_calculators(message):
     view_calculators(message)
