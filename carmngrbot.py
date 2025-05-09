@@ -113,25 +113,6 @@ load_all_user_data()
 
 
 
-# (3.2) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ТРАТЫ) ---------------
-
-# (3.4) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ГЕОПОЗИЦИЯ) ---------------
-
-def save_location_data(location_data):
-    folder_path = "data base"
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-
-    with open(os.path.join(folder_path, "location_data.json"), "w") as json_file:
-        json.dump(location_data, json_file)
-
-def load_location_data():
-    try:
-        with open(os.path.join("data base", "location_data.json"), "r") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return {}
-
 # (4) --------------- ЗАГРУЗКА ТЕКСТОВОГО ФАЙЛА С РЕГИОНАМИ ---------------
 
 regions = {}
@@ -5102,16 +5083,17 @@ LATITUDE_KEY = 'latitude'
 LONGITUDE_KEY = 'longitude'
 
 def save_location_data(location_data):
-    folder_path = "data base"
+    folder_path = "data base/findtransport"
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
+    # Сохраняем JSON с отступами для удобства чтения
     with open(os.path.join(folder_path, "location_data.json"), "w") as json_file:
-        json.dump(location_data, json_file)
+        json.dump(location_data, json_file, indent=4)
 
 def load_location_data():
     try:
-        with open(os.path.join("data base", "location_data.json"), "r") as file:
+        with open(os.path.join("data base/findtransport", "location_data.json"), "r") as file:
             return json.load(file)
     except FileNotFoundError:
         return {}
@@ -5239,7 +5221,7 @@ def handle_car_location(message):
             item2 = types.KeyboardButton("В главное меню")
             markup.add(item1)
             markup.add(item2)
-            bot.send_message(message.chat.id, "Вы можете найти транспорт еще раз.", reply_markup=markup)
+            bot.send_message(message.chat.id, "Вы можете найти транспорт еще раз", reply_markup=markup)
         else:
             handle_location_error(message)
 
@@ -5254,9 +5236,9 @@ def handle_location_error(message):
 
 # Отправка карты с маршрутом
 def send_map_link(chat_id, start_location, end_location):
-    map_url = f"https://yandex.ru/maps/?rtext={end_location[LATITUDE_KEY]},{end_location[LONGITUDE_KEY]}~{start_location[LATITUDE_KEY]},{start_location[LONGITUDE_KEY]}&rtt=pd"
-    short_url = shorten_url(map_url)    
-    bot.send_message(chat_id, f"Маршрут для поиска:\n\n{short_url}")
+    map_url = f"https://yandex.ru/maps/?rtext={end_location['latitude']},{end_location['longitude']}~{start_location['latitude']},{start_location['longitude']}&rtt=pd"
+    short_url = shorten_url(map_url)
+    bot.send_message(chat_id, f"📍 *Маршрут для поиска:* [ссылка]({short_url})", parse_mode='Markdown')
     
 # (14) --------------- КОД ДЛЯ "ПОИСК РЕГИОНА ПО ГОСНОМЕРУ" ---------------
 
