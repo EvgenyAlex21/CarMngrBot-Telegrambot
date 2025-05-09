@@ -50,6 +50,8 @@ from collections import defaultdict
 
 from functools import partial
 from bs4 import BeautifulSoup
+from stem.control import Controller
+from stem import Signal
 from requests.exceptions import ReadTimeout, ConnectionError
 from scipy.spatial import cKDTree
 from urllib.parse import quote
@@ -662,7 +664,6 @@ PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/
 USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/users.json")
 
 def load_payment_data():
-
     default_promo_codes = {
         "CARMNGRBOT25": {"uses": 5, "discount": 15, "active": True, "used_by": []},
         "DRIVEFAST": {"uses": 5, "discount": 20, "active": True, "used_by": []},
@@ -681,7 +682,6 @@ def load_payment_data():
         "AUTOTRACK": {"uses": 10, "discount": 9, "active": True, "used_by": []}
     }
 
-
     default_ad_channels = {
         "-1002591560088": {"name": "CarMngrBot News", "active": True},
         "-1001234567890": {"name": "Auto Tips Daily", "active": True},
@@ -698,14 +698,17 @@ def load_payment_data():
                 'current_leader': None,
                 'leader_start_date': None,
                 'days_at_top': 0
-            }
+            },
+            'top_formed_date': None,
+            'last_top10_bonus': None
         },
         'all_users_total_amount': 0,
         'promo_codes': default_promo_codes,
-        'ad_channels': default_ad_channels
+        'ad_channels': default_ad_channels,
+        'refunds': []
     }
 
-    if not os.path.exists(PAYMENTS_DATABASE_PATH):
+    if not os.path.exists(PAYMENTS_DATABASE_PATH) or os.path.getsize(PAYMENTS_DATABASE_PATH) == 0:
         os.makedirs(os.path.dirname(PAYMENTS_DATABASE_PATH), exist_ok=True)
         with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
             json.dump(default_data, f, indent=4, ensure_ascii=False)
@@ -713,76 +716,62 @@ def load_payment_data():
 
     try:
         with open(PAYMENTS_DATABASE_PATH, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-            if not content:
-                with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(default_data, f, indent=4, ensure_ascii=False)
-                return default_data
-            data = json.loads(content)
-    except json.JSONDecodeError as e:
-        error_msg = f"Ошибка декодирования JSON в {PAYMENTS_DATABASE_PATH}: {e}"
-        print(error_msg)
+            data = json.loads(f.read().strip())
+    except json.JSONDecodeError:
         backup_path = PAYMENTS_DATABASE_PATH + ".backup"
         if os.path.exists(backup_path):
             try:
                 with open(backup_path, 'r', encoding='utf-8') as f:
                     data = json.loads(f.read().strip())
-                print(f"Восстановлено из резервной копии: {backup_path}")
                 shutil.copy(backup_path, PAYMENTS_DATABASE_PATH)
-                return data
-            except json.JSONDecodeError as backup_e:
-                error_msg = f"Ошибка декодирования резервной копии {backup_path}: {backup_e}"
-                print(error_msg)
-                raise Exception("Не удалось загрузить payments.json или его резервную копию")
+            except json.JSONDecodeError:
+                data = default_data
+                with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(default_data, f, indent=4, ensure_ascii=False)
         else:
-            raise Exception(f"Не удалось декодировать {PAYMENTS_DATABASE_PATH}, и резервная копия отсутствует")
-    except Exception as e:
-        error_msg = f"Неизвестная ошибка при загрузке {PAYMENTS_DATABASE_PATH}: {e}"
-        print(error_msg)
-        raise Exception(f"Ошибка при загрузке {PAYMENTS_DATABASE_PATH}: {e}")
+            data = default_data
+            with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_data, f, indent=4, ensure_ascii=False)
+    except Exception:
+        data = default_data
+        with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(default_data, f, indent=4, ensure_ascii=False)
 
-    if 'referrals' not in data:
-        data['referrals'] = {
-            'links': {},
-            'stats': {},
-            'bonuses': {},
-            'leaderboard_history': {
+    for key, value in default_data.items():
+        if key not in data:
+            data[key] = value
+        elif key == 'promo_codes':
+            for promo_code, promo_data in default_promo_codes.items():
+                if promo_code not in data['promo_codes']:
+                    data['promo_codes'][promo_code] = promo_data
+        elif key == 'ad_channels':
+            for chat_id, channel_data in default_ad_channels.items():
+                if chat_id not in data['ad_channels']:
+                    data['ad_channels'][chat_id] = channel_data
+            for chat_id in list(data['ad_channels'].keys()):
+                if chat_id not in default_ad_channels:
+                    data['ad_channels'][chat_id]['active'] = False
+        elif key == 'referrals' and 'leaderboard_history' not in data['referrals']:
+            data['referrals']['leaderboard_history'] = {
                 'current_leader': None,
                 'leader_start_date': None,
                 'days_at_top': 0
             }
-        }
-    elif 'leaderboard_history' not in data['referrals']:
-        data['referrals']['leaderboard_history'] = {
-            'current_leader': None,
-            'leader_start_date': None,
-            'days_at_top': 0
-        }
 
-    if 'ad_channels' not in data:
-        data['ad_channels'] = default_ad_channels
-    else:
-        for chat_id, channel_data in default_ad_channels.items():
-            if chat_id not in data['ad_channels']:
-                data['ad_channels'][chat_id] = channel_data
-        for chat_id in list(data['ad_channels'].keys()):
-            if chat_id not in default_ad_channels:
-                data['ad_channels'][chat_id]['active'] = False
+    if 'subscriptions' in data and 'users' in data['subscriptions']:
+        for user_id in data['subscriptions']['users']:
+            data['subscriptions']['users'][user_id].setdefault('referral_points', 0)
+            data['subscriptions']['users'][user_id].setdefault('promo_usage_history', [])
+            data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
+            data['subscriptions']['users'][user_id].setdefault('points_history', [])
+            data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
+            data['subscriptions']['users'][user_id].setdefault('last_promo_used', None)
+            data['subscriptions']['users'][user_id].setdefault('daily_bonus_date', None)
+            data['subscriptions']['users'][user_id].setdefault('last_bonus_timestamp', None)
+            data['subscriptions']['users'][user_id].setdefault('streak_days', 0)
 
-    for promo_code, promo_data in default_promo_codes.items():
-        if promo_code not in data['promo_codes']:
-            data['promo_codes'][promo_code] = promo_data
-
-    for user_id in data['subscriptions']['users']:
-        data['subscriptions']['users'][user_id].setdefault('referral_points', 0)
-        data['subscriptions']['users'][user_id].setdefault('promo_usage_history', [])
-        data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
-        data['subscriptions']['users'][user_id].setdefault('points_history', [])
-        data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
-        data['subscriptions']['users'][user_id].setdefault('last_promo_used', None)
-        data['subscriptions']['users'][user_id].setdefault('daily_bonus_date', None)
-        data['subscriptions']['users'][user_id].setdefault('last_bonus_timestamp', None)
-        data['subscriptions']['users'][user_id].setdefault('streak_days', 0)
+    with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
     return data
 
@@ -1194,8 +1183,8 @@ def start(message):
         trial_message = (
             "🎉 <b>Поздравляем!</b>\n\n"
             "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n"
-            f"🕒 *Начало:* {start_date}\n"
-            f"⌛ *Конец:* {end_date_str}\n\n"
+            f"🕒 <b>Начало:</b> {start_date}\n"
+            f"⌛ <b>Конец:</b> {end_date_str}\n\n"
             "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
             f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n"
             "🤝 <b>Приглашайте друзей</b> и получайте до <b>+30 дней и 35% скидки</b>!\n\n"
@@ -1212,8 +1201,8 @@ def start(message):
         trial_message = (
             "🎉 <b>Поздравляем!</b>\n\n"
             "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n"
-            f"🕒 *Начало:* {start_date}\n"
-            f"⌛ *Конец:* {end_date_str}\n\n"
+            f"🕒 <b>Начало:</b> {start_date}\n"
+            f"⌛ <b>Конец:</b> {end_date_str}\n\n"
             "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
             f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n"
             "🤝 <b>Приглашайте друзей</b> и получайте до <b>+30 дней и 35% скидки</b>!\n\n"
@@ -1235,6 +1224,8 @@ def handle_subscription_confirmation(call):
     chat_id = call.message.chat.id
     username = call.from_user.username or 'неизвестный'
 
+    bot.answer_callback_query(call.id, text="Проверка статуса подписки...")
+
     if is_user_subscribed(user_id):
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -1245,23 +1236,24 @@ def handle_subscription_confirmation(call):
         if not has_active_plan:
             new_end_trial = set_free_trial_period(user_id, 3)
             referral_link = create_referral_link(user_id)
-            bot.answer_callback_query(call.id, text="Спасибо за подписку!")
             markup = create_main_menu()
             combined_message = (
                 "🎉 <b>Поздравляем!</b>\n\n"
                 "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n"
-                f"⏳ <b>Активно до:</b> {new_end_trial.strftime('%d.%m.%Y в %H:%M')}\n\n"
+                f"🕒 <b>Начало:</b> {datetime.now().strftime('%d.%m.%Y в %H:%M')}\n"
+                f"⌛ <b>Конец:</b> {new_end_trial.strftime('%d.%m.%Y в %H:%M')}\n\n"
                 "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
                 f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n"
-                "🤝 <b>Приглашайте друзей</b> и получайте до <b>+30 дней и 15% скидки</b>!\n\n"             
+                "🤝 <b>Приглашайте друзей</b> и получайте до <b>+30 дней и 15% скидки</b>!\n\n"
             )
-            bot.send_message(chat_id, combined_message, parse_mode="HTML", reply_markup=markup)
+            bot.send_message(chat_id, combined_message, parse_mode="HTML")
             bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
         else:
             markup = create_main_menu()
             bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
     else:
         bot.answer_callback_query(call.id, text="Вы еще не подписаны! Пожалуйста, подпишитесь!")
+        bot.send_message(chat_id, "Вы еще не подписаны на канал! Подпишитесь, чтобы продолжить!", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @check_function_state_decorator('В главное меню')
@@ -2145,21 +2137,6 @@ MIN_REFUND_AMOUNT = 1.0
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "payments.json")
 ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "admin_sessions.json")
-
-def load_payment_data():
-    try:
-        with open(PAYMENTS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        return {"subscriptions": {"users": {}}, "refunds": [], "all_users_total_amount": 0}
-
-def save_payments_data(data):
-    try:
-        os.makedirs(os.path.dirname(PAYMENTS_FILE), exist_ok=True)
-        with open(PAYMENTS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        pass
 
 def load_admin_chat_id():
     try:
@@ -4440,12 +4417,6 @@ def show_promo_codes(message):
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (рекламные каналы) -----------------------------------------
 
-AD_CHANNELS = {
-    "-1002591560088": "CarMngrBot News",
-    "-1001234567890": "Auto Tips Daily",
-    "-1009876543210": "Drive & Save"
-}
-
 def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
     try:
         member = bot.get_chat_member(chat_id, user_id)
@@ -4456,7 +4427,14 @@ def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
         return False
 
 def initialize_ad_channels():
+    default_ad_channels = {
+        "-1002591560088": {"name": "CarMngrBot News", "active": True},
+        "-1001234567890": {"name": "Auto Tips Daily", "active": True},
+        "-1009876543210": {"name": "Drive & Save", "active": True}
+    }
     data = load_payment_data()
+    if 'ad_channels' not in data:
+        return {chat_id: channel['name'] for chat_id, channel in default_ad_channels.items() if channel['active']}
     return {chat_id: channel['name'] for chat_id, channel in data['ad_channels'].items() if channel['active']}
 
 AD_CHANNELS = initialize_ad_channels()
@@ -6502,6 +6480,15 @@ def view_alc_calc(message, show_description=True):
 
 ALKO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_alko', 'alko.json')
 USER_HISTORY_PATH_ALKO = os.path.join('data', 'user', 'calculators', 'alcohol', 'alko_users.json')
+os.makedirs(os.path.dirname(ALKO_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(USER_HISTORY_PATH_ALKO), exist_ok=True)
+
+if not os.path.exists(ALKO_JSON_PATH):
+    with open(ALKO_JSON_PATH, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+if not os.path.exists(USER_HISTORY_PATH_ALKO):
+    with open(USER_HISTORY_PATH_ALKO, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
 
 alko_data = {}
 user_history_alko = {}
@@ -7464,6 +7451,15 @@ def view_rastamozka_calc(message, show_description=True):
 
 RASTAMOZKA_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_rastamozka', 'rastamozka.json')
 USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data', 'user', 'calculators', 'rastamozka', 'rastamozka_users.json')
+os.makedirs(os.path.dirname(RASTAMOZKA_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(USER_HISTORY_PATH_RASTAMOZKA), exist_ok=True)
+
+if not os.path.exists(RASTAMOZKA_JSON_PATH):
+    with open(RASTAMOZKA_JSON_PATH, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+if not os.path.exists(USER_HISTORY_PATH_RASTAMOZKA):
+    with open(USER_HISTORY_PATH_RASTAMOZKA, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
 
 rastamozka_data = {}
 user_history_raztamozka = {}
@@ -8500,6 +8496,15 @@ def view_osago_calc(message, show_description=True):
 
 OSAGO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_osago', 'osago.json')
 USER_HISTORY_PATH_OSAGO = os.path.join('data', 'user', 'calculators', 'osago', 'osago_users.json')
+os.makedirs(os.path.dirname(OSAGO_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(USER_HISTORY_PATH_OSAGO), exist_ok=True)
+
+if not os.path.exists(OSAGO_JSON_PATH):
+    with open(OSAGO_JSON_PATH, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+if not os.path.exists(USER_HISTORY_PATH_OSAGO):
+    with open(USER_HISTORY_PATH_OSAGO, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
 
 osago_data = {}
 user_history_osago = {}
@@ -11687,6 +11692,23 @@ NALOG_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'na
 USER_HISTORY_PATH_NALOG = os.path.join('data', 'user', 'calculators', 'nalog', 'nalog_users.json')
 PERECHEN_AUTO_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'auto_10mln_rub_2025.json')
 TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'transport_tax_{year}.json')
+os.makedirs(os.path.dirname(NALOG_JSON_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(USER_HISTORY_PATH_NALOG), exist_ok=True)
+os.makedirs(os.path.dirname(PERECHEN_AUTO_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(TRANSPORT_TAX_BASE_PATH.format(year=2025)), exist_ok=True)
+
+if not os.path.exists(NALOG_JSON_PATH):
+    with open(NALOG_JSON_PATH, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+if not os.path.exists(USER_HISTORY_PATH_NALOG):
+    with open(USER_HISTORY_PATH_NALOG, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
+if not os.path.exists(PERECHEN_AUTO_PATH):
+    with open(PERECHEN_AUTO_PATH, 'w', encoding='utf-8') as f:
+        json.dump([], f, ensure_ascii=False, indent=2)
+if not os.path.exists(TRANSPORT_TAX_BASE_PATH.format(year=2025)):
+    with open(TRANSPORT_TAX_BASE_PATH.format(year=2025), 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False, indent=2)
 
 nalog_data = {}
 user_history_nalog = {}
@@ -17790,6 +17812,16 @@ NOMINATIM_URL = 'https://nominatim.openstreetmap.org/reverse'
 MAX_MESSAGE_LENGTH = 4096
 user_data = {}
 
+file_path = "files/files_for_price_weather/combined_cities.txt"
+os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+if not os.path.exists(file_path):
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write("")
+    except Exception as e:
+        pass
+
 def load_cities_from_file(file_path="files/files_for_price_weather/combined_cities.txt"):
     cities = {}
     try:
@@ -18827,9 +18859,29 @@ CITYFORPRICE_DIR = os.path.join(BASE_DIR, "cityforprice")
 AZS_DIR = os.path.join(BASE_DIR, "azs")
 DATA_FILE_PATH = os.path.join(CITYFORPRICE_DIR, "city_for_the_price.json")
 PROXY_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files", "files_for_price_weather", "proxy.txt")
+TOR_BRIDGES_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files", "files_for_price_weather", "tor_most.txt")
 
 for directory in [CITYFORPRICE_DIR, AZS_DIR]:
     os.makedirs(directory, exist_ok=True)
+
+if not os.path.exists(DATA_FILE_PATH):
+    try:
+        with open(DATA_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump({}, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
+if not os.path.exists(PROXY_FILE_PATH):
+    try:
+        with open(PROXY_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write("")
+    except Exception as e:
+        pass
+if not os.path.exists(TOR_BRIDGES_FILE_PATH):
+    try:
+        with open(TOR_BRIDGES_FILE_PATH, 'w', encoding='utf-8') as f:
+            f.write("")
+    except Exception as e:
+        pass
 
 if not os.path.exists(DATA_FILE_PATH):
     try:
@@ -18934,6 +18986,21 @@ def load_proxies():
         pass
     return proxies
 
+def load_tor_bridges():
+    bridges = []
+    try:
+        with open(TOR_BRIDGES_FILE_PATH, 'r', encoding='utf-8') as f:
+            for line in f:
+                bridge = line.strip()
+                if bridge and bridge.startswith('obfs4'):
+                    bridges.append(bridge)
+        print(f"Загружено {len(bridges)} мостов Tor.")
+    except FileNotFoundError:
+        print(f"Файл {TOR_BRIDGES_FILE_PATH} не найден.")
+    except Exception as e:
+        print(f"Ошибка при загрузке мостов: {e}")
+    return bridges
+
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
 @check_function_state_decorator('Цены на топливо')
 @track_usage('Цены на топливо')
@@ -18985,7 +19052,7 @@ def get_city_from_coordinates(latitude, longitude):
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
         headers = {
-            'User-Agent': 'YourBotName/1.0 (0543398@gmail.com)'
+            'User-Agent': 'YourBotName/1.0 (0543398@gmail.com)' # API
         }
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -19415,23 +19482,28 @@ def remove_duplicate_prices(fuel_prices):
             unique_prices[key] = price
     return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
 
-def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1):
+def renew_tor_circuit():
+    try:
+        with Controller.from_port(port=9051) as controller:
+            controller.authenticate()
+            controller.signal(Signal.NEWNYM)
+            time.sleep(5)  
+            print("Цепочка Tor успешно переключена.")
+    except Exception as e:
+        print(f"Ошибка при переключении цепочки Tor: {e}")
 
+def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1):
     headers = {
-        'User-Agent': 'FuelPriceBot/1.0 (0543398@gmail.com)'
+        'User-Agent': 'FuelPriceBot/1.0 (0543398@gmail.com)' # API
     }
     
-    try:
+    def parse_table(soup, site_type):
+        fuel_prices = []
+        table = soup.find('table')
+        if not table:
+            raise ValueError("Не найдена таблица с ценами")
+        
         if site_type == "azcprice":
-            url = f'https://fuelprice.ru/t-{city_code}'
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            table = soup.find('table')
-            if not table:
-                raise ValueError("Не найдена таблица с ценами")
-
-            fuel_prices = []
             rows = table.find_all('tr')
             for row in rows[1:]:
                 columns = row.find_all('td')
@@ -19443,8 +19515,29 @@ def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1)
                 if fuel_type == "Газ СПБТ":
                     fuel_type = "Газ"
                 fuel_prices.append((brand, fuel_type, today_price))
-            return fuel_prices
+        
+        elif site_type == "petrolplus":
+            for row in table.find_all('tr')[1:]:
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    brand = cols[1].text.strip()
+                    fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
+                    prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
+                    for fuel_type, price in zip(fuel_types, prices):
+                        if fuel_type == "Газ СПБТ":
+                            fuel_type = "Газ"
+                        fuel_prices.append((brand, fuel_type, clean_price(price)))
+        
+        return fuel_prices
 
+    try:
+        if site_type == "azcprice":
+            url = f'https://fuelprice.ru/t-{city_code}'
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            return parse_table(soup, site_type)
+        
         elif site_type == "petrolplus":
             base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
             page = 1
@@ -19457,22 +19550,14 @@ def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1)
                 table = soup.find('table')
                 if not table:
                     break
-                for row in table.find_all('tr')[1:]:
-                    cols = row.find_all('td')
-                    if len(cols) >= 3:
-                        brand = cols[1].text.strip()
-                        fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
-                        prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
-                        for fuel_type, price in zip(fuel_types, prices):
-                            if fuel_type == "Газ СПБТ":
-                                fuel_type = "Газ"
-                            all_fuel_prices.append((brand, fuel_type, clean_price(price)))
+                all_fuel_prices.extend(parse_table(soup, site_type))
                 page += 1
             return all_fuel_prices
 
     except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"Ошибка при парсинге с текущего IP: {e}")
-        if proxies and retry_count > 0:
+        print(f"Ошибка при парсинге с текущего IP для {site_type}: {e}")
+
+        if proxies:
             for proxy in proxies:
                 try:
                     proxy_dict = {
@@ -19487,23 +19572,8 @@ def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1)
                         response = requests.get(url, headers=headers, proxies=proxy_dict, timeout=10)
                         response.raise_for_status()
                         soup = BeautifulSoup(response.text, 'html.parser')
-                        table = soup.find('table')
-                        if not table:
-                            raise ValueError("Не найдена таблица с ценами")
-                        fuel_prices = []
-                        rows = table.find_all('tr')
-                        for row in rows[1:]:
-                            columns = row.find_all('td')
-                            if len(columns) < 5:
-                                continue
-                            brand = columns[1].text.strip()
-                            fuel_type = columns[2].text.strip()
-                            today_price = clean_price(columns[3].text.strip())
-                            if fuel_type == "Газ СПБТ":
-                                fuel_type = "Газ"
-                            fuel_prices.append((brand, fuel_type, today_price))
-                        return fuel_prices
-
+                        return parse_table(soup, site_type)
+                    
                     elif site_type == "petrolplus":
                         base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
                         page = 1
@@ -19516,29 +19586,50 @@ def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1)
                             table = soup.find('table')
                             if not table:
                                 break
-                            for row in table.find_all('tr')[1:]:
-                                cols = row.find_all('td')
-                                if len(cols) >= 3:
-                                    brand = cols[1].text.strip()
-                                    fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
-                                    prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
-                                    for fuel_type, price in zip(fuel_types, prices):
-                                        if fuel_type == "Газ СПБТ":
-                                            fuel_type = "Газ"
-                                        all_fuel_prices.append((brand, fuel_type, clean_price(price)))
+                            all_fuel_prices.extend(parse_table(soup, site_type))
                             page += 1
                         return all_fuel_prices
 
                 except (requests.exceptions.RequestException, ValueError) as proxy_error:
-                    print(f"Ошибка при использовании прокси {proxy}: {proxy_error}")
+                    print(f"Ошибка при использовании прокси {proxy} для {site_type}: {proxy_error}")
                     continue
-        if retry_count > 0:
-            print(f"Повторная попытка ({retry_count}) через 3 секунды...")
-            time.sleep(3)
-            return get_fuel_prices_from_site(city_code, site_type, proxies, retry_count - 1)
-        else:
-            raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
 
+        print(f"Попытка через Tor для {site_type}...")
+        try:
+            renew_tor_circuit()
+            if site_type == "azcprice":
+                url = f'https://fuelprice.ru/t-{city_code}'
+                response = requests.get(url, headers=headers, timeout=10) 
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'html.parser')
+                return parse_table(soup, site_type)
+            
+            elif site_type == "petrolplus":
+                base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
+                page = 1
+                all_fuel_prices = []
+                while True:
+                    url = f'{base_url}{page}'
+                    response = requests.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    table = soup.find('table')
+                    if not table:
+                        break
+                    all_fuel_prices.extend(parse_table(soup, site_type))
+                    page += 1
+                return all_fuel_prices
+
+        except (requests.exceptions.RequestException, ValueError) as tor_error:
+            print(f"Ошибка при использовании Tor для {site_type}: {tor_error}")
+
+            if retry_count > 0:
+                print(f"Повторная попытка ({retry_count}) через 5 секунд...")
+                time.sleep(5)
+                return get_fuel_prices_from_site(city_code, site_type, proxies, retry_count - 1)
+            else:
+                raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
+            
 def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
     return cleaned_price
@@ -19576,6 +19667,7 @@ def parse_fuel_prices():
 
 def parse_fuel_prices_scheduled():
     proxies = load_proxies()
+    bridges = load_tor_bridges() 
     cities_to_parse = os.listdir(os.path.join('data', 'user', 'azs'))
     
     for i, city_code in enumerate(cities_to_parse):
@@ -19608,7 +19700,7 @@ def parse_fuel_prices_scheduled():
         print(f"Данные для города {city_code} успешно обновлены.")
         
         if i < len(cities_to_parse) - 1: 
-            time.sleep(300) 
+            time.sleep(300)  
 
 def schedule_tasks_for_azs():
     schedule.every().day.at("00:00").do(parse_fuel_prices_scheduled)
@@ -19621,10 +19713,12 @@ threading.Thread(target=schedule_tasks_for_azs, daemon=True).start()
 # --------------------------------------------------- КОД РЕГИОНА ---------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILES_DIR = os.path.join(BASE_DIR, "files", "files_for_regions")
+FILES_DIR = os.path.join(BASE_DIR, "files")
+FILES_FOR_REGIONS_DIR = os.path.join(FILES_DIR, "files_for_regions")
 REGIONS_FILE_PATH = os.path.join(FILES_DIR, "regions.txt")
 
 os.makedirs(FILES_DIR, exist_ok=True)
+os.makedirs(FILES_FOR_REGIONS_DIR, exist_ok=True)
 
 if not os.path.exists(REGIONS_FILE_PATH):
     try:
@@ -19734,10 +19828,16 @@ def process_input(message):
 
 # --------------------------------------------------- КОДЫ OBD2 ---------------------------------------------------------
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILES_DIR = os.path.join(BASE_DIR, "files")
+FILES_FOR_OBD2_DIR = os.path.join(FILES_DIR, "files_for_obd2")
+os.makedirs(FILES_DIR, exist_ok=True)
+os.makedirs(FILES_FOR_OBD2_DIR, exist_ok=True)
+
 def load_error_codes():
     error_codes = {}
     try:
-        with open("files/files_for_obd2/codes_obd2.txt", "r", encoding="utf-8") as file:
+        with open(os.path.join(FILES_FOR_OBD2_DIR, "codes_obd2.txt"), "r", encoding="utf-8") as file:
             for line in file:
                 parts = line.strip().split(" ", 1)
                 if len(parts) == 2:
@@ -20348,6 +20448,12 @@ def confirm_delete_step(message):
 # ----------------------------------------------------- АНТИ-РАДАР ----------------------------------------------------
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
+files_dir = os.path.join(script_dir, 'files')
+files_for_cams_dir = os.path.join(files_dir, 'files_for_cams')
+os.makedirs(files_dir, exist_ok=True)
+os.makedirs(files_for_cams_dir, exist_ok=True)
+
+file_path = os.path.join(files_for_cams_dir, 'milestones.csv')
 os.chdir(script_dir)
 
 camera_data = []
@@ -21208,7 +21314,7 @@ def get_city_name(latitude, longitude):
         time.sleep(1)  
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
         headers = {
-            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'  
+            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)' # API  
         }
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
@@ -29166,20 +29272,27 @@ def check_admin_access(message):
         return False
 
 def load_admin_sessions():
-    with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-    return data['admin_sessions']
+    try:
+        with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data['admin_sessions']
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 def load_function_states():
     if os.path.exists(FUNCTIONS_STATE_PATH):
-        with open(FUNCTIONS_STATE_PATH, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            if data:
-                return data
+        try:
+            with open(FUNCTIONS_STATE_PATH, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                if data:
+                    return data
+        except json.JSONDecodeError:
+            pass
     save_function_states({})
     return {}
 
 def save_function_states(states):
+    os.makedirs(os.path.dirname(FUNCTIONS_STATE_PATH), exist_ok=True)
     with open(FUNCTIONS_STATE_PATH, 'w', encoding='utf-8') as file:
         json.dump(states, file, ensure_ascii=False, indent=4)
 
@@ -29293,11 +29406,14 @@ new_functions = {
 
 def update_function_states():
     global function_states
+    updated = False
     for category, functions in new_functions.items():
         for function_name in functions:
             if function_name not in function_states:
                 function_states[function_name] = {"state": True, "deactivation_time": None}
-    save_function_states(function_states)
+                updated = True
+    if updated:
+        save_function_states(function_states)
 
 update_function_states()
 
@@ -29313,10 +29429,7 @@ def deactivate_function(function_name, deactivation_time):
 def set_function_state(function_name, state, deactivation_time=None):
     if function_name in function_states:
         function_states[function_name]['state'] = state
-        if deactivation_time:
-            function_states[function_name]['deactivation_time'] = deactivation_time
-        else:
-            function_states[function_name]['deactivation_time'] = None
+        function_states[function_name]['deactivation_time'] = deactivation_time
         save_function_states(function_states)
         return f"✅ Функция *{function_name}* успешно {'активирована' if state else 'деактивирована'}!"
     else:
@@ -29749,18 +29862,22 @@ active_users = {}
 total_users = set()
 
 def load_admin_sessions():
-    with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-    return data.get('admin_sessions', [])
+    try:
+        with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data.get('admin_sessions', [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 def load_user_data():
     try:
         with open(USER_DATA_FILE, 'r', encoding='utf-8') as file:
             return json.load(file)
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 def save_user_data(data):
+    os.makedirs(os.path.dirname(USER_DATA_FILE), exist_ok=True)
     with open(USER_DATA_FILE, 'w', encoding='utf-8') as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
 
@@ -29769,10 +29886,11 @@ def load_statistics():
         with open(STATS_FILE, 'r', encoding='utf-8') as file:
             data = json.load(file)
             return {date: {'users': set(data[date]['users']), 'functions': data[date].get('functions', {})} for date in data}
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 def save_statistics(data):
+    os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
     with open(STATS_FILE, 'w', encoding='utf-8') as file:
         json.dump({date: {'users': list(data[date]['users']), 'functions': data[date]['functions']} for date in data}, file, indent=4, ensure_ascii=False)
 
