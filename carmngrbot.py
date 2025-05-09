@@ -11416,6 +11416,7 @@ BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data base")
 CITYFORPRICE_DIR = os.path.join(BASE_DIR, "cityforprice")
 AZS_DIR = os.path.join(BASE_DIR, "azs")
 DATA_FILE_PATH = os.path.join(CITYFORPRICE_DIR, "city_for_the_price.json")
+PROXY_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files", "proxy.txt")
 
 for directory in [CITYFORPRICE_DIR, AZS_DIR]:
     os.makedirs(directory, exist_ok=True)
@@ -11512,6 +11513,18 @@ cities_dict = load_cities()
 def get_city_code(city_name):
     return cities_dict.get(city_name.lower())
 
+def load_proxies():
+    proxies = []
+    try:
+        with open(PROXY_FILE_PATH, 'r', encoding='utf-8') as f:
+            for line in f:
+                proxy = line.strip()
+                if proxy:
+                    proxies.append(proxy)
+    except FileNotFoundError:
+        print("Файл proxy.txt не найден. Продолжаем с текущим IP.")
+    return proxies
+
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
 @check_function_state_decorator('Цены на топливо')
 @track_usage('Цены на топливо')
@@ -11523,7 +11536,6 @@ def get_city_code(city_name):
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
-@text_only_handler
 def fuel_prices_command(message, show_description=True):
     chat_id = message.chat.id
     load_citys_users_data()
@@ -11542,7 +11554,7 @@ def fuel_prices_command(message, show_description=True):
     markup.add(types.KeyboardButton("В главное меню"))
 
     reference_info = (
-        "ℹ️ *Краткая справка по ценам на топливо*\n\n\n"
+        "ℹ️ *Краткая справка по ценам на топливо*\n\n"
         "📌 *Город:* Вводится *город* или отправляется *геопозиция* для получения актуальных средних цен на топливо разных марок АЗС\n\n"
         "📌 *Тип:* Выбирается тип топлива *(АИ-92, АИ-95, АИ-98, АИ-100, ДТ, ГАЗ)*\n\n"
         "📌 *Цены:* *Получение цен* на нужный вид топлива *в выбранном городе*\n\n"
@@ -11558,7 +11570,6 @@ def fuel_prices_command(message, show_description=True):
     bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
     bot.register_next_step_handler(message, process_city_selection)
 
-@text_only_handler
 def get_city_from_coordinates(latitude, longitude):
     time.sleep(1) 
     try:
@@ -11577,7 +11588,6 @@ def get_city_from_coordinates(latitude, longitude):
         print(f"Ошибка получения города по координатам: {e}")
         return None
 
-@text_only_handler
 def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
@@ -11694,7 +11704,7 @@ def update_progress(chat_id, message_id, bot, start_time):
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=f"Данные обрабатываются. Ожидайте! Никуда не выходите!\n\nВыполнено: {current_progress:.2f}%\nПрошло времени: {elapsed_time:.2f} секунд"
+            text=f"⚠️ Данные обрабатываются... Ожидайте, никуда не выходите!\n\nВыполнено: {current_progress:.2f}%\nПрошло времени: {elapsed_time:.2f} секунд"
         )
 
 def process_fuel_price_selection(message, city_code, site_type):
@@ -11726,7 +11736,7 @@ def process_fuel_price_selection(message, city_code, site_type):
 
     actual_fuel_types = fuel_type_mapping[selected_fuel_type]
 
-    progress_message = bot.send_message(chat_id, "Данные обрабатываются. Ожидайте! Никуда не выходите!")
+    progress_message = bot.send_message(chat_id, "⚠️ Данные обрабатываются... Ожидайте, никуда не выходите!")
     message_id = progress_message.message_id
 
     start_time = time.time()
@@ -11861,7 +11871,7 @@ def process_fuel_price_selection(message, city_code, site_type):
             progress = 100 
         print(f"Ошибка: {e}")
 
-        bot.send_message(chat_id, "Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива:")
+        bot.send_message(chat_id, "❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
         show_fuel_price_menu(chat_id, city_code, site_type)
         return 
     
@@ -11921,7 +11931,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
                                 item for item in saved_data
                                 if item[1].lower() in [ft.lower() for ft in actual_fuel_types]
                             ]
-                        raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+                        raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
 
                 fuel_prices = remove_duplicate_prices(fuel_prices)
                 all_fuel_prices.extend(fuel_prices)
@@ -11941,7 +11951,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
                     fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
                 except ValueError:
                     print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
-                    raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+                    raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
 
             fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
@@ -11965,85 +11975,129 @@ def remove_duplicate_prices(fuel_prices):
             unique_prices[key] = price
     return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
 
-def get_fuel_prices_from_site(city_code, site_type):
+def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1):
+
+    headers = {
+        'User-Agent': 'FuelPriceBot/1.0 (0543398@gmail.com)'
+    }
+    
     try:
         if site_type == "azcprice":
-            print(f"Парсинг данных с сайта AZCPRICE для города {city_code}")
             url = f'https://fuelprice.ru/t-{city_code}'
-            response = requests.get(url)
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
-
             table = soup.find('table')
             if not table:
                 raise ValueError("Не найдена таблица с ценами")
 
             fuel_prices = []
-
             rows = table.find_all('tr')
             for row in rows[1:]:
                 columns = row.find_all('td')
                 if len(columns) < 5:
                     continue
-
                 brand = columns[1].text.strip()
                 fuel_type = columns[2].text.strip()
                 today_price = clean_price(columns[3].text.strip())
-
                 if fuel_type == "Газ СПБТ":
                     fuel_type = "Газ"
-
                 fuel_prices.append((brand, fuel_type, today_price))
-
-            #print(f"Отпарсили данные для города {city_code}: {fuel_prices}")
             return fuel_prices
 
         elif site_type == "petrolplus":
-            print(f"Парсинг данных с сайта petrolplus для города {city_code}")
             base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
             page = 1
             all_fuel_prices = []
-
             while True:
                 url = f'{base_url}{page}'
-                response = requests.get(url)
+                response = requests.get(url, headers=headers, timeout=10)
                 response.raise_for_status()
-
                 soup = BeautifulSoup(response.text, 'html.parser')
-
                 table = soup.find('table')
                 if not table:
-                    print(f"Не найдена таблица с ценами для города {city_code} на странице {page}")
                     break
-
                 for row in table.find_all('tr')[1:]:
                     cols = row.find_all('td')
                     if len(cols) >= 3:
-                        address = cols[0].text.strip()
                         brand = cols[1].text.strip()
                         fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
                         prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
-
                         for fuel_type, price in zip(fuel_types, prices):
                             if fuel_type == "Газ СПБТ":
                                 fuel_type = "Газ"
-
                             all_fuel_prices.append((brand, fuel_type, clean_price(price)))
-
                 page += 1
-
-            #print(f"Данные успешно получены для города {city_code}: {all_fuel_prices}")
             return all_fuel_prices
 
-        else:
-            raise ValueError("Неизвестный тип сайта")
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"Ошибка при парсинге с текущего IP: {e}")
+        if proxies and retry_count > 0:
+            for proxy in proxies:
+                try:
+                    proxy_dict = {
+                        'http': proxy,
+                        'https': proxy,
+                        'socks4': proxy,
+                        'socks5': proxy
+                    }
+                    print(f"Попытка через прокси: {proxy}")
+                    if site_type == "azcprice":
+                        url = f'https://fuelprice.ru/t-{city_code}'
+                        response = requests.get(url, headers=headers, proxies=proxy_dict, timeout=10)
+                        response.raise_for_status()
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        table = soup.find('table')
+                        if not table:
+                            raise ValueError("Не найдена таблица с ценами")
+                        fuel_prices = []
+                        rows = table.find_all('tr')
+                        for row in rows[1:]:
+                            columns = row.find_all('td')
+                            if len(columns) < 5:
+                                continue
+                            brand = columns[1].text.strip()
+                            fuel_type = columns[2].text.strip()
+                            today_price = clean_price(columns[3].text.strip())
+                            if fuel_type == "Газ СПБТ":
+                                fuel_type = "Газ"
+                            fuel_prices.append((brand, fuel_type, today_price))
+                        return fuel_prices
 
-    except requests.exceptions.RequestException as e:
-        print(f"Ошибка запроса: {e}")
-        raise ValueError("Ошибка запроса")
-    except Exception as e:
-        print(f"Ошибка парсинга: {e}")
-        raise ValueError("Ошибка парсинга")
+                    elif site_type == "petrolplus":
+                        base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
+                        page = 1
+                        all_fuel_prices = []
+                        while True:
+                            url = f'{base_url}{page}'
+                            response = requests.get(url, headers=headers, proxies=proxy_dict, timeout=10)
+                            response.raise_for_status()
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            table = soup.find('table')
+                            if not table:
+                                break
+                            for row in table.find_all('tr')[1:]:
+                                cols = row.find_all('td')
+                                if len(cols) >= 3:
+                                    brand = cols[1].text.strip()
+                                    fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
+                                    prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
+                                    for fuel_type, price in zip(fuel_types, prices):
+                                        if fuel_type == "Газ СПБТ":
+                                            fuel_type = "Газ"
+                                        all_fuel_prices.append((brand, fuel_type, clean_price(price)))
+                            page += 1
+                        return all_fuel_prices
+
+                except (requests.exceptions.RequestException, ValueError) as proxy_error:
+                    print(f"Ошибка при использовании прокси {proxy}: {proxy_error}")
+                    continue
+        if retry_count > 0:
+            print(f"Повторная попытка ({retry_count}) через 3 секунды...")
+            time.sleep(3)
+            return get_fuel_prices_from_site(city_code, site_type, proxies, retry_count - 1)
+        else:
+            raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
 
 def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
