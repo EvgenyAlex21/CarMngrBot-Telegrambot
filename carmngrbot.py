@@ -30,6 +30,7 @@ import hashlib
 from statistics import mean
 from functools import wraps
 
+
 # (2) --------------- ТОКЕН БОТА ---------------
 
 bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
@@ -11312,11 +11313,14 @@ def process_disable_function_time_step(message, function_names, date_str, origin
 
 # (ADMIN n) ------------------------------------------ "ОПОВЕЩЕНИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
-USER_DATA_PATH = 'data base/admin/users.json'
-SENT_MESSAGES_PATH = 'data base/admin/sent_messages.json'
-NOTIFICATIONS_PATH = 'data base/admin/notifications.json'
-notifications = []  # Список для хранения уведомлений по времени
-sent_messages = []  # Список для хранения отправленных сообщений
+# Путь к файлу
+DATABASE_PATH = 'data base/admin/alerts.json'
+ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+USER_DATA_PATH = 'data base/admin/users.json'  # Путь к файлу с данными пользователей
+
+# Глобальные переменные
+alerts = {}  # Словарь для хранения уведомлений и отправленных сообщений
+admin_sessions = []
 
 # Загрузка пользователей
 def load_users():
@@ -11325,65 +11329,93 @@ def load_users():
             return json.load(file)
     return {}
 
-# Загрузка отправленных сообщений
-def load_sent_messages():
-    if os.path.exists(SENT_MESSAGES_PATH):
-        with open(SENT_MESSAGES_PATH, 'r') as file:
-            return json.load(file)
-    return []
+# Загрузка базы данных
+def save_database():
+    for key, value in alerts['notifications'].items():
+        if 'time' in value and isinstance(value['time'], datetime):
+            value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
+    for key, value in alerts['sent_messages'].items():
+        if 'time' in value and isinstance(value['time'], datetime):
+            value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
+    with open(DATABASE_PATH, 'w') as file:
+        json.dump(alerts, file, ensure_ascii=False, indent=4)
+    for key, value in alerts['notifications'].items():
+        if 'time' in value and isinstance(value['time'], str):
+            value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
+    for key, value in alerts['sent_messages'].items():
+        if 'time' in value and isinstance(value['time'], str):
+            value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
-# Загрузка уведомлений
-def load_notifications():
-    if os.path.exists(NOTIFICATIONS_PATH):
-        with open(NOTIFICATIONS_PATH, 'r') as file:
-            loaded_notifications = json.load(file)
-            # Преобразование строк обратно в datetime
-            for notification in loaded_notifications:
-                notification['time'] = datetime.strptime(notification['time'], "%d.%m.%Y, %H:%M")
-            return loaded_notifications
-    return []
+def load_database():
+    if os.path.exists(DATABASE_PATH):
+        with open(DATABASE_PATH, 'r') as file:
+            data = json.load(file)
+            for key, value in data['notifications'].items():
+                if 'time' in value and value['time']:
+                    value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
-# Сохранение отправленных сообщений
-def save_sent_messages():
-    with open(SENT_MESSAGES_PATH, 'w') as file:
-        json.dump(sent_messages, file)
+            # Преобразование списка sent_messages в словарь
+            if isinstance(data['sent_messages'], list):
+                sent_messages_dict = {}
+                for i, msg in enumerate(data['sent_messages']):
+                    msg_id = str(i + 1)
+                    sent_messages_dict[msg_id] = msg
+                    if 'time' in msg and msg['time']:
+                        msg['time'] = datetime.strptime(msg['time'], "%d.%m.%Y в %H:%M")
+                data['sent_messages'] = sent_messages_dict
+            else:
+                for key, value in data['sent_messages'].items():
+                    if 'time' in value and value['time']:
+                        value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
-# Сохранение уведомлений
-def save_notifications():
-    # Преобразование datetime в строку для сохранения
-    notifications_to_save = [
-        {
-            'text': n['text'],
-            'time': n['time'].strftime("%d.%m.%Y, %H:%M"),
-            'status': n['status']
-        } for n in notifications
-    ]
-    with open(NOTIFICATIONS_PATH, 'w') as file:
-        json.dump(notifications_to_save, file)
+            return data
+    return {"sent_messages": {}, "notifications": {}}
 
-# Инициализация отправленных сообщений и уведомлений при запуске
-sent_messages = load_sent_messages()
-notifications = load_notifications()
+
+
+
+
+# Инициализация базы данных при запуске
+alerts = load_database()
 
 def check_notifications():
     while True:
         now = datetime.now()
-        for n in notifications:
-            if n['status'] == 'active' and n['time'] <= now:
-                # Отправка уведомления
-                for user_id in load_users().keys():
-                    bot.send_message(user_id, n['text'])
-                n['status'] = 'sent'  # Обновляем статус
-        save_notifications()  # Сохраняем уведомления
-        time.sleep(60)  # Проверяем каждую минуту
+        for key, n in alerts['notifications'].items():
+            if n['status'] == 'active' and 'time' in n and n['time'] <= now:
+                user_id = n.get('user_id')
+                if user_id:
+                    user_ids = [user_id]
+                else:
+                    user_ids = load_users().keys()
+
+                for user_id in user_ids:
+                    if n.get('text'):
+                        bot.send_message(user_id, n['text'])
+                    else:
+                        for file in n.get('files', []):
+                            if file['type'] == 'photo':
+                                bot.send_photo(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'video':
+                                bot.send_video(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'document':
+                                bot.send_document(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'animation':
+                                bot.send_animation(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'sticker':
+                                bot.send_sticker(user_id, file['file_id'])
+                            elif file['type'] == 'audio':
+                                bot.send_audio(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'voice':
+                                bot.send_voice(user_id, file['file_id'], caption=file.get('caption'))
+                            elif file['type'] == 'video_note':
+                                bot.send_video_note(user_id, file['file_id'])
+                n['status'] = 'sent'
+        save_database()
+        time.sleep(60)
 
 # Запускаем проверку уведомлений в отдельном потоке
 threading.Thread(target=check_notifications, daemon=True).start()
-
-
-
-# Путь к JSON файлу с админскими сессиями
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
 
 # Загрузка админских сессий из JSON файла
 def load_admin_sessions():
@@ -11402,8 +11434,7 @@ def check_admin_access(message):
         bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
         return False
 
-
-# Показ меню оповещений
+# Показ меню уведомлений
 @bot.message_handler(func=lambda message: message.text == 'Оповещения' and check_admin_access(message))
 def show_notifications_menu(message):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
@@ -11411,11 +11442,9 @@ def show_notifications_menu(message):
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите тип оповещения:", reply_markup=markup)
 
-
 # Обработчик для "По времени"
 @bot.message_handler(func=lambda message: message.text == 'По времени' and check_admin_access(message))
 def handle_time_notifications(message):
-
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'По времени'):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
@@ -11423,41 +11452,100 @@ def handle_time_notifications(message):
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Отправить по времени')
-    markup.add('Активные', 'Остановленные')
+    markup.add('Просмотр (по времени)', 'Удалить (по времени)')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Управление оповещениями по времени:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Управление уведомлениями по времени:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправить по времени' and check_admin_access(message))
 def schedule_notification(message):
-
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить по времени'):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Отправить всем', 'Отправить отдельно')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_send_action)
+
+def choose_send_action(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.text == 'Отправить всем':
+        # Создаем клавиатуру с одной кнопкой "В меню админ-панели"
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите тему уведомления:", reply_markup=markup)
+        bot.register_next_step_handler(message, set_theme_for_notification)
+    elif message.text == 'Отправить отдельно':
+        list_users_for_time_notification(message)
+
+def set_theme_for_notification(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_theme_for_notification)
+        return
+
+    notification_theme = message.text
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите текст уведомления:", reply_markup=markup)
-    bot.register_next_step_handler(message, set_time_for_notification)
+    bot.send_message(message.chat.id, "Введите текст уведомления или отправьте мультимедийный файл:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_time_for_notification, notification_theme)
 
-def set_time_for_notification(message):
-    notification_text = message.text
+def set_time_for_notification(message, notification_theme):
+    notification_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите дату (ДД.ММ.ГГГГ):", reply_markup=markup)
-    bot.register_next_step_handler(message, process_notification_date, notification_text)
+    bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
 
-def process_notification_date(message, notification_text):
+
+def process_notification_date(message, notification_theme, notification_text, content_type, file_id, caption):
     date_str = message.text
     if not validate_date_format(date_str):
         bot.send_message(message.chat.id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
-        bot.register_next_step_handler(message, process_notification_date, notification_text)
+        bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
+        return
+
+    try:
+        notification_date = datetime.strptime(date_str, "%d.%m.%Y")
+        if notification_date.date() < datetime.now().date():
+            bot.send_message(message.chat.id, "Введенная дата уже прошла. Пожалуйста, введите корректную дату.")
+            bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
+            return
+    except ValueError:
+        bot.send_message(message.chat.id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
+        bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите время (ЧЧ:ММ):", reply_markup=markup)
-    bot.register_next_step_handler(message, process_notification_time, notification_text, date_str)
+    bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
 
 def validate_date_format(date_str):
     try:
@@ -11466,26 +11554,45 @@ def validate_date_format(date_str):
     except ValueError:
         return False
 
-def process_notification_time(message, notification_text, date_str):
+def process_notification_time(message, notification_theme, notification_text, date_str, content_type, file_id, caption):
     time_str = message.text
     if not validate_time_format(time_str):
         bot.send_message(message.chat.id, "Неверный формат времени. Введите время в формате ЧЧ:ММ:")
-        bot.register_next_step_handler(message, process_notification_time, notification_text, date_str)
+        bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
         return
 
     try:
         notification_time = datetime.strptime(f"{date_str}, {time_str}", "%d.%m.%Y, %H:%M")
-        notifications.append({
-            'text': notification_text,
-            'time': notification_time,
-            'status': 'active'
-        })
-        save_notifications()
-        bot.send_message(message.chat.id, f"Уведомление '{notification_text}' запланировано на {notification_time}.")
+        if notification_time < datetime.now():
+            bot.send_message(message.chat.id, "Введенное время уже прошло. Пожалуйста, введите корректное время.")
+            bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
+            return
     except ValueError:
-        bot.send_message(message.chat.id, "Неверный формат. Попробуйте снова.")
-        schedule_notification(message)
+        bot.send_message(message.chat.id, "Неверный формат времени. Введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
+        return
 
+    notification_id = str(len(alerts['notifications']) + 1)
+    alerts['notifications'][notification_id] = {
+        'theme': notification_theme,
+        'text': notification_text if content_type == 'text' else None,
+        'time': notification_time,
+        'status': 'active',
+        'category': 'time',
+        'user_id': None,
+        'files': [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ],
+        'content_type': content_type
+    }
+    save_database()
+    bot.send_message(message.chat.id, f"Уведомление '{notification_theme}' запланировано на {notification_time.strftime('%d.%m.%Y в %H:%M')}.")
+    show_admin_panel(message)
+    
 def validate_time_format(time_str):
     try:
         datetime.strptime(time_str, "%H:%M")
@@ -11493,36 +11600,164 @@ def validate_time_format(time_str):
     except ValueError:
         return False
 
-@bot.message_handler(func=lambda message: message.text == 'Активные' and check_admin_access(message))
-def show_active_notifications(message):
-
+@bot.message_handler(func=lambda message: message.text == 'Просмотр (по времени)' and check_admin_access(message))
+def show_view_notifications(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Активные'):
+    if not check_permission(admin_id, 'Просмотр (по времени)'):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    if notifications:
-        active_notifications = [f"{i + 1}. {n['text']} - {n['time']}" for i, n in enumerate(notifications) if n['status'] == 'active']
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Активные (по времени)', 'Остановленные (по времени)')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите тип просмотра:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == 'Активные (по времени)' and check_admin_access(message))
+def show_active_notifications(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Активные (по времени)'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    if alerts['notifications']:
+        active_notifications = [
+            f"*№{i + 1}*.\n\n*Тема*: {n['theme'].lower() if n['theme'] else 'без темы'}\n*Дата*: {n['time'].strftime('%d.%m.%Y')}\n*Время*: {n['time'].strftime('%H:%M')}\n*Статус*: {'отложено' if n['status'] == 'active' else 'отправлено'}"
+            for i, n in enumerate([n for n in alerts['notifications'].values() if n['status'] == 'active' and n['category'] == 'time'])
+        ]
         if active_notifications:
-            bot.send_message(message.chat.id, "\n".join(active_notifications))
+            bot.send_message(message.chat.id, "Список *активных уведомлений (по времени)*:\n\n" + "\n\n".join(active_notifications), parse_mode='Markdown')
+
+            # Создаем клавиатуру с кнопкой "В меню админ-панели"
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В меню админ-панели')
+
+            bot.send_message(message.chat.id, "Введите номер уведомления для просмотра:", reply_markup=markup)
+            bot.register_next_step_handler(message, show_notification_details, 'active')
         else:
             bot.send_message(message.chat.id, "Нет активных уведомлений.")
     else:
         bot.send_message(message.chat.id, "Нет уведомлений.")
 
-@bot.message_handler(func=lambda message: message.text == 'Остановленные' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Остановленные (по времени)' and check_admin_access(message))
 def show_stopped_notifications(message):
-
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Остановленные'):
+    if not check_permission(admin_id, 'Остановленные (по времени)'):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    stopped_notifications = [f"{i + 1}. {n['text']} - {n['time']}" for i, n in enumerate(notifications) if n['status'] == 'stopped']
+    stopped_notifications = [
+        f"*№{i + 1}*.\n\n*Тема*: {n['theme'].lower() if n['theme'] else 'без темы'}\n*Дата*: {n['time'].strftime('%d.%m.%Y')}\n*Время*: {n['time'].strftime('%H:%M')}\n*Статус*: {'отправлено' if n['status'] == 'sent' else 'отложено'}"
+        for i, n in enumerate([n for n in alerts['notifications'].values() if n['status'] == 'sent' and n['category'] == 'time'])
+    ]
     if stopped_notifications:
-        bot.send_message(message.chat.id, "\n".join(stopped_notifications))
+        bot.send_message(message.chat.id, "Список *остановленных уведомлений (по времени)*:\n\n" + "\n\n".join(stopped_notifications), parse_mode='Markdown')
+
+        # Создаем клавиатуру с кнопкой "В меню админ-панели"
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+
+        bot.send_message(message.chat.id, "Введите номер уведомления для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, show_notification_details, 'sent')
     else:
         bot.send_message(message.chat.id, "Нет остановленных уведомлений.")
+
+def show_notification_details(message, status):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        notifications = [n for n in alerts['notifications'].values() if n['status'] == status and n['category'] == 'time']
+        if 0 <= index < len(notifications):
+            notification = notifications[index]
+            theme = notification['theme'].lower() if notification['theme'] else 'без темы'
+            content_type = notification.get('content_type', 'текст')
+            status_text = 'отправлено' if notification['status'] == 'sent' else 'активно'
+
+            notification_details = (
+                f"*Тема*: {theme}\n"
+                f"*Тип контента*: {content_type}\n"
+                f"*Дата*: {notification['time'].strftime('%d.%m.%Y')}\n"
+                f"*Время*: {notification['time'].strftime('%H:%M')}\n"
+                f"*Статус*: {status_text}\n"
+            )
+            bot.send_message(message.chat.id, notification_details, parse_mode='Markdown')
+
+            # Отправка мультимедийного содержимого
+            for file in notification.get('files', []):
+                if file['type'] == 'photo':
+                    bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video':
+                    bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'document':
+                    bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'animation':
+                    bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'voice':
+                    bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер уведомления. Попробуйте снова.")
+            bot.register_next_step_handler(message, show_notification_details, status)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер уведомления.")
+        bot.register_next_step_handler(message, show_notification_details, status)
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить (по времени)' and check_admin_access(message))
+def delete_notification(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить (по времени)'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    notifications_list = [
+        f"*№{i + 1}*.\n\n*Тема*: {n['theme'].lower() if n['theme'] else 'без темы'}\n*Дата*: {n['time'].strftime('%d.%m.%Y')}\n*Время*: {n['time'].strftime('%H:%M')}\n*Статус*: {'отправлено' if n['status'] == 'sent' else 'активно'}"
+        for i, n in enumerate([n for n in alerts['notifications'].values() if n['category'] == 'time'])
+    ]
+    if notifications_list:
+        bot.send_message(message.chat.id, "Список для *удаления (по времени)*:\n\n" + "\n\n".join(notifications_list), parse_mode='Markdown')
+
+        # Создаем клавиатуру с кнопкой "В меню админ-панели"
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+
+        bot.send_message(message.chat.id, "Введите номер уведомления для удаления:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_delete_notification)
+    else:
+        bot.send_message(message.chat.id, "Нет уведомлений для удаления.")
+
+def process_delete_notification(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        notifications = list(alerts['notifications'].values())
+        if 0 <= index < len(notifications):
+            notification_id = list(alerts['notifications'].keys())[index]
+            deleted_notification = alerts['notifications'].pop(notification_id)
+            save_database()  # Сохраняем изменения после удаления
+
+            # Формируем сообщение с темой в нижнем регистре и выделяем её жирным шрифтом
+            theme = deleted_notification['theme'].lower() if deleted_notification['theme'] else 'без темы'
+            bot.send_message(message.chat.id, f"Уведомление *{theme}* удалено.", parse_mode='Markdown')
+
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер уведомления. Попробуйте снова.")
+            bot.register_next_step_handler(message, process_delete_notification)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер уведомления.")
+        bot.register_next_step_handler(message, process_delete_notification)
 
 # Обработчик для "Всем"
 @bot.message_handler(func=lambda message: message.text == 'Всем' and check_admin_access(message))
@@ -11536,7 +11771,7 @@ def handle_broadcast_notifications(message):
     markup.add('Отправить сообщение')
     markup.add('Отправленные', 'Удалить отправленные')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Управление оповещениями для всех:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Управление уведомлениями для всех:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and check_admin_access(message))
 def send_message_to_all(message):
@@ -11547,39 +11782,90 @@ def send_message_to_all(message):
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите тему сообщения:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_theme_for_broadcast)
+
+def set_theme_for_broadcast(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    broadcast_theme = message.text
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_broadcast_message)
-    
-def process_broadcast_message(message):
-    broadcast_text = message.text
+    bot.register_next_step_handler(message, process_broadcast_message, broadcast_theme)
+
+def process_broadcast_message(message, broadcast_theme):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    broadcast_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
     users = load_users()
+    user_ids = []
     for user_id in users.keys():
-        if message.content_type == 'text':
+        if content_type == 'text':
             bot.send_message(user_id, broadcast_text)
-        else:
-            # Отправляем мультимедийные файлы
-            if message.photo:
-                bot.send_photo(user_id, message.photo[-1].file_id)  # Отправляем фото
-            elif message.video:
-                bot.send_video(user_id, message.video.file_id)  # Отправляем видео
-            elif message.document:
-                bot.send_document(user_id, message.document.file_id)  # Отправляем документ
-            elif message.animation:
-                bot.send_animation(user_id, message.animation.file_id)  # Отправляем анимацию
-            elif message.sticker:
-                bot.send_sticker(user_id, message.sticker.file_id)  # Отправляем стикер
-            elif message.audio:
-                bot.send_audio(user_id, message.audio.file_id)  # Отправляем аудио
-            elif message.contact:
-                bot.send_contact(user_id, message.contact.phone_number, message.contact.first_name)  # Отправляем контакт
-            elif message.voice:
-                bot.send_voice(user_id, message.voice.file_id)  # Отправляем голосовое сообщение
-            elif message.video_note:
-                bot.send_video_note(user_id, message.video_note.file_id)  # Отправляем видеозаметку
-            # Важно сохранять информацию о отправленных сообщениях
-            sent_messages.append({'user_id': user_id, 'text': broadcast_text, 'timestamp': datetime.now().isoformat()})
-    save_sent_messages()
+        elif content_type == 'photo':
+            bot.send_photo(user_id, file_id, caption=caption)
+        elif content_type == 'video':
+            bot.send_video(user_id, file_id, caption=caption)
+        elif content_type == 'document':
+            bot.send_document(user_id, file_id, caption=caption)
+        elif content_type == 'animation':
+            bot.send_animation(user_id, file_id, caption=caption)
+        elif content_type == 'sticker':
+            bot.send_sticker(user_id, file_id)
+        elif content_type == 'audio':
+            bot.send_audio(user_id, file_id, caption=caption)
+        elif content_type == 'voice':
+            bot.send_voice(user_id, file_id, caption=caption)
+        elif content_type == 'video_note':
+            bot.send_video_note(user_id, file_id)
+        user_ids.append(user_id)
+
+    # Сохраняем информацию о отправленных сообщениях
+    notification_id = str(len(alerts['sent_messages']) + 1)
+    alerts['sent_messages'][notification_id] = {
+        'theme': broadcast_theme,
+        'text': broadcast_text if content_type == 'text' else None,
+        'time': datetime.now().strftime("%d.%m.%Y в %H:%M"),
+        'status': 'sent',
+        'category': 'all',
+        'user_ids': user_ids,
+        'files': [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ]
+    }
+    save_database()
     bot.send_message(message.chat.id, "Сообщение отправлено всем пользователям.")
+    show_admin_panel(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправленные' and check_admin_access(message))
 def show_sent_messages(message):
@@ -11588,29 +11874,111 @@ def show_sent_messages(message):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    if sent_messages:  # Используем загруженный список отправленных сообщений
-        sent_messages_list = [f"Пользователь ID: {msg['user_id']} - Сообщение: {msg['text']} - Время: {msg['timestamp']}" for msg in sent_messages]
-        bot.send_message(message.chat.id, "\n".join(sent_messages_list))
+    if alerts['sent_messages']:  # Используем загруженный список отправленных сообщений
+        sent_messages_list = [
+            f"№{i + 1}.\n\n*Тема*: {msg['theme']}\n*Пользователи*: {', '.join(msg.get('user_ids', []))}\n*Время*: {msg['time']}\n"
+            for i, msg in enumerate(alerts['sent_messages'].values()) if msg['category'] == 'all'
+        ]
+        bot.send_message(message.chat.id, "Список отправленных сообщений:\n\n" + "\n\n".join(sent_messages_list), parse_mode='Markdown')
+
+        # Создаем клавиатуру с кнопкой "В меню админ-панели"
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+
+        bot.send_message(message.chat.id, "Введите номер сообщения для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, show_sent_message_details)
     else:
         bot.send_message(message.chat.id, "Нет отправленных сообщений.")
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
+def show_sent_message_details(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        sent_messages = list(alerts['sent_messages'].values())
+        if 0 <= index < len(sent_messages):
+            sent_message = sent_messages[index]
+            theme = sent_message['theme'].lower() if sent_message['theme'] else 'без темы'
+            content_type = sent_message.get('content_type', 'текст')
+            status_text = 'отправлено'
+
+            # Форматирование даты и времени
+            formatted_time = sent_message['time'].strftime("%d.%m.%Y в %H:%M")
+
+            sent_message_details = (
+                f"*Тема*: {theme}\n"
+                f"*Тип контента*: {content_type}\n"
+                f"*Дата*: {formatted_time}\n"
+                f"*Статус*: {status_text}\n"
+            )
+            bot.send_message(message.chat.id, sent_message_details, parse_mode='Markdown')
+
+            # Отправка мультимедийного содержимого
+            for file in sent_message.get('files', []):
+                if file['type'] == 'photo':
+                    bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video':
+                    bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'document':
+                    bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'animation':
+                    bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'voice':
+                    bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер сообщения. Попробуйте снова.")
+            bot.register_next_step_handler(message, show_sent_message_details)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер сообщения.")
+        bot.register_next_step_handler(message, show_sent_message_details)
+
+bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
 def delete_sent_messages(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить отправленные'):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    bot.send_message(message.chat.id, "Введите номер сообщения для удаления (например, '1' для первого):")
-    bot.register_next_step_handler(message, process_delete_message)
+    if alerts['sent_messages']:  # Используем загруженный список отправленных сообщений
+        sent_messages_list = [
+            f"№{i + 1}.\n\n*Тема*: {msg['theme']}\n*Пользователи*: {', '.join(msg.get('user_ids', []))}\n*Время*: {msg['time']}\n"
+            for i, msg in enumerate(alerts['sent_messages'].values()) if msg['category'] == 'all'
+        ]
+        bot.send_message(message.chat.id, "Список отправленных сообщений:\n\n" + "\n\n".join(sent_messages_list), parse_mode='Markdown')
 
-def process_delete_message(message):
+        # Создаем клавиатуру с кнопкой "В меню админ-панели"
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+
+        bot.send_message(message.chat.id, "Введите номер сообщения для удаления:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_delete_sent_message)
+    else:
+        bot.send_message(message.chat.id, "Нет отправленных сообщений.")
+
+def process_delete_sent_message(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     try:
         index = int(message.text) - 1
+        sent_messages = list(alerts['sent_messages'].values())
         if 0 <= index < len(sent_messages):
-            deleted_message = sent_messages.pop(index)
-            save_sent_messages()  # Сохраняем изменения после удаления
-            bot.send_message(message.chat.id, f"Сообщение от пользователя ID: {deleted_message['user_id']} удалено.")
+            notification_id = list(alerts['sent_messages'].keys())[index]
+            deleted_message = alerts['sent_messages'].pop(notification_id)
+            save_database()  # Сохраняем изменения после удаления
+            bot.send_message(message.chat.id, f"Сообщение от пользователей {', '.join(deleted_message.get('user_ids', []))} удалено.")
+            show_admin_panel(message)
         else:
             bot.send_message(message.chat.id, "Неверный номер сообщения. Попробуйте снова.")
             delete_sent_messages(message)
@@ -11626,46 +11994,476 @@ def handle_individual_notifications(message):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Отправить отдельно')
+    markup.add('Посмотреть отдельно', 'Удалить отдельно')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Управление уведомлениями для отдельных пользователей:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == 'Отправить отдельно' and check_admin_access(message))
+def send_message_to_individual(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отправить отдельно'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    list_users(message)
+
+@bot.message_handler(func=lambda message: message.text == 'Посмотреть отдельно' and check_admin_access(message))
+def show_individual_messages(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Посмотреть отдельно'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *разблокирован* ✅" if not data.get('blocked', False) else " - *заблокирован* 🚫"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список всех пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите ID или username пользователя:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_individual_user)
+    bot.send_message(message.chat.id, "Введите номер пользователя для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_user_for_view)
 
-def process_individual_user(message):
-    user_input = message.text
-    users = load_users()
-    if user_input in users:
-        bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:")
-        bot.register_next_step_handler(message, send_individual_message, user_input)
+def choose_user_for_view(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        users_data = load_users()
+        user_list = list(users_data.keys())
+        if 0 <= index < len(user_list):
+            user_id = user_list[index]
+            view_individual_messages_for_user(message, user_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер пользователя. Попробуйте снова.")
+            show_individual_messages(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
+        show_individual_messages(message)
+
+def view_individual_messages_for_user(message, user_id):
+    sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_id', [])]
+    if sent_messages:
+        sent_messages_list = [
+            f"№{i + 1}.\n\n*Тема*: {msg['theme']}\n*Дата*: {msg['timestamp']}\n*Статус*: {'отправлено' if msg.get('status') == 'sent' else 'активно'}\n"
+            for i, msg in enumerate(sent_messages)
+        ]
+        bot.send_message(message.chat.id, "\n\n".join(sent_messages_list), parse_mode='Markdown')
+        show_admin_panel(message)  # Возвращаемся в меню админ-панели
     else:
-        bot.send_message(message.chat.id, "Пользователь не найден. Попробуйте снова.")
+        bot.send_message(message.chat.id, "Нет отправленных сообщений для этого пользователя.")
+        show_admin_panel(message)
+
+
+
+def show_individual_message_details(message, user_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_id', [])]
+        if 0 <= index < len(sent_messages):
+            sent_message = sent_messages[index]
+            theme = sent_message['theme'].lower() if sent_message['theme'] else 'без темы'
+            content_type = sent_message.get('content_type', 'текст')
+            status_text = 'отправлено' if sent_message.get('status') == 'sent' else 'активно'
+
+            # Форматирование даты и времени
+            formatted_time = sent_message['time'].strftime("%d.%m.%Y в %H:%M")
+
+            sent_message_details = (
+                f"*Тема*: {theme}\n"
+                f"*Тип контента*: {content_type}\n"
+                f"*Дата*: {formatted_time}\n"
+                f"*Статус*: {status_text}\n"
+            )
+            bot.send_message(message.chat.id, sent_message_details, parse_mode='Markdown')
+
+            # Отправка мультимедийного содержимого
+            for file in sent_message.get('files', []):
+                if file['type'] == 'photo':
+                    bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video':
+                    bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'document':
+                    bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'animation':
+                    bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'voice':
+                    bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+
+            show_admin_panel(message)  # Возвращаемся в меню админ-панели
+        else:
+            bot.send_message(message.chat.id, "Неверный номер сообщения. Попробуйте снова.")
+            view_individual_messages_for_user(message, user_id)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер сообщения.")
+        view_individual_messages_for_user(message, user_id)
+
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить отдельно' and check_admin_access(message))
+def delete_individual_messages(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить отдельно'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *разблокирован* ✅" if not data.get('blocked', False) else " - *заблокирован* 🚫"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список всех пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер пользователя для удаления:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_user_for_delete)
+
+def choose_user_for_delete(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        users_data = load_users()
+        user_list = list(users_data.keys())
+        if 0 <= index < len(user_list):
+            user_id = user_list[index]
+            delete_individual_messages_for_user(message, user_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер пользователя. Попробуйте снова.")
+            delete_individual_messages(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
+        delete_individual_messages(message)
+
+def delete_individual_messages_for_user(message, user_id):
+    sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_ids', [])]
+    if sent_messages:
+        sent_messages_list = [
+            f"№{i + 1}.\n\n*Тема*: {msg['theme']}\n*Дата*: {msg['time']}\n*Статус*: {'отправлено' if msg['status'] == 'sent' else 'активно'}\n"
+            for i, msg in enumerate(sent_messages)
+        ]
+        bot.send_message(message.chat.id, "\n\n".join(sent_messages_list), parse_mode='Markdown')
+        bot.send_message(message.chat.id, "Введите номер сообщения для удаления (например, '1' для первого):")
+        bot.register_next_step_handler(message, process_delete_individual_message, user_id)
+    else:
+        bot.send_message(message.chat.id, "Нет отправленных сообщений для этого пользователя.")
+        show_admin_panel(message)
+
+def process_delete_individual_message(message, user_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_ids', [])]
+        if 0 <= index < len(sent_messages):
+            notification_id = list(alerts['sent_messages'].keys())[index]
+            deleted_message = alerts['sent_messages'].pop(notification_id)
+            save_database()  # Сохраняем изменения после удаления
+            bot.send_message(message.chat.id, f"Сообщение от пользователя ID: {user_id} удалено.")
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер сообщения. Попробуйте снова.")
+            delete_individual_messages_for_user(message, user_id)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер сообщения.")
+        delete_individual_messages_for_user(message, user_id)
+
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
+def list_users(message):
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список всех пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер пользователя для отправки сообщения:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_user_for_message)
+
+def choose_user_for_message(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        users_data = load_users()
+        user_list = list(users_data.keys())
+        if 0 <= index < len(user_list):
+            user_id = user_list[index]
+            bot.send_message(message.chat.id, "Введите тему сообщения:")
+            bot.register_next_step_handler(message, set_theme_for_individual, user_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер пользователя. Попробуйте снова.")
+            handle_individual_notifications(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
         handle_individual_notifications(message)
 
-def send_individual_message(message, user_id):
-    if message.content_type == 'text':
-        bot.send_message(user_id, message.text)
-    else:
-        # Отправляем мультимедийные файлы
-        if message.photo:
-            bot.send_photo(user_id, message.photo[-1].file_id)
-        elif message.video:
-            bot.send_video(user_id, message.video.file_id)
-        elif message.document:
-            bot.send_document(user_id, message.document.file_id)
-        elif message.animation:
-            bot.send_animation(user_id, message.animation.file_id)
-        elif message.sticker:
-            bot.send_sticker(user_id, message.sticker.file_id)
-        elif message.audio:
-            bot.send_audio(user_id, message.audio.file_id)
-        elif message.contact:
-            bot.send_contact(user_id, message.contact.phone_number, message.contact.first_name)
-        elif message.voice:
-            bot.send_voice(user_id, message.voice.file_id)
-        elif message.video_note:
-            bot.send_video_note(user_id, message.video_note.file_id)
+def set_theme_for_individual(message, user_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
 
-    bot.send_message(message.chat.id, f"Сообщение отправлено пользователю ID: {user_id}.")
+    individual_theme = message.text
+    bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:")
+    bot.register_next_step_handler(message, send_individual_message, user_id, individual_theme)
+
+def send_individual_message(message, user_id, individual_theme):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    if content_type == 'text':
+        bot.send_message(user_id, message.text)
+    elif content_type == 'photo':
+        bot.send_photo(user_id, file_id, caption=caption)
+    elif content_type == 'video':
+        bot.send_video(user_id, file_id, caption=caption)
+    elif content_type == 'document':
+        bot.send_document(user_id, file_id, caption=caption)
+    elif content_type == 'animation':
+        bot.send_animation(user_id, file_id, caption=caption)
+    elif content_type == 'sticker':
+        bot.send_sticker(user_id, file_id)
+    elif content_type == 'audio':
+        bot.send_audio(user_id, file_id, caption=caption)
+    elif content_type == 'voice':
+        bot.send_voice(user_id, file_id, caption=caption)
+    elif content_type == 'video_note':
+        bot.send_video_note(user_id, file_id)
+
+    bot.send_message(message.chat.id, f"Сообщение '{individual_theme}' отправлено пользователю ID: {user_id}.")
+
+    # Сохраняем информацию о отправленных сообщениях
+    notification_id = str(len(alerts['sent_messages']) + 1)
+    alerts['sent_messages'][notification_id] = {
+        'user_id': [user_id],  # Сохраняем user_id как список
+        'theme': individual_theme,
+        'text': message.text if content_type == 'text' else None,
+        'content_type': content_type,
+        'file_id': file_id,
+        'caption': caption if content_type != 'text' else None,
+        'timestamp': datetime.now().strftime("%d.%m.%Y в %H:%M"),  # Сохраняем дату в нужном формате
+        'category': 'individual',
+        'status': 'sent'  # Добавляем статус
+    }
+    save_database()
+    show_admin_panel(message)
+
+def list_users_for_time_notification(message):
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список всех пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер пользователя для отправки сообщения:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_user_for_time_notification)
+
+def choose_user_for_time_notification(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        users_data = load_users()
+        user_list = list(users_data.keys())
+        if 0 <= index < len(user_list):
+            user_id = user_list[index]
+            bot.send_message(message.chat.id, "Введите тему сообщения:")
+            bot.register_next_step_handler(message, set_theme_for_time_notification, user_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер пользователя. Попробуйте снова.")
+            bot.register_next_step_handler(message, choose_user_for_time_notification)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
+        bot.register_next_step_handler(message, choose_user_for_time_notification)
+
+def set_theme_for_time_notification(message, user_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    individual_theme = message.text
+    bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:")
+    bot.register_next_step_handler(message, set_time_for_time_notification, user_id, individual_theme)
+
+def set_time_for_time_notification(message, user_id, individual_theme):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    notification_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите дату (ДД.ММ.ГГГГ):", reply_markup=markup)
+    bot.register_next_step_handler(message, process_time_notification_date, user_id, individual_theme, notification_text, content_type, file_id, caption)
+
+def process_time_notification_date(message, user_id, individual_theme, notification_text, content_type, file_id, caption):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    date_str = message.text
+    if not validate_date_format(date_str):
+        bot.send_message(message.chat.id, "Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ:")
+        bot.register_next_step_handler(message, process_time_notification_date, user_id, individual_theme, notification_text, content_type, file_id, caption)
+        return
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите время (ЧЧ:ММ):", reply_markup=markup)
+    bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
+
+def process_time_notification_time(message, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    time_str = message.text
+    if not validate_time_format(time_str):
+        bot.send_message(message.chat.id, "Неверный формат времени. Введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
+        return
+
+    try:
+        notification_time = datetime.strptime(f"{date_str}, {time_str}", "%d.%m.%Y, %H:%M")
+        if notification_time < datetime.now():
+            bot.send_message(message.chat.id, "Введенное время уже прошло. Пожалуйста, введите корректное время.")
+            bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
+            return
+    except ValueError:
+        bot.send_message(message.chat.id, "Неверный формат времени. Введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
+        return
+
+    notification_id = str(len(alerts['notifications']) + 1)
+    alerts['notifications'][notification_id] = {
+        'theme': individual_theme,
+        'text': notification_text if content_type == 'text' else None,
+        'time': notification_time,
+        'status': 'active',
+        'category': 'time',
+        'user_id': user_id,
+        'files': [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ],
+        'content_type': content_type
+    }
+    save_database()
+
+    # Загрузка данных пользователя
+    users_data = load_users()
+    username = users_data.get(user_id, {}).get('username', 'Неизвестный пользователь')
+
+    # Формирование сообщения с темой в нижнем регистре и выделение её жирным шрифтом
+    theme = individual_theme.lower()
+    formatted_time = notification_time.strftime("%d.%m.%Y в %H:%M")
+    bot.send_message(message.chat.id, f"Уведомление *{theme}* запланировано на {formatted_time} для пользователя {username} - {user_id}", parse_mode='Markdown')
+    show_admin_panel(message)
+
+
+
 
 # (ADMIN n) ------------------------------------------ "ЧАТ АДМИНА И ПОЛЬЗОВАТЕЛЯ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
