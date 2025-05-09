@@ -423,12 +423,105 @@ def process_end_location_step(message):
     end_coords = (trip_data[chat_id]["end_location"]["latitude"], trip_data[chat_id]["end_location"]["longitude"])
     distance_km = geodesic(start_coords, end_coords).kilometers
 
-    # Сообщаем пользователю расстояние
-    bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.")
+    # Предлагаем пользователю выбрать между автоматическим расстоянием и вводом своего
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
+    item_input = types.KeyboardButton("Ввести своё расстояние")
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
 
-    # Переходим к шагу ввода даты поездки
-    sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_date_step, distance_km)
+    markup.add(item_auto, item_input)
+    markup.add(item1, item2)
+    
+    sent = bot.send_message(chat_id, "Выберите вариант:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
+
+
+def process_distance_choice_step(message, distance_km):
+    chat_id = message.chat.id
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    # Добавляем кнопки выбора расстояния
+    item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
+    item_input = types.KeyboardButton("Ввести своё расстояние")
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+
+    markup.add(item_auto, item_input)
+    markup.add(item1, item2)
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
+        return
+
+    if message.text == "Использовать автоматическое расстояние":
+        # Создаем новую клавиатуру с двумя кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        markup.add(item2)
+
+        bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.", reply_markup=markup)
+        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_date_step, distance_km)
+
+    elif message.text == "Ввести своё расстояние":
+        # Теперь создаем новую клавиатуру с двумя кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1, item2)
+
+        sent = bot.send_message(chat_id, "Введите расстояние в километрах:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_custom_distance_step)
+
+    elif message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    else:
+        # Обработка некорректного ввода
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
+
+def process_custom_distance_step(message):
+    chat_id = message.chat.id
+
+    # Создаем новую разметку для ввода расстояния
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_custom_distance_step)
+        return
+
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        custom_distance = float(message.text)
+        bot.send_message(chat_id, f"Вы ввели своё расстояние: {custom_distance:.2f} км.", reply_markup=markup)
+        # Переход к следующему шагу, например, вводу даты поездки
+        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_date_step, custom_distance)
+    except ValueError:
+        sent = bot.send_message(chat_id, "Пожалуйста, введите корректное число для расстояния.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_custom_distance_step)
 
 
 def process_date_step(message, distance):
