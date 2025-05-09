@@ -1470,7 +1470,7 @@ def restart_handler(message):
     user_trip_data[user_id] = load_trip_data(user_id)
 
     # Возвращаем пользователя в меню расчета топлива
-    return_to_fuel_calc_menu(message)
+    reset_and_start_over(message)
 
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
 
@@ -5703,13 +5703,13 @@ def handle_start_5(message):
         markup.row(telebot.types.KeyboardButton("Отправить геопозицию", request_location=True))
         markup.row(telebot.types.KeyboardButton("В главное меню"))
 
-        bot.send_message(message.chat.id, "Отправьте свою геопозицию для отображения погоды.", reply_markup=markup)
+        bot.send_message(message.chat.id, "Отправьте свою геопозицию для отображения погоды", reply_markup=markup)
         bot.register_next_step_handler(message, handle_location_5)
     
     except Exception as e:
         print(f"Ошибка в обработчике 'Погода': {e}")
         traceback.print_exc()
-        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса. Попробуйте позже.")
+        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса. Попробуйте позже")
 
 @bot.message_handler(content_types=['location'])
 @restricted
@@ -5726,19 +5726,19 @@ def handle_location_5(message):
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
             markup.row('Сегодня', 'Завтра')
             markup.row('Неделя', 'Месяц')
-            markup.row('Вернуться назад')
+            markup.row('Другое место')
             markup.row('В главное меню')
 
             bot.send_message(message.chat.id, "Выберите период или действие:", reply_markup=markup)
         elif message.text == "В главное меню":
             return_to_menu(message)
         else:
-            bot.send_message(message.chat.id, "Не удалось получить данные о местоположении. Пожалуйста, отправьте местоположение еще раз.")
+            bot.send_message(message.chat.id, "Не удалось получить данные о местоположении. Пожалуйста, отправьте местоположение еще раз")
             bot.register_next_step_handler(message, handle_location_5)
     except Exception as e:
         print(f"Ошибка в обработчике 'Геолокация': {e}")
         traceback.print_exc()
-        bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
+        bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже")
 
 
 import telebot
@@ -5859,7 +5859,7 @@ def get_current_weather(coords):
             print(f"Ошибка запроса погоды: код {response.status_code}, сообщение: {data.get('message', 'Нет описания ошибки')}")
             return None
     except requests.exceptions.Timeout:
-        print("Ошибка: Время ожидания ответа от сервера истекло.")
+        print("Ошибка: Время ожидания ответа от сервера истекло")
     except requests.exceptions.ConnectionError as e:
         print(f"Ошибка подключения: {e}")
     except Exception as e:
@@ -5891,10 +5891,10 @@ def get_average_fuel_prices(city_code):
                 fuel_prices[fuel_type].append(price)
 
     except FileNotFoundError:
-        print(f"Файл с ценами на топливо для города '{city_code}' не найден.")
+        print(f"Файл с ценами на топливо для города '{city_code}' не найден")
         return None
     except json.JSONDecodeError:
-        print("Ошибка при декодировании JSON.")
+        print("Ошибка при декодировании JSON")
         return None
 
     # Вычисление средних цен
@@ -5913,7 +5913,7 @@ def load_city_names(file_path):
                     city_name, city_code = city_data
                     city_names[city_code] = city_name  # Добавляем в словарь
     except FileNotFoundError:
-        print(f"Файл с названиями городов '{file_path}' не найден.")
+        print(f"Файл с названиями городов '{file_path}' не найден")
     except Exception as e:
         print(f"Произошла ошибка: {e}")
     
@@ -5953,7 +5953,7 @@ schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
 schedule.every().day.at("20:00").do(send_weather_notifications)
 
-@bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
+@bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Другое место'])
 @restricted
 @track_user_activity
 def handle_period_5(message):
@@ -5963,11 +5963,15 @@ def handle_period_5(message):
     coords = user_locations.get(str(chat_id))  # Получите координаты для текущего пользователя
 
     if coords is None:
-        bot.send_message(chat_id, "Не удалось получить координаты. Пожалуйста, отправьте местоположение еще раз.")
+        bot.send_message(chat_id, "Не удалось получить координаты. Пожалуйста, отправьте местоположение еще раз")
         return
 
-    if period == 'вернуться назад':
+    if period == 'Другое место':
         user_data.pop(chat_id, None)
+        handle_start_5(message)
+        return
+
+    if message.text == "Другое место":
         handle_start_5(message)
         return
 
@@ -6006,21 +6010,21 @@ def send_weather(chat_id, coords, url):
 
             message = (
                 f"*Погода на {current_date} в {current_time}:*\n\n"
-                f"*Температура:* {temperature}°C\n"
-                f"*Ощущается как:* {feels_like}°C\n"
-                f"*Влажность:* {humidity}%\n"
-                f"*Давление:* {pressure} мм рт. ст.\n"
-                f"*Скорость ветра:* {wind_speed} м/с\n"
-                f"*Описание:* {description}\n"
+                f"🌡️ *Температура:* {temperature}°C\n"
+                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                f"💧 *Влажность:* {humidity}%\n"
+                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                f"☁️ *Описание:* {description}\n"
             )
             bot.send_message(chat_id, message, parse_mode="Markdown")
             send_forecast_remaining_day(chat_id, coords, FORECAST_URL)
         else:
-            bot.send_message(chat_id, "Не удалось получить текущую погоду. Проверьте, правильно ли указаны координаты.")
+            bot.send_message(chat_id, "Не удалось получить текущую погоду. Проверьте, правильно ли указаны координаты")
     except Exception as e:
         print(f"Ошибка при отправке текущей погоды: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды. Попробуйте позже")
 
 def send_forecast_remaining_day(chat_id, coords, url):
     try:
@@ -6055,24 +6059,24 @@ def send_forecast_remaining_day(chat_id, coords, url):
 
                     message += (
                         f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
-                        f"*Температура:* {temperature}°C\n"
-                        f"*Ощущается как:* {feels_like}°C\n"
-                        f"*Влажность:* {humidity}%\n"
-                        f"*Давление:* {pressure} мм рт. ст.\n"
-                        f"*Скорость ветра:* {wind_speed} м/с\n"
-                        f"*Описание:* {description}\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬 *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
                     )
 
             if message == "*Прогноз на оставшуюся часть дня:*\n\n":
-                message = "Нет доступного прогноза на оставшуюся часть дня."
+                message = "Нет доступного прогноза на оставшуюся часть дня"
 
             bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на оставшуюся часть дня: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня. Попробуйте позже")
 
 
 # (15.6) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПЕРЕВОДА) ---------------
@@ -6125,12 +6129,12 @@ def send_forecast(chat_id, coords, url, days=1):
 
                 message += (
                     f"{formatted_date}:\n"
-                    f"*Температура:* {temperature}°C\n"
-                    f"*Ощущается как:* {feels_like}°C\n"
-                    f"*Влажность:* {humidity}%\n"
-                    f"*Давление:* {pressure} мм рт. ст\n"
-                    f"*Скорость ветра:* {wind_speed} м/с\n"
-                    f"*Описание:* {description}\n\n"
+                    f"🌡️ *Температура:* {temperature}°C\n"
+                    f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                    f"💧 *Влажность:* {humidity}%\n"
+                    f"〽️ *Давление:* {pressure} мм рт. ст\n"
+                    f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                    f"☁️ *Описание:* {description}\n\n"
                 )
 
             message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
@@ -6138,11 +6142,11 @@ def send_forecast(chat_id, coords, url, days=1):
             for chunk in message_chunks:
                 bot.send_message(chat_id, chunk, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз погоды на завтра.")
+            bot.send_message(chat_id, "Не удалось получить прогноз погоды на завтра")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на завтра: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже")
 
 # (15.8) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА ЗАВТРА) ---------------
 
@@ -6171,22 +6175,22 @@ def send_forecast_daily(chat_id, coords, url, days_ahead):
 
             message = (
                 f"*Прогноз на {date_time.strftime('%d.%m.%Y')}*\n\n"
-                f"*Температура:* {temperature}°C\n"
-                f"*Ощущается как:* {feels_like}°C\n"
-                f"*Влажность:* {humidity}%\n"
-                f"*Давление:* {pressure} мм рт. ст.\n"
-                f"*Скорость ветра:* {wind_speed} м/с\n"
-                f"*Описание:* {description}\n"
+                f"🌡️ *Температура:* {temperature}°C\n"
+                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                f"💧 *Влажность:* {humidity}%\n"
+                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                f"☁️ *Описание:* {description}\n"
             )
             bot.send_message(chat_id, message, parse_mode="Markdown")
 
             send_hourly_forecast_tomorrow(chat_id, coords, url)
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на завтра.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на завтра")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на завтра: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже")
 
 # Функция для отправки почасового прогноза на завтра
 def send_hourly_forecast_tomorrow(chat_id, coords, url):
@@ -6205,7 +6209,7 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url):
             forecasts = data['list']
             now = datetime.now()
             tomorrow = now + timedelta(days=1)
-            message = "*Почасовой прогноз на завтра:*\n\n"  # Добавлен жирный шрифт и пустая строка
+            message = "*Почасовой прогноз на завтра:*\n\n\n"  # Добавлен жирный шрифт и пустая строка
 
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
@@ -6221,35 +6225,34 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url):
 
                     message += (
                         f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
-                        f"*Температура:* {temperature}°C\n"
-                        f"*Ощущается как:* {feels_like}°C\n"
-                        f"*Влажность:* {humidity}%\n"
-                        f"*Давление:* {pressure} мм рт. ст.\n"
-                        f"*Скорость ветра:* {wind_speed} м/с\n"
-                        f"*Описание:* {description}\n\n"  # Пустая строка
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"  # Пустая строка
                     )
 
             if message == "*Почасовой прогноз на завтра:*\n\n":
-                message = "Нет доступного почасового прогноза на завтра."
+                message = "Нет доступного почасового прогноза на завтра"
 
             message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
             for chunk in message_chunks:
                 bot.send_message(chat_id, chunk, parse_mode="Markdown")  # Убедитесь, что используется Markdown
         else:
-            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра.")
+            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра")
     except Exception as e:
         print(f"Ошибка при отправке почасового прогноза на завтра: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра. Попробуйте позже")
         
 # (15.9) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА НЕДЕЛЮ) ---------------
 
-from datetime import datetime, timedelta
-from collections import defaultdict
 
 # ---------- ПРОГНОЗ НА НЕДЕЛЮ -----------
+
+from datetime import datetime, timedelta
 from collections import defaultdict
-from datetime import datetime
 
 def send_forecast_weekly(chat_id, coords, url, retries=3):
     try:
@@ -6262,7 +6265,7 @@ def send_forecast_weekly(chat_id, coords, url, retries=3):
         }
 
         daily_forecasts = defaultdict(list)
-        message = "*Прогноз на неделю:*\n\n"
+        message = "*Прогноз на неделю:*\n\n\n"
 
         for attempt in range(retries):
             try:
@@ -6305,33 +6308,29 @@ def send_forecast_weekly(chat_id, coords, url, retries=3):
 
                         message += (
                             f"*Погода на {date}:*\n\n"
-                            f"*Температура:* {avg_temp}°C\n"
-                            f"*Ощущается как:* {avg_feels_like}°C\n"
-                            f"*Влажность:* {forecasts[0]['humidity']}%\n"
-                            f"*Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
-                            f"*Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
-                            f"*Описание:* {forecasts[0]['description']}\n\n"
+                            f"🌡️ *Температура:* {avg_temp}°C\n"
+                            f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
+                            f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
+                            f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
+                            f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
+                            f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
                         )
 
                     bot.send_message(chat_id, message, parse_mode="Markdown")
                     break
                 else:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю.")
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю")
                     break
             except Exception as e:
                 print(f"Ошибка в попытке запроса: {e}")
                 if attempt == retries - 1:
-                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток.")
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток")
     except Exception as e:
         print(f"Ошибка в send_forecast_weekly: {e}")
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю. Попробуйте позже")
 
 # ---------- ПРОГНОЗ НА МЕСЯЦ -----------
-from datetime import datetime, timedelta
 from collections import defaultdict
-
-# ---------- ПРОГНОЗ НА МЕСЯЦ -----------
-# ---------- ПРОГНОЗ НА МЕСЯЦ -----------
 import requests
 from datetime import datetime, timedelta
 import traceback
@@ -6350,7 +6349,7 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
 
         if response.status_code == 200:
             forecasts = data['list']
-            message = "*Прогноз на месяц:*\n\n"
+            message = "*Прогноз на месяц:*\n\n\n"
 
             # Получаем данные на месяц
             daily_forecasts = {}
@@ -6368,8 +6367,8 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
             for date, values in daily_forecasts.items():
                 message += (
                     f"*{date}:*\n\n"
-                    f"*Температура:* {values['temperature']}°C\n"
-                    f"*Ощущается как:* {values['feels_like']}°C\n\n"
+                    f"🌡️ *Температура:* {values['temperature']}°C\n"
+                    f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
                 )
 
             # Проверка на отсутствие данных и формирование диапазона
@@ -6382,18 +6381,18 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
                 start_date = unavailable_dates[0]
                 end_date = unavailable_dates[-1]
                 message += (f"*С {start_date} по {end_date}:*\n\n_" 
-                             f"Данные недоступны из-за ограничений._\n\n")  # Курсив
+                             f"Данные недоступны из-за ограничений_\n\n")  # Курсив
 
             if message == "*Прогноз на месяц:*\n\n":
-                message = "Нет доступного прогноза на месяц."
+                message = "Нет доступного прогноза на месяц"
 
             bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на месяц.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на месяц")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на месяц: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже")
 
 # ЦЕНЫ НА ТОПЛИВО
 
