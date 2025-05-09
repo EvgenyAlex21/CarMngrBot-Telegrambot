@@ -426,7 +426,7 @@ def process_end_location_step(message):
     # Предлагаем пользователю выбрать между автоматическим расстоянием и вводом своего
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
-    item_input = types.KeyboardButton("Ввести своё расстояние")
+    item_input = types.KeyboardButton("Ввести свое расстояние")
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
 
@@ -443,7 +443,7 @@ def process_distance_choice_step(message, distance_km):
 
     # Добавляем кнопки выбора расстояния
     item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
-    item_input = types.KeyboardButton("Ввести своё расстояние")
+    item_input = types.KeyboardButton("Ввести свое расстояние")
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
 
@@ -467,7 +467,7 @@ def process_distance_choice_step(message, distance_km):
         sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_date_step, distance_km)
 
-    elif message.text == "Ввести своё расстояние":
+    elif message.text == "Ввести свое расстояние":
         # Теперь создаем новую клавиатуру с двумя кнопками
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
@@ -515,7 +515,7 @@ def process_custom_distance_step(message):
 
     try:
         custom_distance = float(message.text)
-        bot.send_message(chat_id, f"Вы ввели своё расстояние: {custom_distance:.2f} км.", reply_markup=markup)
+        bot.send_message(chat_id, f"Вы ввели свое расстояние: {custom_distance:.2f} км.", reply_markup=markup)
         # Переход к следующему шагу, например, вводу даты поездки
         sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_date_step, custom_distance)
@@ -539,23 +539,25 @@ def process_date_step(message, distance):
         return_to_menu(message) 
         return    
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_date_step) 
+        bot.register_next_step_handler(sent, process_date_step, distance) 
         return
 
     date = message.text
-    date_pattern = r"\d{2}\.\d{2}\.\d{4}"
+    date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
     
     if re.match(date_pattern, date):
         day, month, year = map(int, date.split('.'))
-        try:
-            datetime(year, month, day)  # Проверяем правильность даты
-            
-            # Переходим сразу к выбору топлива, передавая рассчитанное расстояние и дату
-            show_fuel_types(chat_id, date, distance)
-        except ValueError:
-            sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ.")
+        if 2000 <= year <= 3000:  # Проверяем, чтобы год был в диапазоне 2000-3000
+            try:
+                datetime(year, month, day)  # Проверяем правильность даты
+                show_fuel_types(chat_id, date, distance)
+            except ValueError:
+                sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ.")
+                bot.register_next_step_handler(sent, process_date_step, distance)
+        else:
+            sent = bot.send_message(chat_id, "Год должен быть в диапазоне от 2000 до 3000. Пожалуйста, введите корректную дату.")
             bot.register_next_step_handler(sent, process_date_step, distance)
     else:
         sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
@@ -651,55 +653,71 @@ def process_fuel_type(message, date, distance):
     
     actual_fuel_type = fuel_type_mapping[fuel_type]
     
-    try:
-        fuel_prices = get_average_fuel_prices()
-        fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
-        price_per_liter = fuel_prices_lower.get(actual_fuel_type.lower())
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Использовать актуальную цену")
+    item2 = types.KeyboardButton("Ввести свою цену")
+    item3 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item4 = types.KeyboardButton("В главное меню")
+    markup.add(item1, item2)
+    markup.add(item3, item4)
 
-        if price_per_liter is None:
-            raise ValueError("Price not found")
+    sent = bot.send_message(chat_id, "Выберите вариант ввода цены топлива:", reply_markup=markup)
+    bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, actual_fuel_type)
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item5 = types.KeyboardButton("Вернуться в меню расчета топлива")
-        item6 = types.KeyboardButton("В главное меню")
-        markup.add(item5)
-        markup.add(item6)
 
-        bot.send_message(chat_id, f"Вы выбрали тип топлива: {fuel_type.upper()}.", reply_markup=types.ReplyKeyboardRemove())
-        bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
-        
-        sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
-
-    except Exception as e:
-        print(f"Ошибка получения цены: {e}")
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("Ввести свою цену")
-        item2 = types.KeyboardButton("Повторить выбор топлива")
-        item3 = types.KeyboardButton("Вернуться в меню расчета топлива")
-        item4 = types.KeyboardButton("В главное меню")
-        markup.add(item1, item2, item3, item4)
-        
-        sent = bot.send_message(chat_id, "Не удалось получить цену для выбранного типа топлива. Вы можете ввести свою цену или повторить выбор топлива.", reply_markup=markup)
-        bot.register_next_step_handler(sent, handle_price_input_or_retry, date, distance, fuel_type)
-
-def handle_price_input_or_retry(message, date, distance, fuel_type):
+def handle_price_input_choice(message, date, distance, fuel_type):
     chat_id = message.chat.id
     
     if message.text == "Ввести свою цену":
-        sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:")
+        # Создаем новую клавиатуру с двумя кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        markup.add(item2)
+
+        sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-    elif message.text == "Повторить выбор топлива":
-        show_fuel_types(chat_id, date, distance)
+    
+    elif message.text == "Использовать актуальную цену":
+        try:
+            fuel_prices = get_average_fuel_prices()
+            fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
+            price_per_liter = fuel_prices_lower.get(fuel_type.lower())
+
+            if price_per_liter is None:
+                raise ValueError("Price not found")
+
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+            item2 = types.KeyboardButton("В главное меню")
+            markup.add(item1)
+            markup.add(item2) 
+
+            bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
+            sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+            bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
+        
+        except Exception as e:
+            print(f"Ошибка получения цены: {e}")
+            # Создаем новую клавиатуру с двумя кнопками
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+            item2 = types.KeyboardButton("В главное меню")
+            markup.add(item1)
+            markup.add(item2)
+
+            sent = bot.send_message(chat_id, "Не удалось получить актуальную цену. Пожалуйста, введите свою цену.", reply_markup=markup)
+            bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
+
     elif message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
     elif message.text == "В главное меню":
         return_to_menu(message)
     else:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.")
-        bot.register_next_step_handler(sent, handle_price_input_or_retry, date, distance, fuel_type)
+        bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, fuel_type)
 
-# (9.10) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ВВОДА РАСХОДА НА 100 КМ) ---------------
 
 def process_price_per_liter_step(message, date, distance, fuel_type):
     chat_id = message.chat.id
@@ -723,7 +741,7 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
         if price_per_liter <= 0:
             raise ValueError
         
-        # Создаем новую клавиатуру с нужными кнопками
+        # Создаем новую клавиатуру с двумя кнопками
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
         item2 = types.KeyboardButton("В главное меню")
