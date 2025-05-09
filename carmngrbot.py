@@ -18,6 +18,9 @@ import traceback
 from bs4 import BeautifulSoup
 import time
 import logging
+import calendar
+from telegram_bot_calendar import DetailedTelegramCalendar
+from datetime import date
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -451,64 +454,12 @@ def process_end_location_step(message):
     item2 = types.KeyboardButton("В главное меню")
 
     markup.add(item_auto, item_input)
-    markup.add(item1, item2)
+    markup.add(item1)
+    markup.add(item2)
     
     sent = bot.send_message(chat_id, "Выберите вариант:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
-
-def process_distance_choice_step(message, distance_km):
-    chat_id = message.chat.id
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    # Добавляем кнопки выбора расстояния
-    item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
-    item_input = types.KeyboardButton("Ввести свое расстояние")
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-
-    markup.add(item_auto, item_input)
-    markup.add(item1, item2)
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
-        return
-
-    if message.text == "Использовать автоматическое расстояние":
-        # Создаем новую клавиатуру с двумя кнопками
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-        item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
-        markup.add(item2)
-
-        bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.", reply_markup=markup)
-        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_date_step, distance_km)
-
-    elif message.text == "Ввести свое расстояние":
-        # Теперь создаем новую клавиатуру с двумя кнопками
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-        item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1, item2)
-
-        sent = bot.send_message(chat_id, "Введите расстояние в километрах:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_custom_distance_step)
-
-    elif message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
-        return
-
-    elif message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    else:
-        # Обработка некорректного ввода
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
 def process_custom_distance_step(message):
     chat_id = message.chat.id
@@ -536,52 +487,173 @@ def process_custom_distance_step(message):
     try:
         custom_distance = float(message.text)
         bot.send_message(chat_id, f"Вы ввели свое расстояние: {custom_distance:.2f} км.", reply_markup=markup)
-        # Переход к следующему шагу, например, вводу даты поездки
-        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        
+        # Теперь отображаем кнопки для выбора способа ввода даты
+        markup_date = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_calendar = types.KeyboardButton("Выбрать дату из календаря")
+        item_manual = types.KeyboardButton("Ввести дату вручную")
+        markup_date.add(item_calendar, item_manual)
+        markup_date.add(item1)
+        markup_date.add(item2)
+
+        sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup_date)
         bot.register_next_step_handler(sent, process_date_step, custom_distance)
     except ValueError:
         sent = bot.send_message(chat_id, "Пожалуйста, введите корректное число для расстояния.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_custom_distance_step)
 
 
+def process_distance_choice_step(message, distance_km):
+    chat_id = message.chat.id
+    trip_data[chat_id]["distance"] = distance_km
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
+    item_input = types.KeyboardButton("Ввести свое расстояние")
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+
+    markup.add(item_auto, item_input)
+    markup.add(item1, item2)
+
+    if message.text == "Использовать автоматическое расстояние":
+        bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.")
+        process_date_step(message, distance_km)  # Переходим к выбору даты
+
+    elif message.text == "Ввести свое расстояние":
+        custom_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        custom_markup.add(item1)
+        custom_markup.add(item2)
+
+        sent = bot.send_message(chat_id, "Введите расстояние в километрах:", reply_markup=custom_markup)
+        bot.register_next_step_handler(sent, process_custom_distance_step)
+
+    elif message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+
+    else:
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
+
 def process_date_step(message, distance):
     chat_id = message.chat.id
+    # Создаем новую разметку только для выбора даты
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_calendar = types.KeyboardButton("Выбрать дату из календаря")
+    item_manual = types.KeyboardButton("Ввести дату вручную")
+    markup.add(item_calendar, item_manual)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    # Отправляем сообщение с новыми кнопками для выбора способа ввода даты
+    sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
+    bot.register_next_step_handler(sent, handle_date_selection, distance)
+
+def handle_date_selection(message, distance):
+    chat_id = message.chat.id
+    if message.text == "Выбрать дату из календаря":
+        show_calendar(chat_id)
+    elif message.text == "Ввести дату вручную":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        markup.add(item2)
+
+        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
+    elif message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+    else:
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите корректный вариант.")
+        bot.register_next_step_handler(sent, handle_date_selection, distance)
+
+def show_calendar(chat_id):
+    # Inline-календарь
+    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31)).build()
+
+    # Обычная клавиатура для кнопок навигации
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
 
-    if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
-        return    
-    if message.text == "В главное меню":
-        return_to_menu(message) 
-        return    
+    # Отправляем сообщение с навигацией и календарем
+    bot.send_message(chat_id, "Календарь:", reply_markup=markup)
+    bot.send_message(chat_id, "Выберите дату", reply_markup=calendar)
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_date_step, distance) 
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+def handle_calendar(call):
+    result, key, step = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31)).process(call.data)
+
+    if not result and key:
+        bot.edit_message_text(f"Выберите {step}",
+                              call.message.chat.id,
+                              call.message.message_id,
+                              reply_markup=key)
+    elif result:
+        selected_date = result.strftime('%d.%m.%Y')
+        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
+                              call.message.chat.id,
+                              call.message.message_id)
+
+        # Переходим к следующему шагу, но не отправляем сообщение снова
+        process_selected_date(call.message, selected_date)
+
+
+def process_selected_date(message, selected_date):
+    chat_id = message.chat.id
+    distance_km = trip_data[chat_id].get("distance")  # Получаем расстояние
+
+    if distance_km is None:
+        bot.send_message(chat_id, "Расстояние не было задано. Пожалуйста, попробуйте снова.")
         return
 
-    date = message.text
+    show_fuel_types(chat_id, selected_date, distance_km)
+
+
+def process_manual_date_step(message, distance):
+    chat_id = message.chat.id
     date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
-    
-    if re.match(date_pattern, date):
-        day, month, year = map(int, date.split('.'))
-        if 2000 <= year <= 3000:  # Проверяем, чтобы год был в диапазоне 2000-3000
+
+    # Разметка только с двумя кнопками
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
+        return
+
+    if re.match(date_pattern, message.text):
+        day, month, year = map(int, message.text.split('.'))
+        if 2000 <= year <= 3000:  # Проверка корректности года
             try:
-                datetime(year, month, day)  # Проверяем правильность даты
-                show_fuel_types(chat_id, date, distance)
+                datetime(year, month, day)  # Проверка правильности даты
+                bot.send_message(chat_id, f"Вы выбрали дату {message.text}.", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
+                show_fuel_types(chat_id, message.text, distance)
             except ValueError:
-                sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ.")
-                bot.register_next_step_handler(sent, process_date_step, distance)
+                sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату.", reply_markup=markup)
+                bot.register_next_step_handler(sent, process_manual_date_step, distance)
         else:
-            sent = bot.send_message(chat_id, "Год должен быть в диапазоне от 2000 до 3000. Пожалуйста, введите корректную дату.")
-            bot.register_next_step_handler(sent, process_date_step, distance)
+            sent = bot.send_message(chat_id, "Год должен быть в диапазоне от 2000 г. до 3000 г.", reply_markup=markup)
+            bot.register_next_step_handler(sent, process_manual_date_step, distance)
     else:
-        sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(sent, process_date_step, distance)
+        sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
 
 
 def show_fuel_types(chat_id, date, distance):
@@ -648,38 +720,56 @@ def get_average_fuel_prices():
 
 
 def process_fuel_type(message, date, distance):
+    if message is None:
+        return  # Проверка на None
+
     chat_id = message.chat.id
-    fuel_type = message.text.strip().lower()
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
-        return    
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
+    # Проверка на наличие мультимедийных элементов
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.voice or message.video_note:
+        bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        # Зарегистрируем следующий шаг для ожидания текстового сообщения
+        sent = bot.send_message(chat_id, "Выберите тип топлива:")
+        bot.register_next_step_handler(sent, process_fuel_type, date, distance)
+        return
+
+    fuel_type = message.text.strip().lower() if message.text else ""
+
+    # Проверка на допустимые типы топлива
     fuel_type_mapping = {
-        "газ": "газ спбт",
         "аи-92": "аи-92",
         "аи-95": "аи-95",
         "аи-98": "аи-98",
+        "аи-100": "аи-100",
         "дт": "дт",
+        "газ": "газ спбт",
     }
 
+    # Проверка на допустимые значения
     if fuel_type not in fuel_type_mapping:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов.")
         bot.register_next_step_handler(sent, process_fuel_type, date, distance)
         return
-    
+
     actual_fuel_type = fuel_type_mapping[fuel_type]
-    
+
+    # Дальнейшая логика обработки
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Использовать актуальную цену")
     item2 = types.KeyboardButton("Ввести свою цену")
     item3 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item4 = types.KeyboardButton("В главное меню")
     markup.add(item1, item2)
-    markup.add(item3, item4)
+    markup.add(item3)
+    markup.add(item4)
 
     sent = bot.send_message(chat_id, "Выберите вариант ввода цены топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, actual_fuel_type)
