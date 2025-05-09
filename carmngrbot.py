@@ -522,7 +522,11 @@ PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/payments.json")
 USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/users.json")
 CHANNEL_CHAT_ID = -1002454361188
 PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243'
-AD_CHANNEL_CHAT_ID = -1002591560088
+AD_CHANNELS = {
+    "-1002591560088": "CarMngrBot News",
+    "-1001234567890": "Auto Tips Daily",
+    "-1009876543210": "Drive & Save"
+}
 
 FREE_FEATURES = ["Погода", "Код региона", "Новости", "Уведомления"]
 
@@ -614,6 +618,7 @@ def load_payment_data():
         data['subscriptions']['users'][user_id].setdefault('promo_usage_history', [])
         data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
         data['subscriptions']['users'][user_id].setdefault('points_history', [])
+        data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
 
     return data
 
@@ -681,17 +686,10 @@ def save_users_data(data):
 
 def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
     try:
-        # Проверяем, существует ли чат
-        chat = bot.get_chat(chat_id)
-        print(f"Чат найден: {chat.title} (ID: {chat_id})")
-        
         member = bot.get_chat_member(chat_id, user_id)
         return member.status in ['member', 'administrator', 'creator'] and member.status != 'kicked'
     except telebot.apihelper.ApiTelegramException as e:
-        if e.error_code == 400 and "chat not found" in e.description.lower():
-            print(f"Ошибка: Чат с ID {chat_id} не найден. Проверьте CHANNEL_CHAT_ID.")
-        else:
-            print(f"Ошибка при проверке подписки пользователя {user_id} на чат {chat_id}: {e}")
+        print(f"Ошибка при проверке подписки пользователя {user_id} на чат {chat_id}: {e}")
         return False
     except Exception as e:
         print(f"Неизвестная ошибка при проверке подписки пользователя {user_id}: {e}")
@@ -841,7 +839,8 @@ def set_free_trial_period(user_id, days, source="default"):
         "free_feature_trials": {},
         "promo_usage_history": [],
         "referral_milestones": {},
-        "points_history": []
+        "points_history": [],
+        "ad_bonus_received": False  # Добавляем поле по умолчанию
     })
     user_data['plans'].append({
         "plan_name": "free",
@@ -915,6 +914,12 @@ def check_subscription(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
         user_id = str(message.from_user.id)
+        
+        # Проверяем, является ли отправитель ботом
+        if message.from_user.is_bot:
+            print(f"Получено сообщение от бота {user_id}, игнорируем.")
+            return  # Прерываем выполнение, если отправитель — бот
+        
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(user_id, {})
         
@@ -1216,20 +1221,28 @@ def start(message):
             "points_history": []
         }
     
+    referral_bonus_applied = False
     if referral_code:
         referrer_id = track_referral_activity(referral_code, user_id)
         if referrer_id:
             apply_referral_bonus(referrer_id)
-            set_free_trial_period(user_id, 1, "referral")
+            new_end = set_free_trial_period(user_id, 1, "referral")
+            referral_bonus_applied = True
+            bot.send_message(chat_id, (
+                f"🎉 *Вы пришли по реферальной ссылке!* 🎉\n\n"
+                f"✨ Вам начислен *+1 день подписки*!\n"
+                f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*"
+            ), parse_mode="Markdown")
     
     has_trial = any(plan['plan_name'] == "free" for plan in data['subscriptions']['users'].get(str(user_id), {}).get('plans', []))
     if not data['subscriptions']['users'][str(user_id)].get('plans'):
         if not has_trial:
-            set_free_trial_period(user_id, 3)
+            new_end_trial = set_free_trial_period(user_id, 3)
             referral_link = create_referral_link(user_id)
             combined_message = (
                 "🎉 <b>Поздравляем!</b>\n\n"
                 "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
+                f"⏳ Активно до: *{new_end_trial.strftime('%d.%m.%Y в %H:%M')}*\n\n"
                 "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
                 f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
                 "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
@@ -1454,6 +1467,18 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
     max_length = 4096
     for i in range(0, len(message_text), max_length):
         bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
+
+def translate_plan_name(plan_name):
+    return {
+        "free": "Пробный период",
+        "referral_bonus": "Реферальный бонус",
+        "ad_bonus": "Рекламный бонус",
+        "activity": "Активность",
+        "weekly": "Неделя",
+        "monthly": "Месяц",
+        "yearly": "Год",
+        "referral": "Бонус за реферальную ссылку"  # Добавляем явное название
+    }.get(plan_name, plan_name)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
 def view_subscription(message):
@@ -1736,8 +1761,7 @@ def send_referral_link_message(message):
         f"🎁 *Что получает приглашённый:*  \n\n"
         f"- Как новому пользователю: *3 дня пробного периода*  \n"
         f"- За регистрацию по вашей ссылке: *+1 день подписки*  \n"
-        f"Итого: *4 дня* для старта!  \n\n\n"
-        f"💡 *Баллы:* 1 балл = 3 часа подписки (8 баллов = 1 день)  \n"
+        f"Итого: *4 дня* для старта!  \n\n"
         f"🚀 Делитесь ссылкой и наслаждайтесь премиум-функциями дольше! Спасибо, что вы с нами!  \n"
     ), parse_mode="Markdown")
 
@@ -1759,14 +1783,14 @@ def view_referrals_and_bonuses(message):
     if not referrals:
         bot.send_message(message.chat.id, (
             "🙁 У вас пока нет рефералов и бонусов!\n\n"
-            "🤝 Приглашайте друзей и зарабатывайте дополнительные дни использования!\n\n"
+            "🤝 Приглашайте друзей и зарабатывайте дополнительные дни и баллы для использования!\n\n"
         ), parse_mode="Markdown")
         return
 
     user_plans = data['subscriptions']['users'].get(str(user_id), {}).get('plans', [])
     bonus_days = sum((datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") - 
                      datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M")).days 
-                     for p in user_plans if p['plan_name'] in ["referral_bonus", "points_bonus", "ad_bonus"])
+                     for p in user_plans if p.get('plan_name') in ["referral_bonus", "points_bonus", "ad_bonus"])
 
     message_text = (
         f"*Ваши рефералы и бонусы:*\n\n"
@@ -1780,9 +1804,10 @@ def view_referrals_and_bonuses(message):
         referral_data = data['subscriptions']['users'].get(referral_id, {})
         referral_username = escape_markdown(referral_data.get('username', 'Неизвестно'))
         join_date = load_users_data().get(referral_id, {}).get('join_date', 'Неизвестно')
+        # Используем .get() для безопасного доступа к 'source'
         bonus_days_referral = sum((datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") - 
                                   datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M")).days 
-                                  for p in referral_data.get('plans', []) if p['source'] == "referral")
+                                  for p in referral_data.get('plans', []) if p.get('source') == "referral")
         
         message_text += (
             f"✅ *№{index}. Пользователь:* {referral_username}\n"
@@ -1803,16 +1828,18 @@ def view_referral_leaderboard(message):
         return_to_menu(message)
         return
 
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)  # Преобразуем user_id в строку для консистентности
     data = load_payment_data()
     
+    # Собираем данные для лидерборда
     leaderboard_data = []
     for uid, refs in data['referrals']['stats'].items():
         unique_refs = len(set(refs))
         milestone_date = data['subscriptions']['users'].get(uid, {}).get('referral_milestones', {}).get(str(unique_refs), "01.01.2000 в 00:00")
         leaderboard_data.append((uid, unique_refs, milestone_date))
     
-    leaderboard = sorted(leaderboard_data, key=lambda x: (-x[1], x[2]))[:10]
+    # Сортируем по количеству рефералов (убывание) и дате достижения (возрастание)
+    leaderboard = sorted(leaderboard_data, key=lambda x: (-x[1], x[2]))
     
     if not leaderboard:
         bot.send_message(message.chat.id, (
@@ -1821,8 +1848,9 @@ def view_referral_leaderboard(message):
         ), parse_mode="Markdown")
         return
         
+    # Формируем топ-10
     message_text = "*🏆 Топ 10 рефералов:*\n\n"
-    for idx, (uid, ref_count, _) in enumerate(leaderboard, 1):
+    for idx, (uid, ref_count, _) in enumerate(leaderboard[:10], 1):
         message_text += f"👤 №{idx}. `{uid}`: {ref_count} рефералов\n"
         if idx == 1 and ref_count >= 5:
             new_end = set_free_trial_period(int(uid), 7, "leaderboard")
@@ -1833,6 +1861,7 @@ def view_referral_leaderboard(message):
                 "🚀 Продолжайте приглашать друзей!"
             ), parse_mode="Markdown")
     
+    # Добавляем информацию о текущем лидере
     leader_history = data['referrals']['leaderboard_history']
     if leader_history['current_leader']:
         days_at_top = leader_history['days_at_top']
@@ -1840,6 +1869,25 @@ def view_referral_leaderboard(message):
             f"\n👑 *Текущий лидер:* `{leader_history['current_leader']}`\n"
             f"⏳ *Дней на вершине:* {days_at_top} из 30 для бонуса\n"
         )
+    
+    # Находим позицию текущего пользователя
+    user_position = None
+    user_ref_count = 0
+    for idx, (uid, ref_count, _) in enumerate(leaderboard, 1):
+        if uid == user_id:
+            user_position = idx
+            user_ref_count = ref_count
+            break
+    
+    # Добавляем информацию о позиции пользователя в конце
+    message_text += "\n"
+    if user_position:
+        # Разделяем строку, чтобы убедиться, что Markdown применяется корректно
+        position_text = f"📍 *Ваша позиция* (`{user_id}`)*:* \n      Вы №{user_position} с {user_ref_count} рефералами"
+        message_text += position_text
+    else:
+        position_text = f"📍 *Ваша позиция* (`{user_id}`)*:* \n      Вы пока не в рейтинге!"
+        message_text += position_text
     
     send_long_message(message.chat.id, message_text, parse_mode="Markdown")
 
@@ -2304,41 +2352,76 @@ def process_gift_amount(message, recipient_id, sender_points):
 
 @bot.message_handler(func=lambda message: message.text == "Получить день за рекламу")
 def get_day_for_ad(message):
-
-    if message.text == "Вернуться в реферальную систему":
-        return_to_referral_menu(message)
-        return
-    if message.text == "Вернуться в подписку":
-        payments_function(message)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
+    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        globals()[message.text.lower().replace(" ", "_")](message)
         return
 
     user_id = message.from_user.id
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Подписаться на канал", url="https://t.me/CarMngrBot_news"))
-    markup.add(InlineKeyboardButton("Проверить подписку", callback_data="check_ad_subscription"))
+    
+    # Формируем кнопки для каждого канала
+    for chat_id, name in AD_CHANNELS.items():
+        markup.add(InlineKeyboardButton(f"Подписаться на {name}", callback_data=f"subscribe_ad_{chat_id}"))
+    
     bot.send_message(user_id, (
-        "📢 *Подпишитесь на наш рекламный канал!* 📢\n\n"
-        "✨ Получите *+1 день подписки* за подписку!\n\n"
-        "🚀 Нажмите ниже и присоединяйтесь!"
+        "📢 *Подпишитесь на один из наших рекламных каналов!* 📢\n\n"
+        "✨ Получите *+1 день подписки* за подписку на любой канал!\n"
+        "Выберите канал ниже:"
     ), reply_markup=markup, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data == "check_ad_subscription")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("subscribe_ad_"))
 def check_ad_subscription(call):
     user_id = call.from_user.id
-    if is_user_subscribed(user_id, AD_CHANNEL_CHAT_ID):
-        new_end = set_free_trial_period(user_id, 1, "ad_bonus")
+    selected_channel_id = call.data.replace("subscribe_ad_", "")
+    channel_name = AD_CHANNELS.get(selected_channel_id, "Неизвестный канал")
+    data = load_payment_data()
+    user_id_str = str(user_id)
+    
+    # Проверяем подписку на выбранный канал
+    if not is_user_subscribed(user_id, selected_channel_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"Подписаться на {channel_name}", url=f"https://t.me/{channel_name.replace(' ', '')}"))
+        markup.add(InlineKeyboardButton("Проверить подписку", callback_data=call.data))
         bot.send_message(call.message.chat.id, (
-            "🎉 *Поздравляем!*\n\n"
-            f"✨ Вы получили *+1 день подписки* за подписку на канал!\n"
-            f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
-            "Спасибо за подписку! 😊"
+            f"⚠️ Вы еще не подписаны на *{channel_name}*!\n"
+            "Подпишитесь и нажмите «Проверить подписку»."
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Подпишитесь на канал!")
+        return
+    
+    # Проверяем, получал ли пользователь бонус за этот канал
+    user_data = data['subscriptions']['users'].setdefault(user_id_str, {
+        "plans": [],
+        "total_amount": 0,
+        "username": "неизвестный",
+        "referral_points": 0,
+        "free_feature_trials": {},
+        "promo_usage_history": [],
+        "referral_milestones": {},
+        "points_history": [],
+        "ad_channels_subscribed": []
+    })
+    
+    if selected_channel_id in user_data['ad_channels_subscribed']:
+        bot.send_message(call.message.chat.id, (
+            f"⚠️ Вы уже получили бонус за подписку на *{channel_name}*!\n"
+            "Выберите другой канал для нового бонуса."
         ), parse_mode="Markdown")
-        bot.answer_callback_query(call.id, "Спасибо за подписку!")
-    else:
-        bot.answer_callback_query(call.id, "Вы еще не подписаны! Пожалуйста, подпишитесь на канал!")
+        bot.answer_callback_query(call.id, "Бонус уже получен!")
+        return
+    
+    # Начисляем бонус
+    new_end = set_free_trial_period(user_id, 1, f"ad_bonus_{selected_channel_id}")
+    user_data['ad_channels_subscribed'].append(selected_channel_id)
+    save_payments_data(data)
+    
+    bot.send_message(call.message.chat.id, (
+        "🎉 *Поздравляем!*\n\n"
+        f"✨ Вы получили *+1 день подписки* за подписку на *{channel_name}*!\n"
+        f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
+        "😊 Вы можете подписаться на другие каналы для дополнительных бонусов!"
+    ), parse_mode="Markdown")
+    bot.answer_callback_query(call.id, "Спасибо за подписку!")
 
     
 # ---------- 8. ВЫХОД В ГЛАВНОЕ МЕНЮ ----------
