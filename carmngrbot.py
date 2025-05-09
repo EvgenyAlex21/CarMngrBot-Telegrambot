@@ -13677,7 +13677,9 @@ def parse_fuel_prices():
         print(f"Данные для города {city_code} успешно обновлены.")
 
 def parse_fuel_prices_scheduled():
+    proxies = load_proxies()
     cities_to_parse = os.listdir(os.path.join('data', 'user', 'azs'))
+    
     for i, city_code in enumerate(cities_to_parse):
         city_code = city_code.replace('_table_azs_data.json', '')
         saved_data = load_saved_data(city_code)
@@ -13692,10 +13694,10 @@ def parse_fuel_prices_scheduled():
         all_fuel_prices = []
         for fuel_type in fuel_types:
             try:
-                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "azcprice")
+                fuel_prices = get_fuel_prices_from_site(city_code, "azcprice", proxies=proxies)
             except ValueError:
                 try:
-                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
+                    fuel_prices = get_fuel_prices_from_site(city_code, "petrolplus", proxies=proxies)
                 except ValueError:
                     print(f"Оба сайта недоступны для города {city_code}")
                     continue
