@@ -388,6 +388,8 @@ def check_user_blocked(func):
                 raise e
     return wrapper
 
+# ---------- 4.8. Декоратор для отслеживания бокировки бота пользователем ----------
+
 # ---------- 5. УВЕДОЛЕНИЕ О НЕАКТИВНОСТИ ----------
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data base', 'admin', 'users.json')
@@ -517,6 +519,100 @@ def send_website_file(message):
 
 # ---------- 7. КОМАНДА /START, ПОДПИСКА НА TELEGRAM КАНАЛ, ПОДПИСКА НА БОТА, РЕФЕРАЛЬНАЯ СИСТЕМА ----------
 
+def check_subscription(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = str(message.from_user.id)
+        
+        if message.from_user.is_bot:
+            print(f"Получено сообщение от бота {user_id}, игнорируем.")
+            return
+        
+        if message.text in FREE_FEATURES:
+            return func(message, *args, **kwargs)
+        
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].get(user_id, {})
+        
+        # Проверяем подписку
+        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
+                             for plan in user_data.get('plans', []))
+        if has_active_plan:
+            return func(message, *args, **kwargs)
+        
+        # Проверяем доступ через баллы
+        feature_access = user_data.get('feature_access', {})
+        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
+        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
+        if end_date > datetime.now():
+            return func(message, *args, **kwargs)
+        
+        bot.send_message(user_id, (
+            "⚠️ Эта функция доступна только премиум-пользователям!\n"
+            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
+        ), parse_mode="Markdown")
+    return wrapper
+
+
+def restrict_free_users(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = str(message.from_user.id)
+        
+        if message.text in FREE_FEATURES:
+            return func(message, *args, **kwargs)
+        
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].get(user_id, {})
+        
+        # Проверяем подписку
+        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
+                             for plan in user_data.get('plans', []))
+        if has_active_plan:
+            return func(message, *args, **kwargs)
+        
+        # Проверяем доступ через баллы
+        feature_access = user_data.get('feature_access', {})
+        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
+        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
+        if end_date > datetime.now():
+            return func(message, *args, **kwargs)
+        
+        bot.send_message(message.chat.id, (
+            "⚠️ Эта функция доступна только премиум-пользователям!\n"
+            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
+        ), parse_mode="Markdown")
+    return wrapper
+
+
+def check_subscription_chanal(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if not is_user_subscribed(user_id, CHANNEL_CHAT_ID):
+            # Удаляем все активные клавиатуры
+            bot.send_message(message.chat.id, "⚠️ Пожалуйста, подпишитесь на канал, чтобы продолжить...", reply_markup=types.ReplyKeyboardRemove())
+
+            markup = InlineKeyboardMarkup()
+            subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
+            confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
+            markup.add(subscribe_button)
+            markup.add(confirm_button)
+            bot.send_message(message.chat.id, (
+                "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
+                "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашением! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
+                "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
+            ), reply_markup=markup, parse_mode="HTML")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+
+
+
+
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/payments.json")
 USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/users.json")
@@ -553,9 +649,7 @@ FREE_FEATURES = [
     "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу"
 ]
 
-import os
-import json
-import shutil
+
 
 def load_payment_data():
     default_promo_codes = {
@@ -1041,39 +1135,7 @@ def apply_referral_bonus(referrer_id):
     
     save_payments_data(data)
 
-def check_subscription(func):
-    @wraps(func)
-    def wrapper(message, *args, **kwargs):
-        user_id = str(message.from_user.id)
-        
-        if message.from_user.is_bot:
-            print(f"Получено сообщение от бота {user_id}, игнорируем.")
-            return
-        
-        if message.text in FREE_FEATURES:
-            return func(message, *args, **kwargs)
-        
-        data = load_payment_data()
-        user_data = data['subscriptions']['users'].get(user_id, {})
-        
-        # Проверяем подписку
-        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
-                             for plan in user_data.get('plans', []))
-        if has_active_plan:
-            return func(message, *args, **kwargs)
-        
-        # Проверяем доступ через баллы
-        feature_access = user_data.get('feature_access', {})
-        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
-        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
-        if end_date > datetime.now():
-            return func(message, *args, **kwargs)
-        
-        bot.send_message(user_id, (
-            "⚠️ Эта функция доступна только премиум-пользователям!\n"
-            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
-        ), parse_mode="Markdown")
-    return wrapper
+
 
 def is_premium_user(user_id):
     data = load_payment_data()
@@ -1090,35 +1152,7 @@ def is_premium_user(user_id):
     
     return False
 
-def restrict_free_users(func):
-    @wraps(func)
-    def wrapper(message, *args, **kwargs):
-        user_id = str(message.from_user.id)
-        
-        if message.text in FREE_FEATURES:
-            return func(message, *args, **kwargs)
-        
-        data = load_payment_data()
-        user_data = data['subscriptions']['users'].get(user_id, {})
-        
-        # Проверяем подписку
-        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
-                             for plan in user_data.get('plans', []))
-        if has_active_plan:
-            return func(message, *args, **kwargs)
-        
-        # Проверяем доступ через баллы
-        feature_access = user_data.get('feature_access', {})
-        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
-        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
-        if end_date > datetime.now():
-            return func(message, *args, **kwargs)
-        
-        bot.send_message(message.chat.id, (
-            "⚠️ Эта функция доступна только премиум-пользователям!\n"
-            "🚀 Оформите подписку или обменяйте баллы (1 балл = 1 час)!"
-        ), parse_mode="Markdown")
-    return wrapper
+
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def process_pre_checkout_query(pre_checkout_query):
@@ -1484,27 +1518,7 @@ def send_subscription_invoice(call):
     markup.add(item_main)
     bot.send_message(user_id, "Выберите период подписки для оплаты:", reply_markup=markup)
 
-def check_subscription_chanal(func):
-    @wraps(func)
-    def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        if not is_user_subscribed(user_id, CHANNEL_CHAT_ID):
-            # Удаляем все активные клавиатуры
-            bot.send_message(message.chat.id, "⚠️ Пожалуйста, подпишитесь на канал, чтобы продолжить...", reply_markup=types.ReplyKeyboardRemove())
 
-            markup = InlineKeyboardMarkup()
-            subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
-            confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
-            markup.add(subscribe_button)
-            markup.add(confirm_button)
-            bot.send_message(message.chat.id, (
-                "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
-                "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашением! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
-                "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
-            ), reply_markup=markup, parse_mode="HTML")
-            return
-        return func(message, *args, **kwargs)
-    return wrapper
 
 @bot.message_handler(commands=['start'])
 @check_subscription_chanal
@@ -4182,7 +4196,7 @@ load_all_user_data()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_fuel_expense(message):
     description = (
@@ -4270,7 +4284,7 @@ def reset_user_data(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
@@ -5191,7 +5205,6 @@ def save_trip_to_excel(user_id, trip):
 @track_user_activity
 @check_chat_state
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def save_data_handler(message):
     user_id = message.chat.id
@@ -5262,7 +5275,6 @@ def restart_handler(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def view_trips(message):
     user_id = message.chat.id
@@ -5300,7 +5312,6 @@ def view_trips(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def send_excel_file(message):
     user_id = message.chat.id
@@ -5375,7 +5386,6 @@ def show_trip_details(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def view_other_trips(message):
     view_trips(message)
@@ -5391,7 +5401,6 @@ def view_other_trips(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
@@ -5520,7 +5529,6 @@ def confirm_delete_all(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def handle_expenses_and_repairs(message):
 
@@ -5694,7 +5702,6 @@ def get_user_transport_keyboard(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def record_expense(message):
     user_id = message.from_user.id
@@ -6071,7 +6078,6 @@ def save_expense_to_excel(user_id, expense_data):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def handle_category_removal(message, brand=None, model=None, license_plate=None):
     user_id = message.from_user.id
@@ -6227,7 +6233,6 @@ def send_menu1(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def view_expenses(message):
     user_id = message.from_user.id
@@ -6284,7 +6289,6 @@ def handle_transport_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def send_expenses_excel(message):
     user_id = message.from_user.id
@@ -6306,7 +6310,6 @@ def send_expenses_excel(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def view_expenses_by_category(message):
     user_id = message.from_user.id
@@ -6406,7 +6409,7 @@ def handle_category_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_expenses_by_month(message):
     user_id = message.from_user.id
@@ -6515,7 +6518,7 @@ def get_expenses_by_month(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_expenses_by_license_plate(message):
     user_id = message.from_user.id
@@ -6617,7 +6620,7 @@ def get_expenses_by_license_plate(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_all_expenses(message):
     user_id = message.from_user.id
@@ -6675,7 +6678,7 @@ def save_selected_transport(user_id, selected_transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_expenses_menu(message):
     user_id = message.from_user.id
@@ -6762,7 +6765,7 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
@@ -6941,7 +6944,7 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_expense_by_month(message):
     user_id = message.from_user.id
@@ -7115,7 +7118,7 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_expense_by_license_plate(message):
     user_id = message.from_user.id
@@ -7272,7 +7275,7 @@ def confirm_delete_expense_license_plate(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
@@ -7531,7 +7534,7 @@ def remove_repair_category(user_id, category_to_remove):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def record_repair(message):
     user_id = message.from_user.id
@@ -8136,7 +8139,7 @@ def send_repair_menu(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_repairs(message):
     user_id = message.from_user.id
@@ -8196,7 +8199,7 @@ def handle_transport_selection_for_repairs(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def send_repairs_excel(message):
     user_id = message.from_user.id
@@ -8232,7 +8235,7 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_repairs_by_category(message):
     user_id = message.from_user.id
@@ -8341,7 +8344,7 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_repairs_by_month(message):
     user_id = message.from_user.id
@@ -8463,7 +8466,7 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_repairs_by_year(message):
     user_id = message.from_user.id
@@ -8578,7 +8581,7 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_all_repairs(message):
     user_id = message.from_user.id
@@ -8636,7 +8639,7 @@ def save_selected_repair_transport(user_id, selected_transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_repairs_menu(message):
     user_id = message.from_user.id
@@ -8709,7 +8712,7 @@ user_repairs_to_delete = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
@@ -8849,7 +8852,6 @@ def delete_repair_confirmation(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def delete_repair_by_month(message):
     user_id = message.from_user.id
@@ -9015,7 +9017,7 @@ def send_long_message(user_id, message_text, parse_mode='Markdown'):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
@@ -9166,7 +9168,7 @@ def confirm_delete_repair(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_all_repairs_for_selected_transport(message):
     user_id = message.from_user.id
@@ -9383,7 +9385,7 @@ def shorten_url(original_url):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def send_welcome(message):
     user_id = message.chat.id
@@ -9425,7 +9427,7 @@ def send_welcome(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_reset_category(message):
     global selected_category
@@ -9457,7 +9459,7 @@ selected_category = None
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_menu_buttons(message):
     global selected_category
@@ -9482,7 +9484,7 @@ def handle_menu_buttons(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_location(message):
     global selected_category
@@ -9749,7 +9751,7 @@ def handle_location(message):
 # @check_chat_state
 #
 # @check_subscription
-# @restrict_free_users
+# 
 # @check_subscription_chanal
 #
 # def send_welcome(message):
@@ -9781,7 +9783,7 @@ def handle_location(message):
 # @check_chat_state
 #
 # @check_subscription
-# @restrict_free_users
+# 
 # @check_subscription_chanal
 #
 # def handle_reset_category(message):
@@ -9797,7 +9799,7 @@ def handle_location(message):
 # @check_chat_state
 #
 # @check_subscription
-# @restrict_free_users
+# 
 # @check_subscription_chanal
 #
 # def handle_menu_buttons(message):
@@ -9824,7 +9826,7 @@ def handle_location(message):
 # @check_chat_state
 #
 # @check_subscription
-# @restrict_free_users
+# 
 # @check_subscription_chanal
 #
 # def handle_location(message):
@@ -9933,7 +9935,7 @@ location_data = load_location_data()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_transport_search(message):
 
@@ -10003,7 +10005,7 @@ def request_user_location(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_car_location(message):
     global location_data
@@ -10100,7 +10102,7 @@ if regions_file_path:
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_start4(message):
     description = (
@@ -10186,7 +10188,35 @@ API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
 WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
 FORECAST_URL = 'http://api.openweathermap.org/data/2.5/forecast'
 MAX_MESSAGE_LENGTH = 4096
-user_data = {}
+user_data = {}  
+
+def load_cities_from_file(file_path="files/combined_cities.txt"):
+    cities = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                city_name_rus, city_name_eng = line.strip().split(' - ')
+                cities[city_name_eng.lower()] = city_name_rus
+    except Exception as e:
+        print(f"Ошибка при чтении файла городов: {e}")
+    return cities
+
+def translate_weather_description(english_description):
+    translation_dict = {
+        'clear sky': 'ясное небо',
+        'few clouds': 'небольшая облачность',
+        'scattered clouds': 'рассеянные облака',
+        'broken clouds': 'облачно с прояснениями',
+        'shower rain': 'небольшой дождь',
+        'rain': 'дождь',
+        'thunderstorm': 'гроза',
+        'snow': 'снег',
+        'mist': 'туман',
+        'light snow': 'небольшой снег',
+        'overcast clouds': 'пасмурно',
+        'heavy snow': 'сильный снегопад',
+    }
+    return translation_dict.get(english_description, english_description)
 
 @bot.message_handler(func=lambda message: message.text == "Погода")
 @check_function_state_decorator('Погода')
@@ -10197,14 +10227,13 @@ user_data = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def handle_start_5(message):
     try:
         help_message = (
-            "ℹ️ *Краткая справка по отображению погоды*\n\n\n"
-            "📌 *Отправка геопозиции:*\n"
-            "Отправляется ваша геопозиция\n\n"
+            "ℹ️ *Краткая справка по отображению погоды*\n\n"
+            "📌 *Отправка геопозиции или ввод города:*\n"
+            "Нажмите на кнопку ниже, чтобы отправить вашу геопозицию или введите город самостоятельно\n\n"
             "📌 *Выбор периода:*\n"
             "Выбираете период для просмотра погоды из кнопок\n\n"
             "📌 *Погода:*\n"
@@ -10216,23 +10245,18 @@ def handle_start_5(message):
         markup.row(telebot.types.KeyboardButton("В главное меню"))
 
         bot.send_message(message.chat.id, help_message, parse_mode="Markdown")
-        bot.send_message(message.chat.id, "Отправьте свою геопозицию для отображения погоды:", reply_markup=markup)
-        bot.register_next_step_handler(message, handle_location_5)
+        bot.send_message(message.chat.id, "Отправьте геопозицию или введите название города:", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_input_5)
 
     except Exception as e:
         bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса! Попробуйте позже")
 
-@bot.message_handler(content_types=['location'])
-@check_function_state_decorator('Функция для обработки локации')
-@track_usage('Функция для обработки локации')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_subscription
-@restrict_free_users
-@check_subscription_chanal
-def handle_location_5(message):
+def handle_input_5(message):
     try:
+        if message.text == "В главное меню":
+            return_to_menu(message)
+            return
+
         if message.location:
             latitude = message.location.latitude
             longitude = message.location.longitude
@@ -10246,13 +10270,33 @@ def handle_location_5(message):
             markup.row('В главное меню')
 
             bot.send_message(message.chat.id, "Выберите период:", reply_markup=markup)
-        elif message.text == "В главное меню":
-            return_to_menu(message)
+            return
+
+        cities = load_cities_from_file()
+        city_input = message.text.strip().lower()
+        city_eng = None
+        city_rus = None
+
+        for eng, rus in cities.items():
+            if rus.lower() == city_input:
+                city_eng = eng
+                city_rus = rus
+                break
+
+        if city_eng:
+            user_data[message.chat.id] = {'city': city_eng, 'city_rus': city_rus}
+            markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
+            markup.row('Сегодня', 'Завтра')
+            markup.row('Неделя', 'Месяц')
+            markup.row('Другое место')
+            markup.row('В главное меню')
+            bot.send_message(message.chat.id, f"Вы выбрали город: {city_rus}\nТеперь выберите период:", reply_markup=markup)
         else:
-            bot.send_message(message.chat.id, "Не удалось получить данные о местоположении! Пожалуйста, отправьте местоположение еще раз")
-            bot.register_next_step_handler(message, handle_location_5)
+            bot.send_message(message.chat.id, "Город не найден! Пожалуйста, введите название города еще раз или отправьте геопозицию")
+            bot.register_next_step_handler(message, handle_input_5)
+
     except Exception as e:
-        bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения! Попробуйте позже")
+        bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего ввода! Попробуйте позже")
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Другое место'])
 @check_function_state_decorator('Сегодня')
@@ -10271,25 +10315,28 @@ def handle_location_5(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
 @check_subscription_chanal
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
+
     user_locations = load_user_locations()
     coords = user_locations.get(str(chat_id))
+    city_data = user_data.get(chat_id, {})
 
-    if coords is None:
-        bot.send_message(chat_id, "Не удалось получить координаты! Пожалуйста, отправьте местоположение еще раз")
+    if not coords and not city_data:
+        bot.send_message(chat_id, "Не удалось получить данные о местоположении или городе! Пожалуйста, начните сначала...")
+        handle_start_5(message)
         return
 
-    if period == 'Другое место':
+    if period == 'другое место':
         user_data.pop(chat_id, None)
+        user_locations.pop(str(chat_id), None)
         handle_start_5(message)
         return
 
-    if message.text == "Другое место":
-        handle_start_5(message)
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
 
     if coords:
@@ -10301,6 +10348,17 @@ def handle_period_5(message):
             send_forecast_weekly(chat_id, coords, FORECAST_URL, 8)
         elif period == 'месяц':
             send_forecast_monthly(chat_id, coords, FORECAST_URL, 31)
+    elif city_data:
+        city = city_data.get('city')
+        city_rus = city_data.get('city_rus')
+        if period == 'сегодня':
+            send_weather_by_city(chat_id, city, city_rus, WEATHER_URL)
+        elif period == 'завтра':
+            send_forecast_daily_by_city(chat_id, city, city_rus, FORECAST_URL, 1)
+        elif period == 'неделя':
+            send_forecast_weekly_by_city(chat_id, city, city_rus, FORECAST_URL, 8)
+        elif period == 'месяц':
+            send_forecast_monthly_by_city(chat_id, city, city_rus, FORECAST_URL, 31)
 
 def send_weather(chat_id, coords, url):
     try:
@@ -10308,7 +10366,8 @@ def send_weather(chat_id, coords, url):
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
-            'units': 'metric'
+            'units': 'metric',
+            'lang': 'ru'
         }
         response = requests.get(url, params=params)
         data = response.json()
@@ -10359,7 +10418,6 @@ def send_forecast_remaining_day(chat_id, coords, url):
 
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-
                 if now.date() == date_time.date() and date_time > now:
                     formatted_date = date_time.strftime("%d.%m.%Y")
                     formatted_time = date_time.strftime("%H:%M")
@@ -10373,7 +10431,7 @@ def send_forecast_remaining_day(chat_id, coords, url):
                     message += (
                         f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
                         f"🌡️ *Температура:* {temperature}°C\n"
-                        f"🌬 *Ощущается как:* {feels_like}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
                         f"💧 *Влажность:* {humidity}%\n"
                         f"〽️ *Давление:* {pressure} мм рт. ст.\n"
                         f"💨 *Скорость ветра:* {wind_speed} м/с\n"
@@ -10388,69 +10446,6 @@ def send_forecast_remaining_day(chat_id, coords, url):
             bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня!")
     except Exception as e:
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня! Попробуйте позже")
-
-def translate_weather_description(english_description):
-    translation_dict = {
-        'clear sky': 'ясное небо',
-        'few clouds': 'небольшая облачность',
-        'scattered clouds': 'рассеянные облака',
-        'broken clouds': 'облачно с прояснениями',
-        'shower rain': 'небольшой дождь',
-        'rain': 'дождь',
-        'thunderstorm': 'гроза',
-        'snow': 'снег',
-        'mist': 'туман',
-        'light snow': 'небольшой снег',
-        'overcast clouds': 'пасмурно',
-        'light snow': 'небольшой снег',
-        'snow': 'снег',
-        'heavy snow': 'сильный снегопад',
-    }
-
-    return translation_dict.get(english_description, english_description)
-
-def send_forecast(chat_id, coords, url, days=1):
-    try:
-        params = {
-            'lat': coords['latitude'],
-            'lon': coords['longitude'],
-            'appid': API_KEY,
-        }
-        response = requests.get(url, params=params)
-        data = response.json()
-
-        if response.status_code == 200:
-            forecasts = data['list'][:days * 8]
-            message = "*Прогноз на завтра:*\n"
-
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                formatted_date = date_time.strftime("%d-%m-%Y %H:%M:%S")
-                temperature = round(forecast['main']['temp'] - 273.15)
-                feels_like = round(forecast['main']['feels_like'] - 273.15)
-                humidity = forecast['main']['humidity']
-                pressure = forecast['main']['pressure']
-                wind_speed = forecast['wind']['speed']
-                description = translate_weather_description(forecast['weather'][0]['description'])
-
-                message += (
-                    f"{formatted_date}:\n"
-                    f"🌡️ *Температура:* {temperature}°C\n"
-                    f"🌬️ *Ощущается как:* {feels_like}°C\n"
-                    f"💧 *Влажность:* {humidity}%\n"
-                    f"〽️ *Давление:* {pressure} мм рт. ст\n"
-                    f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                    f"☁️ *Описание:* {description}\n\n"
-                )
-
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
-
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk, parse_mode="Markdown")
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз погоды на завтра!")
-    except Exception as e:
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра! Попробуйте позже")
 
 def send_forecast_daily(chat_id, coords, url, days_ahead):
     try:
@@ -10484,7 +10479,6 @@ def send_forecast_daily(chat_id, coords, url, days_ahead):
                 f"☁️ *Описание:* {description}\n"
             )
             bot.send_message(chat_id, message, parse_mode="Markdown")
-
             send_hourly_forecast_tomorrow(chat_id, coords, url)
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз на завтра!")
@@ -10558,7 +10552,6 @@ def send_forecast_weekly(chat_id, coords, url, retries=3):
         for attempt in range(retries):
             try:
                 response = requests.get(url, params=params, timeout=10)
-
                 if response.status_code == 200:
                     data = response.json()
                     forecasts = data['list']
@@ -10667,7 +10660,304 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
             bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз на месяц!")
-    except:
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц! Попробуйте позже")
+
+def send_weather_by_city(chat_id, city, city_rus, url):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        if response.status_code == 200:
+            temperature = round(data['main']['temp'])
+            feels_like = round(data['main']['feels_like'])
+            humidity = data['main']['humidity']
+            pressure = data['main']['pressure']
+            wind_speed = data['wind']['speed']
+            description = translate_weather_description(data['weather'][0]['description'])
+
+            current_time = datetime.now().strftime("%H:%M")
+            current_date = datetime.now().strftime("%d.%m.%Y")
+
+            message = (
+                f"*Погода в {city_rus} на {current_date} в {current_time}:*\n\n"
+                f"🌡️ *Температура:* {temperature}°C\n"
+                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                f"💧 *Влажность:* {humidity}%\n"
+                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                f"☁️ *Описание:* {description}\n"
+            )
+            bot.send_message(chat_id, message, parse_mode="Markdown")
+            send_forecast_remaining_day_by_city(chat_id, city, city_rus, FORECAST_URL)
+        else:
+            bot.send_message(chat_id, "Не удалось получить текущую погоду для города!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды! Попробуйте позже")
+
+def send_forecast_remaining_day_by_city(chat_id, city, city_rus, url):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecasts = data['list']
+            now = datetime.now()
+            message = "*Прогноз на оставшуюся часть дня:*\n\n"
+
+            for forecast in forecasts:
+                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                if now.date() == date_time.date() and date_time > now:
+                    formatted_date = date_time.strftime("%d.%m.%Y")
+                    formatted_time = date_time.strftime("%H:%M")
+                    temperature = round(forecast['main']['temp'])
+                    feels_like = round(forecast['main']['feels_like'])
+                    humidity = forecast['main']['humidity']
+                    pressure = forecast['main']['pressure']
+                    wind_speed = forecast['wind']['speed']
+                    description = translate_weather_description(forecast['weather'][0]['description'])
+
+                    message += (
+                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
+                    )
+
+            if message == "*Прогноз на оставшуюся часть дня:*\n\n":
+                message = "Нет доступного прогноза на оставшуюся часть дня"
+
+            bot.send_message(chat_id, message, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня! Попробуйте позже")
+
+def send_forecast_daily_by_city(chat_id, city, city_rus, url, days_ahead):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecast = data['list'][days_ahead * 8]
+            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+            temperature = round(forecast['main']['temp'])
+            feels_like = round(forecast['main']['feels_like'])
+            humidity = forecast['main']['humidity']
+            pressure = forecast['main']['pressure']
+            wind_speed = forecast['wind']['speed']
+            description = translate_weather_description(forecast['weather'][0]['description'])
+
+            message = (
+                f"*Прогноз для {city_rus} на {date_time.strftime('%d.%m.%Y')}*\n\n"
+                f"🌡️ *Температура:* {temperature}°C\n"
+                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                f"💧 *Влажность:* {humidity}%\n"
+                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                f"☁️ *Описание:* {description}\n"
+            )
+            bot.send_message(chat_id, message, parse_mode="Markdown")
+            send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url)
+        else:
+            bot.send_message(chat_id, "Не удалось получить прогноз на завтра!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра! Попробуйте позже")
+
+def send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecasts = data['list']
+            now = datetime.now()
+            tomorrow = now + timedelta(days=1)
+            message = "*Почасовой прогноз на завтра:*\n\n\n"
+
+            for forecast in forecasts:
+                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                if tomorrow.date() == date_time.date():
+                    formatted_time = date_time.strftime("%H:%M")
+                    formatted_date = date_time.strftime("%d.%m.%Y")
+                    temperature = round(forecast['main']['temp'])
+                    feels_like = round(forecast['main']['feels_like'])
+                    humidity = forecast['main']['humidity']
+                    pressure = forecast['main']['pressure']
+                    wind_speed = forecast['wind']['speed']
+                    description = translate_weather_description(forecast['weather'][0]['description'])
+
+                    message += (
+                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                        f"🌡️ *Температура:* {temperature}°C\n"
+                        f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                        f"💧 *Влажность:* {humidity}%\n"
+                        f"〽️ *Давление:* {pressure} мм рт. ст.\n"
+                        f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                        f"☁️ *Описание:* {description}\n\n"
+                    )
+
+            if message == "*Почасовой прогноз на завтра:*\n\n":
+                message = "Нет доступного почасового прогноза на завтра"
+
+            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+            for chunk in message_chunks:
+                bot.send_message(chat_id, chunk, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра!")
+    except Exception as e:
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра! Попробуйте позже")
+
+def send_forecast_weekly_by_city(chat_id, city, city_rus, url, retries=3):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+
+        daily_forecasts = defaultdict(list)
+        message = "*Прогноз на неделю:*\n\n\n"
+
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    forecasts = data['list']
+
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        date_str = date_time.strftime('%d.%m.%Y')
+
+                        if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
+                            break
+
+                        temperature = round(forecast['main']['temp'])
+                        feels_like = round(forecast['main']['feels_like'])
+                        humidity = forecast['main']['humidity']
+                        pressure = forecast['main']['pressure']
+                        wind_speed = forecast['wind']['speed']
+                        description = translate_weather_description(forecast['weather'][0]['description'])
+
+                        daily_forecasts[date_str].append({
+                            'temperature': temperature,
+                            'feels_like': feels_like,
+                            'humidity': humidity,
+                            'pressure': pressure,
+                            'wind_speed': wind_speed,
+                            'description': description
+                        })
+
+                    for date, forecasts in daily_forecasts.items():
+                        temp_sum = sum(f['temperature'] for f in forecasts)
+                        feels_like_sum = sum(f['feels_like'] for f in forecasts)
+                        count = len(forecasts)
+                        avg_temp = round(temp_sum / count)
+                        avg_feels_like = round(feels_like_sum / count)
+
+                        message += (
+                            f"*Погода на {date}:*\n\n"
+                            f"🌡️ *Температура:* {avg_temp}°C\n"
+                            f"🌬️ *Ощущается как:* {avg_feels_like}°C\n"
+                            f"💧 *Влажность:* {forecasts[0]['humidity']}%\n"
+                            f"〽️ *Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
+                            f"💨 *Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
+                            f"☁️ *Описание:* {forecasts[0]['description']}\n\n"
+                        )
+
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    break
+                else:
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю!")
+                    break
+            except Exception as e:
+                if attempt == retries - 1:
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток!")
+    except Exception as e:
+        bot.send_message(chat_id, "ПроTrades on the web! Попробуйте позже")
+
+def send_forecast_monthly_by_city(chat_id, city, city_rus, url, days=31):
+    try:
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecasts = data['list']
+            message = "*Прогноз на месяц:*\n\n\n"
+
+            daily_forecasts = {}
+            for forecast in forecasts:
+                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                date_str = date_time.strftime('%d.%m.%Y')
+
+                if date_str not in daily_forecasts:
+                    daily_forecasts[date_str] = {
+                        'temperature': round(forecast['main']['temp']),
+                        'feels_like': round(forecast['main']['feels_like'])
+                    }
+
+            for date, values in daily_forecasts.items():
+                message += (
+                    f"*{date}:*\n\n"
+                    f"🌡️ *Температура:* {values['temperature']}°C\n"
+                    f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
+                )
+
+            unavailable_dates = [
+                date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
+                if date not in daily_forecasts
+            ]
+
+            if unavailable_dates:
+                start_date = unavailable_dates[0]
+                end_date = unavailable_dates[-1]
+                message += (
+                    f"*С {start_date} по {end_date}:*\n\n_"
+                    f"Данные недоступны из-за ограничений_\n\n"
+                )
+
+            if message == "*Прогноз на месяц:*\n\n":
+                message = "Нет доступного прогноза на месяц"
+
+            bot.send_message(chat_id, message, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, "Не удалось получить прогноз на месяц!")
+    except Exception as e:
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц! Попробуйте позже")
 
 # ---------- 15. ЦЕНЫ НА ТОПЛИВО ----------
@@ -10775,7 +11065,7 @@ def get_city_code(city_name):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def fuel_prices_command(message):
     chat_id = message.chat.id
@@ -11368,7 +11658,7 @@ def get_notification_status(chat_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def toggle_notifications_handler(message):
     chat_id = message.chat.id
@@ -11402,7 +11692,7 @@ def toggle_notifications_handler(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_notification_toggle(message):
     chat_id = message.chat.id
@@ -11661,7 +11951,7 @@ load_all_transport()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def manage_transport(message):
     user_id = str(message.chat.id)
@@ -11702,7 +11992,7 @@ def create_transport_keyboard():
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def add_transport(message):
     user_id = str(message.chat.id)
@@ -11844,7 +12134,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_transport(message):
     user_id = str(message.chat.id)
@@ -11986,7 +12276,7 @@ def get_return_menu_keyboard():
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_all_transports(message):
     user_id = str(message.chat.id)
@@ -12047,7 +12337,7 @@ def process_delete_all_confirmation(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_transport(message):
     user_id = str(message.chat.id)
@@ -12121,7 +12411,7 @@ user_tracking = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_antiradar(message):
     user_id = message.chat.id
@@ -12152,7 +12442,7 @@ def start_antiradar(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_antiradar_location(message):
     user_id = message.chat.id
@@ -12182,7 +12472,7 @@ def handle_antiradar_location(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def stop_antiradar(message):
     user_id = message.chat.id
@@ -12407,7 +12697,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def reminders_menu(message):
     description = (
@@ -12436,7 +12726,7 @@ def reminders_menu(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def add_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -12623,7 +12913,7 @@ def process_time_step(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -12641,7 +12931,7 @@ def view_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -12660,7 +12950,7 @@ def view_active_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -12685,7 +12975,7 @@ def view_expired_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
@@ -12741,7 +13031,7 @@ def view_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
@@ -12783,7 +13073,7 @@ def view_expired_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -12802,7 +13092,7 @@ def delete_reminder(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -12821,7 +13111,7 @@ def delete_active_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -12842,7 +13132,7 @@ def delete_expired_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
@@ -12897,7 +13187,7 @@ def delete_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal 
 def delete_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
@@ -13016,7 +13306,7 @@ def confirm_delete_expired_step(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def delete_all_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -13090,7 +13380,7 @@ error_codes = load_error_codes()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def obd2_request(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -13182,7 +13472,7 @@ def process_error_codes(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -13203,7 +13493,7 @@ def view_others(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_calculators(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -13238,7 +13528,7 @@ def return_to_calculators(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_alc_calc(message):
     global stored_message
@@ -13333,7 +13623,7 @@ load_user_history_alko()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
@@ -13922,7 +14212,7 @@ def save_alcohol_calculation_to_history(chat_id, promille):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_alcohol(message):
     user_id = str(message.from_user.id)
@@ -14044,7 +14334,7 @@ def process_view_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)
@@ -14157,7 +14447,7 @@ def process_delete_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_rastamozka_calc(message):
     global stored_message
@@ -14273,7 +14563,7 @@ load_user_history_rastamozka()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_customs_calculation(message):
     if not rastamozka_data:
@@ -14906,7 +15196,7 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
@@ -15044,7 +15334,7 @@ def process_view_rastamozka_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
@@ -15156,7 +15446,7 @@ def process_delete_rastamozka_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_osago_calc(message):
     global stored_message
@@ -15240,7 +15530,7 @@ load_user_history_osago()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_osago_calculation(message):
     if not osago_data:
@@ -15949,7 +16239,7 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
@@ -16134,7 +16424,7 @@ def process_view_osago_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
@@ -16246,7 +16536,7 @@ def process_delete_osago_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_autokredit_calc(message):
     description = (
@@ -16321,7 +16611,7 @@ load_user_history_kredit()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_car_loan_calculation(message):
     if message.text == "В главное меню":
@@ -17019,7 +17309,7 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
@@ -17169,7 +17459,7 @@ def process_view_autokredit_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
@@ -17286,7 +17576,7 @@ def process_delete_autokredit_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_tire_calc(message):
     description = (
@@ -17355,7 +17645,7 @@ load_user_history_tires()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_tire_calculation(message):
     user_id = message.from_user.id
@@ -17792,7 +18082,7 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
@@ -17993,7 +18283,7 @@ def process_view_tire_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
@@ -18201,7 +18491,7 @@ load_tax_rates(2025)  # Загружаем данные за 2025 год по у
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_nalog_calc(message):
     global stored_message
@@ -18237,7 +18527,7 @@ def view_nalog_calc(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def start_tax_calculation(message):
     if not nalog_data:
@@ -18712,7 +19002,7 @@ def calculate_tax(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
@@ -18852,7 +19142,7 @@ def process_view_nalog_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
@@ -24100,7 +24390,7 @@ blocked_users = load_blocked_users()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -24963,7 +25253,7 @@ def show_advertisement_menu(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def show_user_advertisement_requests(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -25127,7 +25417,7 @@ def handle_user_advertisement_request_action(message, index):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def view_add_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -25209,7 +25499,7 @@ def check_admin_access(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def show_news_menu(message):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
@@ -25247,7 +25537,7 @@ def show_news_menu(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def handle_news_selection(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -28599,7 +28889,7 @@ def return_admin_to_menu(admin_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 def request_chat_with_admin(message):
     global active_chats
@@ -28852,7 +29142,7 @@ start_bot_with_retries()
 @track_user_activity
 @check_chat_state
 @check_subscription
-@restrict_free_users
+
 @check_subscription_chanal
 
 def echo_all(message):
