@@ -547,7 +547,7 @@ def rate_limit_with_captcha(func):
                 if user_answer == correct_answer:
                     del captcha_data[user_id]
                     user_requests[user_id] = []
-                    bot.send_message(message.chat.id, "✅ Капча пройдена!\nПродолжайте использовать бота...")
+                    bot.send_message(message.chat.id, "✅ Капча пройдена!\n🚀 Продолжайте использовать бота...")
                     save_captcha_data()
                     return func(message, *args, **kwargs)
                 else:
@@ -616,7 +616,7 @@ def handle_captcha(message, original_func, *args, **kwargs):
         if user_answer == correct_answer:
             del captcha_data[user_id]
             user_requests[user_id] = []
-            bot.send_message(message.chat.id, "✅ Капча пройдена!\nПродолжайте использовать бота...")
+            bot.send_message(message.chat.id, "✅ Капча пройдена!\n🚀 Продолжайте использовать бота...")
             save_captcha_data()
             return original_func(message, *args, **kwargs)
         else:
@@ -660,16 +660,17 @@ def save_users(users):
 
 def delete_user_data_from_all_files(user_id, users):
     username = users.get(str(user_id), {}).get('username', 'неизвестный')
+    user_id_str = str(user_id)
 
     def remove_user_data(obj):
         if isinstance(obj, dict):
-            keys_to_delete = [key for key in obj if key == str(user_id)]
+            keys_to_delete = [key for key in obj if key == user_id_str]
             for key in keys_to_delete:
                 del obj[key]
             for key, value in list(obj.items()):
                 remove_user_data(value)
         elif isinstance(obj, list):
-            obj[:] = [item for item in obj if item != str(user_id)]
+            obj[:] = [item for item in obj if item != user_id_str]
             for item in obj:
                 remove_user_data(item)
 
@@ -684,19 +685,33 @@ def delete_user_data_from_all_files(user_id, users):
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
 
+                # Специальная обработка для payments.json
+                if file == 'payments.json' and 'admin' in root and 'data base' in root:
+                    users_section = data.get("subscriptions", {}).get("users", {})
+                    if user_id_str in users_section:
+                        user_info = users_section[user_id_str]
+                        plans = user_info.get("plans", [])
+                        # Оставляем только план "free"
+                        filtered_plans = [plan for plan in plans if plan.get("plan_name") == "free"]
+                        user_info["plans"] = filtered_plans
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=4)
+                    continue
+
+                # Для остальных файлов — стандартное удаление
                 remove_user_data(data)
 
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
 
-    if str(user_id) in users:
-        users.pop(str(user_id), None)
+    if user_id_str in users:
+        users.pop(user_id_str, None)
         save_users(users)
 
     try:
         bot.send_message(
             user_id,
-            f"⛔ Ваши данные были удалены из-за длительной неактивности!\n "
+            f"⛔ Ваши данные были удалены из-за длительной неактивности!\n"
             "Если вы хотите снова пользоваться ботом, зарегистрируйтесь заново с помощью команды /start",
             parse_mode="Markdown"
         )
@@ -742,9 +757,10 @@ inactivity_thread.start()
 @track_usage('Сайт')
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def send_website_file(message):
     bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")  # http://carmngrbot.com.swtest.ru/ # https://goo.su/5htqWmk
 
@@ -1377,7 +1393,6 @@ def handle_subscription_confirmation(call):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -1396,7 +1411,6 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243'
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -1452,7 +1466,6 @@ def payments_function(message, show_description=True):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -1490,7 +1503,6 @@ SUBSCRIPTION_PLANS = {
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2041,7 +2053,6 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2075,7 +2086,7 @@ def view_subscription(message):
         ), parse_mode="Markdown")
         return
 
-    plans_summary = "💎 *Список активных подписок:*\n\n\n"
+    plans_summary = "💎 *Список активных подписок:*\n\n"
     total_cost_active = 0
 
     unit_display = {
@@ -2124,7 +2135,7 @@ def view_subscription(message):
             f"📅 *Дней осталось:* {days_left} дней и {hours_left:02d}:{minutes_left:02d} часов\n"
             f"🕒 *Начало:* {start_date}\n"
             f"⌛ *Конец:* {end_date_str}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
         total_cost_active += plan['price']
 
@@ -2172,7 +2183,6 @@ def view_subscription(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2204,7 +2214,7 @@ def view_subscription_history(message):
         ), parse_mode="Markdown")
         return
 
-    plans_summary = "📜 *История подписок:*\n\n\n"
+    plans_summary = "📜 *История подписок:*\n\n"
 
     unit_display = {
         'минуты': 'мин.',
@@ -2252,7 +2262,7 @@ def view_subscription_history(message):
             f"📅 *Дней прошло:* {days_elapsed} дней и {hours_elapsed:02d}:{minutes_elapsed:02d} часов\n"
             f"🕒 *Начало:* {start_date}\n"
             f"⌛ *Конец:* {end_date_str}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
     send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
@@ -2404,7 +2414,6 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2464,7 +2473,7 @@ def cancel_subscription(message):
             f"📅 *Дней осталось:* {days_left} дней и {hours_left:02d}:{minutes_left:02d} часов\n"
             f"🕒 *Начало:* {plan['start_date']}\n"
             f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
     send_long_message(user_id, plans_summary, parse_mode="Markdown")
@@ -2644,7 +2653,6 @@ STORE_ITEMS = {
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2840,7 +2848,6 @@ def back_to_store(call):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2960,7 +2967,6 @@ def escape_markdown(text):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -2979,7 +2985,6 @@ def points_menu(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3016,7 +3021,6 @@ def format_time(minutes):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3112,7 +3116,6 @@ def view_points(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3480,7 +3483,6 @@ def process_discount_exchange(message):
         users_data[user_id]['discount_type'] = "points"
         
         save_payments_data(data)
-        save_users_data(users_data)
         
         bot.send_message(message.chat.id, (
             f"✅ *Обмен выполнен!*\n\n"
@@ -3553,7 +3555,6 @@ def pluralize_points(points):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3573,7 +3574,6 @@ def gifts_menu(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3590,7 +3590,6 @@ def return_to_gifts_menu(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -3796,7 +3795,6 @@ def process_gift_amount(message, recipient_id, sender_points):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4150,7 +4148,6 @@ def user_process_gift_time_amount(message, recipient_id, total_available_minutes
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4168,7 +4165,7 @@ def view_gifts_history(message):
 
     username = escape_markdown(user_data.get('username', f"@{user_id}"))
 
-    history_summary = f"*История подарков*:\n\n\n"
+    history_summary = f"*История подарков*:\n\n"
     for idx, entry in enumerate(gift_entries, 1):
         action = "Подарено" if entry['action'] == "spent" else "Получено"
         gift_type = []
@@ -4186,7 +4183,7 @@ def view_gifts_history(message):
         history_summary += (
             f"🎁 *№{idx}. {action}:*\n\n"
             f"💰 *Подарок:* {gift_type}\n"
-            f"📅 *Дата:* {entry['date']}\n\n\n"
+            f"📅 *Дата:* {entry['date']}\n\n"
         )
 
     message_parts = split_message(history_summary)
@@ -4205,7 +4202,6 @@ def view_gifts_history(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4224,7 +4220,6 @@ def promo_payments_function(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4492,7 +4487,6 @@ def format_discount(discount):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4774,7 +4768,6 @@ def check_ad_subscription(call):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4793,7 +4786,6 @@ def refferal_payments_function(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4883,7 +4875,6 @@ def apply_referral_bonus(referrer_id):
         users_data = load_users_data()
         users_data[referrer_id_str]['discount'] = max(users_data.get(referrer_id_str, {}).get('discount', 0), discount)
         users_data[referrer_id_str]['discount_type'] = "referral"
-        save_users_data(users_data)
     
     save_payments_data(data)
     
@@ -4912,7 +4903,6 @@ def apply_referral_bonus(referrer_id):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -4947,7 +4937,6 @@ def send_referral_link_message(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -5083,7 +5072,6 @@ def view_referrals_and_bonuses(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@check_subscription
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
@@ -6690,10 +6678,13 @@ class States:
 
 user_transport = {}
 
-def save_transport_data(user_id, user_data):
+def save_transport_data(user_id, transport_data):
     file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
+    data = {"user_id": int(user_id), "transport": {}}
+    for index, item in enumerate(transport_data, start=1):
+        data["transport"][str(index)] = item
     with open(file_path, "w", encoding="utf-8") as file:
-        json.dump(user_data, file, ensure_ascii=False, indent=4)
+        json.dump(data, file, ensure_ascii=False, indent=4)
 
 def load_transport_data(user_id):
     file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
@@ -6701,20 +6692,21 @@ def load_transport_data(user_id):
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 data = json.load(file)
-                if isinstance(data, list):
-                    return data
+                if isinstance(data, dict) and "transport" in data:
+                    return list(data["transport"].values())
+                elif isinstance(data, list):
+                    return data  # Для обратной совместимости со старым форматом
                 else:
                     return []
         except json.JSONDecodeError as e:
+            print(f"JSON decode error for user {user_id}: {e}")
             return []
         except Exception as e:
+            print(f"Error loading transport data for user {user_id}: {e}")
             return []
-    else:
-        print(f"Transport file not found for user {user_id}: {file_path}")
     return []
 
 def reload_transport_data(user_id):
-    """Перезагружает данные транспорта для конкретного пользователя."""
     user_id = str(user_id)
     try:
         user_transport[user_id] = load_transport_data(user_id)
@@ -6724,8 +6716,7 @@ def reload_transport_data(user_id):
         user_transport[user_id] = []
 
 def load_all_transport():
-    """Загружает данные транспорта всех пользователей в user_transport."""
-    user_transport.clear()  # Очищаем словарь перед загрузкой
+    user_transport.clear()
     for user_file in os.listdir(TRANSPORT_DIR):
         if user_file.endswith("_transport.json"):
             try:
@@ -6866,9 +6857,7 @@ def process_year(message, brand, model):
 
 @text_only_handler
 def process_license_plate(message, brand, model, year):
-    """Обрабатывает ввод госномера транспорта."""
     user_id = str(message.chat.id)
-
     if message.text == "В главное меню":
         return_to_menu(message)
         return
@@ -6980,7 +6969,6 @@ def get_return_menu_keyboard():
 
 @text_only_handler
 def process_transport_selection_for_deletion(message):
-    """Обрабатывает выбор транспорта для удаления."""
     user_id = str(message.chat.id)
     selected_transport = message.text.strip()
 
@@ -7056,7 +7044,6 @@ def delete_repairs_related_to_transport(user_id, transport):
 
 @text_only_handler
 def process_confirmation(message, transport_to_delete):
-    """Обрабатывает подтверждение удаления транспорта."""
     user_id = str(message.chat.id)
     confirmation = message.text.strip().lower()
 
@@ -7114,7 +7101,6 @@ def delete_all_transports(message):
 
 @text_only_handler
 def process_delete_all_confirmation(message):
-    """Обрабатывает подтверждение удаления всего транспорта."""
     user_id = str(message.chat.id)
     confirmation = message.text.strip().lower()
 
@@ -7241,7 +7227,6 @@ def process_field_selection(message, selected_transport):
 
 @text_only_handler
 def process_new_value(message, selected_transport, field):
-    """Обрабатывает новое значение для выбранного поля."""
     user_id = str(message.chat.id)
     new_value = message.text.strip()
 
@@ -7252,7 +7237,6 @@ def process_new_value(message, selected_transport, field):
         manage_transport(message)
         return
 
-    # Валидация нового значения
     if field == "Год":
         try:
             new_value = int(new_value)
@@ -7276,18 +7260,12 @@ def process_new_value(message, selected_transport, field):
     elif field in ["Марка", "Модель"]:
         new_value = format_brand_model(new_value)
 
-    # Сохраняем старые данные для обновления Excel
     old_transport = selected_transport.copy()
-
-    # Обновляем данные транспорта
     field_key = "license_plate" if field == "Госномер" else field.lower()
     selected_transport[field_key] = new_value
     save_transport_data(user_id, user_transport.get(user_id, []))
 
-    # Синхронизация с данными трат и ремонтов
     update_related_data(user_id, old_transport, selected_transport, field_key, new_value)
-
-    # Обновление Excel-файлов
     update_excel_files_after_transport_change(user_id, old_transport, selected_transport)
 
     bot.send_message(user_id, f'✅ *{field}* транспорта изменен(-а)!', parse_mode="Markdown", reply_markup=create_transport_keyboard())
@@ -11870,31 +11848,37 @@ def send_map_link(chat_id, start_location, end_location):
 
 # ---------- 13. КОД РЕГИОНА ----------
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILES_DIR = os.path.join(BASE_DIR, "files", "files_for_regions")
+REGIONS_FILE_PATH = os.path.join(FILES_DIR, "regions.txt")
+
+os.makedirs(FILES_DIR, exist_ok=True)
+
+if not os.path.exists(REGIONS_FILE_PATH):
+    try:
+        with open(REGIONS_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write("")
+    except Exception as e:
+        print(f"Ошибка при создании файла regions.txt: {e}")
+
 ALLOWED_LETTERS = "АВЕКМНОРСТУХABEKMHOPCTYX"
 
 def is_valid_car_number(car_number):
     pattern = rf"^[{ALLOWED_LETTERS}]\d{{3}}[{ALLOWED_LETTERS}]{{2}}\d{{2,3}}$"
     return bool(re.match(pattern, car_number))
 
-def find_regions_file(start_path):
-    for root, dirs, files in os.walk(start_path):
-        if 'regions.txt' in files:
-            return os.path.join(root, 'regions.txt')
-    return None
-
 regions = {}
-regions_file_path = find_regions_file(os.path.dirname(__file__))
-
-if regions_file_path:
-    try:
-        with open(regions_file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                parts = line.strip().split(' — ')
-                if len(parts) == 2:
-                    code, name = parts
-                    regions[code.strip()] = name.strip()
-    except FileNotFoundError:
-        pass
+try:
+    with open(REGIONS_FILE_PATH, 'r', encoding='utf-8') as file:
+        for line in file:
+            parts = line.strip().split(' — ')
+            if len(parts) == 2:
+                code, name = parts
+                regions[code.strip()] = name.strip()
+except FileNotFoundError:
+    print(f"Файл {REGIONS_FILE_PATH} не найден.")
+except Exception as e:
+    print(f"Ошибка при чтении файла regions.txt: {e}")
 
 @bot.message_handler(func=lambda message: message.text == "Код региона")
 @check_function_state_decorator('Код региона')
@@ -11946,9 +11930,9 @@ def process_input(message):
             region_code = input_item
             if region_code in regions:
                 region_name = regions[region_code]
-                response = f"🔍 *Регион для кода {region_code}:*\n{region_name}\n\n\n"
+                response = f"🔍 *Регион для кода {region_code}:*\n{region_name}\n\n"
             else:
-                response = f"❌ Не удалось определить регион для кода: *{region_code}*\n\n\n"
+                response = f"❌ Не удалось определить регион для кода: *{region_code}*\n\n"
 
         elif 8 <= len(input_item) <= 9 and is_valid_car_number(input_item.upper()):
             car_number = input_item.upper()
@@ -11961,13 +11945,13 @@ def process_input(message):
 
                 response = (
                     f"🔍 Регион для номера `{car_number}`: {region_name}\n"
-                    f"🔗 [Ссылка на AvtoCod с поиском]({short_url})\n\n\n"
+                    f"🔗 [Ссылка на AvtoCod с поиском]({short_url})\n\n"
                 )
             else:
-                response = f"❌ Не удалось определить регион для номера: `{car_number}`\n\n\n"
+                response = f"❌ Не удалось определить регион для номера: `{car_number}`\n\n"
 
         else:
-            response = f"❌ Неверный формат для `{input_item}`!\nПожалуйста, введите правильный госномер или код региона\n\n\n"
+            response = f"❌ Неверный формат для `{input_item}`!\nПожалуйста, введите правильный госномер или код региона\n\n"
 
         responses.append(response)
 
@@ -11990,7 +11974,7 @@ NOMINATIM_URL = 'https://nominatim.openstreetmap.org/reverse'
 MAX_MESSAGE_LENGTH = 4096
 user_data = {}
 
-def load_cities_from_file(file_path="files/combined_cities.txt"):
+def load_cities_from_file(file_path="files/files_for_price_weather/combined_cities.txt"):
     cities = {}
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -12499,7 +12483,7 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url_type):
                     forecasts = data['list']
                     now = datetime.now()
                     tomorrow = now + timedelta(days=1)
-                    message = "*Почасовой прогноз на завтра:*\n\n\n"
+                    message = "*Почасовой прогноз на завтра:*\n\n"
 
                     for forecast in forecasts:
                         date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
@@ -12523,7 +12507,7 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url_type):
                                 f"☁️ *Описание:* {description}\n\n"
                             )
 
-                    if message == "*Почасовой прогноз на завтра:*\n\n\n":
+                    if message == "*Почасовой прогноз на завтра:*\n\n":
                         message = "❌ Нет доступного почасового прогноза на завтра!"
 
                     message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
@@ -12548,7 +12532,7 @@ def send_forecast_weekly(chat_id, coords, url_type, retries=3):
         }
 
         daily_forecasts = defaultdict(list)
-        message = "*Прогноз на неделю:*\n\n\n"
+        message = "*Прогноз на неделю:*\n\n"
 
         for api in ['openweathermap', 'openmeteo', 'weatherapi']:
             for attempt in range(retries):
@@ -12625,7 +12609,7 @@ def send_forecast_monthly(chat_id, coords, url_type, days=31):
                 data = normalize_weather_data(data, api_type, url_type)
                 if data:
                     forecasts = data['list']
-                    message = "*Прогноз на месяц:*\n\n\n"
+                    message = "*Прогноз на месяц:*\n\n"
 
                     daily_forecasts = {}
                     for forecast in forecasts:
@@ -12658,7 +12642,7 @@ def send_forecast_monthly(chat_id, coords, url_type, days=31):
                             f"Данные недоступны из-за ограничений_\n\n"
                         )
 
-                    if message == "*Прогноз на месяц:*\n\n\n":
+                    if message == "*Прогноз на месяц:*\n\n":
                         message = "❌ Нет доступного прогноза на месяц!"
 
                     bot.send_message(chat_id, message, parse_mode="Markdown")
@@ -12845,7 +12829,7 @@ def send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url_type):
                     forecasts = data['list']
                     now = datetime.now()
                     tomorrow = now + timedelta(days=1)
-                    message = "*Почасовой прогноз на завтра:*\n\n\n"
+                    message = "*Почасовой прогноз на завтра:*\n\n"
 
                     for forecast in forecasts:
                         date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
@@ -12869,7 +12853,7 @@ def send_hourly_forecast_tomorrow_by_city(chat_id, city, city_rus, url_type):
                                 f"☁️ *Описание:* {description}\n\n"
                             )
 
-                    if message == "*Почасовой прогноз на завтра:*\n\n\n":
+                    if message == "*Почасовой прогноз на завтра:*\n\n":
                         message = "❌ Нет доступного почасового прогноза на завтра!"
 
                     message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
@@ -12898,7 +12882,7 @@ def send_forecast_weekly_by_city(chat_id, city, city_rus, url_type, retries=3):
             params['params']['lon'] = coords['longitude']
 
         daily_forecasts = defaultdict(list)
-        message = "*Прогноз на неделю:*\n\n\n"
+        message = "*Прогноз на неделю:*\n\n"
 
         for api in ['openweathermap', 'openmeteo', 'weatherapi']:
             for attempt in range(retries):
@@ -12979,7 +12963,7 @@ def send_forecast_monthly_by_city(chat_id, city, city_rus, url_type, days=31):
                 data = normalize_weather_data(data, api_type, url_type)
                 if data:
                     forecasts = data['list']
-                    message = "*Прогноз на месяц:*\n\n\n"
+                    message = "*Прогноз на месяц:*\n\n"
 
                     daily_forecasts = {}
                     for forecast in forecasts:
@@ -13012,7 +12996,7 @@ def send_forecast_monthly_by_city(chat_id, city, city_rus, url_type, days=31):
                             f"Данные недоступны из-за ограничений_\n\n"
                         )
 
-                    if message == "*Прогноз на месяц:*\n\n\n":
+                    if message == "*Прогноз на месяц:*\n\n":
                         message = "❌ Нет доступного прогноза на месяц!"
 
                     bot.send_message(chat_id, message, parse_mode="Markdown")
@@ -13027,7 +13011,7 @@ BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data base")
 CITYFORPRICE_DIR = os.path.join(BASE_DIR, "cityforprice")
 AZS_DIR = os.path.join(BASE_DIR, "azs")
 DATA_FILE_PATH = os.path.join(CITYFORPRICE_DIR, "city_for_the_price.json")
-PROXY_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files", "proxy.txt")
+PROXY_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files", "files_for_price_weather", "proxy.txt")
 
 for directory in [CITYFORPRICE_DIR, AZS_DIR]:
     os.makedirs(directory, exist_ok=True)
@@ -13105,7 +13089,7 @@ def load_saved_data(city_code):
     except (FileNotFoundError, json.JSONDecodeError):
         return None
 
-cities_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'files', 'combined_cities.txt')
+cities_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'files', 'files_for_price_weather', 'combined_cities.txt')
 
 def load_cities():
     cities = {}
@@ -13788,6 +13772,48 @@ def parse_fuel_prices():
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
+def parse_fuel_prices_scheduled():
+    cities_to_parse = os.listdir(os.path.join('data base', 'azs'))
+    for i, city_code in enumerate(cities_to_parse):
+        city_code = city_code.replace('_table_azs_data.json', '')
+        saved_data = load_saved_data(city_code)
+
+        today = datetime.now().date()
+        if saved_data:
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            if file_modification_time >= today:
+                print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем.")
+                continue
+
+        all_fuel_prices = []
+        for fuel_type in fuel_types:
+            try:
+                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "azcprice")
+            except ValueError:
+                try:
+                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
+                except ValueError:
+                    print(f"Оба сайта недоступны для города {city_code}")
+                    continue
+
+            fuel_prices = remove_duplicate_prices(fuel_prices)
+            all_fuel_prices.extend(fuel_prices)
+
+        print(f"Сохранение данных для города {city_code} с {len(all_fuel_prices)} записями.")
+        save_fuel_data(city_code, all_fuel_prices)
+        print(f"Данные для города {city_code} успешно обновлены.")
+        
+        if i < len(cities_to_parse) - 1:  # Не ждем после последнего города
+            time.sleep(300)  # 5 минут
+
+def schedule_tasks_for_azs():
+    schedule.every().day.at("00:00").do(parse_fuel_prices_scheduled)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+threading.Thread(target=schedule_tasks_for_azs, daemon=True).start()
+
 # ---------- 18 АНТИ-РАДАР ----------
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13820,7 +13846,7 @@ def read_csv_with_encoding(file_path):
         print("Ошибка: Файл не в кодировке UTF-8")
         return []
 
-file_path = os.path.join(script_dir, 'files', 'milestones.csv')
+file_path = os.path.join(script_dir, 'files', 'files_for_cams', 'milestones.csv')
 if os.path.exists(file_path):
     try:
         camera_data = read_csv_with_encoding(file_path)
@@ -14554,7 +14580,7 @@ def confirm_delete_step(message):
 def load_error_codes():
     error_codes = {}
     try:
-        with open("files/codes_obd2.txt", "r", encoding="utf-8") as file:
+        with open("files/files_for_obd2/codes_obd2.txt", "r", encoding="utf-8") as file:
             for line in file:
                 parts = line.strip().split(" ", 1)
                 if len(parts) == 2:
@@ -14635,12 +14661,12 @@ def process_error_codes(message):
 
     for code in valid_codes:
         if code in error_codes:
-            response += f"🔧 *Код ошибки*: `{code}`\n📋 *Описание*: {error_codes[code]}\n\n\n"
+            response += f"🔧 *Код ошибки*: `{code}`\n📋 *Описание*: {error_codes[code]}\n\n"
         else:
-            response += f"🔧 *Код ошибки*: `{code}`\n❌ *Описание*: Не найдено\n\n\n"
+            response += f"🔧 *Код ошибки*: `{code}`\n❌ *Описание*: Не найдено\n\n"
 
     for code in invalid_codes:
-        response += f"🔧 *Код ошибки*: `{code}`\n❌ *Описание*: Не найдено\n\n\n"
+        response += f"🔧 *Код ошибки*: `{code}`\n❌ *Описание*: Не найдено\n\n"
 
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
@@ -15500,7 +15526,7 @@ def load_city_names(file_path):
 
 def send_weather_notifications():
     user_locations = load_user_locations()
-    city_names = load_city_names('files/combined_cities.txt')
+    city_names = load_city_names('files/files_for_price_weather/combined_cities.txt')
     blocked_users = load_blocked_users()
     data = load_payment_data()
 
@@ -15570,7 +15596,7 @@ schedule.every().day.at("07:30").do(send_weather_notifications)
 schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
 
-def schedule_tasks():
+def schedule_tasks_together():
     while True:
         now = datetime.now()
         if now.hour == 0 and now.minute == 0:
@@ -15579,7 +15605,7 @@ def schedule_tasks():
         schedule.run_pending()
         time.sleep(300)
 
-threading.Thread(target=schedule_tasks, daemon=True).start()
+threading.Thread(target=schedule_tasks_together, daemon=True).start()
 
 # --- ДЛЯ РЕКЛАМЫ ---
 
@@ -16221,7 +16247,7 @@ def view_alc_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действия из алкоголя:", reply_markup=markup)
 
-ALKO_JSON_PATH = os.path.join('files', 'alko.json')
+ALKO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_alko', 'alko.json')
 USER_HISTORY_PATH_ALKO = os.path.join('data base', 'calculators', 'alcohol', 'alko_users.json')
 
 alko_data = {}
@@ -17032,10 +17058,10 @@ def process_view_alcohol_selection(message):
             timestamp = calc['timestamp']
             drinks = "\n".join([f"{i+1}. {drink['name']} ({drink['strength']}%) - {drink['volume']} л." for i, drink in enumerate(calc['drinks'])])
             result = (
-                f"📊 *Расчет от {timestamp}*\n\n\n"
+                f"📊 *Расчет от {timestamp}*\n\n"
                 f"🚹 Ваш пол - {calc['gender']}\n"
                 f"🏋️ Ваш вес - {calc['weight']} кг\n\n"
-                f"🍷 Вы пили:\n{drinks}\n\n\n"
+                f"🍷 Вы пили:\n{drinks}\n\n"
                 f"🔍 *Итоговый расчет:*\n\n"
                 f"🔹 Сейчас в вашей крови примерно: *{calc['promille']}%*\n"
                 f"🔹 Вы будете трезвы примерно через *{int(calc['promille'] / 0.15)} ч. {int((calc['promille'] / 0.15 % 1) * 60)} мин.*\n"
@@ -17202,7 +17228,7 @@ def view_rastamozka_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-RASTAMOZKA_JSON_PATH = os.path.join('files', 'rastamozka.json')
+RASTAMOZKA_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_rastamozka', 'rastamozka.json')
 USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data base', 'calculators', 'rastamozka', 'rastamozka_users.json')
 
 rastamozka_data = {}
@@ -18250,7 +18276,7 @@ def view_osago_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-OSAGO_JSON_PATH = os.path.join('files', 'osago.json')
+OSAGO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_osago', 'osago.json')
 USER_HISTORY_PATH_OSAGO = os.path.join('data base', 'calculators', 'osago', 'osago_users.json')
 
 osago_data = {}
@@ -21462,10 +21488,10 @@ def view_nalog_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-NALOG_JSON_PATH = os.path.join('files', 'nalog.json')
+NALOG_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'nalog.json')
 USER_HISTORY_PATH_NALOG = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
-PERECHEN_AUTO_PATH = os.path.join('files', 'auto_10mln_rub_2025.json') 
-TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'transport_tax_{year}.json')
+PERECHEN_AUTO_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'auto_10mln_rub_2025.json') 
+TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'transport_tax_{year}.json')
 
 nalog_data = {}
 user_history_nalog = {}
@@ -22581,9 +22607,11 @@ def update_admin_data(user_data):
 @bot.message_handler(commands=['admin'])
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_admin_login(message):
     global credentials_changed
     user_data = get_user_data(message)
@@ -22591,6 +22619,10 @@ def handle_admin_login(message):
 
     if admin_id in blocked_users:
         bot.send_message(admin_id, "⛔ Вы заблокировали бота! Пожалуйста, разблокируйте бота и попробуйте снова")
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
 
     current_time = time.time()
@@ -22743,9 +22775,11 @@ admin_logout_times = {}
 @bot.message_handler(func=lambda message: message.text == 'Выход' and str(message.chat.id) in admin_sessions)
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def admin_logout(message):
     admin_id = str(message.chat.id)
 
@@ -22768,10 +22802,11 @@ def show_admin_panel(message):
         bot.register_next_step_handler(message, handle_change_credentials)
     else:
         markup = types.ReplyKeyboardMarkup(row_width=3)
+        markup.add('Управление системой')
         markup.add('Админ', 'Бан', 'Функции')
         markup.add('Общение', 'Реклама', 'Статистика')
         markup.add('Файлы', 'Резервная копия', 'Редакция')
-        markup.add('Управление системой', 'Экстренная остановка')
+        markup.add('Экстренная остановка')
         markup.add('Выход')
         bot.send_message(message.chat.id, "Выберите действие из админ-панели:", reply_markup=markup)
 
@@ -22825,9 +22860,11 @@ def is_valid_password(password):
 @bot.message_handler(func=lambda message: message.text == 'Админ' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def show_settings_menu(message):
 
     admin_id = str(message.chat.id)
@@ -22876,9 +22913,11 @@ def update_admin_login_credentials(message, admin_id, new_username=None, new_pas
 @bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_change_credentials(message):
     global credentials_changed
     admin_id = str(message.chat.id)
@@ -22899,9 +22938,11 @@ def handle_change_credentials(message):
 @bot.message_handler(func=lambda message: message.text == 'Сменить пароль' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_change_password(message):
 
     admin_id = str(message.chat.id)
@@ -22956,9 +22997,11 @@ def process_new_password(message):
 @bot.message_handler(func=lambda message: message.text == 'Сменить логин и пароль' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_change_login_and_password(message):
 
     admin_id = str(message.chat.id)
@@ -23044,7 +23087,7 @@ def list_admins_for_removal(message):
         admin_list.append(f"№{len(admin_list) + 1}. {username} - `{admin_id}`")
 
     if admin_list:
-        response_message = "📋 Список *всех* администраторов:\n\n\n" + "\n\n".join(admin_list)
+        response_message = "📋 Список *всех* администраторов:\n\n" + "\n\n".join(admin_list)
         if len(response_message) > 4096:
             bot.send_message(message.chat.id, "📜 Список администраторов слишком большой для отправки в одном сообщении!")
         else:
@@ -23062,7 +23105,7 @@ def list_removed_admins(message):
         removed_admin_list.append(f"№{len(removed_admin_list) + 1}. {username} - `{admin_id}`")
 
     if removed_admin_list:
-        response_message = "📋 Список *удалённых* администраторов:\n\n\n" + "\n\n".join(removed_admin_list)
+        response_message = "📋 Список *удалённых* администраторов:\n\n" + "\n\n".join(removed_admin_list)
         if len(response_message) > 4096:
             bot.send_message(message.chat.id, "📜 Список удалённых администраторов слишком большой для отправки в одном сообщении!")
         else:
@@ -23144,9 +23187,11 @@ users_data = load_users_data()
 @bot.message_handler(func=lambda message: message.text == 'Удалить админа' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_remove_admin(message):
     root_admin_id = get_root_admin_id()
     if str(message.chat.id) != root_admin_id:
@@ -23236,9 +23281,11 @@ def process_remove_admin(message, root_admin_id, initiator_chat_id):
 @bot.message_handler(func=lambda message: message.text == 'Добавить админа' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_add_admin(message):
     root_admin_id = get_root_admin_id()
     if str(message.chat.id) != root_admin_id:
@@ -23257,7 +23304,7 @@ def handle_add_admin(message):
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`")
 
     if user_list:
-        response_message = "📋 Список *пользователей*:\n\n\n" + "\n\n".join(user_list)
+        response_message = "📋 Список *пользователей*:\n\n" + "\n\n".join(user_list)
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     if removed_admins:
@@ -23360,7 +23407,7 @@ def list_admins(message):
         admin_list.append(f"№{len(admin_list) + 1}. {escaped_username} - `{admin_id}`")
 
     if admin_list:
-        response_message = "📋 Список администраторов:\n\n\n" + "\n\n".join(admin_list)
+        response_message = "📋 Список администраторов:\n\n" + "\n\n".join(admin_list)
         try:
             bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
         except ApiTelegramException as e:
@@ -23431,7 +23478,7 @@ def process_admin_selection(message):
 
         escaped_username = escape_markdown(admin_data['username'])
         permissions_list = format_permissions_with_headers(permissions)
-        bot.send_message(message.chat.id, f"Текущие права администратора {escaped_username} - `{admin_id}`:\n\n\n{permissions_list}", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"Текущие права администратора {escaped_username} - `{admin_id}`:\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add('Добавить права', 'Удалить права')
@@ -23556,7 +23603,7 @@ def process_permission_action(message, admin_id):
 
         available_permissions = get_available_permissions(admin_id)
         permissions_list = format_permissions_with_headers(available_permissions)
-        bot.send_message(message.chat.id, f"*Доступные права для добавления*:\n\n\n{permissions_list}", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"*Доступные права для добавления*:\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Вернуться в админ')
@@ -23571,7 +23618,7 @@ def process_permission_action(message, admin_id):
 
         current_permissions = admins_data[admin_id].get("permissions", [])
         permissions_list = format_permissions_as_list(current_permissions)
-        bot.send_message(message.chat.id, f"*Текущие права администратора:*\n\n\n{permissions_list}", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"*Текущие права администратора:*\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Вернуться в админ')
@@ -23732,9 +23779,11 @@ def format_permissions(permissions):
 @bot.message_handler(func=lambda message: message.text == 'Права доступа' and str(message.chat.id) in admin_sessions)
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_permissions(message):
 
     admin_id = str(message.chat.id)
@@ -23987,9 +24036,11 @@ def process_unblock_user(message):
 @bot.message_handler(func=lambda message: message.text == 'Бан' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def ban_user_prompt(message):
     if message.chat.id in blocked_users:
         return
@@ -24438,9 +24489,11 @@ def create_submenu_buttons():
 @bot.message_handler(func=lambda message: message.text == 'Статистика' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def show_statistics(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Статистика'):
@@ -24458,9 +24511,11 @@ def escape_markdown(text):
 @bot.message_handler(func=lambda message: message.text in ["Пользователи", "Версия и аптайм", "Использование функций", "Список ошибок", "В меню админ-панели"])
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_submenu_buttons(message):
     if not check_admin_access(message):
         return
@@ -24620,9 +24675,11 @@ def check_admin_access(message):
 @bot.message_handler(func=lambda message: message.text == 'Резервная копия' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def show_backup_menu(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Резервная копия'):
@@ -24638,9 +24695,11 @@ def show_backup_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'Создать копию' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_create_backup(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Создать копию'):
@@ -24658,9 +24717,11 @@ def handle_create_backup(message):
 @bot.message_handler(func=lambda message: message.text == 'Восстановить данные' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def handle_restore_backup(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Восстановить данные'):
@@ -25173,7 +25234,7 @@ def enable_function(message):
 
     disabled_functions = [(name, data['deactivation_time']) for name, data in function_states.items() if not data['state']]
     if disabled_functions:
-        response = "*Выключенные функции:*\n\n\n"
+        response = "*Выключенные функции:*\n\n"
         index = 1
         function_index_map = {}  
         for category, functions in new_functions.items():
@@ -25273,7 +25334,7 @@ def disable_function(message):
 
     enabled_functions = [name for name, data in function_states.items() if data['state']]
     if enabled_functions:
-        response = "*Включенные функции:*\n\n\n"
+        response = "*Включенные функции:*\n\n"
         index = 1
         function_index_map = {}  
         for category, functions in new_functions.items():
@@ -25566,9 +25627,10 @@ def check_admin_access(message):
 @bot.message_handler(func=lambda message: message.text == 'Оповещения' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_notifications_menu(message):
 
     admin_id = str(message.chat.id)
@@ -25595,9 +25657,10 @@ def show_notifications_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'По времени' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def handle_time_notifications(message):
 
     admin_id = str(message.chat.id)
@@ -25627,9 +25690,10 @@ def handle_time_notifications(message):
 @bot.message_handler(func=lambda message: message.text == 'Отправить по времени' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def schedule_notification(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить по времени'):
@@ -25853,9 +25917,10 @@ def validate_time_format(time_str):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр (по времени)' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_view_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр (по времени)'):
@@ -25883,9 +25948,10 @@ def show_view_notifications(message):
 @bot.message_handler(func=lambda message: message.text == 'Активные (по времени)' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_active_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Активные (по времени)'):
@@ -25910,7 +25976,7 @@ def show_active_notifications(message):
             for i, n in enumerate([n for n in alerts['notifications'].values() if n['status'] == 'active' and n['category'] == 'time'])
         ]
         if active_notifications:
-            bot.send_message(message.chat.id, "*Список активных оповещений (по времени)*:\n\n\n" + "\n\n".join(active_notifications), parse_mode="Markdown")
+            bot.send_message(message.chat.id, "*Список активных оповещений (по времени)*:\n\n" + "\n\n".join(active_notifications), parse_mode="Markdown")
 
             markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
             markup.add("Вернуться в оповещения", "Вернуться в общение")
@@ -25926,9 +25992,10 @@ def show_active_notifications(message):
 @bot.message_handler(func=lambda message: message.text == 'Остановленные (по времени)' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_stopped_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Остановленные (по времени)'):
@@ -25952,7 +26019,7 @@ def show_stopped_notifications(message):
         for i, n in enumerate([n for n in alerts['notifications'].values() if n['status'] == 'sent' and n['category'] == 'time'])
     ]
     if stopped_notifications:
-        bot.send_message(message.chat.id, "*Список остановленных оповещений (по времени)*:\n\n\n" + "\n\n".join(stopped_notifications), parse_mode="Markdown")
+        bot.send_message(message.chat.id, "*Список остановленных оповещений (по времени)*:\n\n" + "\n\n".join(stopped_notifications), parse_mode="Markdown")
 
         markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add("Вернуться в оповещения", "Вернуться в общение")
@@ -26037,9 +26104,10 @@ def show_notification_details(message, status):
 @bot.message_handler(func=lambda message: message.text == 'Удалить (по времени)' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_notification(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить (по времени)'):
@@ -26063,7 +26131,7 @@ def delete_notification(message):
         for i, n in enumerate([n for n in alerts['notifications'].values() if n['category'] == 'time'])
     ]
     if notifications_list:
-        bot.send_message(message.chat.id, "*Список для удаления (по времени)*:\n\n\n" + "\n\n".join(notifications_list), parse_mode="Markdown")
+        bot.send_message(message.chat.id, "*Список для удаления (по времени)*:\n\n" + "\n\n".join(notifications_list), parse_mode="Markdown")
 
         markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add("Вернуться в оповещения", "Вернуться в общение")
@@ -26338,9 +26406,10 @@ def process_time_notification_time(message, user_id, individual_theme, notificat
 @bot.message_handler(func=lambda message: message.text == 'Всем' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def handle_broadcast_notifications(message):
 
     admin_id = str(message.chat.id)
@@ -26370,9 +26439,10 @@ def handle_broadcast_notifications(message):
 @bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 @text_only_handler
 def send_message_to_all(message):
 
@@ -26518,9 +26588,10 @@ def process_broadcast_message(message, broadcast_theme):
 @bot.message_handler(func=lambda message: message.text == 'Отправленные' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_sent_messages(message):
 
     admin_id = str(message.chat.id)
@@ -26648,9 +26719,10 @@ def show_sent_message_details(message):
 @bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_sent_messages(message):
 
     admin_id = str(message.chat.id)
@@ -26755,9 +26827,10 @@ def process_delete_sent_message(message):
 @bot.message_handler(func=lambda message: message.text == 'Отдельно' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def handle_individual_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отдельно'):
@@ -26786,9 +26859,10 @@ def handle_individual_notifications(message):
 @bot.message_handler(func=lambda message: message.text == 'Отправить отдельно' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def send_message_to_individual(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить отдельно'):
@@ -26986,9 +27060,10 @@ def process_individual_broadcast_message(message, user_id, broadcast_theme):
 @bot.message_handler(func=lambda message: message.text == 'Посмотреть отдельно' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_individual_messages(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Посмотреть отдельно'):
@@ -27179,9 +27254,10 @@ def show_individual_message_details(message, user_id):
 @bot.message_handler(func=lambda message: message.text == 'Удалить отдельно' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_individual_messages(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить отдельно'):
@@ -27417,9 +27493,10 @@ def handle_admin_advertisement_requests(message):
 @bot.message_handler(func=lambda message: message.text == 'Запросы на рекламу' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_advertisement_requests(message):
     if message.text == "Вернуться в рекламу":
         show_advertisement_menu(message)
@@ -27827,9 +27904,10 @@ threading.Thread(target=check_pending_advertisement_expiration, daemon=True).sta
 @bot.message_handler(func=lambda message: message.text == 'Удалить рекламу' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_advertisement(message):
     if message.text == "Вернуться в рекламу":
         show_advertisement_menu(message)
@@ -27889,7 +27967,7 @@ def process_delete_advertisement(message):
         if 0 <= index < len(advertisement_list):
             advertisement_id = list(advertisements['advertisements'].keys())[index]
             delete_advertisement_messages(advertisement_id)
-            bot.send_message(message.chat.id, f"Реклама удалена!")
+            bot.send_message(message.chat.id, f"✅ Реклама удалена!")
             show_advertisement_menu(message)
         else:
             bot.send_message(message.chat.id, "Неверный номер рекламы! Попробуйте снова")
@@ -27901,9 +27979,10 @@ def process_delete_advertisement(message):
 @bot.message_handler(func=lambda message: message.text == 'Реклама' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_advertisement_menu(message):
 
     admin_id = str(message.chat.id)
@@ -27970,9 +28049,10 @@ def check_admin_access(message):
 @bot.message_handler(func=lambda message: message.text == 'Редакция' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_editorial_menu(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Редакция'):
@@ -27991,9 +28071,10 @@ temp_news = {}
 @bot.message_handler(func=lambda message: message.text == 'Опубликовать новость' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def publish_news(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Опубликовать новость'):
@@ -28132,9 +28213,10 @@ def save_news(message):
 @bot.message_handler(func=lambda message: message.text == 'Отредактировать новость' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def edit_news(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отредактировать новость'):
@@ -28153,7 +28235,7 @@ def edit_news(message):
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
             markup.add('В редакцию')
             markup.add('В меню админ-панели')
-            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
         bot.send_message(message.chat.id, "Введите номер новости для редактирования:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_edit)
     else:
@@ -28445,9 +28527,10 @@ def split_text(text, chunk_size=4096):
 @bot.message_handler(func=lambda message: message.text == 'Посмотреть новость' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def view_news(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Посмотреть новость'):
@@ -28466,7 +28549,7 @@ def view_news(message):
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
             markup.add('В редакцию')
             markup.add('В меню админ-панели')
-            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
         bot.send_message(message.chat.id, "Введите номера новости для просмотра:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_view)
     else:
@@ -28552,9 +28635,10 @@ def choose_news_to_view(message):
 @bot.message_handler(func=lambda message: message.text == 'Удалить новость' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_news(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить новость'):
@@ -28573,7 +28657,7 @@ def delete_news(message):
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
             markup.add('В редакцию')
             markup.add('В меню админ-панели')
-            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
         bot.send_message(message.chat.id, "Введите номера новостей:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_delete)
     else:
@@ -28653,9 +28737,10 @@ def check_admin_access(message):
 @bot.message_handler(func=lambda message: message.text == 'Файлы' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_files_menu(message):
 
     admin_id = str(message.chat.id)
@@ -28675,9 +28760,10 @@ def show_files_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def view_files(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр файлов'):
@@ -28708,7 +28794,7 @@ def view_files(message):
         return
 
     sorted_extensions = sorted(extensions)
-    response = "*Список расширений файлов:*\n\n\n"
+    response = "*Список расширений файлов:*\n\n"
     response += "📁 1. *Отправка всех файлов*\n"
     response += "\n".join([f"📄 {i + 2}. *{ext[1:]}*" for i, ext in enumerate(sorted_extensions)])
 
@@ -28797,9 +28883,10 @@ def process_file_selection(message, matched_files):
 @bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def search_files_by_id(message):
 
     admin_id = str(message.chat.id)
@@ -28956,9 +29043,10 @@ temp_replace_files = {}
 @bot.message_handler(func=lambda message: message.text == 'Замена файлов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def handle_file_replacement(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Замена файлов'):
@@ -29055,9 +29143,10 @@ temp_add_files = {}
 @bot.message_handler(func=lambda message: message.text == 'Добавить файлы' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def add_files(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Добавить файлы'):
@@ -29072,7 +29161,7 @@ def add_files(message):
         return
 
     directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
-    response = "*Список директорий:*\n\n\n"
+    response = "*Список директорий:*\n\n"
     response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
@@ -29166,9 +29255,10 @@ def process_add_file_action(message):
 @bot.message_handler(func=lambda message: message.text == 'Удалить файлы' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_files(message):
 
     admin_id = str(message.chat.id)
@@ -29184,7 +29274,7 @@ def delete_files(message):
         return
 
     directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
-    response = "*Список директорий:*\n\n\n"
+    response = "*Список директорий:*\n\n"
     response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
@@ -29311,9 +29401,11 @@ def confirm_emergency_stop(message):
 @bot.message_handler(func=lambda message: message.text == 'Управление системой' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_system(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление системой'):
@@ -29333,9 +29425,11 @@ def manage_system(message):
 @bot.message_handler(func=lambda message: message.text == 'Управление подписками' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление подписками'):
@@ -29349,16 +29443,19 @@ def manage_subscriptions(message):
     markup.add(item_back)
     bot.send_message(message.chat.id, "Выберите действие для управления подписками:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == "Вернуться в управление системой")
-@check_function_state_decorator('Вернуться в управление системой')
-@track_usage('Вернуться в управление системой')
+@bot.message_handler(func=lambda message: message.text == 'Вернуться в управление системой' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def return_to_subs(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Вернуться в управление системой'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
     manage_system(message)
 
 def split_message(message, max_length=4096):
@@ -29380,9 +29477,11 @@ def split_message(message, max_length=4096):
 @bot.message_handler(func=lambda message: message.text == 'Добавление подписки' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def add_subscription(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Добавление подписки'):
@@ -29686,9 +29785,11 @@ def process_custom_plan_duration(message, user_id, unit):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр подписок' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def view_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр подписок'):
@@ -29772,7 +29873,7 @@ def process_view_subscriptions(message):
         manage_system(message)
         return
 
-    plans_summary = "💎 *Список подписок:*\n\n\n"
+    plans_summary = "💎 *Список подписок:*\n\n"
     total_days_left = 0
     total_cost_active = 0
     active_plans = []
@@ -29833,7 +29934,7 @@ def process_view_subscriptions(message):
             f"{time_status}\n"
             f"🕒 *Начало:* {plan['start_date']}\n"
             f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
     message_parts = split_message(plans_summary)
@@ -29879,9 +29980,11 @@ def process_view_subscriptions(message):
 @bot.message_handler(func=lambda message: message.text == 'Удаление подписок' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def delete_subscription(message):
     admin_id = str(message.chat.id)
@@ -30018,7 +30121,7 @@ def process_delete_subscription(message):
             f"📅 *Дней осталось:* {days_left} дней и {hours_left:02d}:{minutes_left:02d} часов\n"
             f"🕒 *Начало:* {plan['start_date']}\n"
             f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
     message_parts = split_message(plans_summary)
@@ -30124,9 +30227,11 @@ def format_number(num):
 @bot.message_handler(func=lambda message: message.text == 'Статистика системы' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def view_referrals_and_stats(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Статистика системы'):
@@ -30145,7 +30250,7 @@ def view_referrals_and_stats(message):
     users_data = load_users()
     now = datetime.strptime("01.01.2025 в 00:00", "%d.%m.%Y в %H:%M")
 
-    referral_summary = "*Статистика реферальной системы:*\n\n\n"
+    referral_summary = "*Статистика реферальной системы:*\n\n"
     referral_stats = data.get('referrals', {}).get('stats', {})
     total_referrals = 0
     active_referral_subscriptions = 0
@@ -30188,7 +30293,7 @@ def view_referrals_and_stats(message):
         f"📊 Среднее количество баллов на пользователя: {avg_referral_points:.2f}\n"
     )
 
-    subscription_summary = "*Статистика подписок и платежей:*\n\n\n"
+    subscription_summary = "*Статистика подписок и платежей:*\n\n"
     subscription_users = data.get('subscriptions', {}).get('users', {})
     total_amount = data.get('all_users_total_amount', 0)
     transaction_count = 0
@@ -30338,9 +30443,11 @@ def view_referrals_and_stats(message):
 @bot.message_handler(func=lambda message: message.text == 'Управление магазином' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_store(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление магазином'):
@@ -30358,9 +30465,11 @@ def manage_store(message):
 @bot.message_handler(func=lambda message: message.text == 'Начисление покупки' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def add_store_purchase(message):
     admin_id = str(message.chat.id)
@@ -30650,9 +30759,11 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
 @bot.message_handler(func=lambda message: message.text == 'Просмотр покупок' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def view_store_purchases(message):
     admin_id = str(message.chat.id)
@@ -30726,7 +30837,7 @@ def process_view_store_purchases(message):
         manage_store(message)
         return
 
-    purchases_summary = "💎 *Список покупок в магазине:*\n\n\n"
+    purchases_summary = "💎 *Список покупок в магазине:*\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
         days = purchase.get('duration', 0)
@@ -30767,7 +30878,7 @@ def process_view_store_purchases(message):
         if days > 0:
             purchase_entry += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
         purchase_entry += f"💸 *Стоимость:* {price:.2f} руб.\n"
-        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
+        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n"
 
         purchases_summary += purchase_entry
 
@@ -30825,9 +30936,11 @@ def process_view_store_purchases(message):
 @bot.message_handler(func=lambda message: message.text == 'Удаление покупок' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def delete_store_purchase(message):
     admin_id = str(message.chat.id)
@@ -30901,7 +31014,7 @@ def process_delete_store_purchase(message):
         manage_store(message)
         return
 
-    purchases_summary = "💎 *Список покупок в магазине:*\n\n\n"
+    purchases_summary = "💎 *Список покупок в магазине:*\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
         days = purchase.get('duration', 0)
@@ -30942,7 +31055,7 @@ def process_delete_store_purchase(message):
         if days > 0:
             purchase_entry += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
         purchase_entry += f"💸 *Стоимость:* {price:.2f} руб.\n"
-        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
+        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n"
 
         purchases_summary += purchase_entry
 
@@ -31136,9 +31249,11 @@ def process_delete_store_purchase_select(message, user_id):
 @bot.message_handler(func=lambda message: message.text == 'Управление баллами' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_points(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление баллами'):
@@ -31156,9 +31271,11 @@ def manage_points(message):
 @bot.message_handler(func=lambda message: message.text == 'Начисление баллов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def add_points(message):
     admin_id = str(message.chat.id)
@@ -31279,9 +31396,11 @@ def process_add_points_amount(message, user_id):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр баллов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def view_points(message):
     admin_id = str(message.chat.id)
@@ -31433,9 +31552,11 @@ def process_view_points(message):
 @bot.message_handler(func=lambda message: message.text == 'Списание баллов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def remove_points(message):
     admin_id = str(message.chat.id)
@@ -31568,9 +31689,11 @@ def process_remove_points_amount(message, user_id):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр истории баллов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def view_points_history(message):
     admin_id = str(message.chat.id)
@@ -31649,7 +31772,7 @@ def process_view_points_history(message):
     def format_date(date_str):
         return re.sub(r'(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2}):\d{2}', r'\1', date_str)
 
-    history_summary = f"*История баллов пользователя* {escape_markdown(username)} - `{user_id}`:\n\n\n"
+    history_summary = f"*История баллов пользователя* {escape_markdown(username)} - `{user_id}`:\n\n"
     for idx, entry in enumerate(history, 1):
         action = "Заработано" if entry['action'] == 'earned' else "Потрачено"
         points = format_number(entry['points'])
@@ -31659,7 +31782,7 @@ def process_view_points_history(message):
             f"📝 *№{idx}. {action}:*\n\n"
             f"💰 *Количество:* {points} баллов\n"
             f"📅 *Дата:* {date}\n"
-            f"📋 *Причина:* {reason}\n\n\n"
+            f"📋 *Причина:* {reason}\n\n"
         )
 
     message_parts = split_message(history_summary)
@@ -31778,8 +31901,8 @@ def process_perform_exchange(message):
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, (
-        f"Выберите тип обмена для пользователя {escape_markdown(username)} - `{user_id}`:\n\n\n"
-        f"🎁 *Текущие баллы:* {format_number(points)}\n\n\n"
+        f"Выберите тип обмена для пользователя {escape_markdown(username)} - `{user_id}`:\n\n"
+        f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
         f"🔄 *Возможные обмены:*\n"
         f"⏳ - *Время подписки:* _1 балл = {exchange_rate} часа_\n"
         f"🏷️ - *Скидка:* _15 баллов = 5% (макс. 35%)_\n"
@@ -31983,7 +32106,6 @@ def process_perform_exchange_discount(message, user_id):
         users_data[str(user_id)]['discount'] = current_discount + discount
         users_data[str(user_id)]['discount_type'] = "points"
         save_payments_data(data)
-        save_users_data(users_data)
 
         promo_code = f"DISC{uuid.uuid4().hex[:8].upper()}"
         data.setdefault('promo_codes', {})[promo_code] = {
@@ -32274,14 +32396,14 @@ def process_view_exchanges(message):
             return f"обмен на {duration_str}"
         return reason
 
-    exchanges_summary = f"*История обменов пользователя* {username} - `{user_id}`:\n\n\n"
+    exchanges_summary = f"*История обменов пользователя* {username} - `{user_id}`:\n\n"
     for idx, entry in enumerate(exchanges, 1):
         formatted_reason = format_reason(entry['reason'])
         exchanges_summary += (
             f"📝 *№{idx}. Потрачено:*\n\n"
             f"💰 *Количество:* {format_number(entry['points'])} баллов\n"
             f"📅 *Дата:* {entry['date']}\n"
-            f"📋 *Причина:* {formatted_reason}\n\n\n"
+            f"📋 *Причина:* {formatted_reason}\n\n"
         )
 
     message_parts = split_message(exchanges_summary)
@@ -32295,9 +32417,11 @@ def process_view_exchanges(message):
 @bot.message_handler(func=lambda message: message.text == 'Управление скидками' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_discounts(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление скидками'):
@@ -32831,7 +32955,7 @@ def view_promo_codes(message):
         return
 
     now = datetime.now()
-    promo_summary = "*Список промокодов:*\n\n\n"
+    promo_summary = "*Список промокодов:*\n\n"
     for idx, (code, details) in enumerate(promo_codes.items(), 1):
         used = details.get('used', False)
         active = details.get('active', not used)
@@ -32914,7 +33038,7 @@ def delete_promo_code(message):
         return
 
     now = datetime.now()
-    promo_summary = "*Список промокодов для удаления:*\n\n\n"
+    promo_summary = "*Список промокодов для удаления:*\n\n"
     promo_list = []
     idx = 0
     for code, details in promo_codes.items():
@@ -33052,9 +33176,11 @@ def process_delete_promo_code(message, promo_list):
 @bot.message_handler(func=lambda message: message.text == 'Управление подарками' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def manage_gifts(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление подарками'):
@@ -33072,9 +33198,11 @@ def manage_gifts(message):
 @bot.message_handler(func=lambda message: message.text == 'Назначить подарок' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def assign_gift(message):
     admin_id = str(message.chat.id)
@@ -33638,9 +33766,11 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр подарков' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 @text_only_handler
 def view_gifts(message):
     admin_id = str(message.chat.id)
@@ -33758,7 +33888,7 @@ def process_view_gifts(message):
         except (ValueError, IndexError):
             return time_str
 
-    history_summary = f"*История подарков пользователя* {username} - `{user_id}`:\n\n\n"
+    history_summary = f"*История подарков пользователя* {username} - `{user_id}`:\n\n"
     for idx, entry in enumerate(gift_entries, 1):
         action = "подарено" if entry['action'] == "spent" else "получено"
         gift_type = []
@@ -33776,7 +33906,7 @@ def process_view_gifts(message):
         history_summary += (
             f"🎁 *№{idx}. {action}:*\n\n"
             f"💰 *Подарок:* {gift_type}\n"
-            f"📅 *Дата:* {entry['date']}\n\n\n"
+            f"📅 *Дата:* {entry['date']}\n\n"
         )
 
     message_parts = split_message(history_summary)
@@ -33790,9 +33920,10 @@ def process_view_gifts(message):
 @bot.message_handler(func=lambda message: message.text == 'Общение' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_communication_menu(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Общение'):
@@ -33808,18 +33939,20 @@ def show_communication_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'Вернуться в общение' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_communication(message):
     show_communication_menu(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Вернуться в оповещения' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_notifications_menu(message):
     show_notifications_menu(message)
 
@@ -33836,9 +33969,10 @@ def check_admin_access(message):
 @bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_dialogs_menu(message):
 
     admin_id = str(message.chat.id)
@@ -33858,9 +33992,10 @@ def show_dialogs_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'Просмотр диалогов' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_user_dialogs(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр диалогов'):
@@ -33912,7 +34047,7 @@ def handle_user_selection(message):
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
         save_dialog_states()
-        return
+        return show_admin_panel(message)
 
     if message.text == "Вернуться в общение":
         return_to_communication(message)
@@ -33939,7 +34074,7 @@ def handle_user_selection(message):
         chat_history = load_chat_history().get(chat_key, [])
 
         if not chat_history:
-            bot.send_message(message.chat.id, "❌ История переписки с этим пользователем пуста!", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "❌ История переписки с этим пользователем пуста! Пожалуйста, выберите другого пользователя или вернитесь в меню.", parse_mode="Markdown")
             return
 
         dialog_list = []
@@ -33962,7 +34097,6 @@ def handle_user_selection(message):
             )
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 blocked_users = load_blocked_users()
                 if message.chat.id not in blocked_users:
                     blocked_users.append(message.chat.id)
@@ -34232,9 +34366,10 @@ def save_dialog_states():
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалоги' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def show_delete_dialogs_menu(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить диалоги'):
@@ -34261,9 +34396,10 @@ def show_delete_dialogs_menu(message):
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалог' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_dialog(message):
 
     admin_id = str(message.chat.id)
@@ -34327,8 +34463,8 @@ def handle_delete_dialog_user_selection(message):
         chat_history = load_chat_history().get(chat_key, [])
 
         if not chat_history:
-            bot.send_message(message.chat.id, "❌ История переписки с этим пользователем пуста!", parse_mode="Markdown")
-            return show_admin_panel(message)
+            bot.send_message(message.chat.id, "❌ История переписки с этим пользователем пуста! Пожалуйста, выберите другого пользователя или вернитесь в меню.", parse_mode="Markdown")
+            return
 
         dialog_list = []
         for i, dialog in enumerate(chat_history):
@@ -34350,7 +34486,6 @@ def handle_delete_dialog_user_selection(message):
             )
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 blocked_users = load_blocked_users()
                 if message.chat.id not in blocked_users:
                     blocked_users.append(message.chat.id)
@@ -34405,9 +34540,10 @@ def handle_delete_dialog_selection(message):
 @bot.message_handler(func=lambda message: message.text == 'Удалить все диалоги' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def delete_all_dialogs(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить все диалоги'):
@@ -34472,6 +34608,13 @@ def handle_delete_all_dialogs_user_selection(message):
         selected_user_id = user_ids[selected_index]
         selected_username = users.get(selected_user_id, {}).get("username", "N/A")
 
+        chat_key = f"{message.chat.id}_{selected_user_id}"
+        chat_history = load_chat_history().get(chat_key, [])
+
+        if not chat_history:
+            bot.send_message(message.chat.id, "❌ История переписки с этим пользователем пуста! Пожалуйста, выберите другого пользователя или вернитесь в меню.", parse_mode="Markdown")
+            return
+
         try:
             bot.send_message(
                 message.chat.id,
@@ -34480,7 +34623,6 @@ def handle_delete_all_dialogs_user_selection(message):
             )
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 blocked_users = load_blocked_users()
                 if message.chat.id not in blocked_users:
                     blocked_users.append(message.chat.id)
@@ -34648,9 +34790,10 @@ def escape_markdown(text):
 @bot.message_handler(commands=['chat'])
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def initiate_chat(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Чат'):
@@ -34833,9 +34976,10 @@ def handle_chat_response(message):
 @check_function_state_decorator('В главное меню')
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_menu(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -34872,9 +35016,10 @@ def send_message_to_user(user_id, text, reply_markup=None, parse_mode=None):
 @bot.message_handler(commands=['stopchat'])
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def stop_chat(message):
     user_id = message.from_user.id
 
@@ -34967,9 +35112,10 @@ admin_request_selection = {}
 @bot.message_handler(func=lambda message: message.text == 'Запросы' and check_admin_access(message))
 @restricted
 @track_user_activity
-@check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription_chanal
+@rate_limit_with_captcha
 def list_chat_requests(message):
     admin_id = message.from_user.id
 
@@ -35072,10 +35218,11 @@ def handle_request_selection(message):
 def return_admin_to_menu(admin_id):
     bot.send_message(admin_id, "✅ Чат с пользователем был завершен!", parse_mode="Markdown")
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Управление системой')
     markup.add('Админ', 'Бан', 'Функции')
     markup.add('Общение', 'Реклама', 'Статистика')
     markup.add('Файлы', 'Резервная копия', 'Редакция')
-    markup.add('Управление системой', 'Экстренная остановка')
+    markup.add('Экстренная остановка')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие из админ-панели:", reply_markup=markup)
 
