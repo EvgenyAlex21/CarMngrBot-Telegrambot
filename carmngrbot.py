@@ -2374,98 +2374,176 @@ def get_repair_description(message, repair_name, repair_date, selected_transport
 
 # (11.5) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ РЕМОНТЫ") ---------------
 
+user_transport = {}
+
+def get_selected_transport(user_id):
+    return user_transport.get(user_id, None)
+
+# Проверка наличия транспорта и выбор
+def ask_for_transport_selection(user_id, next_step):
+    transports = load_transport_data(user_id)
+    if not transports:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Добавить транспорт"))
+        markup.add(types.KeyboardButton("Отказаться"))
+        bot.send_message(user_id, "У вас нет транспорта. Добавить?", reply_markup=markup)
+        bot.register_next_step_handler_by_chat_id(user_id, handle_transport_choice, next_step)
+    else:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for transport in transports:
+            markup.add(types.KeyboardButton(f"{transport['brand']} {transport['model']} {transport['year']}"))
+        markup.add(types.KeyboardButton("Отмена"))
+        bot.send_message(user_id, "Выберите транспорт для просмотра ремонтов:", reply_markup=markup)
+        bot.register_next_step_handler_by_chat_id(user_id, next_step)
+
+def handle_transport_choice(message, next_step):
+    user_id = message.from_user.id
+    if message.text == "Добавить транспорт":
+        add_transport(user_id)  # Функция добавления транспорта
+    elif message.text == "Отказаться":
+        bot.send_message(user_id, "Просмотр ремонтов невозможен без добавления транспорта.")
+    else:
+        ask_for_transport_selection(user_id, next_step)
+
+# Обработчик для "Посмотреть ремонты"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты")
 def view_repairs(message):
     user_id = message.from_user.id
+    ask_for_transport_selection(user_id, choose_repair_view)
+
+def choose_repair_view(message):
+    user_id = message.from_user.id
+    selected_transport = message.text
+    if selected_transport == "Отмена":
+        bot.send_message(user_id, "Действие отменено.")
+        return
+
+    # Сохранение выбранного транспорта для дальнейших действий
+    user_transport[user_id] = selected_transport
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Ремонты (месяц)")
     item2 = types.KeyboardButton("Ремонты (год)")
     item3 = types.KeyboardButton("Ремонты (всё время)")
     item4 = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item5 = types.KeyboardButton("В главное меню")    
+    item5 = types.KeyboardButton("В главное меню")
     markup.add(item1, item2, item3)
-    markup.add(item4,item5)
+    markup.add(item4, item5)
 
     bot.send_message(user_id, "Выберите вариант просмотра ремонтов:", reply_markup=markup)
 
 # (11.6) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ РЕМОНТЫ ЗА МЕСЯЦ") ---------------
 
+# Фильтрация и просмотр ремонтов по выбранному транспорту и периоду
+def filter_repairs_by_transport(repairs, selected_transport):
+    filtered_repairs = []
+    for repair in repairs:
+        repair_transport = repair.get("transport", "")  # Получаем транспорт как строку
+        if repair_transport == selected_transport:  # Сравниваем строки
+            filtered_repairs.append(repair)
+    return filtered_repairs
+
+# (1) Ремонты (месяц)
 @bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
 def view_repairs_by_month(message):
-    user_id = message.from_user.id
+    try:
+        # Проверяем входные данные
+        user_id = message.from_user.id
 
-    if contains_media(message):
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, view_repairs_by_month)
-        return
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        markup.add(item_return)
+        markup.add(item_main_menu)
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
+        bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
+        
+        # Проверяем, что передается правильный объект в следующий шаг
+        bot.register_next_step_handler(message, lambda msg: get_repairs_by_month(msg, markup))
+    
+    except AttributeError as e:
+        # Ловим ошибку AttributeError и выводим информацию для отладки
+        print(f"Неожиданная ошибка: {e}")
+        bot.send_message(message.chat.id, f"Неожиданная ошибка: {e}")
+    except Exception as e:
+        # Ловим любые другие ошибки
+        print(f"Ошибка: {e}")
+        bot.send_message(message.chat.id, f"Ошибка: {e}")
 
-    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
-    bot.register_next_step_handler(message, lambda message: get_repairs_by_month(message, markup))
+@bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
+def view_repairs_by_month(message):
+    try:
+        print(f"Тип объекта message: {type(message)}")
+        user_id = message.from_user.id
+        print(f"user_id: {user_id}")
 
-def send_repairs_message(user_id, message_text, markup):
-    max_message_length = 4096  
-    message_parts = [message_text[i:i+max_message_length] for i in range(0, len(message_text), max_message_length)]
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        markup.add(item_return)
+        markup.add(item_main_menu)
 
-    for part in message_parts:
-        bot.send_message(user_id, part, reply_markup=markup)
+        bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
+        
+        bot.register_next_step_handler(message, lambda msg: get_repairs_by_month(msg, markup))
+    
+    except AttributeError as e:
+        print(f"Неожиданная ошибка: {e}")
+        bot.send_message(message.chat.id, f"Неожиданная ошибка: {e}")
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        bot.send_message(message.chat.id, f"Ошибка: {e}")
 
 def get_repairs_by_month(message, markup):
     user_id = message.from_user.id
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
     date = message.text
 
-    if date is not None:
-        month, year = date.split(".")
+    # Проверка формата даты
+    if date.count('.') != 1:
+        bot.send_message(user_id, "Неверный формат даты. Пожалуйста, введите месяц и год в формате ММ.ГГГГ.", reply_markup=markup)
+        return
+    
+    month, year = date.split(".")
+
+    try:
         month = int(month)
         year = int(year)
+    except ValueError:
+        bot.send_message(user_id, "Неверный ввод. Убедитесь, что месяц и год - это числа.", reply_markup=markup)
+        return
 
-        if 1 <= month <= 12:
-            user_data = load_repair_data(user_id)
-            repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    if 1 <= month <= 12:
+        user_data = load_repair_data(user_id)
+        repairs = user_data.get(str(user_id), {}).get("repairs", [])
 
-            repairs_by_month = []
-            for repair in repairs:
+        # Получаем выбранный транспорт из данных пользователя
+        selected_transport = get_selected_transport(user_id)
+
+        # Фильтруем ремонты по выбранному транспорту
+        repairs_by_transport = filter_repairs_by_transport(repairs, selected_transport)
+
+        repairs_by_month = []
+        for repair in repairs_by_transport:
+            repair_date = repair.get("date", "")
+            repair_month, repair_year = map(int, repair_date.split(".")[1:])
+            if repair_month == month and repair_year == year:
+                repairs_by_month.append(repair)
+
+        if repairs_by_month:
+            message_text = f"Ремонты за {date} по {selected_transport}:\n\n"
+            for index, repair in enumerate(repairs_by_month, start=1):
+                repair_name = repair.get("name", "")
                 repair_date = repair.get("date", "")
-                repair_month, repair_year = map(int, repair_date.split(".")[1:])
-                if repair_month == month and repair_year == year:
-                    repairs_by_month.append(repair)
+                repair_description = repair.get("description", "")
+                message_text += f"  №: {index}\n\n    НАЗВАНИЕ: {repair_name}\n    ДАТА: {repair_date}\n    ОПИСАНИЕ: {repair_description}\n\n"
 
-            if repairs_by_month:
-                message_text = f"Ремонты за {date}:\n\n"
-                for index, repair in enumerate(repairs_by_month, start=1):
-                    repair_name = repair.get("name", "")
-                    repair_date = repair.get("date", "")
-                    repair_description = repair.get("description", "")
-                    message_text += f"  №: {index}\n\n    НАЗВАНИЕ: {repair_name}\n    ДАТА: {repair_date}\n    ОПИСАНИЕ: {repair_description}\n\n"
-
-                send_repairs_message(user_id, message_text, markup)
-            else:
-                bot.send_message(user_id, f"За {date} ремонтов не найдено.", reply_markup=markup)
+            send_repairs_message(user_id, message_text, markup)
         else:
-            bot.send_message(user_id, "Пожалуйста, введите корректный месяц от 1 до 12 (ММ.ГГГГ). Попробуйте еще раз.", reply_markup=markup)
-            bot.register_next_step_handler(message, get_repairs_by_month, markup)
+            bot.send_message(user_id, f"За {date} ремонтов не найдено по {selected_transport}.", reply_markup=markup)
     else:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
+        bot.send_message(user_id, "Введите корректный месяц (от 1 до 12).", reply_markup=markup)
 
-    bot.register_next_step_handler(message, lambda message: get_repairs_by_month(message, markup))
-
-# (11.7) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ РЕМОНТЫ ЗА ГОД") ---------------
-
+# (2) Ремонты (год)
 @bot.message_handler(func=lambda message: message.text == "Ремонты (год)")
 def view_repairs_by_year(message):
     user_id = message.from_user.id
@@ -2479,27 +2557,15 @@ def view_repairs_by_year(message):
     bot.send_message(user_id, "Введите год (ГГГГ) для просмотра ремонтов за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, lambda message: get_repairs_by_year(message, markup))
 
-def send_repairs_message(user_id, message_text, markup):
-    max_message_length = 4096 
-    message_parts = [message_text[i:i+max_message_length] for i in range(0, len(message_text), max_message_length)]
-
-    for part in message_parts:
-        bot.send_message(user_id, part, reply_markup=markup)
-
 def get_repairs_by_year(message, markup):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id) 
+        send_menu(user_id)
         return
 
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-
-    if message.text is None:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, lambda message: get_repairs_by_year(message, markup))
         return
 
     try:
@@ -2512,8 +2578,10 @@ def get_repairs_by_year(message, markup):
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
 
+    selected_transport = get_selected_transport(user_id)  # Получаем выбранный транспорт
+
     repairs_by_year = []
-    for repair in repairs:
+    for repair in filter_repairs_by_transport(repairs, selected_transport):  # Исправленный вызов функции
         repair_date = repair.get("date", "")
         repair_year = int(repair_date.split(".")[2])
         if repair_year == year:
@@ -2529,25 +2597,12 @@ def get_repairs_by_year(message, markup):
 
         send_repairs_message(user_id, message_text, markup)
     else:
-        message_text = f"За {year} ремонтов не найдено."
+        bot.send_message(user_id, f"За {year} ремонтов не найдено.", reply_markup=markup)
 
-        bot.send_message(user_id, message_text, reply_markup=markup)
-
-    bot.register_next_step_handler(message, lambda message: get_repairs_by_year(message, markup))
-
-# (11.8) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ РЕМОНТЫ ЗА ВСЕ ВРЕМЯ") ---------------
-
+# (3) Ремонты (всё время)
 @bot.message_handler(func=lambda message: message.text == "Ремонты (всё время)")
 def view_all_repairs(message):
     user_id = message.from_user.id
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)  
-        return
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
@@ -2558,9 +2613,13 @@ def view_all_repairs(message):
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
 
-    if repairs:
+    # Замените user_id на выбранный транспорт, если нужно
+    selected_transport = get_selected_transport(user_id)  # Получаем выбранный транспорт
+    filtered_repairs = filter_repairs_by_transport(repairs, selected_transport)  # Исправленный вызов функции
+
+    if filtered_repairs:
         message_text = "Все ремонты:\n\n"
-        for index, repair in enumerate(repairs, start=1):
+        for index, repair in enumerate(filtered_repairs, start=1):
             repair_name = repair.get("name", "")
             repair_date = repair.get("date", "")
             repair_description = repair.get("description", "")
@@ -2569,7 +2628,6 @@ def view_all_repairs(message):
         send_repairs_message(user_id, message_text, markup)
     else:
         message_text = "У вас пока нет ремонтов."
-
         bot.send_message(user_id, message_text, reply_markup=markup)
 
 def send_repairs_message(user_id, message_text, markup):
