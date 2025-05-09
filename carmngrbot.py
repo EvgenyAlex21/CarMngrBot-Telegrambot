@@ -718,41 +718,92 @@ def restart_handler(message):
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть поездки")
-def view_data(message):
+def view_trips(message):
     user_id = message.chat.id
     if user_id in user_trip_data:
-        data = user_trip_data[user_id]
-        if not data:
+        trips = user_trip_data[user_id]
+        if not trips:
             bot.send_message(user_id, "У вас нет сохраненных поездок.")
         else:
-            for i, trip in enumerate(data, start=1):
-                # Получаем адреса начального и конечного местоположений
+            # Создаем кнопки для выбора поездок
+            markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+            for i, trip in enumerate(trips, start=1):
                 start_address = trip['start_location']['address']
                 end_address = trip['end_location']['address']
-
-                # Формируем сообщение с данными поездки
-                summary_message = f"ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ {i}:\n\n"
-                summary_message += f"Начальное местоположение:\n\n{start_address}\n\n"
-                summary_message += f"Конечное местоположение:\n\n{end_address}\n\n"
-                summary_message += f"Дата поездки: {trip['date']}\n\n"
-                summary_message += f"Расстояние: {trip['distance']:.2f} км.\n\n"
-                summary_message += f"Тип топлива: {trip['fuel_type']}\n\n"
-                summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n\n"
-                summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n\n"
-                summary_message += f"Количество пассажиров: {trip['passengers']}\n\n"
-                summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {trip['fuel_spent']:.2f} л.\n\n"
-                summary_message += f"СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ: {trip['fuel_cost']:.2f} руб.\n\n"
-                summary_message += f"СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА: {trip['fuel_cost_per_person']:.2f} руб.\n\n"
-                
-                # Проверяем, есть ли 'route_link' в данных поездки
-                if 'route_link' in trip:
-                    summary_message += f"[ССЫЛКА НА МАРШРУТ]({trip['route_link']})\n\n"
-                else:
-                    summary_message += "Ссылка на маршрут недоступна.\n\n"
-
-                bot.send_message(user_id, summary_message, parse_mode="Markdown")
+                button_text = f"{i}. {start_address} - {end_address}"
+                markup.add(button_text)
+            
+            # Добавляем кнопки "Вернуться в меню расчета топлива" и "В главное меню"
+            markup.add("Вернуться в меню расчета топлива")
+            markup.add("В главное меню")
+            
+            # Отправляем сообщение с запросом на выбор поездки и кнопками
+            bot.send_message(user_id, "Выберите поездку для просмотра:", reply_markup=markup)
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
+
+@bot.message_handler(func=lambda message: message.text and message.text.startswith(tuple([f"{i}. " for i in range(1, 10)])))
+def show_trip_details(message):
+    user_id = message.chat.id
+    trips = user_trip_data.get(user_id, [])
+    
+    # Получаем номер поездки из сообщения пользователя
+    try:
+        trip_index = int(message.text.split(".")[0]) - 1  # Получаем индекс поездки
+        trip = trips[trip_index]
+
+        # Формируем сообщение с данными поездки
+        start_address = trip['start_location']['address']
+        end_address = trip['end_location']['address']
+        summary_message = f"ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ {trip_index + 1}:\n\n"
+        summary_message += f"Начальное местоположение:\n\n{start_address}\n\n"
+        summary_message += f"Конечное местоположение:\n\n{end_address}\n\n"
+        summary_message += f"Дата поездки: {trip['date']}\n\n"
+        summary_message += f"Расстояние: {trip['distance']:.2f} км.\n\n"
+        summary_message += f"Тип топлива: {trip['fuel_type']}\n\n"
+        summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n\n"
+        summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n\n"
+        summary_message += f"Количество пассажиров: {trip['passengers']}\n\n"
+        summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {trip['fuel_spent']:.2f} л.\n\n"
+        summary_message += f"СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ: {trip['fuel_cost']:.2f} руб.\n\n"
+        summary_message += f"СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА: {trip['fuel_cost_per_person']:.2f} руб.\n\n"
+
+        # Проверяем, есть ли 'route_link' в данных поездки
+        if 'route_link' in trip:
+            summary_message += f"[ССЫЛКА НА МАРШРУТ]({trip['route_link']})\n\n"
+        else:
+            summary_message += "Ссылка на маршрут недоступна.\n\n"
+
+        # Отправляем подробную информацию о поездке
+        bot.send_message(user_id, summary_message, parse_mode="Markdown")
+
+        # Оставляем клавиатуру с кнопками после просмотра поездки
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Посмотреть другие поездки")  # Эта кнопка будет выше
+        markup.row("Вернуться в меню расчета топлива", "В главное меню")  # Эти кнопки будут на одной строке
+        
+        bot.send_message(user_id, "Вы можете посмотреть другие поездки или вернуться в меню.", reply_markup=markup)
+
+    except (IndexError, ValueError):
+        bot.send_message(user_id, "Ошибка при выборе поездки. Попробуйте снова.")
+
+# Обработчик для кнопки "Посмотреть другие поездки"
+@bot.message_handler(func=lambda message: message.text == "Посмотреть другие поездки")
+def view_other_trips(message):
+    view_trips(message)  # Вызываем функцию для повторного отображения списка поездок
+
+# Обработчики для кнопок "Вернуться в меню расчета топлива" и "В главное меню"
+@bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
+def return_to_fuel_calc_menu(message):
+    chat_id = message.chat.id
+    reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
+    bot.send_message(chat_id, "Вы вернулись в меню расчета топлива.", reply_markup=types.ReplyKeyboardRemove())
+
+@bot.message_handler(func=lambda message: message.text == "В главное меню")
+def return_to_main_menu(message):
+    chat_id = message.chat.id
+    return_to_menu(message)  # Ваша функция для возврата в главное меню
+    bot.send_message(chat_id, "Вы вернулись в главное меню.", reply_markup=types.ReplyKeyboardRemove())
 
 # (9.18) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "УДАЛИТЬ ПОЕЗДКУ") ---------------
 
