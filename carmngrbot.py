@@ -16,6 +16,8 @@ from functools import partial
 from urllib.parse import quote
 import traceback
 from bs4 import BeautifulSoup
+import time
+import logging
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -3719,14 +3721,19 @@ def clean_price(price):
 
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
+logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
+
 def main_polling():
     while True:
         try:
-            bot.polling(none_stop=True, interval=1, timeout=30)
+            logger.info("Запуск бота...")
+            bot.polling(none_stop=True, interval=1, timeout=60)
         except Exception as e:
-            print(f"Error occurred: {e}")
+            logger.error(f"Ошибка: {e}", exc_info=True)
             time.sleep(5)
 
 # (17) --------------- КОД ДЛЯ "ЗАПУСК БОТА" ---------------
 if __name__ == '__main__':
-    bot.polling(none_stop=True, interval=1, timeout=30)
+    bot.polling(none_stop=True, interval=1, timeout=60)
