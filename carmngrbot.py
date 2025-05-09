@@ -328,30 +328,49 @@ def process_start_location_step(message):
     item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
     markup.add(item3)
     markup.add(item1, item2)
+
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
-        return    
+        return  
     if message.text == "В главное меню":
         return_to_menu(message) 
         return    
+
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(sent, process_start_location_step)
-        return        
-    if message.location:  # Проверяем, есть ли местоположение
+        return  
+
+    if message.location:  # Если пользователь отправил геолокацию
         location = message.location
         start_address = geolocator.reverse((location.latitude, location.longitude)).address
-        trip_data[chat_id] = {"start_location": start_address}
+        trip_data[chat_id] = {
+            "start_location": {
+                "address": start_address,
+                "latitude": location.latitude,
+                "longitude": location.longitude
+            }
+        }
         bot.send_message(chat_id, f"Ваше начальное местоположение:\n\n{start_address}")
-        sent = bot.send_message(chat_id, "Отправьте конечное местоположение или геолокацию:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_end_location_step)
-    else:
+    else:  # Если пользователь ввел текстовое местоположение
         start_location = message.text
-        trip_data[chat_id] = {"start_location": start_location}
-        bot.send_message(chat_id, f"Ваше начальное местоположение:\n{start_location}")
-        sent = bot.send_message(chat_id, "Отправьте конечное местоположение или геолокацию:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_end_location_step)
-		
+        location = geolocator.geocode(start_location)
+        if location:
+            trip_data[chat_id] = {
+                "start_location": {
+                    "address": start_location,
+                    "latitude": location.latitude,
+                    "longitude": location.longitude
+                }
+            }
+            bot.send_message(chat_id, f"Ваше начальное местоположение:\n\n{start_location}")
+        else:
+            sent = bot.send_message(chat_id, "Не удалось найти местоположение. Пожалуйста, введите корректный адрес.")
+            bot.register_next_step_handler(sent, process_start_location_step)
+            return
+    
+    sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_end_location_step)
 
 
 def process_end_location_step(message):
@@ -359,31 +378,48 @@ def process_end_location_step(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
-    markup.add(item1)
-    markup.add(item2)
+    item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    markup.add(item3)
+    markup.add(item1, item2)
+
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
-        return    
+        return  
     if message.text == "В главное меню":
         return_to_menu(message) 
-        return 
+        return    
+
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(sent, process_end_location_step)
-        return        
-    if message.location:  # Проверяем, есть ли местоположение
+        return
+
+    if message.location:  # Если пользователь отправил геолокацию
         location = message.location
         end_address = geolocator.reverse((location.latitude, location.longitude)).address
-        trip_data[chat_id]["end_location"] = end_address 
+        trip_data[chat_id]["end_location"] = {
+            "address": end_address,
+            "latitude": location.latitude,
+            "longitude": location.longitude
+        }
         bot.send_message(chat_id, f"Ваше конечное местоположение:\n\n{end_address}")
-        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ.:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_date_step)
-    else:
+    else:  # Если пользователь ввел текстовое местоположение
         end_location = message.text
-        trip_data[chat_id]["end_location"] = end_location
-        bot.send_message(chat_id, f"Ваше конечное местоположение:\n{end_location}")
-        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ.:", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_date_step)
+        location = geolocator.geocode(end_location)
+        if location:
+            trip_data[chat_id]["end_location"] = {
+                "address": end_location,
+                "latitude": location.latitude,
+                "longitude": location.longitude
+            }
+            bot.send_message(chat_id, f"Ваше конечное местоположение:\n\n{end_location}")
+        else:
+            sent = bot.send_message(chat_id, "Не удалось найти местоположение. Пожалуйста, введите корректный адрес.")
+            bot.register_next_step_handler(sent, process_end_location_step)
+            return
+
+    sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_date_step)
 		
 
 
@@ -563,14 +599,33 @@ def process_passengers_step(message, date, distance, fuel_type, price_per_liter,
         passengers = int(message.text)
         if passengers <= 0:
             raise ValueError
+
+        # Считаем стоимость топлива
         fuel_cost = (distance / 100) * fuel_consumption * price_per_liter
         fuel_cost_per_person = fuel_cost / passengers
 
+        # Получаем координаты начального и конечного местоположений
+        start_location = trip_data[chat_id]['start_location']
+        end_location = trip_data[chat_id]['end_location']
+        
+        # Сформируем ссылку на Яндекс.Карты для автомобилиста
+        yandex_maps_url = f"https://yandex.ru/maps/?rtext={start_location['latitude']},{start_location['longitude']}~{end_location['latitude']},{end_location['longitude']}&rtt=auto"
+        
+        # Отправляем запрос на clck.ru для сокращения ссылки
+        try:
+            response = requests.get(f'https://clck.ru/--?url={yandex_maps_url}')
+            short_url = response.text
+        except Exception as e:
+            bot.send_message(chat_id, f"Не удалось сократить ссылку: {str(e)}")
+            short_url = yandex_maps_url  # Используем оригинальную ссылку, если сокращение не удалось
+        
         if chat_id not in temporary_trip_data:
             temporary_trip_data[chat_id] = []
+        
+        # Добавляем временные данные поездки
         temporary_trip_data[chat_id].append({
-            "start_location": trip_data[chat_id]['start_location'],
-            "end_location": trip_data[chat_id]['end_location'],
+            "start_location": start_location,
+            "end_location": end_location,
             "date": date,
             "distance": distance,
             "fuel_type": fuel_type,
@@ -579,7 +634,8 @@ def process_passengers_step(message, date, distance, fuel_type, price_per_liter,
             "passengers": passengers,
             "fuel_spent": (distance / 100) * fuel_consumption,
             "fuel_cost": fuel_cost,
-            "fuel_cost_per_person": fuel_cost_per_person
+            "fuel_cost_per_person": fuel_cost_per_person,
+            "route_link": short_url  # Сохраняем сокращенную ссылку в временные данные
         })
 
         display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, distance, price_per_liter, fuel_consumption, passengers)
@@ -591,9 +647,26 @@ def process_passengers_step(message, date, distance, fuel_type, price_per_liter,
 
 def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, distance, price_per_liter, fuel_consumption, passengers):
     fuel_spent = (distance / 100) * fuel_consumption 
+
+    # Получаем координаты начального и конечного местоположений
+    start_location = trip_data[chat_id]['start_location']
+    end_location = trip_data[chat_id]['end_location']
+    
+    # Сформируем ссылку на Яндекс.Карты для автомобилиста
+    yandex_maps_url = f"https://yandex.ru/maps/?rtext={start_location['latitude']},{start_location['longitude']}~{end_location['latitude']},{end_location['longitude']}&rtt=auto"
+    
+    # Отправляем запрос на clck.ru для сокращения ссылки
+    try:
+        response = requests.get(f'https://clck.ru/--?url={yandex_maps_url}')
+        short_url = response.text
+    except Exception as e:
+        bot.send_message(chat_id, f"Не удалось сократить ссылку: {str(e)}")
+        short_url = yandex_maps_url  # Используем оригинальную ссылку, если сокращение не удалось
+
+    # Формируем итоговое сообщение
     summary_message = "ИНФОРМАЦИЯ О ПОЕЗДКЕ:\n"
-    summary_message += f"Начальное местоположение:\n{trip_data[chat_id]['start_location']}\n"
-    summary_message += f"Конечное местоположение:\n{trip_data[chat_id]['end_location']}\n"
+    summary_message += f"Начальное местоположение:\n{start_location['address']}\n"
+    summary_message += f"Конечное местоположение:\n{end_location['address']}\n"
     summary_message += f"Дата поездки: {date}\n"
     summary_message += f"Расстояние: {distance} км.\n"
     summary_message += f"Тип топлива: {fuel_type}\n"
@@ -603,6 +676,7 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
     summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {fuel_spent:.2f} л.\n"
     summary_message += f"СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ: {fuel_cost:.2f} руб.\n"
     summary_message += f"СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА: {fuel_cost_per_person:.2f} руб.\n"
+    summary_message += f"[ССЫЛКА НА МАРШРУТ]({short_url})\n"
 
     summary_message = summary_message.replace('\n', '\n\n')
     bot.clear_step_handler_by_chat_id(chat_id)
@@ -614,8 +688,8 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
     markup.add(item2)
     markup.add(item1)
     markup.add(item3)
-    
-    bot.send_message(chat_id, summary_message, reply_markup=markup)
+
+    bot.send_message(chat_id, summary_message, reply_markup=markup, parse_mode="Markdown")
 
 # (9.14) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "СОХРАНИТЬ ПОЕЗДКУ") ---------------
 
@@ -625,8 +699,14 @@ def save_data_handler(message):
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
         if user_id not in user_trip_data:
             user_trip_data[user_id] = []
+        
+        # Переносим данные из временных данных в постоянные
         user_trip_data[user_id].extend(temporary_trip_data[user_id])
+
+        # Очищаем временные данные
         temporary_trip_data[user_id] = []
+        
+        # Сохраняем данные поездки в базу данных
         save_trip_data(user_id) 
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -675,22 +755,31 @@ def view_data(message):
             bot.send_message(user_id, "У вас нет сохраненных поездок.")
         else:
             for i, trip in enumerate(data, start=1):
-                summary_message = f"ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ {i}:\n"
-                summary_message = f"ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ {i}:\n"
-                summary_message += f"Начальное местоположение:\n{trip['start_location']}\n"
-                summary_message += f"Конечное местоположение:\n{trip['end_location']}\n"
-                summary_message += f"Дата поездки: {trip['date']}\n"
-                summary_message += f"Расстояние: {trip['distance']} км.\n"
-                summary_message += f"Тип топлива: {trip['fuel_type']}\n"
-                summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n"
-                summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n"
-                summary_message += f"Количество пассажиров: {trip['passengers']}\n"
-                summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {trip['fuel_spent']:.2f} л.\n"
-                summary_message += f"СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ: {trip['fuel_cost']:.2f} руб.\n"
-                summary_message += f"СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА: {trip['fuel_cost_per_person']:.2f} руб.\n"
+                # Получаем адреса начального и конечного местоположений
+                start_address = trip['start_location']['address']
+                end_address = trip['end_location']['address']
 
-                summary_message = summary_message.replace('\n', '\n\n')
-                bot.send_message(user_id, summary_message)
+                # Формируем сообщение с данными поездки
+                summary_message = f"ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ {i}:\n\n"
+                summary_message += f"Начальное местоположение:\n\n{start_address}\n\n"
+                summary_message += f"Конечное местоположение:\n\n{end_address}\n\n"
+                summary_message += f"Дата поездки: {trip['date']}\n\n"
+                summary_message += f"Расстояние: {trip['distance']} км.\n\n"
+                summary_message += f"Тип топлива: {trip['fuel_type']}\n\n"
+                summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n\n"
+                summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n\n"
+                summary_message += f"Количество пассажиров: {trip['passengers']}\n\n"
+                summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {trip['fuel_spent']:.2f} л.\n\n"
+                summary_message += f"СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ: {trip['fuel_cost']:.2f} руб.\n\n"
+                summary_message += f"СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА: {trip['fuel_cost_per_person']:.2f} руб.\n\n"
+                
+                # Проверяем, есть ли 'route_link' в данных поездки
+                if 'route_link' in trip:
+                    summary_message += f"[ССЫЛКА НА МАРШРУТ]({trip['route_link']})\n\n"
+                else:
+                    summary_message += "Ссылка на маршрут недоступна.\n\n"
+
+                bot.send_message(user_id, summary_message, parse_mode="Markdown")
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
 
