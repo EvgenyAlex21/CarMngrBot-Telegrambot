@@ -7159,6 +7159,7 @@ def show_admin_panel(message):
         'Вкл/выкл функций',
         'Бан',
         'Оповещения',
+        'Чат',
         'Статистика',
         'Резервная копия',
         'Выход'
@@ -7627,8 +7628,7 @@ def set_function(message):
     else:
         bot.send_message(message.chat.id, "У вас нет прав для выполнения этой команды.")
 
-
-
+# (ADMIN n) ------------------------------------------ "ОПОВЕЩЕНИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 USER_DATA_PATH = 'data base/admin/users.json'
 SENT_MESSAGES_PATH = 'data base/admin/sent_messages.json'
@@ -7907,7 +7907,156 @@ def send_individual_message(message, user_id):
 
     bot.send_message(message.chat.id, f"Сообщение отправлено пользователю ID: {user_id}.")
 
+# (ADMIN n) ------------------------------------------ "ЧАТ АДМИНА И ПОЛЬЗОВАТЕЛЯ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
+# Пути к файлам
+USER_DB_PATH = 'data base/admin/users.json'
+ADMIN_DB_PATH = 'data base/admin/admin_sessions.json'
+
+# Переменные для хранения состояния чата
+active_chats = {}
+
+# Загрузка базы данных пользователей
+def load_users():
+    if os.path.exists(USER_DB_PATH):
+        with open(USER_DB_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+# Загрузка базы данных администраторов
+def load_admins():
+    if os.path.exists(ADMIN_DB_PATH):
+        with open(ADMIN_DB_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return []
+
+# Проверка, является ли пользователь администратором
+def is_admin(user_id):
+    admins = load_admins()
+    return user_id in admins
+
+# Команда для администратора для связи с пользователем
+@bot.message_handler(func=lambda message: message.text == 'Чат' and message.chat.id in admin_sessions)
+@bot.message_handler(commands=['chat'])
+def initiate_chat(message):
+    admin_id = message.chat.id
+
+    # Проверка, является ли отправитель администратором
+    if not is_admin(admin_id):
+        bot.send_message(admin_id, "У вас нет прав для выполнения этой команды.")
+        return
+
+    # Проверка наличия ID пользователя в команде
+    command_parts = message.text.split()
+    if len(command_parts) != 2:
+        bot.send_message(admin_id, "Укажите ID пользователя в формате: /chat user_id")
+        return
+
+    try:
+        user_id = int(command_parts[1])
+
+        # Проверка, существует ли пользователь в базе данных
+        users = load_users()
+        if str(user_id) not in users:
+            bot.send_message(admin_id, "Пользователь с таким ID не найден в базе данных.")
+            return
+
+        # Проверка, если чат уже активен
+        if user_id in active_chats:
+            bot.send_message(admin_id, "Этот пользователь уже находится в активном чате.")
+            return
+
+        # Отправляем запрос пользователю
+        bot.send_message(user_id, "Администратор хочет связаться с вами. Напишите 'да' для принятия или 'нет' для отклонения.")
+        bot.send_message(admin_id, f"Запрос отправлен пользователю {user_id}. Ожидаем ответа...")
+        
+        # Сохраняем запрос в active_chats
+        active_chats[user_id] = {"admin_id": admin_id, "status": "pending"}
+
+    except ValueError:
+        bot.send_message(admin_id, "ID пользователя должен быть числом. Пример: /chat 123456789")
+    except Exception as e:
+        bot.send_message(admin_id, f"Ошибка при выполнении команды: {e}")
+
+# Структуры для хранения активных чатов
+active_user_chats = {}  # Хранит, какой администратор общается с пользователем
+active_admin_chats = {}  # Хранит, с каким пользователем общается администратор
+
+# Обработка ответов пользователя на запрос чата
+# Обработка ответов пользователя на запрос чата
+@bot.message_handler(func=lambda message: message.text.lower() in ["да", "нет"])
+def handle_chat_response(message):
+    user_id = message.from_user.id
+
+    if user_id in active_chats and active_chats[user_id]["status"] == "pending":
+        admin_id = active_chats[user_id]["admin_id"]
+        if message.text.lower() == "да":
+            bot.send_message(user_id, "Вы на связи с администратором.")
+            bot.send_message(admin_id, f"Пользователь {user_id} принял запрос на чат.")
+            active_chats[user_id]["status"] = "active"
+            active_user_chats[user_id] = admin_id  # Добавляем в активные чаты для пользователя
+            active_admin_chats[admin_id] = user_id  # Добавляем в активные чаты для администратора
+        else:
+            bot.send_message(user_id, "Вы отклонили запрос на чат.")
+            bot.send_message(admin_id, f"Пользователь {user_id} отклонил запрос на чат.")
+            del active_chats[user_id]
+    else:
+        bot.send_message(user_id, "Нет активного запроса на чат.")
+
+# Команда для завершения чата
+@bot.message_handler(func=lambda message: message.text == 'Стоп' and message.chat.id in admin_sessions)
+@bot.message_handler(commands=['stopchat'])
+
+def stop_chat(message):
+    admin_id = message.chat.id
+
+    # Проверяем, есть ли у администратора активный чат
+    if admin_id in active_admin_chats:
+        user_id = active_admin_chats[admin_id]
+
+        # Отправляем уведомления о завершении чата
+        bot.send_message(user_id, "Админ прекратил с вами общение.")
+        bot.send_message(admin_id, f"Чат с пользователем {user_id} остановлен.")
+
+        # Удаляем чат из всех структур
+        if admin_id in active_admin_chats:
+            del active_admin_chats[admin_id]
+        if user_id in active_user_chats:
+            del active_user_chats[user_id]
+        if user_id in active_chats:
+            del active_chats[user_id]
+
+    else:
+        bot.send_message(admin_id, "Нет активного чата для завершения.")
+
+# Обработка сообщений для активного чата между администратором и пользователем
+@bot.message_handler(func=lambda message: message.from_user.id in active_user_chats or message.from_user.id in active_admin_chats)
+def handle_chat_messages(message):
+    user_id = message.from_user.id
+
+    # Игнорируем команды, чтобы они не пересылались в чате
+    if message.text.startswith('/'):
+        return
+
+    if message.text.startswith('Стоп'):
+        return
+
+    # Если сообщение от администратора и это команда /stop_chat, завершаем чат
+    if message.text.strip() == "Стоп" and user_id in active_admin_chats:
+        stop_chat(message)
+        return
+    
+    # Если сообщение от администратора
+    if user_id in active_admin_chats:
+        user_id = active_admin_chats[user_id]
+        bot.send_message(user_id, f"Админ: {message.text}")
+        print(f"Сообщение от админа {message.from_user.id} переслано пользователю {user_id}: {message.text}")
+
+    # Если сообщение от пользователя
+    elif user_id in active_user_chats:
+        admin_id = active_user_chats[user_id]
+        bot.send_message(admin_id, f"Пользователь {user_id}: {message.text}")
+        print(f"Сообщение от пользователя {user_id} переслано администратору {admin_id}: {message.text}")
 
 # (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -7949,7 +8098,18 @@ def handle_all_messages(message):
     update_user_activity(message.from_user.id)
     # Здесь можно добавить любые дополнительные обработки сообщений
 
+# Переменные для хранения состояния чата
+active_chats = {}
 
+# Функция загрузки данных из файла отзывов
+def load_feedback():
+    if os.path.exists(FEEDBACK_FILE_PATH):
+        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+
+            
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
 # Функция для обработки повторных попыток
