@@ -1,4 +1,4 @@
-# ---------- 1. ИМПОРТ МОДУЛЕЙ ----------
+# ------------------------------------------------------ ИМПОРТ МОДУЛЕЙ ------------------------------------------------------
 
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
@@ -54,69 +54,19 @@ from requests.exceptions import ReadTimeout, ConnectionError
 from scipy.spatial import cKDTree
 from urllib.parse import quote
 
-# ---------- 2. ТОКЕН ДЛЯ БОТА ИЗ BOTFATHER ----------
+# ------------------------------------------------------ ТОКЕН ДЛЯ БОТА ИЗ BOTFATHER ------------------------------------------------------
 
 bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
 
-# ---------- 3. ЧАСОВОЙ ПОЯС ----------
+# ------------------------------------------------------ ЧАСОВОЙ ПОЯС ------------------------------------------------------
 
 moscow_tz = pytz.timezone('Europe/Moscow')
 current_time = datetime.now(moscow_tz)
 formatted_time = current_time.strftime('%d.%m.%Y в %H:%M:%S')
 
-# ---------- 4. ДЕКОРАТОРЫ ----------
+# ------------------------------------------------------ ДЕКОРАТОРЫ ------------------------------------------------------
 
-# ---------- 4.1. Декоратор для ограничения действий пользователям, которые были заблокировны администратором ----------
-
-def restricted(func):
-    def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        username = message.from_user.username
-
-        if is_user_blocked(user_id):
-            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
-            return
-
-        if username and is_user_blocked(get_user_id_by_username(username)):
-            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
-            return
-
-        return func(message, *args, **kwargs)
-    return wrapper
-
-# ---------- 4.2. Декоратор для отслеживания активности действий пользователя ----------
-
-def track_user_activity(func):
-    def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        username = message.from_user.username if message.from_user.username else "неизвестный"
-        first_name = message.from_user.first_name if message.from_user.first_name else ""
-        last_name = message.from_user.last_name if message.from_user.last_name else ""
-        update_user_activity(user_id, username, first_name, last_name)
-        return func(message, *args, **kwargs)
-    return wrapper
-
-# ---------- 4.3. Декоратор для проверки состояния чата при запросах на общение ----------
-
-message_history = {}
-
-def check_chat_state(func):
-    def wrapper(message, *args, **kwargs):
-        global active_chats
-        user_id = message.from_user.id
-
-        if user_id in active_chats and active_chats[user_id].get("awaiting_response", False):
-            if message.text.strip().lower() not in ["принять", "отклонить"]:
-                bot.send_message(user_id, "Пожалуйста, выберите *ПРИНЯТЬ* или *ОТКЛОНИТЬ*!", parse_mode="Markdown")
-                return
-
-        return func(message, *args, **kwargs)
-    return wrapper
-
-def save_last_bot_message(user_id, message_text):
-    message_history[user_id] = {"last_bot_message": message_text}
-
-# ---------- 4.4. Декоратор для проверки состояния функции ----------
+# ---------------------------------------- ДЕКОРАТОРЫ (декоратор для проверки состояния функции) ---------------------------------
 
 def check_function_state(function_name):
     if function_name in function_states:
@@ -134,7 +84,7 @@ def check_function_state_decorator(function_name):
         return wrapped
     return decorator
 
-# ---------- 4.5. Декоратор для отслеживания вызовов функций ----------
+# ----------------------------------- ДЕКОРАТОРЫ (декоратор для отслеживания вызовов функций) ----------------------------
 
 def track_usage(func_name):
     def decorator(func):
@@ -156,7 +106,57 @@ def track_usage(func_name):
         return wrapper
     return decorator
 
-# ---------- 4.6. Декоратор для логирования действий пользователя и бота ----------
+# ---------------------- ДЕКОРАТОРЫ (декоратор для ограничения действий пользователям, которые были заблокировны администратором) ---------------
+
+def restricted(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        username = message.from_user.username
+
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
+            return
+
+        if username and is_user_blocked(get_user_id_by_username(username)):
+            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
+            return
+
+        return func(message, *args, **kwargs)
+    return wrapper
+
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания активности действий пользователя) ---------------------------
+
+def track_user_activity(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        username = message.from_user.username if message.from_user.username else "неизвестный"
+        first_name = message.from_user.first_name if message.from_user.first_name else ""
+        last_name = message.from_user.last_name if message.from_user.last_name else ""
+        update_user_activity(user_id, username, first_name, last_name)
+        return func(message, *args, **kwargs)
+    return wrapper
+
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для проверки состояния чата при запросах на общение) ---------------------------
+
+message_history = {}
+
+def check_chat_state(func):
+    def wrapper(message, *args, **kwargs):
+        global active_chats
+        user_id = message.from_user.id
+
+        if user_id in active_chats and active_chats[user_id].get("awaiting_response", False):
+            if message.text.strip().lower() not in ["принять", "отклонить"]:
+                bot.send_message(user_id, "Пожалуйста, выберите *ПРИНЯТЬ* или *ОТКЛОНИТЬ*!", parse_mode="Markdown")
+                return
+
+        return func(message, *args, **kwargs)
+    return wrapper
+
+def save_last_bot_message(user_id, message_text):
+    message_history[user_id] = {"last_bot_message": message_text}
+
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для логирования действий пользователя и бота) ---------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -352,7 +352,7 @@ scheduler_thread.start()
 weekly_task_thread = threading.Thread(target=run_weekly_task)
 weekly_task_thread.start()
 
-# ---------- 4.7. Декоратор для отслеживания бокировки бота пользователем ----------
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания бокировки бота пользователем) ---------------------------
 
 BLOCKED_USERS_FILE = 'data base/admin/blocked_bot_users.json'
 
@@ -390,32 +390,7 @@ def check_user_blocked(func):
                 raise e
     return wrapper
 
-# ---------- 4.8. Декоратор для отслеживания подписки на основной канал бота ----------
-
-CHANNEL_CHAT_ID = -1002454361188
-
-def check_subscription_chanal(func):
-    @wraps(func)
-    def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        if not is_user_subscribed(user_id, CHANNEL_CHAT_ID):
-            bot.send_message(message.chat.id, "⚠️ Пожалуйста, подпишитесь на канал, чтобы продолжить...", reply_markup=types.ReplyKeyboardRemove())
-
-            markup = InlineKeyboardMarkup()
-            subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
-            confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
-            markup.add(subscribe_button)
-            markup.add(confirm_button)
-            bot.send_message(message.chat.id, (
-                "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
-                "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашением! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
-                "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
-            ), reply_markup=markup, parse_mode="HTML")
-            return
-        return func(message, *args, **kwargs)
-    return wrapper
-
-# ---------- 4.9. Декоратор для отслеживания платной и бесплатной подписки на бот ----------
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания платной и бесплатной подписки на бот) ---------------------------
 
 paid_features = [
     "Траты и ремонты", "Найти транспорт", "Поиск мест", "Погода"
@@ -474,7 +449,32 @@ def check_subscription(func):
         ), parse_mode="Markdown")
     return wrapper
 
-# ---------- 4.10. Декоратор для отслеживания текстовых сообщений ---------
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания подписки на основной канал бота) ---------------------------
+
+CHANNEL_CHAT_ID = -1002454361188
+
+def check_subscription_chanal(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if not is_user_subscribed(user_id, CHANNEL_CHAT_ID):
+            bot.send_message(message.chat.id, "⚠️ Пожалуйста, подпишитесь на канал, чтобы продолжить...", reply_markup=types.ReplyKeyboardRemove())
+
+            markup = InlineKeyboardMarkup()
+            subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
+            confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
+            markup.add(subscribe_button)
+            markup.add(confirm_button)
+            bot.send_message(message.chat.id, (
+                "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
+                "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашением! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
+                "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
+            ), reply_markup=markup, parse_mode="HTML")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания текстовых сообщений) ---------------------------
 
 def text_only_handler(func):
     @wraps(func)
@@ -491,7 +491,7 @@ def text_only_handler(func):
         return func(message, *args, **kwargs)
     return wrapper
 
-# ---------- 4.11. Декоратор для ограничения запросов ---------
+# ------------------------------------ ДЕКОРАТОРЫ (декоратор для ограничения запросов - капча) ---------------------------
 
 REQUEST_LIMIT = 5
 TIME_WINDOW = 10
@@ -1374,12 +1374,16 @@ def handle_subscription_confirmation(call):
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @check_function_state_decorator('В главное меню')
+@track_usage('В главное меню')
 @restricted
 @track_user_activity
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_menu(message):
     start(message)
 
@@ -1388,6 +1392,15 @@ def return_to_menu(message):
 PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243'
 
 @bot.message_handler(func=lambda message: message.text == "Подписка на бота")
+@check_function_state_decorator('Подписка на бота')
+@track_usage('Подписка на бота')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def payments_function(message, show_description=True):
@@ -1436,6 +1449,15 @@ def payments_function(message, show_description=True):
         bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в подписку")
+@check_function_state_decorator('Вернуться в подписку')
+@track_usage('Вернуться в подписку')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def return_to_subscription(message):
@@ -1465,6 +1487,15 @@ SUBSCRIPTION_PLANS = {
 }
 
 @bot.message_handler(func=lambda message: message.text == "Купить подписку")
+@check_function_state_decorator('Купить подписку')
+@track_usage('Купить подписку')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def buy_subscription(message):
@@ -1617,8 +1648,8 @@ def send_subscription_invoice(call):
 
         bot.send_message(user_id, (
             "🎉 *Подписка активирована бесплатно!*\n\n"
-            f"📅 *Начало подписки:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
-            f"⏳ *Подписка активна до:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
+            f"📅 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⏳ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
         ), parse_mode="Markdown")
         bot.answer_callback_query(call.id, "Подписка активирована!")
 
@@ -2007,6 +2038,15 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
         bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
+@check_function_state_decorator('Посмотреть подписку')
+@track_usage('Посмотреть подписку')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_subscription(message):
@@ -2129,6 +2169,15 @@ def view_subscription(message):
 # ---------- 10.3. ПОДПИСКА НА БОТА (ИСТОРИЯ ПОДПИСОК) ----------
 
 @bot.message_handler(func=lambda message: message.text == "История подписок")
+@check_function_state_decorator('История подписок')
+@track_usage('История подписок')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_subscription_history(message):
@@ -2352,6 +2401,15 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
         return False
 
 @bot.message_handler(func=lambda message: message.text == "Отменить подписку")
+@check_function_state_decorator('Отменить подписку')
+@track_usage('Отменить подписку')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def cancel_subscription(message):
@@ -2579,6 +2637,15 @@ STORE_ITEMS = {
 }
 
 @bot.message_handler(func=lambda message: message.text == "Магазин")
+@check_function_state_decorator('Магазин')
+@track_usage('Магазин')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def send_store_options(message):
@@ -2766,6 +2833,15 @@ def back_to_store(call):
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в магазин")
+@check_function_state_decorator('Вернуться в магазин')
+@track_usage('Вернуться в магазин')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def return_to_store(message):
@@ -2877,6 +2953,15 @@ def escape_markdown(text):
     return re.sub(special_chars, r'\\\1', text)
 
 @bot.message_handler(func=lambda message: message.text == "Баллы")
+@check_function_state_decorator('Баллы')
+@track_usage('Баллы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def points_menu(message):
@@ -2887,6 +2972,15 @@ def points_menu(message):
     bot.send_message(message.chat.id, "Выберите действие из меню баллов:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в баллы")
+@check_function_state_decorator('Вернуться в баллы')
+@track_usage('Вернуться в баллы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def return_to_scores_menu(message):
@@ -2915,6 +3009,15 @@ def format_time(minutes):
     return " ".join(parts)
 
 @bot.message_handler(func=lambda message: message.text == "Ваши баллы")
+@check_function_state_decorator('Ваши баллы')
+@track_usage('Ваши баллы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_points(message):
@@ -3002,6 +3105,15 @@ def view_points(message):
 # ---------- 10.8. ПОДПИСКА НА БОТА (ОБМЕНЯТЬ БАЛЛЫ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Обменять баллы")
+@check_function_state_decorator('Обменять баллы')
+@track_usage('Обменять баллы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def exchange_points_handler(message):
@@ -3434,6 +3546,15 @@ def pluralize_points(points):
 # ---------- 10.9. ПОДПИСКА НА БОТА (ПОДАРКИ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Подарки")
+@check_function_state_decorator('Подарки')
+@track_usage('Подарки')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def gifts_menu(message):
@@ -3445,6 +3566,15 @@ def gifts_menu(message):
     bot.send_message(message.chat.id, "Выберите действие из меню подарков:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в подарки")
+@check_function_state_decorator('Вернуться в подарки')
+@track_usage('Вернуться в подарки')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def return_to_gifts_menu(message):
@@ -3453,6 +3583,15 @@ def return_to_gifts_menu(message):
 # ---------- 10.10. ПОДПИСКА НА БОТА (ПОДАРИТЬ БАЛЛЫ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Подарить баллы")
+@check_function_state_decorator('Подарить баллы')
+@track_usage('Подарить баллы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def gift_points_handler(message):
@@ -3650,6 +3789,15 @@ def process_gift_amount(message, recipient_id, sender_points):
 # ---------- 10.11. ПОДПИСКА НА БОТА (ПОДАРИТЬ ВРЕМЯ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Подарить время")
+@check_function_state_decorator('Подарить время')
+@track_usage('Подарить время')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def gift_time_handler(message):
@@ -3995,6 +4143,15 @@ def user_process_gift_time_amount(message, recipient_id, total_available_minutes
 # ---------- 10.12. ПОДПИСКА НА БОТА (ИСТОРИЯ ПОДАРКОВ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "История подарков")
+@check_function_state_decorator('История подарков')
+@track_usage('История подарков')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_gifts_history(message):
@@ -4041,6 +4198,15 @@ def view_gifts_history(message):
 # ---------- 11.4. ????? (Промокоды) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Промокоды")
+@check_function_state_decorator('Промокоды')
+@track_usage('Промокоды')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def promo_payments_function(message):
@@ -4051,6 +4217,15 @@ def promo_payments_function(message):
     bot.send_message(message.chat.id, "Выберите действие из промокодов:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Ввести промокод")
+@check_function_state_decorator('Ввести промокод')
+@track_usage('Ввести промокод')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def enter_promo_code(message):
@@ -4310,6 +4485,15 @@ def format_discount(discount):
     return f"{discount:.2f}"
 
 @bot.message_handler(func=lambda message: message.text == "Ваши промокоды")
+@check_function_state_decorator('Ваши промокоды')
+@track_usage('Ваши промокоды')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def show_promo_codes(message):
@@ -4583,6 +4767,15 @@ def check_ad_subscription(call):
 # ---------- 11. РЕФЕРАЛЬНАЯ СИСТЕМА ----------
 
 @bot.message_handler(func=lambda message: message.text == "Реферальная система")
+@check_function_state_decorator('Реферальная система')
+@track_usage('Реферальная система')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def refferal_payments_function(message):
@@ -4593,6 +4786,15 @@ def refferal_payments_function(message):
     bot.send_message(message.chat.id, "Выберите действие из реферальной системы:", reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в реферальную систему")
+@check_function_state_decorator('Вернуться в реферальную систему')
+@track_usage('Вернуться в реферальную систему')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def return_to_referral_menu(message):
@@ -4703,6 +4905,15 @@ def apply_referral_bonus(referrer_id):
 # ---------- 11.1. РЕФЕРАЛЬНАЯ СИСТЕМА (ВАША ССЫЛКА) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Ваша ссылка")
+@check_function_state_decorator('Ваша ссылка')
+@track_usage('Ваша ссылка')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def send_referral_link_message(message):
@@ -4729,6 +4940,15 @@ def send_referral_link_message(message):
 # ---------- 11.2. РЕФЕРАЛЬНАЯ СИСТЕМА (Ваши рефералы) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Ваши рефералы")
+@check_function_state_decorator('Ваши рефералы')
+@track_usage('Ваши рефералы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_referrals_and_bonuses(message):
@@ -4856,6 +5076,15 @@ def view_referrals_and_bonuses(message):
 # ---------- 11.3. РЕФЕРАЛЬНАЯ СИСТЕМА (ТОП РЕФЕРАЛОВ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Топ рефералов")
+@check_function_state_decorator('Топ рефералов')
+@track_usage('Топ рефералов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
 def view_referral_leaderboard(message):
@@ -5374,7 +5603,7 @@ def process_add_more_locations(message, next_location_number):
     elif message.text == "Нет":
         calculate_total_distance(chat_id)
     else:
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите ДА или НЕТ!", reply_markup=markup)
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите да или нет!", reply_markup=markup)
         bot.register_next_step_handler(sent, process_add_more_locations, next_location_number)
 
 def calculate_total_distance(chat_id):
@@ -6369,6 +6598,8 @@ def process_delete_trip_selection(message):
 
 # ---------- 10.1 ТРАТЫ ----------
 
+# --- Траты и ремонты ---
+
 @bot.message_handler(func=lambda message: message.text == "Траты и ремонты")
 @check_function_state_decorator('Траты и ремонты')
 @track_usage('Траты и ремонты')
@@ -6381,27 +6612,24 @@ def process_delete_trip_selection(message):
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
-def handle_expenses_and_repairs(message, show_description=True):
+def handle_expense_and_repairs(message, show_description=True):
     user_id = message.from_user.id
 
     expense_data = load_expense_data(user_id).get(str(user_id), {})
     repair_data = load_repair_data(user_id).get(str(user_id), {})
 
     description = (
-        "ℹ️ *Краткая справка для трат и ремонтов*\n\n\n"
+        "ℹ️ *Краткая справка для трат и ремонтов*\n\n"
         "📌 *Выбор транспорта:*\n"
         "Выберите *ваш транспорт*, по которому хотите проводить операции "
         "В случае если транспорт не существует, то нужно добавить его через \"ваш транспорт\"\n\n"
         "📌 *Выбор категории записи:*\n"
-        "Выбираете *категорию*, по которой у вас возникла трата/ремонт для записи "
+        "Выбираете *категорию*, по которой у вас возникла трата/ремонт для записи. "
         "Изначально даются несколько системных категорий, которые можно расширить\n\n"
         "📌 *Ввод данных:*\n"
         "Вводите данные для трат/ремонтов - *название, описание, дата, сумма*\n\n"
         "📌 *Другие операции:*\n"
         "У вас есть возможность посмотреть или удалить свои записи по конкретному транспорту\n\n"
-        "_P.S. внимательно заполняйте поля, когда добавляете ваш транспорт! "
-        "Изменить какие-то поля на данный момент может только администратор (разработчик) "
-        "с квотой 1 раз в месяц по обращению!_"
     )
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6425,47 +6653,11 @@ def handle_expenses_and_repairs(message, show_description=True):
     if show_description:
         bot.send_message(user_id, description, parse_mode='Markdown')
 
-    bot.send_message(user_id, "Меню для учета трат и ремонтов. Выберите действие:", reply_markup=markup)
-
-def contains_media(message):
-    return (message.photo or message.video or message.document or message.animation or
-            message.sticker or message.location or message.audio or message.contact or
-            message.voice or message.video_note)
-
-def send_menu(user_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Записать трату")
-    item2 = types.KeyboardButton("Посмотреть траты")
-    item3 = types.KeyboardButton("Записать ремонт")
-    item4 = types.KeyboardButton("Посмотреть ремонты")
-    item5 = types.KeyboardButton("Удалить траты")
-    item6 = types.KeyboardButton("Удалить ремонты")
-    item7 = types.KeyboardButton("В главное меню")
-    item8 = types.KeyboardButton("Ваш транспорт")
-
-    markup.add(item8)
-    markup.add(item1, item3)
-    markup.add(item2, item4)
-    markup.add(item5, item6)
-    markup.add(item7)
-
-    bot.send_message(user_id, "Меню для учета трат и ремонтов. Выберите действие:", reply_markup=markup)
-
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
-EXPENSE_DIR = os.path.join(DATA_BASE_DIR, "expense")
-
-def ensure_directories():
-    os.makedirs(EXPENSE_DIR, exist_ok=True)
-
-ensure_directories()
-
-user_transport = {}
+    bot.send_message(user_id, "Выберите действие из учета трат и ремонтов:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню трат и ремонтов")
-@bot.message_handler(commands=['restart2'])
 @check_function_state_decorator('Вернуться в меню трат и ремонтов')
+@track_usage('Вернуться в меню трат и ремонтов')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -6475,9 +6667,886 @@ user_transport = {}
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
-def return_to_menu_2(message):
-    user_id = message.from_user.id
-    send_menu(user_id)
+def return_to_expense_and_repairs(message):
+    handle_expense_and_repairs(message, show_description=False)
+
+# ---------- 17. ВАШ ТРАНСПОРТ ----------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TRANSPORT_DIR = os.path.join(BASE_DIR, "data base", "transport")
+REPAIRS_DIR = os.path.join(BASE_DIR, "data base", "repairs")
+EXPENSES_DIR = os.path.join(BASE_DIR, "data base", "expenses")
+
+def ensure_transport_directory():
+    """Создает директорию для хранения данных транспорта."""
+    os.makedirs(TRANSPORT_DIR, exist_ok=True)
+    os.makedirs(os.path.join(REPAIRS_DIR, "excel"), exist_ok=True)
+    os.makedirs(os.path.join(EXPENSES_DIR, "excel"), exist_ok=True)
+
+ensure_transport_directory()
+
+class States:
+    ADDING_TRANSPORT = 1
+    CONFIRMING_DELETE = 2
+
+user_transport = {}
+
+def save_transport_data(user_id, user_data):
+    """Сохраняет данные транспорта в JSON-файл."""
+    file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
+    with open(file_path, "w", encoding="utf-8") as file:
+        json.dump(user_data, file, ensure_ascii=False, indent=4)
+
+def load_transport_data(user_id):
+    """Загружает данные транспорта из JSON-файла."""
+    file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                if isinstance(data, list):
+                    print(f"Loaded transport data for user {user_id}: {data}")
+                    return data
+                else:
+                    print(f"Invalid transport data format for user {user_id}: {data}")
+                    return []
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error for user {user_id}: {e}")
+            return []
+        except Exception as e:
+            print(f"Error loading transport data for user {user_id}: {e}")
+            return []
+    else:
+        print(f"Transport file not found for user {user_id}: {file_path}")
+    return []
+
+def reload_transport_data(user_id):
+    """Перезагружает данные транспорта для конкретного пользователя."""
+    user_id = str(user_id)
+    try:
+        user_transport[user_id] = load_transport_data(user_id)
+        print(f"Reloaded transport data for user {user_id}: {user_transport[user_id]}")
+    except Exception as e:
+        print(f"Error reloading transport data for user {user_id}: {e}")
+        user_transport[user_id] = []
+
+def load_all_transport():
+    """Загружает данные транспорта всех пользователей в user_transport."""
+    user_transport.clear()  # Очищаем словарь перед загрузкой
+    for user_file in os.listdir(TRANSPORT_DIR):
+        if user_file.endswith("_transport.json"):
+            try:
+                user_id = user_file.split("_")[0]
+                user_transport[user_id] = load_transport_data(user_id)
+            except Exception as e:
+                print(f"Error loading transport file {user_file}: {e}")
+    print(f"Loaded transport data for users: {list(user_transport.keys())}")
+
+load_all_transport()
+
+@bot.message_handler(func=lambda message: message.text == "Ваш транспорт")
+@check_function_state_decorator('Ваш транспорт')
+@track_usage('Ваш транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def manage_transport(message):
+    """Отображает меню управления транспортом."""
+    user_id = str(message.chat.id)
+
+    keyboard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    keyboard.add("Добавить транспорт", "Посмотреть транспорт", "Удалить транспорт", "Изменить транспорт")
+    keyboard.add("Вернуться в меню трат и ремонтов")
+    keyboard.add("В главное меню")
+
+    bot.send_message(user_id, "Выберите действие для транспорта:", reply_markup=keyboard)
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
+@check_function_state_decorator('Вернуться в ваш транспорт')
+@track_usage('Вернуться в ваш транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def return_to_transport_menu(message):
+    """Возвращает в меню управления транспортом."""
+    manage_transport(message)
+
+def create_transport_keyboard():
+    """Создает клавиатуру для возврата в меню."""
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в ваш транспорт"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    return markup
+
+# ---------- 17.1 ВАШ ТРАНСПОРТ (ДОБАВЛЕНИЕ ТРАНСПОРТА) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Добавить транспорт")
+@check_function_state_decorator('Добавить транспорт')
+@track_usage('Добавить транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def add_transport(message):
+    """Инициирует добавление нового транспорта."""
+    user_id = str(message.chat.id)
+    bot.send_message(user_id, "Введите марку транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_brand)
+
+def format_brand_model(text):
+    """Форматирует текст (марку или модель) с заглавными буквами."""
+    return " ".join(word.capitalize() for word in text.strip().split())
+
+@text_only_handler
+def process_brand(message):
+    """Обрабатывает ввод марки транспорта."""
+    user_id = str(message.chat.id)
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    brand = format_brand_model(message.text)
+    bot.send_message(user_id, "Введите модель транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_model, brand)
+
+@text_only_handler
+def process_model(message, brand):
+    """Обрабатывает ввод модели транспорта."""
+    user_id = str(message.chat.id)
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    model = format_brand_model(message.text)
+    bot.send_message(user_id, "Введите год транспорта:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_year, brand, model)
+
+@text_only_handler
+def process_year(message, brand, model):
+    """Обрабатывает ввод года транспорта."""
+    user_id = str(message.chat.id)
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    try:
+        year = int(message.text)
+        if year < 1960 or year > 3000:
+            raise ValueError("Год должен быть от 1960 г. до 3000 г.")
+    except ValueError:
+        bot.send_message(user_id, "Ошибка при введении года!\nПожалуйста, введите корректный год от 1960 г. до 3000 г.", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_year, brand, model)
+        return
+
+    bot.send_message(user_id, "Введите госномер:", reply_markup=create_transport_keyboard())
+    bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+
+@text_only_handler
+def process_license_plate(message, brand, model, year):
+    """Обрабатывает ввод госномера транспорта."""
+    user_id = str(message.chat.id)
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    license_plate = message.text.upper()
+    pattern = r'^[АВЕКМНОРСТУХABEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{2,3}$'
+    if not re.match(pattern, license_plate):
+        bot.send_message(user_id, "Ошибка при введении госномера!\nГосномер должен соответствовать формату госномеров РФ (А121АА21 или А121АА121)", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+        return
+
+    if any(t["license_plate"] == license_plate for t in user_transport.get(user_id, [])):
+        bot.send_message(user_id, "Ошибка при введении госномера!\nТакой госномер уже существует", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+        return
+
+    if user_id not in user_transport:
+        user_transport[user_id] = []
+
+    user_transport[user_id].append({"brand": brand, "model": model, "year": year, "license_plate": license_plate})
+    save_transport_data(user_id, user_transport[user_id])
+
+    bot.send_message(user_id, f"✅ *Транспорт добавлен*\n\n*{brand} - {model} - {year} - {license_plate}*", parse_mode="Markdown", reply_markup=create_transport_keyboard())
+    manage_transport(message)
+
+# ---------- 17.2 ВАШ ТРАНСПОРТ (ПРОСМОТР ТРАНСПОРТА) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
+@check_function_state_decorator('Посмотреть транспорт')
+@track_usage('Посмотреть транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def view_transport(message):
+    """Отображает список транспорта пользователя."""
+    user_id = str(message.chat.id)
+    
+    # Перезагружаем данные транспорта для пользователя
+    reload_transport_data(user_id)
+    
+    if user_id in user_transport and user_transport[user_id]:
+        transport_list = user_transport[user_id]
+        response = "\n\n".join([
+            f"№{index + 1}. {item['brand']} - {item['model']} - {item['year']} - `{item['license_plate']}`"
+            for index, item in enumerate(transport_list)
+        ])
+        bot.send_message(
+            user_id,
+            f"🚙 *Ваш транспорт*\n\n{response}",
+            parse_mode="Markdown"
+        )
+    else:
+        bot.send_message(user_id, "❌ У вас нет добавленного транспорта!")
+    manage_transport(message)
+
+# ---------- 17.3 ВАШ ТРАНСПОРТ (УДАЛЕНИЕ ТРАНСПОРТА) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
+@check_function_state_decorator('Удалить транспорт')
+@track_usage('Удалить транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def delete_transport(message):
+    """Инициирует удаление транспорта."""
+    user_id = str(message.chat.id)
+    
+    # Перезагружаем данные транспорта для пользователя
+    reload_transport_data(user_id)
+    
+    if user_id in user_transport and user_transport[user_id]:
+        keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        transport_list = user_transport[user_id]
+
+        for index, item in enumerate(transport_list, start=1):
+            keyboard.add(f"№{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
+
+        keyboard.add("Удалить весь транспорт")
+        keyboard.add("Вернуться в ваш транспорт")
+        keyboard.add("В главное меню")
+
+        bot.send_message(user_id, "Выберите транспорт для удаления:", reply_markup=keyboard)
+        bot.register_next_step_handler(message, process_transport_selection_for_deletion)
+    else:
+        bot.send_message(user_id, "❌ У вас нет добавленного транспорта!")
+        manage_transport(message)
+
+def get_return_menu_keyboard():
+    """Создает клавиатуру для подтверждения удаления."""
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add("Вернуться в ваш транспорт")
+    markup.add("В главное меню")
+    return markup
+
+@text_only_handler
+def process_transport_selection_for_deletion(message):
+    """Обрабатывает выбор транспорта для удаления."""
+    user_id = str(message.chat.id)
+    selected_transport = message.text.strip()
+
+    if selected_transport == "В главное меню":
+        return_to_menu(message)
+        return
+    if selected_transport == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+    if selected_transport == "Удалить весь транспорт":
+        delete_all_transports(message)
+        return
+
+    transport_list = user_transport.get(user_id, [])
+    if transport_list:
+        try:
+            index = int(selected_transport.split('.')[0].replace("№", "").strip()) - 1
+            if 0 <= index < len(transport_list):
+                transport_to_delete = transport_list[index]
+                bot.send_message(
+                    user_id,
+                    f"⚠️ *Вы точно хотите удалить данный транспорт?*\n\n{transport_to_delete['brand']} - {transport_to_delete['model']} - {transport_to_delete['year']} - {transport_to_delete['license_plate']}\n\n"
+                    "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
+                    "Пожалуйста, введите *да* для подтверждения или *нет* для отмены",
+                    parse_mode="Markdown",
+                    reply_markup=get_return_menu_keyboard()
+                )
+                bot.register_next_step_handler(message, partial(process_confirmation, transport_to_delete=transport_to_delete))
+            else:
+                raise ValueError("Индекс вне диапазона")
+        except ValueError:
+            bot.send_message(user_id, "Ошибка выбора!\nПожалуйста, выберите транспорт для удаления из списка")
+            delete_transport(message)
+    else:
+        bot.send_message(user_id, "❌ У вас нет добавленного транспорта!")
+        manage_transport(message)
+
+def delete_expense_related_to_transport(user_id, transport, selected_transport=""):
+    """Удаляет траты, связанные с транспортом."""
+    expense_data = load_expense_data(user_id)
+    if str(user_id) in expense_data:
+        updated_expense = [
+            expense for expense in expense_data[str(user_id)].get('expense', [])
+            if not (
+                expense.get('transport', {}).get('brand') == transport.get('brand') and
+                expense.get('transport', {}).get('model') == transport.get('model') and
+                expense.get('transport', {}).get('license_plate') == transport.get('license_plate')
+            )
+        ]
+        expense_data[str(user_id)]['expense'] = updated_expense
+        if expense_data.get('selected_transport') == f"{transport['brand']} {transport['model']} ({transport['license_plate']})":
+            expense_data['selected_transport'] = ""
+        save_expense_data(user_id, expense_data, selected_transport)
+    update_excel_file_expense(user_id)
+
+def delete_repairs_related_to_transport(user_id, transport):
+    """Удаляет ремонты, связанные с транспортом."""
+    repair_data = load_repair_data(user_id)
+    if str(user_id) in repair_data:
+        updated_repairs = [
+            repair for repair in repair_data[str(user_id)].get("repairs", [])
+            if not (
+                repair.get('transport', {}).get('brand') == transport.get('brand') and
+                repair.get('transport', {}).get('model') == transport.get('model') and
+                repair.get('transport', {}).get('license_plate') == transport.get('license_plate')
+            )
+        ]
+        repair_data[str(user_id)]["repairs"] = updated_repairs
+        if repair_data.get('selected_transport') == f"{transport['brand']} {transport['model']} ({transport['license_plate']})":
+            repair_data['selected_transport'] = ""
+        save_repair_data(user_id, repair_data, selected_transport="")
+    update_repairs_excel_file(user_id)
+
+@text_only_handler
+def process_confirmation(message, transport_to_delete):
+    """Обрабатывает подтверждение удаления транспорта."""
+    user_id = str(message.chat.id)
+    confirmation = message.text.strip().lower()
+
+    if confirmation == "в главное меню":
+        return_to_menu(message)
+        return
+    if confirmation == "вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    if confirmation == "да":
+        if user_id in user_transport and transport_to_delete in user_transport[user_id]:
+            user_transport[user_id].remove(transport_to_delete)
+            delete_expense_related_to_transport(user_id, transport_to_delete)
+            delete_repairs_related_to_transport(user_id, transport_to_delete)
+            save_transport_data(user_id, user_transport[user_id])
+            bot.send_message(user_id, "✅ Транспорт и связанные с ним траты и ремонты успешно удалены!", parse_mode="Markdown")
+        else:
+            bot.send_message(user_id, "⚠️ Ошибка удаления: транспорт не найден!", parse_mode="Markdown")
+    elif confirmation == "нет":
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
+    else:
+        bot.send_message(user_id, "Ошибка подтверждения!\nПожалуйста, введите *да* для подтверждения или *нет* для отмены", parse_mode="Markdown")
+        bot.register_next_step_handler(message, partial(process_confirmation, transport_to_delete=transport_to_delete))
+    manage_transport(message)
+
+@bot.message_handler(func=lambda message: message.text == "Удалить весь транспорт")
+@check_function_state_decorator('Удалить весь транспорт')
+@track_usage('Удалить весь транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def delete_all_transports(message):
+    """Инициирует удаление всего транспорта."""
+    user_id = str(message.chat.id)
+    if user_id in user_transport and user_transport[user_id]:
+        bot.send_message(
+            user_id,
+            "⚠️ *Вы уверены, что хотите удалить весь транспорт?*\n\n"
+            "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
+            "Введите *да* для подтверждения или *нет* для отмены",
+            parse_mode="Markdown",
+            reply_markup=get_return_menu_keyboard()
+        )
+        bot.register_next_step_handler(message, process_delete_all_confirmation)
+    else:
+        bot.send_message(user_id, "❌ У вас нет добавленного транспорта!")
+        manage_transport(message)
+
+@text_only_handler
+def process_delete_all_confirmation(message):
+    """Обрабатывает подтверждение удаления всего транспорта."""
+    user_id = str(message.chat.id)
+    confirmation = message.text.strip().lower()
+
+    if confirmation == "в главное меню":
+        return_to_menu(message)
+        return
+    if confirmation == "вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    if confirmation == "да":
+        if user_id in user_transport and user_transport[user_id]:
+            transports = user_transport[user_id]
+            user_transport[user_id] = []
+            for transport in transports:
+                delete_expense_related_to_transport(user_id, transport)
+                delete_repairs_related_to_transport(user_id, transport)
+            save_transport_data(user_id, user_transport[user_id])
+            bot.send_message(user_id, "✅ Весь транспорт и связанные с ним траты и ремонты успешно удалены!", parse_mode="Markdown")
+        else:
+            bot.send_message(user_id, "❌ У вас нет добавленного транспорта!", parse_mode="Markdown")
+    elif confirmation == "нет":
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
+    else:
+        bot.send_message(user_id, "Ошибка подтверждения!\nПожалуйста, введите *да* для подтверждения или *нет* для отмены", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_delete_all_confirmation)
+    manage_transport(message)
+
+# ---------- 17.4 ВАШ ТРАНСПОРТ (ИЗМЕНЕНИЕ ТРАНСПОРТА) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Изменить транспорт")
+@check_function_state_decorator('Изменить транспорт')
+@track_usage('Изменить транспорт')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def edit_transport(message):
+    """Инициирует изменение транспорта."""
+    user_id = str(message.chat.id)
+    
+    # Перезагружаем данные транспорта для пользователя
+    reload_transport_data(user_id)
+    
+    transports = user_transport.get(user_id, [])
+    if not transports:
+        bot.send_message(user_id, "❌ У вас нет добавленного транспорта!", reply_markup=create_transport_keyboard())
+        manage_transport(message)
+        return
+
+    keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    for index, transport in enumerate(transports, start=1):
+        keyboard.add(f"№{index}. {transport['brand']} - {transport['model']} - {transport['year']} - {transport['license_plate']}")
+    keyboard.add("Вернуться в ваш транспорт")
+    keyboard.add("В главное меню")
+    bot.send_message(user_id, "Выберите транспорт для изменения:", reply_markup=keyboard)
+    bot.register_next_step_handler(message, process_transport_selection_for_edit)
+
+@text_only_handler
+def process_transport_selection_for_edit(message):
+    """Обрабатывает выбор транспорта для изменения."""
+    user_id = str(message.chat.id)
+    selected_transport_text = message.text.strip()
+
+    if selected_transport_text == "В главное меню":
+        return_to_menu(message)
+        return
+    if selected_transport_text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    transports = user_transport.get(user_id, [])
+    try:
+        index = int(selected_transport_text.split('.')[0].replace("№", "").strip()) - 1
+        if 0 <= index < len(transports):
+            selected_transport = transports[index]
+            keyboard = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+            keyboard.add("Марка", "Модель", "Год", "Госномер")
+            keyboard.add("Вернуться в ваш транспорт")
+            keyboard.add("В главное меню")
+            bot.send_message(user_id, "Что вы хотите изменить?", reply_markup=keyboard)
+            bot.register_next_step_handler(message, partial(process_field_selection, selected_transport=selected_transport))
+        else:
+            raise ValueError("Индекс вне диапазона")
+    except ValueError:
+        bot.send_message(user_id, "❌ Неверный выбор транспорта! Пожалуйста, выберите номер из списка.", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_transport_selection_for_edit)
+
+@text_only_handler
+def process_field_selection(message, selected_transport):
+    """Обрабатывает выбор поля для изменения."""
+    user_id = str(message.chat.id)
+    field = message.text.strip()
+
+    if field == "В главное меню":
+        return_to_menu(message)
+        return
+    if field == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    if field not in ["Марка", "Модель", "Год", "Госномер"]:
+        bot.send_message(user_id, "❌ Неверное поле! Пожалуйста, выберите из предложенных.", parse_mode="Markdown")
+        keyboard = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        keyboard.add("Марка", "Модель", "Год", "Госномер")
+        keyboard.add("Вернуться в ваш транспорт")
+        keyboard.add("В главное меню")
+        bot.register_next_step_handler(message, partial(process_field_selection, selected_transport=selected_transport))
+        return
+
+    current = {
+        "Марка": selected_transport['brand'],
+        "Модель": selected_transport['model'],
+        "Год": str(selected_transport['year']),
+        "Госномер": selected_transport['license_plate']
+    }
+    bot.send_message(user_id, f'Текущий(-ая) *{field.lower()}* транспорта - {current[field]}\n\nВведите новую информацию:', reply_markup=create_transport_keyboard(), parse_mode="Markdown")
+    bot.register_next_step_handler(message, partial(process_new_value, selected_transport=selected_transport, field=field))
+
+@text_only_handler
+def process_new_value(message, selected_transport, field):
+    """Обрабатывает новое значение для выбранного поля."""
+    user_id = str(message.chat.id)
+    new_value = message.text.strip()
+
+    if new_value == "В главное меню":
+        return_to_menu(message)
+        return
+    if new_value == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    # Валидация нового значения
+    if field == "Год":
+        try:
+            new_value = int(new_value)
+            if new_value < 1960 or new_value > 3000:
+                raise ValueError
+        except ValueError:
+            bot.send_message(user_id, "Ошибка при введении года!\nПожалуйста, введите корректный год от 1960 г. до 3000 г.", reply_markup=create_transport_keyboard())
+            bot.register_next_step_handler(message, partial(process_new_value, selected_transport=selected_transport, field=field))
+            return
+    elif field == "Госномер":
+        pattern = r'^[АВЕКМНОРСТУХABEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{2,3}$'
+        if not re.match(pattern, new_value.upper()):
+            bot.send_message(user_id, "Ошибка при введении госномера!\nГосномер должен соответствовать формату госномеров РФ (А121АА21 или А121АА121)", reply_markup=create_transport_keyboard())
+            bot.register_next_step_handler(message, partial(process_new_value, selected_transport=selected_transport, field=field))
+            return
+        if any(t['license_plate'] == new_value.upper() and t != selected_transport for t in user_transport.get(user_id, [])):
+            bot.send_message(user_id, "Ошибка при введении госномера!\nТакой госномер уже существует", reply_markup=create_transport_keyboard())
+            bot.register_next_step_handler(message, partial(process_new_value, selected_transport=selected_transport, field=field))
+            return
+        new_value = new_value.upper()
+    elif field in ["Марка", "Модель"]:
+        new_value = format_brand_model(new_value)
+
+    # Сохраняем старые данные для обновления Excel
+    old_transport = selected_transport.copy()
+
+    # Обновляем данные транспорта
+    field_key = "license_plate" if field == "Госномер" else field.lower()
+    selected_transport[field_key] = new_value
+    save_transport_data(user_id, user_transport.get(user_id, []))
+
+    # Синхронизация с данными трат и ремонтов
+    update_related_data(user_id, old_transport, selected_transport, field_key, new_value)
+
+    # Обновление Excel-файлов
+    update_excel_files_after_transport_change(user_id, old_transport, selected_transport)
+
+    bot.send_message(user_id, f'✅ *{field}* транспорта изменен(-а)!', parse_mode="Markdown", reply_markup=create_transport_keyboard())
+    manage_transport(message)
+
+def update_related_data(user_id, old_transport, new_transport, field_key, new_value):
+    """Обновляет данные трат и ремонтов при изменении транспорта, если данные существуют."""
+    updated = False
+
+    # Обновление трат
+    expense_data = load_expense_data(user_id)
+    if str(user_id) in expense_data and (expense_data[str(user_id)].get('expense') or expense_data.get('selected_transport')):
+        old_selected = f"{old_transport['brand']} {old_transport['model']} ({old_transport['license_plate']})"
+        new_selected = f"{new_transport['brand']} {new_transport['model']} ({new_transport['license_plate']})"
+        if expense_data.get('selected_transport') == old_selected:
+            expense_data['selected_transport'] = new_selected
+        for expense in expense_data[str(user_id)].get('expense', []):
+            transport_data = expense.get('transport', {})
+            if (
+                transport_data.get('brand') == old_transport['brand'] and
+                transport_data.get('model') == old_transport['model'] and
+                transport_data.get('license_plate') == old_transport['license_plate']
+            ):
+                transport_data[field_key] = new_value
+        save_expense_data(user_id, expense_data, new_selected)
+        updated = True
+
+    # Обновление ремонтов
+    repair_data = load_repair_data(user_id)
+    if str(user_id) in repair_data and (repair_data[str(user_id)].get('repairs') or repair_data.get('selected_transport')):
+        old_selected = f"{old_transport['brand']} {old_transport['model']} ({old_transport['license_plate']})"
+        new_selected = f"{new_transport['brand']} {new_transport['model']} ({new_transport['license_plate']})"
+        if repair_data.get('selected_transport') == old_selected:
+            repair_data['selected_transport'] = new_selected
+        for repair in repair_data[str(user_id)].get('repairs', []):
+            transport_data = repair.get('transport', {})
+            if (
+                transport_data.get('brand') == old_transport['brand'] and
+                transport_data.get('model') == old_transport['model'] and
+                transport_data.get('license_plate') == old_transport['license_plate']
+            ):
+                transport_data[field_key] = new_value
+        save_repair_data(user_id, repair_data, new_selected)
+        updated = True
+
+    if not updated:
+        print(f"Нет данных трат или ремонтов для пользователя {user_id}, обновление JSON пропущено.")
+
+def update_excel_files_after_transport_change(user_id, old_transport, new_transport):
+    """Обновляет Excel-файлы трат и ремонтов после изменения транспорта, если данные существуют."""
+    # Обновление Excel для трат
+    expense_excel_path = os.path.join(EXPENSES_DIR, "excel", f"{user_id}_expenses.xlsx")
+    expense_data = load_expense_data(user_id)
+    expenses = expense_data.get(str(user_id), {}).get('expense', [])
+
+    if expenses:
+        try:
+            if os.path.exists(expense_excel_path):
+                workbook = load_workbook(expense_excel_path)
+            else:
+                workbook = Workbook()
+                workbook.remove(workbook.active)
+
+            if "Summary" not in workbook.sheetnames:
+                summary_sheet = workbook.create_sheet("Summary")
+            else:
+                summary_sheet = workbook["Summary"]
+                summary_sheet.delete_rows(2, summary_sheet.max_row)
+
+            headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+            if summary_sheet.max_row == 0:
+                summary_sheet.append(headers)
+                for cell in summary_sheet[1]:
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal="center")
+
+            for expense in expenses:
+                transport = expense.get('transport', {})
+                row_data = [
+                    f"{transport.get('brand', '')} {transport.get('model', '')} ({transport.get('license_plate', '')})",
+                    expense.get("category", ""),
+                    expense.get("name", ""),
+                    expense.get("date", ""),
+                    float(expense.get("amount", 0)),
+                    expense.get("description", ""),
+                ]
+                summary_sheet.append(row_data)
+
+            unique_transports = set(
+                (exp.get("transport", {}).get("brand", ""), exp.get("transport", {}).get("model", ""), exp.get("transport", {}).get("license_plate", ""))
+                for exp in expenses
+            )
+
+            for sheet_name in workbook.sheetnames[:]:
+                if sheet_name == "Summary":
+                    continue
+                parts = sheet_name.split("_")
+                if len(parts) != 3 or (parts[0], parts[1], parts[2]) not in unique_transports:
+                    del workbook[sheet_name]
+
+            for brand, model, license_plate in unique_transports:
+                sheet_name = f"{brand}_{model}_{license_plate}"[:31]
+                if sheet_name not in workbook.sheetnames:
+                    transport_sheet = workbook.create_sheet(sheet_name)
+                    transport_sheet.append(headers)
+                    for cell in transport_sheet[1]:
+                        cell.font = Font(bold=True)
+                        cell.alignment = Alignment(horizontal="center")
+                else:
+                    transport_sheet = workbook[sheet_name]
+                    transport_sheet.delete_rows(2, transport_sheet.max_row)
+
+                for expense in expenses:
+                    if (
+                        expense.get("transport", {}).get("brand", "") == brand and
+                        expense.get("transport", {}).get("model", "") == model and
+                        expense.get("transport", {}).get("license_plate", "") == license_plate
+                    ):
+                        row_data = [
+                            f"{brand} {model} ({license_plate})",
+                            expense.get("category", ""),
+                            expense.get("name", ""),
+                            expense.get("date", ""),
+                            float(expense.get("amount", 0)),
+                            expense.get("description", ""),
+                        ]
+                        transport_sheet.append(row_data)
+
+            for sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                for col in sheet.columns:
+                    max_length = max(len(str(cell.value)) for cell in col if cell.value)
+                    sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+            workbook.save(expense_excel_path)
+            workbook.close()
+        except Exception as e:
+            print(f"Ошибка при обновлении Excel трат для пользователя {user_id}: {e}")
+            bot.send_message(user_id, "❌ Ошибка при обновлении данных трат в Excel!", parse_mode="Markdown")
+    else:
+        if os.path.exists(expense_excel_path):
+            os.remove(expense_excel_path)
+        print(f"Нет трат для пользователя {user_id}, Excel-файл трат не обновляется.")
+
+    # Обновление Excel для ремонтов
+    repair_excel_path = os.path.join(REPAIRS_DIR, "excel", f"{user_id}_repairs.xlsx")
+    repair_data = load_repair_data(user_id)
+    repairs = repair_data.get(str(user_id), {}).get('repairs', [])
+
+    if repairs:
+        try:
+            if os.path.exists(repair_excel_path):
+                workbook = load_workbook(repair_excel_path)
+            else:
+                workbook = Workbook()
+                workbook.remove(workbook.active)
+
+            if "Summary" not in workbook.sheetnames:
+                summary_sheet = workbook.create_sheet("Summary")
+            else:
+                summary_sheet = workbook["Summary"]
+                summary_sheet.delete_rows(2, summary_sheet.max_row)
+
+            headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+            if summary_sheet.max_row == 0:
+                summary_sheet.append(headers)
+                for cell in summary_sheet[1]:
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal="center")
+
+            for repair in repairs:
+                transport = repair.get('transport', {})
+                row_data = [
+                    f"{transport.get('brand', '')} {transport.get('model', '')} ({transport.get('license_plate', '')})",
+                    repair.get("category", ""),
+                    repair.get("name", ""),
+                    repair.get("date", ""),
+                    float(repair.get("amount", 0)),
+                    repair.get("description", ""),
+                ]
+                summary_sheet.append(row_data)
+
+            unique_transports = set(
+                (rep.get("transport", {}).get("brand", ""), rep.get("transport", {}).get("model", ""), rep.get("transport", {}).get("license_plate", ""))
+                for rep in repairs
+            )
+
+            for sheet_name in workbook.sheetnames[:]:
+                if sheet_name == "Summary":
+                    continue
+                parts = sheet_name.split("_")
+                if len(parts) != 3 or (parts[0], parts[1], parts[2]) not in unique_transports:
+                    del workbook[sheet_name]
+
+            for brand, model, license_plate in unique_transports:
+                sheet_name = f"{brand}_{model}_{license_plate}"[:31]
+                if sheet_name not in workbook.sheetnames:
+                    transport_sheet = workbook.create_sheet(sheet_name)
+                    transport_sheet.append(headers)
+                    for cell in transport_sheet[1]:
+                        cell.font = Font(bold=True)
+                        cell.alignment = Alignment(horizontal="center")
+                else:
+                    transport_sheet = workbook[sheet_name]
+                    transport_sheet.delete_rows(2, transport_sheet.max_row)
+
+                for repair in repairs:
+                    if (
+                        repair.get("transport", {}).get("brand", "") == brand and
+                        repair.get("transport", {}).get("model", "") == model and
+                        repair.get("transport", {}).get("license_plate", "") == license_plate
+                    ):
+                        row_data = [
+                            f"{brand} {model} ({license_plate})",
+                            repair.get("category", ""),
+                            repair.get("name", ""),
+                            repair.get("date", ""),
+                            float(repair.get("amount", 0)),
+                            repair.get("description", ""),
+                        ]
+                        transport_sheet.append(row_data)
+
+            for sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                for col in sheet.columns:
+                    max_length = max(len(str(cell.value)) for cell in col if cell.value)
+                    sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+            workbook.save(repair_excel_path)
+            workbook.close()
+        except Exception as e:
+            print(f"Ошибка при обновлении Excel ремонтов для пользователя {user_id}: {e}")
+            bot.send_message(user_id, "❌ Ошибка при обновлении данных ремонтов в Excel!", parse_mode="Markdown")
+    else:
+        if os.path.exists(repair_excel_path):
+            os.remove(repair_excel_path)
+        print(f"Нет ремонтов для пользователя {user_id}, Excel-файл ремонтов не обновляется.")
+
+
+# ---------- 10. ТРАТЫ И РЕМОНТЫ ----------
+
+# ---------- 10.1 ТРАТЫ ----------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
+EXPENSE_DIR = os.path.join(DATA_BASE_DIR, "expenses")
+
+def ensure_directories():
+    os.makedirs(EXPENSE_DIR, exist_ok=True)
+
+ensure_directories()
+
+user_transport = {}
 
 def save_expense_data(user_id, user_data, selected_transport=None):
     ensure_directories() 
@@ -6487,7 +7556,7 @@ def save_expense_data(user_id, user_data, selected_transport=None):
     current_data = load_expense_data(user_id)
 
     user_data["user_categories"] = user_data.get("user_categories", current_data.get("user_categories", []))
-    user_data["expenses"] = current_data.get("expenses", [])
+    user_data["expense"] = current_data.get("expense", [])
 
     if selected_transport is not None:
         user_data["selected_transport"] = selected_transport
@@ -6501,13 +7570,13 @@ def load_expense_data(user_id):
     file_path = os.path.join(EXPENSE_DIR, f"{user_id}_expenses.json")
 
     if not os.path.exists(file_path):
-        return {"user_categories": [], "selected_transport": "", "expenses": []}
+        return {"user_categories": [], "selected_transport": "", "expense": []}
 
     try:
         with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
     except (FileNotFoundError, ValueError) as e:
-        data = {"user_categories": [], "selected_transport": "", "expenses": []}
+        data = {"user_categories": [], "selected_transport": "", "expense": []}
 
     return data
 
@@ -6534,7 +7603,7 @@ def remove_user_category(user_id, category_to_remove, selected_transport=""):
         save_expense_data(user_id, data, selected_transport)
 
 def get_user_transport_keyboard(user_id):
-    transports = user_transport.get(str(user_id), [])
+    transports = load_transport_data(user_id)  # Загружаем данные непосредственно из файла
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
     for i in range(0, len(transports), 2):
@@ -6562,47 +7631,77 @@ def get_user_transport_keyboard(user_id):
 @text_only_handler
 @rate_limit_with_captcha
 def record_expense(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
 
-    markup = get_user_transport_keyboard(str(user_id))
+    transports = load_transport_data(user_id)  # Загружаем актуальные данные о транспорте
+    logging.info(f"Загружено {len(transports)} транспортов для user_id {user_id}")
+
+    if not transports:
+        bot.send_message(
+            user_id,
+            "⚠️ У вас нет сохраненного транспорта!\nХотите добавить транспорт?",
+            reply_markup=create_transport_options_markup(),
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, ask_add_transport)
+        return
+
+    markup = get_user_transport_keyboard(user_id)
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
     markup.add(types.KeyboardButton("В главное меню"))
 
-    bot.send_message(user_id, "Выберите транспорт для записи траты:", reply_markup=markup)
+    bot.send_message(
+        user_id,
+        "Выберите транспорт для записи траты:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
     bot.register_next_step_handler(message, handle_transport_selection_for_expense)
+    
 
+@text_only_handler
 def handle_transport_selection_for_expense(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)  # Приводим user_id к строке для консистентности
+    selected_transport = message.text.strip()
 
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    if selected_transport == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-    elif message.text == "В главное меню":
+    elif selected_transport == "В главное меню":
         return_to_menu(message)
         return
-
-    if message.text == "Добавить транспорт":
+    elif selected_transport == "Добавить транспорт":
         add_transport(message)
         return
 
-    selected_transport = message.text
-    for transport in user_transport.get(str(user_id), []):
+    # Загружаем актуальные данные транспорта
+    transports = load_transport_data(user_id)
+    selected_brand, selected_model, selected_license_plate = None, None, None
+
+    # Проверяем, соответствует ли выбранный транспорт одному из существующих
+    for transport in transports:
         formatted_transport = f"{transport['brand']} {transport['model']} ({transport['license_plate']})"
         if formatted_transport == selected_transport:
-            brand, model, license_plate = transport['brand'], transport['model'], transport['license_plate']
+            selected_brand = transport['brand']
+            selected_model = transport['model']
+            selected_license_plate = transport['license_plate']
             break
     else:
-        bot.send_message(user_id, "Не удалось найти указанный транспорт! Пожалуйста, выберите снова")
-
+        logging.warning(f"Транспорт '{selected_transport}' не найден для user_id {user_id}")
         markup = get_user_transport_keyboard(user_id)
         markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
         markup.add(types.KeyboardButton("В главное меню"))
-
-        bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=markup)
+        bot.send_message(
+            user_id,
+            "❌ Не удалось найти указанный транспорт!\nПожалуйста, выберите снова:",
+            reply_markup=markup,
+            parse_mode="Markdown"
+        )
         bot.register_next_step_handler(message, handle_transport_selection_for_expense)
         return
 
-    process_category_selection(user_id, brand, model, license_plate)
+    # Переходим к выбору категории
+    process_category_selection(user_id, selected_brand, selected_model, selected_license_plate)
 
 def process_category_selection(user_id, brand, model, license_plate, prompt_message=None):
     categories = get_user_categories(user_id)
@@ -6641,7 +7740,7 @@ def get_expense_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
@@ -6675,10 +7774,10 @@ def get_expense_category(message, brand, model, license_plate):
             selected_category = categories[index]
             proceed_to_expense_name(message, selected_category, brand, model, license_plate)
         else:
-            bot.send_message(user_id, "Неверный номер категории. Попробуйте снова.")
+            bot.send_message(user_id, "Неверный номер категории!\nПопробуйте снова")
             bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
     else:
-        bot.send_message(user_id, "Пожалуйста, введите номер категории.")
+        bot.send_message(user_id, "Пожалуйста, введите номер категории!")
         bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
 
 @text_only_handler
@@ -6689,204 +7788,25 @@ def add_new_category(message, brand, model, license_plate):
 
     if new_category in ["вернуться в меню трат и ремонтов", "в главное меню"]:
         if new_category == "вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
 
     if not new_category:
-        bot.send_message(user_id, "Название категории не может быть пустым. Пожалуйста, введите корректное название")
+        bot.send_message(user_id, "Название категории не может быть пустым!\nПожалуйста, введите корректное название")
         bot.register_next_step_handler(message, add_new_category, brand, model, license_plate)
         return
 
     user_categories = [cat.lower() for cat in get_user_categories(user_id)]
     if new_category in user_categories:
-        bot.send_message(user_id, "Такая категория уже существует. Пожалуйста, введите уникальное название")
+        bot.send_message(user_id, "Такая категория уже существует!\nПожалуйста, введите уникальное название")
         bot.register_next_step_handler(message, add_new_category, brand, model, license_plate)
         return
 
     add_user_category(user_id, new_category)
-    bot.send_message(user_id, f"Категория *{new_category}* успешно добавлена!", parse_mode="Markdown")
+    bot.send_message(user_id, f"✅ Категория *{new_category}* успешно добавлена!", parse_mode="Markdown")
     process_category_selection(user_id, brand, model, license_plate)
-
-def proceed_to_expense_name(message, selected_category, brand, model, license_plate):
-    user_id = message.from_user.id
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, license_plate)
-
-@text_only_handler
-def get_expense_name(message, selected_category, brand, model, license_plate):
-    user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
-        else:
-            return_to_menu(message)
-        return
-
-    expense_name = message.text
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_skip = types.KeyboardButton("Пропустить описание")
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_skip)
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id, "Введите описание траты или пропустите этот шаг:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, license_plate)
-
-@text_only_handler
-def get_expense_description(message, selected_category, expense_name, brand, model, license_plate):
-    user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
-        else:
-            return_to_menu(message)
-        return
-
-    description = message.text if message.text != "Пропустить описание" else ""
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id, "Введите дату траты:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
-
-@text_only_handler
-def get_expense_date(message, selected_category, expense_name, description, brand, model, license_plate):
-    user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
-        else:
-            return_to_menu(message)
-        return
-
-    expense_date = message.text
-
-    if re.match(r"^\d{2}\.\d{2}\.\d{4}$", expense_date):
-        try:
-            day, month, year = map(int, expense_date.split('.'))
-            if 1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 3000:
-                datetime.strptime(expense_date, "%d.%m.%Y")
-            else:
-                raise ValueError
-        except ValueError:
-            bot.send_message(user_id, "Неверный формат даты или значения. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ")
-            bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
-            return
-    else:
-        bot.send_message(user_id, "Неверный формат даты. Попробуйте еще раз в формате ДД.ММ.ГГГГ")
-        bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
-        return
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id, "Введите сумму траты:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
-
-@text_only_handler
-def get_expense_amount(message, selected_category, expense_name, description, expense_date, brand, model, license_plate):
-    user_id = message.from_user.id
-
-    expense_amount = message.text.replace(",", ".")
-    if not is_numeric(expense_amount):
-        bot.send_message(user_id, "Пожалуйста, введите сумму траты в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
-        return
-
-    data = load_expense_data(user_id)
-    if str(user_id) not in data:
-        data[str(user_id)] = {"expenses": []}
-
-    selected_transport = f"{brand} {model} {license_plate}"
-    expenses = data[str(user_id)].get("expenses", [])
-    new_expense = {
-        "category": selected_category,
-        "name": expense_name,
-        "date": expense_date,
-        "amount": expense_amount,
-        "description": description,
-        "transport": {"brand": brand, "model": model, "license_plate": license_plate}
-    }
-    expenses.append(new_expense)
-    data[str(user_id)]["expenses"] = expenses
-    save_expense_data(user_id, data, selected_transport)
-
-    save_expense_to_excel(user_id, new_expense)
-
-    bot.send_message(user_id, "Трата успешно записана!")
-    send_menu(user_id)
-
-def save_expense_to_excel(user_id, expense_data):
-    excel_path = os.path.join("data base", "expense", "excel", f"{user_id}_expenses.xlsx")
-
-    directory = os.path.dirname(excel_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-    try:
-        if os.path.exists(excel_path):
-            workbook = load_workbook(excel_path)
-        else:
-            workbook = Workbook()
-            workbook.remove(workbook.active)
-
-        summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
-
-        transport_sheet_name = f"{expense_data['transport']['brand']}_{expense_data['transport']['model']}_{expense_data['transport']['license_plate']}"
-        if transport_sheet_name not in workbook.sheetnames:
-            transport_sheet = workbook.create_sheet(transport_sheet_name)
-        else:
-            transport_sheet = workbook[transport_sheet_name]
-
-        headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
-
-        def setup_sheet(sheet):
-            if sheet.max_row == 1:
-                sheet.append(headers)
-                for cell in sheet[1]:
-                    cell.font = Font(bold=True)
-                    cell.alignment = Alignment(horizontal="center")
-
-        for sheet in [summary_sheet, transport_sheet]:
-            setup_sheet(sheet)
-            row_data = [
-                f"{expense_data['transport']['brand']} {expense_data['transport']['model']} {expense_data['transport']['license_plate']}",
-                expense_data["category"],
-                expense_data["name"],
-                expense_data["date"],
-                float(expense_data["amount"]),
-                expense_data["description"],
-            ]
-            sheet.append(row_data)
-
-        for sheet in [summary_sheet, transport_sheet]:
-            for col in sheet.columns:
-                max_length = max(len(str(cell.value)) for cell in col)
-                sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
-
-        workbook.save(excel_path)
-    except Exception as e:
-        pass
 
 @bot.message_handler(func=lambda message: message.text == "Удалить категорию")
 @check_function_state_decorator('Удалить категорию')
@@ -6927,14 +7847,14 @@ def remove_selected_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
         return
 
     if selected_index == '0':
-        bot.send_message(user_id, "Удаление категории отменено!")
+        bot.send_message(user_id, "✅ Удаление категории отменено!")
         return process_category_selection(user_id, brand, model, license_plate)
 
     if selected_index.isdigit():
@@ -6945,19 +7865,114 @@ def remove_selected_category(message, brand, model, license_plate):
         if 0 <= index < len(categories):
             category_to_remove = categories[index].lower()
             if category_to_remove in default_categories:
-                bot.send_message(user_id, f"Нельзя удалить системную категорию *{category_to_remove}*. Попробуйте еще раз", parse_mode="Markdown")
+                bot.send_message(user_id, f"⚠️ Нельзя удалить системную категорию *{categories[index]}*!", parse_mode="Markdown")
                 return bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
 
-            remove_user_category(user_id, category_to_remove)
-            bot.send_message(user_id, f"Категория *{category_to_remove}* успешно удалена!", parse_mode="Markdown")
+            remove_user_category(user_id, categories[index])  # Используем оригинальный регистр
+            bot.send_message(user_id, f"✅ Категория *{categories[index]}* успешно удалена!", parse_mode="Markdown")
         else:
-            bot.send_message(user_id, "Неверный номер категории. Попробуйте снова")
+            bot.send_message(user_id, "Неверный номер категории!\nПопробуйте снова")
             return bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
     else:
-        bot.send_message(user_id, "Пожалуйста, введите номер категории")
+        bot.send_message(user_id, "Пожалуйста, введите номер категории!")
         return bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
 
     return process_category_selection(user_id, brand, model, license_plate)
+
+@text_only_handler
+def proceed_to_expense_name(message, selected_category, brand, model, license_plate):
+    user_id = message.from_user.id
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return)
+    markup.add(item_main_menu)
+
+    bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, license_plate)
+
+@text_only_handler
+def get_expense_name(message, selected_category, brand, model, license_plate):
+    user_id = message.from_user.id
+
+    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
+        else:
+            return_to_menu(message)
+        return
+
+    expense_name = message.text
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_skip = types.KeyboardButton("Пропустить описание")
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_skip)
+    markup.add(item_return)
+    markup.add(item_main_menu)
+
+    bot.send_message(user_id, "Введите описание траты или пропустите этот шаг:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, license_plate)
+
+@text_only_handler
+def get_expense_description(message, selected_category, expense_name, brand, model, license_plate):
+    user_id = message.from_user.id
+
+    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
+        else:
+            return_to_menu(message)
+        return
+
+    description = message.text if message.text != "Пропустить описание" else ""
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return)
+    markup.add(item_main_menu)
+
+    bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
+
+@text_only_handler
+def get_expense_date(message, selected_category, expense_name, description, brand, model, license_plate):
+    user_id = message.from_user.id
+
+    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
+        else:
+            return_to_menu(message)
+        return
+
+    expense_date = message.text
+
+    if re.match(r"^\d{2}\.\d{2}\.\d{4}$", expense_date):
+        try:
+            day, month, year = map(int, expense_date.split('.'))
+            if 1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 3000:
+                datetime.strptime(expense_date, "%d.%m.%Y")
+            else:
+                raise ValueError
+        except ValueError:
+            bot.send_message(user_id, "Неверный формат даты или значения!\nПожалуйста, введите дату в формате ДД.ММ.ГГГГ")
+            bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
+            return
+    else:
+        bot.send_message(user_id, "Неверный формат даты!\nПопробуйте еще раз в формате ДД.ММ.ГГГГ")
+        bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return)
+    markup.add(item_main_menu)
+
+    bot.send_message(user_id, "Введите сумму траты:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
 
 def is_numeric(s):
     if s is not None:
@@ -6968,73 +7983,108 @@ def is_numeric(s):
             return False
     return False
 
-def create_transport_options_markup():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_add_transport = types.KeyboardButton("Добавить транспорт")
-    item_cancel = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_add_transport)
-    markup.add(item_cancel)
-    markup.add(item_main)
-    return markup
-
-def ask_add_transport(message):
+@text_only_handler
+def get_expense_amount(message, selected_category, expense_name, description, expense_date, brand, model, license_plate):
     user_id = message.from_user.id
 
-    if message.text == "Добавить транспорт":
-        add_transport(message)
+    expense_amount = message.text.replace(",", ".")
+    if not is_numeric(expense_amount):
+        bot.send_message(user_id, "Пожалуйста, введите сумму траты в числовом формате!")
+        bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
         return
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-    else:
-        bot.send_message(user_id, "Пожалуйста, выберите вариант.", reply_markup=create_transport_options_markup())
-        bot.register_next_step_handler(message, ask_add_transport)
 
-MAX_MESSAGE_LENGTH = 4096
+    data = load_expense_data(user_id)
+    if str(user_id) not in data:
+        data[str(user_id)] = {"expense": []}
 
-def send_message_with_split(user_id, message_text):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text)
-    else:
-        message_parts = [message_text[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)]
-        for part in message_parts:
-            bot.send_message(user_id, part)
+    selected_transport = f"{brand} {model} {license_plate}"
+    expense = data[str(user_id)].get("expense", [])
+    new_expense = {
+        "category": selected_category,
+        "name": expense_name,
+        "date": expense_date,
+        "amount": expense_amount,
+        "description": description,
+        "transport": {"brand": brand, "model": model, "license_plate": license_plate}
+    }
+    expense.append(new_expense)
+    data[str(user_id)]["expense"] = expense
+    save_expense_data(user_id, data, selected_transport)
+
+    save_expense_to_excel(user_id, new_expense)
+
+    bot.send_message(user_id, "✅ Трата успешно записана!")
+    return_to_expense_and_repairs(message)
+
+def save_expense_to_excel(user_id, expense):
+    excel_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
+
+    directory = os.path.dirname(excel_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    try:
+        if os.path.exists(excel_path):
+            workbook = load_workbook(excel_path)
+        else:
+            workbook = Workbook()
+            workbook.remove(workbook.active)
+
+        summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
+
+        transport_sheet_name = f"{expense['transport']['brand']}_{expense['transport']['model']}_{expense['transport']['license_plate']}"
+        transport_sheet = workbook[transport_sheet_name] if transport_sheet_name in workbook.sheetnames else workbook.create_sheet(transport_sheet_name)
+
+        headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+
+        def setup_sheet(sheet):
+            if sheet.max_row == 1:
+                sheet.append(headers)
+                for cell in sheet[1]:
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal="center")
+
+        for sheet in [summary_sheet, transport_sheet]:
+            setup_sheet(sheet)
+            row_data = [
+                f"{expense['transport']['brand']} {expense['transport']['model']} {expense['transport']['license_plate']}",
+                expense["category"],
+                expense["name"],
+                expense["date"],
+                float(expense["amount"]),
+                expense["description"],
+            ]
+            sheet.append(row_data)
+
+        for sheet in [summary_sheet, transport_sheet]:
+            for col in sheet.columns:
+                max_length = max(len(str(cell.value)) for cell in col)
+                sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+        workbook.save(excel_path)
+    except Exception as e:
+        logging.error(f"Ошибка при сохранении Excel для user_id {user_id}: {str(e)}")
+        raise
+
+# ---------- 10.3. ТРАТЫ (ПРОСМОТР ТРАТ) ----------
 
 selected_transport_dict = {}
 
-def filter_expenses_by_transport(user_id, expenses):
-    selected_transport = selected_transport_dict.get(user_id)
-    if not selected_transport:
-        return expenses
+MAX_MESSAGE_LENGTH = 4096
 
-    filtered_expenses = [expense for expense in expenses if f"{expense['transport']['brand']} {expense['transport']['model']} ({expense['transport']['license_plate']})" == selected_transport]
-    return filtered_expenses
+def send_message_with_split(user_id, message_text, parse_mode=None):
 
-def send_message_with_split(user_id, message_text):
-    bot.send_message(user_id, message_text, parse_mode="Markdown")
-
-def send_menu1(user_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Траты (по категориям)")
-    item2 = types.KeyboardButton("Траты (месяц)")
-    item3 = types.KeyboardButton("Траты (год)")
-    item4 = types.KeyboardButton("Траты (все время)")
-    item_excel = types.KeyboardButton("Посмотреть траты в EXCEL")
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item1, item2)
-    markup.add(item3, item4)
-    markup.add(item_excel)
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id, "Выберите вариант просмотра трат:", reply_markup=markup)
-
-# ---------- 10.3. ТРАТЫ (ПРОСМОТР ТРАТ) ----------
+    MAX_MESSAGE_LENGTH = 4096
+    try:
+        if len(message_text) <= MAX_MESSAGE_LENGTH:
+            bot.send_message(user_id, message_text, parse_mode=parse_mode)
+        else:
+            message_parts = [message_text[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)]
+            for part in message_parts:
+                bot.send_message(user_id, part, parse_mode=parse_mode)
+    except Exception as e:
+        logging.error(f"Ошибка при отправке сообщения для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Произошла ошибка при отправке сообщения!\nПопробуйте позже", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты")
 @check_function_state_decorator('Посмотреть траты')
@@ -7046,14 +8096,15 @@ def send_menu1(user_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def view_expenses(message):
-    user_id = message.from_user.id
+def view_expense(message):
+    user_id = str(message.from_user.id)
 
     transport_list = load_transport_data(user_id)
 
     if not transport_list:
-        bot.send_message(user_id, "У вас нет сохраненного транспорта. Хотите добавить транспорт?", reply_markup=create_transport_options_markup())
+        bot.send_message(user_id, "⚠️ У вас нет сохраненного транспорта!\nХотите добавить транспорт?", reply_markup=create_transport_options_markup())
         bot.register_next_step_handler(message, ask_add_transport)
         return
 
@@ -7076,12 +8127,53 @@ def view_expenses(message):
     bot.send_message(user_id, "Выберите ваш транспорт:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection)
 
+def ask_add_transport(message):
+    user_id = str(message.from_user.id)
+
+    if message.text == "Добавить транспорт":
+        add_transport(message)
+        return
+    if message.text == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    else:
+        bot.send_message(user_id, "Пожалуйста, выберите вариант!", reply_markup=create_transport_options_markup())
+        bot.register_next_step_handler(message, ask_add_transport)
+
+def create_transport_options_markup():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_add_transport = types.KeyboardButton("Добавить транспорт")
+    item_cancel = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main = types.KeyboardButton("В главное меню")
+    markup.add(item_add_transport)
+    markup.add(item_cancel)
+    markup.add(item_main)
+    return markup
+
+def filter_expense_by_transport(user_id, expense):
+    selected_transport = selected_transport_dict.get(user_id)
+    if not selected_transport:
+        return expense
+
+    filtered_expense = []
+    for exp in expense:
+        transport = exp.get('transport', {})
+        if not all(k in transport for k in ['brand', 'model', 'license_plate']):
+            continue
+        if f"{transport['brand']} {transport['model']} ({transport['license_plate']})" == selected_transport:
+            filtered_expense.append(exp)
+    return filtered_expense
+
+@text_only_handler
 def handle_transport_selection(message):
     user_id = message.from_user.id
     selected_transport = message.text
 
     if selected_transport == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+        return_to_expense_and_repairs(message)
         return
 
     if selected_transport == "В главное меню":
@@ -7090,8 +8182,25 @@ def handle_transport_selection(message):
 
     selected_transport_dict[user_id] = selected_transport
 
-    bot.send_message(user_id, f"Показываю траты для транспорта: *{selected_transport}*", parse_mode="Markdown")
+    bot.send_message(user_id, f"👀 Показываю траты для транспорта: *{selected_transport}*", parse_mode="Markdown")
     send_menu1(user_id)
+
+def send_menu1(user_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Траты (по категориям)")
+    item2 = types.KeyboardButton("Траты (месяц)")
+    item3 = types.KeyboardButton("Траты (год)")
+    item4 = types.KeyboardButton("Траты (все время)")
+    item_excel = types.KeyboardButton("Посмотреть траты в EXCEL")
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item1, item2)
+    markup.add(item3, item4)
+    markup.add(item_excel)
+    markup.add(item_return)
+    markup.add(item_main_menu)
+
+    bot.send_message(user_id, "Выберите вариант просмотра трат:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты в EXCEL")
 @check_function_state_decorator('Посмотреть траты в EXCEL')
@@ -7103,17 +8212,24 @@ def handle_transport_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def send_expenses_excel(message):
-    user_id = message.from_user.id
+def send_expense_excel(message):
+    user_id = str(message.from_user.id)
 
-    excel_path = os.path.join("data base", "expense", "excel", f"{user_id}_expenses.xlsx")
+    excel_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
 
-    if not os.path.exists(excel_path):
-        bot.send_message(user_id, "Файл с вашими тратами не найден")
-        return
-    with open(excel_path, 'rb') as excel_file:
-        bot.send_document(user_id, excel_file)
+    try:
+        if not os.path.exists(excel_path):
+            bot.send_message(user_id, "❌ Файл с вашими тратами не найден!")
+            return_to_expense_and_repairs(message)
+            return
+        with open(excel_path, 'rb') as excel_file:
+            bot.send_document(user_id, excel_file)
+    except Exception as e:
+        logging.error(f"Ошибка при отправке Excel для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Произошла ошибка при отправке файла!\nПопробуйте позже")
+        return_to_expense_and_repairs(message)
 
 @bot.message_handler(func=lambda message: message.text == "Траты (по категориям)")
 @check_function_state_decorator('Траты (по категориям)')
@@ -7125,38 +8241,39 @@ def send_expenses_excel(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def view_expenses_by_category(message):
-    user_id = message.from_user.id
+def view_expense_by_category(message):
+    user_id = str(message.from_user.id)
     user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+    expense = user_data.get(str(user_id), {}).get("expense", [])
 
-    expenses = filter_expenses_by_transport(user_id, expenses)
+    expense = filter_expense_by_transport(user_id, expense)
 
-    categories = set(expense['category'] for expense in expenses)
+    categories = set(exp.get('category', 'Без категории') for exp in expense)
     if not categories:
-        bot.send_message(user_id, "*Нет доступных категорий* для выбранного транспорта", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ Нет доступных категорий для выбранного транспорта!", parse_mode="Markdown")
         send_menu1(user_id)
         return
 
     category_buttons = [types.KeyboardButton(category) for category in categories]
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*category_buttons)
-    item_return_to_expenses = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_return_to_expense = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_return_to_main = types.KeyboardButton("В главное меню")
-    markup.add(item_return_to_expenses)
+    markup.add(item_return_to_expense)
     markup.add(item_return_to_main)
 
-    bot.send_message(user_id, "Выберите категорию для просмотра трат:", reply_markup=markup)
+    bot.send_message(user_id, "Выберите категорию для просмотра трат:", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, handle_category_selection)
 
 @text_only_handler
 def handle_category_selection(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     selected_category = message.text
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
 
     if message.text == "В главное меню":
@@ -7164,25 +8281,25 @@ def handle_category_selection(message):
         return
 
     user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+    expense = user_data.get(str(user_id), {}).get("expense", [])
 
-    expenses = filter_expenses_by_transport(user_id, expenses)
+    expense = filter_expense_by_transport(user_id, expense)
 
-    if selected_category not in {expense['category'] for expense in expenses}:
-        bot.send_message(user_id, "Выбранная категория не найдена. Пожалуйста, выберите корректную категорию")
-        view_expenses_by_category(message)
+    if selected_category not in {exp.get('category', 'Без категории') for exp in expense}:
+        bot.send_message(user_id, "Выбранная категория не найдена!\nПожалуйста, выберите корректную категорию", parse_mode="Markdown")
+        view_expense_by_category(message)
         return
 
-    category_expenses = [expense for expense in expenses if expense['category'] == selected_category]
+    category_expense = [exp for exp in expense if exp.get('category', 'Без категории') == selected_category]
 
-    total_expenses = 0
+    total_expense = 0
     expense_details = []
 
-    for index, expense in enumerate(category_expenses, start=1):
-        expense_name = expense.get("name", "Без названия")
-        expense_date = expense.get("date", "")
-        amount = float(expense.get("amount", 0))
-        total_expenses += amount
+    for index, exp in enumerate(category_expense, start=1):
+        expense_name = exp.get("name", "Без названия")
+        expense_date = exp.get("date", "")
+        amount = float(exp.get("amount", 0))
+        total_expense += amount
 
         expense_details.append(
             f"💸 *№ {index}*\n\n"
@@ -7190,19 +8307,19 @@ def handle_category_selection(message):
             f"📌 *Название:* {expense_name}\n"
             f"📅 *Дата:* {expense_date}\n"
             f"💰 *Сумма:* {amount} руб.\n"
-            f"📝 *Описание:* {expense.get('description', 'Без описания')}\n"
+            f"📝 *Описание:* {exp.get('description', 'Без описания')}\n"
         )
 
     if expense_details:
-        message_text = f"Траты в категории *{selected_category.lower()}*:\n\n\n" + "\n\n".join(expense_details)
-        send_message_with_split(user_id, message_text)
+        message_text = f"Траты в категории *{selected_category.lower()}*:\n\n" + "\n\n".join(expense_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
         bot.send_message(
             user_id,
-            f"Итоговая сумма трат в категории *{selected_category.lower()}*: *{total_expenses}* руб.",
+            f"Итоговая сумма трат в категории *{selected_category.lower()}*: *{total_expense}* руб.",
             parse_mode="Markdown"
         )
     else:
-        bot.send_message(user_id, f"В категории *{selected_category.lower()}* трат не найдено", parse_mode="Markdown")
+        bot.send_message(user_id, f"❌ В категории *{selected_category.lower()}* трат не найдено!", parse_mode="Markdown")
 
     send_menu1(user_id)
 
@@ -7216,95 +8333,124 @@ def handle_category_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def view_expenses_by_month(message):
-    user_id = message.from_user.id
+def view_expense_by_month(message):
+    user_id = str(message.from_user.id)  # Приводим user_id к строке для консистентности
 
+    # Проверяем наличие транспорта
+    transports = load_transport_data(user_id)
+    if not transports:
+        bot.send_message(
+            user_id,
+            "⚠️ У вас нет сохраненного транспорта!\nХотите добавить транспорт?",
+            reply_markup=create_transport_options_markup(),
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, ask_add_transport)
+        return
+
+    # Создаем клавиатуру
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main = types.KeyboardButton("В главное меню")
     markup.add(item_return)
     markup.add(item_main)
 
-    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра трат за этот период:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expenses_by_month)
+    bot.send_message(
+        user_id,
+        "Введите месяц и год (ММ.ГГГГ) для просмотра трат за этот период:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(message, get_expense_by_month)
 
 @text_only_handler
-def get_expenses_by_month(message):
-    user_id = message.from_user.id
+def get_expense_by_month(message):
+    user_id = str(message.from_user.id)
     date = message.text.strip() if message.text else None
 
     if not date:
-        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение!")
-        bot.register_next_step_handler(message, get_expenses_by_month)
+        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение!", parse_mode="Markdown")
+        bot.register_next_step_handler(message, get_expense_by_month)
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
 
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    if "." in date:
-        parts = date.split(".")
-        if len(parts) == 2:
-            month, year = parts
-            if month.isdigit() and year.isdigit() and 1 <= int(month) <= 12 and 2000 <= int(year) <= 3000:
-                month, year = map(int, parts)
-
-                user_data = load_expense_data(user_id)
-                expenses = user_data.get(str(user_id), {}).get("expenses", [])
-
-                expenses = filter_expenses_by_transport(user_id, expenses)
-
-                total_expenses = 0
-                expense_details = []
-
-                for index, expense in enumerate(expenses, start=1):
-                    expense_date = expense.get("date", "")
-                    expense_date_parts = expense_date.split(".")
-                    if len(expense_date_parts) >= 2:
-                        expense_month, expense_year = map(int, expense_date_parts[1:3])
-
-                        if expense_month == month and expense_year == year:
-                            amount = float(expense.get("amount", 0))
-                            total_expenses += amount
-
-                            expense_name = expense.get("name", "Без названия")
-                            description = expense.get("description", "")
-                            category = expense.get("category", "Без категории")
-
-                            expense_details.append(
-                                f"💸 *№ {index}*\n\n"
-                                f"📂 *Категория:* {category}\n"
-                                f"📌 *Название:* {expense_name}\n"
-                                f"📅 *Дата:* {expense_date}\n"
-                                f"💰 *Сумма:* {amount} руб.\n"
-                                f"📝 *Описание:* {description}\n"
-                            )
-
-                if expense_details:
-                    message_text = f"Траты за *{date}* месяц:\n\n\n" + "\n\n".join(expense_details)
-                    send_message_with_split(user_id, message_text)
-                    bot.send_message(user_id, f"Итоговая сумма трат за *{date}* месяц: *{total_expenses}* руб.", parse_mode="Markdown")
-                else:
-                    bot.send_message(user_id, f"За *{date}* месяц трат не найдено", parse_mode="Markdown")
-
-                send_menu1(user_id)
-            else:
-                bot.send_message(user_id, "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ")
-                bot.register_next_step_handler(message, get_expenses_by_month)
-                return
-        else:
-            bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ")
-            bot.register_next_step_handler(message, get_expenses_by_month)
-            return
-    else:
-        bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ")
-        bot.register_next_step_handler(message, get_expenses_by_month)
+    # Валидация формата даты
+    if not re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2}|2[1-9][0-9]{2}|3000)$", date):
+        bot.send_message(
+            user_id,
+            "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ!",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, get_expense_by_month)
         return
+
+    try:
+        month, year = map(int, date.split("."))
+    except ValueError as e:
+        logging.error(f"Ошибка парсинга даты для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат даты!\nПопробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, get_expense_by_month)
+        return
+
+    # Загружаем и фильтруем траты
+    user_data = load_expense_data(user_id).get(user_id, {})
+    expense = user_data.get("expense", [])
+
+    expense = filter_expense_by_transport(user_id, expense)
+
+    total_expense = 0
+    expense_details = []
+
+    for index, exp in enumerate(expense, start=1):
+        expense_date = exp.get("date", "")
+        if not expense_date or len(expense_date.split(".")) != 3:
+            logging.warning(f"Пропущена трата с некорректной датой для user_id {user_id}: {expense_date}")
+            continue
+
+        try:
+            expense_day, expense_month, expense_year = map(int, expense_date.split("."))
+            if expense_month == month and expense_year == year:
+                amount = float(exp.get("amount", 0))
+                total_expense += amount
+
+                expense_name = exp.get("name", "Без названия")
+                description = exp.get("description", "Без описания")
+                category = exp.get("category", "Без категории")
+
+                expense_details.append(
+                    f"💸 *№ {index}*\n\n"
+                    f"📂 *Категория:* {category}\n"
+                    f"📌 *Название:* {expense_name}\n"
+                    f"📅 *Дата:* {expense_date}\n"
+                    f"💰 *Сумма:* {amount} руб.\n"
+                    f"📝 *Описание:* {description}\n"
+                )
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
+            continue
+
+    if expense_details:
+        message_text = f"Траты за *{date}* месяц:\n\n" + "\n\n".join(expense_details)
+        logging.info(f"Отправка трат за {date} для user_id {user_id}, длина сообщения: {len(message_text)}")
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(
+            user_id,
+            f"Итоговая сумма трат за *{date}* месяц: *{total_expense}* руб.",
+            parse_mode="Markdown"
+        )
+    else:
+        bot.send_message(user_id, f"❌ За *{date}* месяц трат не найдено!", parse_mode="Markdown")
+
+    send_menu1(user_id)
 
 @bot.message_handler(func=lambda message: message.text == "Траты (год)")
 @check_function_state_decorator('Траты (год)')
@@ -7316,8 +8462,9 @@ def get_expenses_by_month(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def view_expenses_by_license_plate(message):
+def view_expense_by_license_plate(message):
     user_id = message.from_user.id
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -7327,16 +8474,16 @@ def view_expenses_by_license_plate(message):
     markup.add(item_main)
 
     bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра трат за этот год:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expenses_by_license_plate)
+    bot.register_next_step_handler(message, get_expense_by_license_plate)
 
 @text_only_handler
-def get_expenses_by_license_plate(message):
+def get_expense_by_license_plate(message):
     user_id = message.from_user.id
 
     year_input = message.text.strip()
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
 
     if message.text == "В главное меню":
@@ -7344,25 +8491,25 @@ def get_expenses_by_license_plate(message):
         return
 
     if not year_input.isdigit() or len(year_input) != 4:
-        bot.send_message(user_id, "Пожалуйста, введите год в формате ГГГГ")
-        bot.register_next_step_handler(message, get_expenses_by_license_plate)
+        bot.send_message(user_id, "Пожалуйста, введите год в формате ГГГГ!")
+        bot.register_next_step_handler(message, get_expense_by_license_plate)
         return
 
     year = int(year_input)
     if year < 2000 or year > 3000:
-        bot.send_message(user_id, "Введите год в формате ГГГГ")
-        bot.register_next_step_handler(message, get_expenses_by_license_plate)
+        bot.send_message(user_id, "Введите год в формате ГГГГ!")
+        bot.register_next_step_handler(message, get_expense_by_license_plate)
         return
 
     user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+    expense = user_data.get(str(user_id), {}).get("expense", [])
 
-    expenses = filter_expenses_by_transport(user_id, expenses)
+    expense = filter_expense_by_transport(user_id, expense)
 
-    total_expenses = 0
+    total_expense = 0
     expense_details = []
 
-    for index, expense in enumerate(expenses, start=1):
+    for index, expense in enumerate(expense, start=1):
         expense_date = expense.get("date", "")
         if "." in expense_date:
             date_parts = expense_date.split(".")
@@ -7370,7 +8517,7 @@ def get_expenses_by_license_plate(message):
                 expense_year = int(date_parts[2])
                 if expense_year == year:
                     amount = float(expense.get("amount", 0))
-                    total_expenses += amount
+                    total_expense += amount
 
                     expense_name = expense.get("name", "Без названия")
                     description = expense.get("description", "")
@@ -7386,11 +8533,11 @@ def get_expenses_by_license_plate(message):
                     )
 
     if expense_details:
-        message_text = f"Траты за *{year}* год:\n\n\n" + "\n\n".join(expense_details)
-        send_message_with_split(user_id, message_text)
-        bot.send_message(user_id, f"Итоговая сумма трат за *{year}* год: *{total_expenses}* руб.", parse_mode="Markdown")
+        message_text = f"Траты за *{year}* год:\n\n" + "\n\n".join(expense_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(user_id, f"Итоговая сумма трат за *{year}* год: *{total_expense}* руб.", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, f"За *{year}* год трат не найдено", parse_mode="Markdown")
+        bot.send_message(user_id, f"❌ За *{year}* год трат не найдено!", parse_mode="Markdown")
 
     send_menu1(user_id)
 
@@ -7404,21 +8551,22 @@ def get_expenses_by_license_plate(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def view_all_expenses(message):
+def view_all_expense(message):
     user_id = message.from_user.id
 
     user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+    expense = user_data.get(str(user_id), {}).get("expense", [])
 
-    expenses = filter_expenses_by_transport(user_id, expenses)
+    expense = filter_expense_by_transport(user_id, expense)
 
-    total_expenses = 0
+    total_expense = 0
     expense_details = []
 
-    for index, expense in enumerate(expenses, start=1):
+    for index, expense in enumerate(expense, start=1):
         amount = float(expense.get("amount", 0))
-        total_expenses += amount
+        total_expense += amount
 
         expense_name = expense.get("name", "Без названия")
         expense_date = expense.get("date", "")
@@ -7435,22 +8583,32 @@ def view_all_expenses(message):
         )
 
     if expense_details:
-        message_text = "*Все* траты:\n\n\n" + "\n\n".join(expense_details)
-        send_message_with_split(user_id, message_text)
-        bot.send_message(user_id, f"Итоговая сумма всех трат: *{total_expenses}* руб.", parse_mode="Markdown")
+        message_text = "*Все* траты:\n\n" + "\n\n".join(expense_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(user_id, f"Итоговая сумма всех трат: *{total_expense}* руб.", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, "Трат не найдено", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ Трат не найдено!", parse_mode="Markdown")
 
     send_menu1(user_id)
 
 # ---------- 10.4. ТРАТЫ (УДАЛЕНИЕ ТРАТ) ----------
 
 selected_transports = {}
+expense_to_delete_dict = {}
+
+MAX_MESSAGE_LENGTH = 4096
+
+def send_long_message(user_id, text):
+    while len(text) > MAX_MESSAGE_LENGTH:
+        bot.send_message(user_id, text[:MAX_MESSAGE_LENGTH], parse_mode="Markdown")
+        text = text[MAX_MESSAGE_LENGTH:]
+    bot.send_message(user_id, text, parse_mode="Markdown")
 
 def save_selected_transport(user_id, selected_transport):
     user_data = load_expense_data(user_id)
     user_data["selected_transport"] = selected_transport
     save_expense_data(user_id, user_data)
+    logging.info(f"Сохранен транспорт '{selected_transport}' для user_id {user_id}")
 
 @bot.message_handler(func=lambda message: message.text == "Удалить траты")
 @check_function_state_decorator('Удалить траты')
@@ -7462,8 +8620,9 @@ def save_selected_transport(user_id, selected_transport):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def delete_expenses_menu(message):
+def handle_transport_selection_for_deletion(message):
     user_id = message.from_user.id
 
     transport_data = load_transport_data(user_id)
@@ -7475,7 +8634,7 @@ def delete_expenses_menu(message):
         markup.add(item_add_transport)
         markup.add(item_cancel)
         markup.add(item_main)
-        bot.send_message(user_id, "У вас нет сохраненного транспорта. Хотите добавить транспорт?", reply_markup=markup)
+        bot.send_message(user_id, "⚠️ У вас нет сохраненного транспорта!\nХотите добавить транспорт?", reply_markup=markup)
         bot.register_next_step_handler(message, ask_add_transport)
         return
 
@@ -7500,44 +8659,101 @@ def delete_expenses_menu(message):
     bot.send_message(user_id, "Выберите транспорт для удаления трат:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_deletion)
 
+@text_only_handler
 def handle_transport_selection_for_deletion(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     selected_transport = message.text.strip()
 
-    selected_transports[user_id] = selected_transport
-    save_selected_transport(user_id, selected_transport)
-
     if selected_transport == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+        return_to_expense_and_repairs(message)
         return
-
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
 
+    # Проверяем, существует ли выбранный транспорт
+    transport_data = load_transport_data(user_id)
+    transport_found = False
+    for transport in transport_data:
+        formatted_transport = f"{transport['brand']} {transport['model']} ({transport['license_plate']})"
+        if formatted_transport == selected_transport:
+            transport_found = True
+            break
+    if not transport_found:
+        bot.send_message(
+            user_id,
+            "❌ Выбранный транспорт не найден! Пожалуйста, выберите снова.",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)  # Повторяем выбор транспорта
+        return
+
+    # Сохраняем выбранный транспорт
+    selected_transports[user_id] = selected_transport
+    save_selected_transport(user_id, selected_transport)
+
+    # Создаем клавиатуру для выбора варианта удаления
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_month = types.KeyboardButton("Del траты (месяц)")
-    item_license_plate = types.KeyboardButton("Del траты (год)")
+    item_year = types.KeyboardButton("Del траты (год)")
     item_all_time = types.KeyboardButton("Del траты (все время)")
     item_del_category_exp = types.KeyboardButton("Del траты (категория)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-
     markup.add(item_del_category_exp, item_month)
-    markup.add(item_license_plate, item_all_time)
+    markup.add(item_year, item_all_time)
     markup.add(item_return)
     markup.add(item_main_menu)
-    bot.send_message(user_id, "Выберите вариант удаления трат:", reply_markup=markup)
 
-expenses_to_delete_dict = {}
+    bot.send_message(
+        user_id,
+        "Выберите вариант удаления трат:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(message, handle_deletion_option)
 
-MAX_MESSAGE_LENGTH = 4096
+@text_only_handler
+def handle_deletion_option(message):
+    user_id = str(message.from_user.id)
+    option = message.text.strip()
 
-def send_long_message(user_id, text):
-    while len(text) > MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, text[:MAX_MESSAGE_LENGTH], parse_mode="Markdown")
-        text = text[MAX_MESSAGE_LENGTH:]
-    bot.send_message(user_id, text, parse_mode="Markdown")
+    if option == "Вернуться в меню трат и ремонтов":
+        if user_id in selected_transports:
+            del selected_transports[user_id]
+        return_to_expense_and_repairs(message)
+        return
+    if option == "В главное меню":
+        if user_id in selected_transports:
+            del selected_transports[user_id]
+        return_to_menu(message)
+        return
+
+    # Проверяем, выбран ли транспорт
+    selected_transport = load_expense_data(user_id).get("selected_transport", "")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
+
+    if option == "Del траты (категория)":
+        delete_expense_by_category(message)
+    elif option == "Del траты (месяц)":
+        delete_expense_by_month(message)
+    elif option == "Del траты (год)":
+        delete_expense_by_year(message)
+    elif option == "Del траты (все время)":
+        delete_all_expense_for_selected_transport(message)
+    else:
+        bot.send_message(user_id, "❌ Неверный вариант удаления! Попробуйте снова.", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+
+# Объявляем глобальные словари в начале файла
+selected_categories = {}
+selected_transports = {}
+selected_transport_dict = {}
+user_expense_to_delete = {}
+expense_to_delete_dict = {}
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (категория)")
 @check_function_state_decorator('Del траты (категория)')
@@ -7549,146 +8765,224 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def delete_expenses_by_category(message):
-    user_id = message.from_user.id
+def delete_expense_by_category(message):
+    user_id = str(message.from_user.id)
 
-    selected_transport = selected_transports.get(user_id)
-
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    logging.info(f"Проверка selected_transport для user_id {user_id}: {selected_transport}")
     if not selected_transport:
-        bot.send_message(user_id, "Не выбран транспорт")
-        send_menu(user_id)
+        bot.send_message(user_id, "❌ Не выбран транспорт!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
         return
 
-    selected_transport_info = selected_transport.strip().lower().replace('(', '').replace(')', '')
+    # Парсим информацию о транспорте
+    try:
+        transport_info = selected_transport.split(" ")
+        if len(transport_info) < 3:
+            raise ValueError("Некорректный формат транспорта")
+        selected_brand = transport_info[0].strip()
+        selected_model = transport_info[1].strip()
+        selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
+    except (ValueError, IndexError) as e:
+        logging.error(f"Ошибка парсинга транспорта для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат выбранного транспорта!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
 
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    expenses = user_data.get("expenses", [])
+    # Загружаем траты из правильного подсловаря
+    expense = user_data.get(str(user_id), {}).get("expense", [])
+    logging.info(f"Загружено {len(expense)} трат для user_id {user_id}")
 
+    # Формируем список категорий для выбранного транспорта
     categories = list({
-        expense.get("category")
-        for expense in expenses
-        if f"{expense.get('transport', {}).get('brand', '').strip().lower()} {expense.get('transport', {}).get('model', '').strip().lower()} {str(expense.get('transport', {}).get('license_plate', '')).strip().lower()}".replace('(', '').replace(')', '') == selected_transport_info
+        exp.get("category", "Без категории")
+        for exp in expense
+        if all(k in exp.get("transport", {}) for k in ['brand', 'model', 'license_plate'])
+        and exp["transport"]["brand"] == selected_brand
+        and exp["transport"]["model"] == selected_model
+        and exp["transport"]["license_plate"] == selected_license_plate
     })
 
     if not categories:
-        bot.send_message(user_id, "У вас *нет категорий* для удаления трат по выбранному транспорту", parse_mode="Markdown")
-        send_menu(user_id)
+        bot.send_message(
+            user_id,
+            f"❌ Нет категорий для удаления трат по транспорту *{selected_transport}*!",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)
         return
 
+    # Создаем клавиатуру с категориями
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     markup.add(*[types.KeyboardButton(category) for category in categories])
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
     markup.add(types.KeyboardButton("В главное меню"))
 
-    bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
+    bot.send_message(
+        user_id,
+        "Выберите категорию для удаления:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
     bot.register_next_step_handler(message, handle_category_selection_for_deletion)
-
-selected_categories = {}
-
-user_expenses_to_delete = {}
 
 @text_only_handler
 def handle_category_selection_for_deletion(message):
-    user_id = message.from_user.id
-
+    user_id = str(message.from_user.id)
     selected_category = message.text.strip()
 
+    # Обработка возврата в меню
     if selected_category == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        if user_id in user_expense_to_delete:
+            del user_expense_to_delete[user_id]
+        return_to_expense_and_repairs(message)
         return
 
     if selected_category == "В главное меню":
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        if user_id in user_expense_to_delete:
+            del user_expense_to_delete[user_id]
         return_to_menu(message)
         return
 
-    selected_categories[user_id] = selected_category
-
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    expenses = user_data.get("expenses", [])
-
+    # Проверяем, выбран ли транспорт
     selected_transport = selected_transports.get(user_id)
-    selected_transport_info = selected_transport.strip().lower().replace('(', '').replace(')', '')
-
-    expenses_to_delete = [
-        expense for expense in expenses
-        if expense.get("category") == selected_category and
-           f"{expense.get('transport', {}).get('brand', '').strip().lower()} {expense.get('transport', {}).get('model', '').strip().lower()} {str(expense.get('transport', {}).get('license_plate', '')).strip().lower()}".replace('(', '').replace(')', '') == selected_transport_info
-    ]
-
-    if not expenses_to_delete:
-        bot.send_message(user_id, f"Нет трат для удаления в категории *{selected_category.lower()}* по выбранному транспорту", parse_mode="Markdown")
-        send_menu(user_id)
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        return_to_expense_and_repairs(message)
         return
 
-    user_expenses_to_delete[user_id] = expenses_to_delete
+    # Парсим информацию о транспорте
+    try:
+        transport_info = selected_transport.split(" ")
+        if len(transport_info) < 3:
+            raise ValueError("Некорректный формат транспорта")
+        selected_brand = transport_info[0].strip()
+        selected_model = transport_info[1].strip()
+        selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
+    except (ValueError, IndexError) as e:
+        logging.error(f"Ошибка парсинга транспорта для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат выбранного транспорта!", parse_mode="Markdown")
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        return_to_expense_and_repairs(message)
+        return
 
-    expense_list_text = f"Список трат для удаления по категории *{selected_category.lower()}*:\n\n\n"
-    for index, expense in enumerate(expenses_to_delete, start=1):
-        expense_name = expense.get("name", "Без названия")
-        expense_date = expense.get("date", "Неизвестно")
+    # Сохраняем выбранную категорию
+    selected_categories[user_id] = selected_category
+
+    # Загружаем данные трат
+    user_data = load_expense_data(user_id).get(user_id, {})
+    expense = user_data.get("expense", [])
+
+    # Фильтруем траты по категории и транспорту
+    expense_to_delete = [
+        exp for exp in expense
+        if exp.get("category", "Без категории") == selected_category
+        and all(k in exp.get("transport", {}) for k in ['brand', 'model', 'license_plate'])
+        and exp["transport"]["brand"] == selected_brand
+        and exp["transport"]["model"] == selected_model
+        and exp["transport"]["license_plate"] == selected_license_plate
+    ]
+
+    if not expense_to_delete:
+        bot.send_message(user_id, f"❌ Нет трат для удаления в категории *{selected_category.lower()}* по транспорту *{selected_transport}*!", parse_mode="Markdown")
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        return_to_expense_and_repairs(message)
+        return
+
+    # Сохраняем список трат для удаления
+    user_expense_to_delete[user_id] = expense_to_delete
+
+    # Формируем список трат для отображения
+    expense_list_text = f"Список трат для удаления по категории *{selected_category.lower()}*:\n\n"
+    for index, exp in enumerate(expense_to_delete, start=1):
+        expense_name = exp.get("name", "Без названия")
+        expense_date = exp.get("date", "Неизвестно")
         expense_list_text += f"📄 №{index}. {expense_name} - ({expense_date})\n\n"
 
     expense_list_text += "\nВведите номер траты для удаления:"
+    send_long_message(user_id, expense_list_text)
 
+    # Создаем клавиатуру
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("Вернуться в меню трат и ремонтов")
     markup.add("В главное меню")
-
-    bot.send_message(user_id, expense_list_text, reply_markup=markup, parse_mode="Markdown")
 
     bot.register_next_step_handler(message, delete_expense_confirmation)
 
 @text_only_handler
 def delete_expense_confirmation(message):
-    user_id = message.from_user.id
-
+    user_id = str(message.from_user.id)
     selected_option = message.text.strip()
 
+    # Обработка возврата в меню
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        if user_id in user_expense_to_delete:
+            del user_expense_to_delete[user_id]
+        return_to_expense_and_repairs(message)
         return
 
     if selected_option == "В главное меню":
+        if user_id in selected_categories:
+            del selected_categories[user_id]
+        if user_id in user_expense_to_delete:
+            del user_expense_to_delete[user_id]
         return_to_menu(message)
         return
 
+    # Проверка корректности ввода
     if not selected_option.isdigit():
-        bot.send_message(user_id, "Пожалуйста, введите номер траты из списка.")
+        bot.send_message(user_id, "Пожалуйста, введите номер траты из списка!", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_expense_confirmation)
         return
 
     expense_index = int(selected_option) - 1
-    expenses_to_delete = user_expenses_to_delete.get(user_id, [])
+    expense_to_delete = user_expense_to_delete.get(user_id, [])
 
-    if 0 <= expense_index < len(expenses_to_delete):
-        deleted_expense = expenses_to_delete.pop(expense_index)
-        user_data = load_expense_data(user_id).get(str(user_id), {})
-        user_expenses = user_data.get("expenses", [])
+    if 0 <= expense_index < len(expense_to_delete):
+        deleted_expense = expense_to_delete.pop(expense_index)
+        user_data = load_expense_data(user_id).get(user_id, {})
+        user_expense = user_data.get("expense", [])
 
-        if deleted_expense in user_expenses:
-            user_expenses.remove(deleted_expense)
-            save_expense_data(user_id, {str(user_id): user_data})
+        # Удаляем трату из списка
+        if deleted_expense in user_expense:
+            user_expense.remove(deleted_expense)
+            user_data["expense"] = user_expense
+            save_expense_data(user_id, {user_id: user_data})
+            update_excel_file_expense(user_id)
 
         bot.send_message(
             user_id,
-            f"Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!",
+            f"✅ Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!",
             parse_mode="Markdown"
         )
 
-        send_menu(user_id)
+        # Очищаем словари, если список трат пуст
+        if not expense_to_delete:
+            if user_id in user_expense_to_delete:
+                del user_expense_to_delete[user_id]
+            if user_id in selected_categories:
+                del selected_categories[user_id]
+        else:
+            user_expense_to_delete[user_id] = expense_to_delete
+
+        return_to_expense_and_repairs(message)
     else:
-        bot.send_message(user_id, "Неверный номер траты. Попробуйте снова.")
+        bot.send_message(user_id, "Неверный номер траты!\nПопробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_expense_confirmation)
-        return
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_long_message(user_id, text):
-    while len(text) > MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, text[:MAX_MESSAGE_LENGTH], parse_mode="Markdown")
-        text = text[MAX_MESSAGE_LENGTH:]
-    bot.send_message(user_id, text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (месяц)")
 @check_function_state_decorator('Del траты (месяц)')
@@ -7700,140 +8994,184 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def delete_expense_by_month(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
+
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Не выбран транспорт!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return)
     markup.add(item_main_menu)
-    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления трат за этот месяц:", reply_markup=markup)
-    bot.register_next_step_handler(message, delete_expenses_by_month)
+    bot.send_message(
+        user_id,
+        "Введите месяц и год (ММ.ГГГГ) для удаления трат за этот месяц:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(message, process_delete_expense_by_month)
 
 @text_only_handler
-def delete_expenses_by_month(message):
-    user_id = message.from_user.id
+def process_delete_expense_by_month(message):
+    user_id = str(message.from_user.id)
     month_year = message.text.strip() if message.text else None
 
-    match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2})$", month_year)
+    if month_year == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
+        return
+    if month_year == "В главное меню":
+        return_to_menu(message)
+        return
+
+    match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2}|2[1-9][0-9]{2}|3000)$", month_year)
     if not match:
-        bot.send_message(user_id, "Введен неверный месяц или год. Пожалуйста, введите корректные данные (ММ.ГГГГ)")
-        bot.register_next_step_handler(message, delete_expenses_by_month)
+        bot.send_message(
+            user_id,
+            "Введен неверный месяц или год!\nПожалуйста, введите корректные данные (ММ.ГГГГ)",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, process_delete_expense_by_month)
         return
 
-    selected_month, selected_year = match.groups()
+    selected_month, selected_year = map(int, match.groups())
 
-    selected_transport = selected_transports.get(user_id)
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    logging.info(f"Проверка selected_transport для user_id {user_id}: {selected_transport}")
     if not selected_transport:
-        bot.send_message(user_id, "Транспорт не выбран. Пожалуйста, выберите транспорт")
-        send_menu(user_id)
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
         return
 
-    transport_info = selected_transport.split(" ")
-    selected_brand = transport_info[0].strip()
-    selected_model = transport_info[1].strip()
-    selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
-
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    expenses = user_data.get("expenses", [])
-
-    if not expenses:
-        bot.send_message(user_id, f"У вас нет сохраненных трат за *{month_year}* месяц", parse_mode="Markdown")
-        send_menu(user_id)
+    # Парсим информацию о транспорте
+    try:
+        transport_info = selected_transport.split(" ")
+        if len(transport_info) < 3:
+            raise ValueError("Некорректный формат транспорта")
+        selected_brand = transport_info[0].strip()
+        selected_model = transport_info[1].strip()
+        selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
+    except (ValueError, IndexError) as e:
+        logging.error(f"Ошибка парсинга транспорта для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат выбранного транспорта!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
         return
 
-    expenses_to_delete = []
-    for index, expense in enumerate(expenses, start=1):
-        expense_date = expense.get("date", "")
+    # Загружаем траты из правильного подсловаря
+    expense = user_data.get(str(user_id), {}).get("expense", [])
+    logging.info(f"Загружено {len(expense)} трат для user_id {user_id}")
 
+    if not expense:
+        bot.send_message(
+            user_id,
+            f"❌ У вас нет сохраненных трат за *{month_year}* месяц!",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)
+        return
+
+    expense_to_delete = []
+    for index, exp in enumerate(expense, start=1):
+        expense_date = exp.get("date", "")
         if not expense_date or len(expense_date.split(".")) != 3:
             continue
+        try:
+            expense_day, expense_month, expense_year = map(int, expense_date.split("."))
+            transport = exp.get("transport", {})
+            if not all(k in transport for k in ['brand', 'model', 'license_plate']):
+                continue
+            if (expense_month == selected_month and
+                expense_year == selected_year and
+                transport['brand'] == selected_brand and
+                transport['model'] == selected_model and
+                transport['license_plate'] == selected_license_plate):
+                expense_to_delete.append((index, exp))
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
+            continue
 
-        expense_day, expense_month, expense_year = expense_date.split(".")
-
-        if expense_month == selected_month and expense_year == selected_year:
-            expense_license_plate = expense.get("transport", {}).get("license_plate", "").strip()
-            expense_brand = expense.get("transport", {}).get("brand", "").strip()
-            expense_model = expense.get("transport", {}).get("model", "").strip()
-
-            if (expense_license_plate == selected_license_plate and
-                expense_brand == selected_brand and
-                expense_model == selected_model):
-                expenses_to_delete.append((index, expense))
-
-    if expenses_to_delete:
-        expenses_to_delete_dict[user_id] = expenses_to_delete
-
-        expense_list_text = f"Список трат для удаления за *{month_year}* месяц:\n\n\n"
-        for index, expense in expenses_to_delete:
-            expense_name = expense.get("name", "Без названия")
-            expense_date = expense.get("date", "Неизвестно")
+    if expense_to_delete:
+        expense_to_delete_dict[user_id] = expense_to_delete
+        expense_list_text = f"Список трат для удаления за *{month_year}* месяц:\n\n"
+        for index, exp in expense_to_delete:
+            expense_name = exp.get("name", "Без названия")
+            expense_date = exp.get("date", "Неизвестно")
             expense_list_text += f"📄 №{index}. {expense_name} - ({expense_date})\n\n"
-
         expense_list_text += "\nВведите номер траты для удаления:"
-
         send_long_message(user_id, expense_list_text)
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Вернуться в меню трат и ремонтов", "В главное меню")
         bot.register_next_step_handler(message, confirm_delete_expense_month)
     else:
-        bot.send_message(user_id, f"Нет трат для удаления за *{month_year}* месяц", parse_mode="Markdown")
-        send_menu(user_id)
+        bot.send_message(
+            user_id,
+            f"❌ Нет трат для удаления за *{month_year}* месяц!",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)
 
 @text_only_handler
 def confirm_delete_expense_month(message):
-    user_id = message.from_user.id
-
+    user_id = str(message.from_user.id)
     selected_option = message.text.strip()
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        if user_id in expense_to_delete_dict:
+            del expense_to_delete_dict[user_id]  # Очистка словаря
+        return_to_expense_and_repairs(message)
         return
 
     if selected_option == "В главное меню":
+        if user_id in expense_to_delete_dict:
+            del expense_to_delete_dict[user_id]  # Очистка словаря
         return_to_menu(message)
         return
 
-    if selected_option.isdigit():
-        expense_index = int(selected_option) - 1
-        expenses_to_delete = expenses_to_delete_dict.get(user_id, [])
-
-        if 0 <= expense_index < len(expenses_to_delete):
-            _, deleted_expense = expenses_to_delete.pop(expense_index)
-
-            user_data = load_expense_data(user_id).get(str(user_id), {})
-            if "expenses" in user_data and deleted_expense in user_data["expenses"]:
-                user_data["expenses"].remove(deleted_expense)
-                save_expense_data(user_id, {str(user_id): user_data})
-
-            bot.send_message(
-                user_id,
-                f"Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!",
-                parse_mode="Markdown"
-            )
-
-            expenses_to_delete_dict[user_id] = expenses_to_delete
-
-            send_menu(user_id)
-        else:
-            bot.send_message(user_id, "Неверный выбор. Пожалуйста, попробуйте снова")
-            bot.register_next_step_handler(message, confirm_delete_expense_month)
-            return
-    else:
-        bot.send_message(user_id, "Некорректный ввод. Пожалуйста, введите номер траты")
+    if not selected_option.isdigit():
+        bot.send_message(user_id, "Пожалуйста, введите номер траты из списка!")
         bot.register_next_step_handler(message, confirm_delete_expense_month)
         return
 
-MAX_MESSAGE_LENGTH = 4096
+    expense_index = int(selected_option) - 1
+    expense_to_delete = expense_to_delete_dict.get(user_id, [])
 
-def send_long_message(user_id, text):
-    while len(text) > MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, text[:MAX_MESSAGE_LENGTH], parse_mode="Markdown")
-        text = text[MAX_MESSAGE_LENGTH:]
-    bot.send_message(user_id, text, parse_mode="Markdown")
+    if 0 <= expense_index < len(expense_to_delete):
+        _, deleted_expense = expense_to_delete.pop(expense_index)
+        user_data = load_expense_data(user_id).get(str(user_id), {})
+        user_expense = user_data.get("expense", [])
+
+        if deleted_expense in user_expense:
+            user_expense.remove(deleted_expense)
+            user_data["expense"] = user_expense
+            save_expense_data(user_id, {str(user_id): user_data})
+            update_excel_file_expense(user_id)
+
+        bot.send_message(
+            user_id,
+            f"✅ Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!",
+            parse_mode="Markdown"
+        )
+
+        if not expense_to_delete:
+            del expense_to_delete_dict[user_id]  # Очистка словаря, если список пуст
+        else:
+            expense_to_delete_dict[user_id] = expense_to_delete
+
+        return_to_expense_and_repairs(message)
+    else:
+        bot.send_message(user_id, "Неверный номер траты!\nПопробуйте снова")
+        bot.register_next_step_handler(message, confirm_delete_expense_month)
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (год)")
 @check_function_state_decorator('Del траты (год)')
@@ -7845,129 +9183,169 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def delete_expense_by_license_plate(message):
-    user_id = message.from_user.id
+def delete_expense_by_year(message):
+    user_id = str(message.from_user.id)
+
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Не выбран транспорт!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return)
     markup.add(item_main_menu)
-    bot.send_message(user_id, "Введите год (ГГГГ) для удаления трат за этот год:", reply_markup=markup)
-    bot.register_next_step_handler(message, delete_expenses_by_license_plate)
+    bot.send_message(
+        user_id,
+        "Введите год (ГГГГ) для удаления трат за этот год:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(message, process_delete_expense_by_year)
 
 @text_only_handler
-def delete_expenses_by_license_plate(message):
-    user_id = message.from_user.id
-    license_plate = message.text.strip() if message.text else None
+def process_delete_expense_by_year(message):
+    user_id = str(message.from_user.id)
+    year_input = message.text.strip()
 
-    if not license_plate:
-        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение!")
-        bot.register_next_step_handler(message, delete_expenses_by_license_plate)
+    if year_input == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if license_plate == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
-        return
-
-    if license_plate == "В главное меню":
+    if year_input == "В главное меню":
         return_to_menu(message)
         return
 
-    if not re.match(r"^(20[0-9]{2}|2[1-9][0-9]{2}|3000)$", license_plate):
-        bot.send_message(user_id, "Введен неверный год. Пожалуйста, введите корректный год.")
-        bot.register_next_step_handler(message, delete_expenses_by_license_plate)
+    if not year_input.isdigit() or len(year_input) != 4 or not (2000 <= int(year_input) <= 3000):
+        bot.send_message(
+            user_id,
+            "Пожалуйста, введите корректный год в формате ГГГГ (2000-3000)!",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, process_delete_expense_by_year)
         return
 
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    expenses = user_data.get("expenses", [])
+    year = int(year_input)
 
-    selected_transport = selected_transports.get(user_id, None)
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    logging.info(f"Проверка selected_transport для user_id {user_id}: {selected_transport}")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
 
-    if selected_transport:
+    # Парсим информацию о транспорте
+    try:
         transport_info = selected_transport.split(" ")
+        if len(transport_info) < 3:
+            raise ValueError("Некорректный формат транспорта")
         selected_brand = transport_info[0].strip()
         selected_model = transport_info[1].strip()
-        selected_license_plate = str(transport_info[2].strip())
-    else:
-        selected_brand = selected_model = selected_license_plate = None
-
-    if not expenses:
-        bot.send_message(user_id, f"У вас пока нет сохраненных трат за *{license_plate}* год для удаления!", parse_mode="Markdown")
-        send_menu(user_id)
+        selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
+    except (ValueError, IndexError) as e:
+        logging.error(f"Ошибка парсинга транспорта для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат выбранного транспорта!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
         return
 
-    expenses_to_delete = []
-    for index, expense in enumerate(expenses, start=1):
-        expense_date = expense.get("date", "")
-        expense_license_plate = expense_date.split(".")[2]
+    # Загружаем траты из правильного подсловаря
+    expense = user_data.get(str(user_id), {}).get("expense", [])
+    logging.info(f"Загружено {len(expense)} трат для user_id {user_id}")
 
-        expense_brand = expense.get("transport", {}).get("brand", "").strip()
-        expense_model = expense.get("transport", {}).get("model", "").strip()
+    if not expense:
+        bot.send_message(
+            user_id,
+            f"❌ У вас нет сохраненных трат за *{year}* год!",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)
+        return
 
-        if (expense_license_plate == license_plate and
-           expense_brand == selected_brand and
-           expense_model == selected_model):
-            expenses_to_delete.append((index, expense))
+    expense_to_delete = []
+    for index, exp in enumerate(expense, start=1):
+        expense_date = exp.get("date", "")
+        if not expense_date or len(expense_date.split(".")) != 3:
+            continue
+        try:
+            expense_day, expense_month, expense_year = map(int, expense_date.split("."))
+            transport = exp.get("transport", {})
+            if not all(k in transport for k in ['brand', 'model', 'license_plate']):
+                continue
+            if (expense_year == year and
+                transport['brand'] == selected_brand and
+                transport['model'] == selected_model and
+                transport['license_plate'] == selected_license_plate):
+                expense_to_delete.append((index, exp))
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Ошибка обработки траты для user_id {user_id}: {str(e)}")
+            continue
 
-    if expenses_to_delete:
-        expenses_to_delete_dict[user_id] = expenses_to_delete
-
-        expense_list_text = f"Список трат для удаления за *{license_plate}* год:\n\n\n"
-        for index, expense in expenses_to_delete:
-            expense_name = expense.get("name", "Без названия")
-            expense_date = expense.get("date", "Неизвестно")
+    if expense_to_delete:
+        expense_to_delete_dict[user_id] = expense_to_delete
+        expense_list_text = f"Список трат для удаления за *{year}* год:\n\n"
+        for index, exp in expense_to_delete:
+            expense_name = exp.get("name", "Без названия")
+            expense_date = exp.get("date", "Неизвестно")
             expense_list_text += f"📄 №{index}. {expense_name} - ({expense_date})\n\n"
-
         expense_list_text += "\nВведите номер траты для удаления:"
         send_long_message(user_id, expense_list_text)
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("Вернуться в меню трат и ремонтов")
-        markup.add("В главное меню")
-        bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
+        markup.add("Вернуться в меню трат и ремонтов", "В главное меню")
+        bot.register_next_step_handler(message, confirm_delete_expense_year)
     else:
-        bot.send_message(user_id, f"За *{license_plate}* год трат не найдено для удаления", parse_mode="Markdown")
-        send_menu(user_id)
+        bot.send_message(
+            user_id,
+            f"❌ За *{year}* год трат не найдено для удаления!",
+            parse_mode="Markdown"
+        )
+        handle_transport_selection_for_deletion(message)
 
 @text_only_handler
-def confirm_delete_expense_license_plate(message):
-    user_id = message.from_user.id
-
+def confirm_delete_expense_year(message):
+    user_id = str(message.from_user.id)
     selected_option = message.text.strip()
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
 
     if selected_option == "В главное меню":
         return_to_menu(message)
         return
 
-    expenses_to_delete = expenses_to_delete_dict.get(user_id, [])
+    expense_to_delete = expense_to_delete_dict.get(user_id, [])
 
     if selected_option.isdigit():
         expense_index = int(selected_option) - 1
 
-        if 0 <= expense_index < len(expenses_to_delete):
-            _, deleted_expense = expenses_to_delete.pop(expense_index)
+        if 0 <= expense_index < len(expense_to_delete):
+            _, deleted_expense = expense_to_delete.pop(expense_index)
 
             user_data = load_expense_data(user_id).get(str(user_id), {})
-            user_data["expenses"].remove(deleted_expense)
-            save_expense_data(user_id, {str(user_id): user_data})
+            if "expense" in user_data and deleted_expense in user_data["expense"]:
+                user_data["expense"].remove(deleted_expense)
+                save_expense_data(user_id, {str(user_id): user_data})
 
-            bot.send_message(user_id, f"Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!", parse_mode="Markdown")
+            bot.send_message(user_id, f"✅ Трата *{deleted_expense.get('name', 'Без названия').lower()}* успешно удалена!", parse_mode="Markdown")
 
-            expenses_to_delete_dict[user_id] = expenses_to_delete
+            expense_to_delete_dict[user_id] = expense_to_delete
+            update_excel_file_expense(user_id)
 
-            send_menu(user_id)
+            return_to_expense_and_repairs(message)
         else:
-            bot.send_message(user_id, "Неверный выбор. Пожалуйста, попробуйте снова")
-            bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
+            bot.send_message(user_id, "Неверный выбор!\nПожалуйста, попробуйте снова")
+            bot.register_next_step_handler(message, confirm_delete_expense_year)
     else:
-        bot.send_message(user_id, "Некорректный ввод. Пожалуйста, введите номер траты")
-        bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
+        bot.send_message(user_id, "Некорректный ввод!\nПожалуйста, введите номер траты")
+        bot.register_next_step_handler(message, confirm_delete_expense_year)
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (все время)")
 @check_function_state_decorator('Del траты (все время)')
@@ -7979,9 +9357,19 @@ def confirm_delete_expense_license_plate(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def delete_all_expenses_for_selected_transport(message):
-    user_id = message.from_user.id
+def delete_all_expense_for_selected_transport(message):
+    user_id = str(message.from_user.id)
+
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    logging.info(f"Проверка selected_transport для user_id {user_id}: {selected_transport}")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
@@ -7989,72 +9377,98 @@ def delete_all_expenses_for_selected_transport(message):
     markup.add(item_return)
     markup.add(item_main_menu)
 
-    bot.send_message(user_id,
-                    "Вы уверены, что хотите удалить все траты для выбранного транспорта?\n\n"
-                    "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены",
-                    reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, confirm_delete_all_expenses)
+    bot.send_message(
+        user_id,
+        f"Вы уверены, что хотите удалить все траты для транспорта *{selected_transport}*?\n\n"
+        "Пожалуйста, введите *да* для подтверждения или *нет* для отмены",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(message, confirm_delete_all_expense)
 
 @text_only_handler
-def confirm_delete_all_expenses(message):
-    user_id = message.from_user.id
+def confirm_delete_all_expense(message):
+    user_id = str(message.from_user.id)
+    response = message.text.strip().lower()
 
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    if response == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if message.text == "В главное меню":
+    if response == "В главное меню":
         return_to_menu(message)
         return
 
-    response = message.text.strip().lower()
-
-    if response == "да":
-        user_data = load_expense_data(user_id).get(str(user_id), {})
-        expenses = user_data.get("expenses", [])
-
-        selected_transport = selected_transports.get(user_id, None)
-        if selected_transport:
-            transport_info = selected_transport.split(" ")
-            selected_brand = transport_info[0].strip()
-            selected_model = transport_info[1].strip()
-            selected_license_plate = transport_info[2].strip()
-        else:
-            selected_brand = selected_model = selected_license_plate = None
-
-        if not expenses:
-            bot.send_message(user_id, "У вас пока нет сохраненных трат для удаления!")
-            send_menu(user_id)
-            return
-
-        expenses_to_keep = []
-        for expense in expenses:
-            expense_brand = expense.get("transport", {}).get("brand", "").strip()
-            expense_model = expense.get("transport", {}).get("model", "").strip()
-
-            if not (expense_brand == selected_brand and expense_model == selected_model):
-                expenses_to_keep.append(expense)
-
-        user_data["expenses"] = expenses_to_keep
-        save_expense_data(user_id, {str(user_id): user_data}, selected_transport)
-
-        update_excel_file(user_id)
-
-        bot.send_message(user_id, f"Все траты для транспорта *{selected_brand} {selected_model} {selected_license_plate}* успешно удалены", parse_mode="Markdown")
-    elif response == "нет":
-        bot.send_message(user_id, "Удаление трат отменено")
-    else:
-        bot.send_message(user_id, "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
-        bot.register_next_step_handler(message, confirm_delete_all_expenses)
+    # Проверяем, выбран ли транспорт
+    user_data = load_expense_data(user_id)
+    selected_transport = user_data.get("selected_transport", "")
+    logging.info(f"Проверка selected_transport для user_id {user_id}: {selected_transport}")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
         return
 
-    send_menu(user_id)
+    # Парсим информацию о транспорте
+    try:
+        transport_info = selected_transport.split(" ")
+        if len(transport_info) < 3:
+            raise ValueError("Некорректный формат транспорта")
+        selected_brand = transport_info[0].strip()
+        selected_model = transport_info[1].strip()
+        selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
+    except (ValueError, IndexError) as e:
+        logging.error(f"Ошибка парсинга транспорта для user_id {user_id}: {str(e)}")
+        bot.send_message(user_id, "❌ Некорректный формат выбранного транспорта!", parse_mode="Markdown")
+        handle_transport_selection_for_deletion(message)
+        return
+
+    if response == "да":
+        # Загружаем траты из правильного подсловаря
+        expense = user_data.get(str(user_id), {}).get("expense", [])
+        logging.info(f"Загружено {len(expense)} трат для user_id {user_id}")
+        if not expense:
+            bot.send_message(user_id, "❌ У вас нет сохраненных трат для удаления!", parse_mode="Markdown")
+            handle_transport_selection_for_deletion(message)
+            return
+
+        expense_to_keep = []
+        for exp in expense:
+            transport = exp.get("transport", {})
+            if not all(k in transport for k in ['brand', 'model', 'license_plate']):
+                expense_to_keep.append(exp)
+                continue
+            if not (transport['brand'] == selected_brand and
+                    transport['model'] == selected_model and
+                    transport['license_plate'] == selected_license_plate):
+                expense_to_keep.append(exp)
+
+        user_data[str(user_id)] = user_data.get(str(user_id), {})
+        user_data[str(user_id)]["expense"] = expense_to_keep
+        save_expense_data(user_id, user_data, selected_transport)
+        update_excel_file_expense(user_id)
+
+        bot.send_message(
+            user_id,
+            f"✅ Все траты для транспорта *{selected_transport}* успешно удалены!",
+            parse_mode="Markdown"
+        )
+    elif response == "нет":
+        bot.send_message(user_id, "✅ Удаление трат отменено!", parse_mode="Markdown")
+    else:
+        bot.send_message(
+            user_id,
+            "Пожалуйста, введите *да* для подтверждения или *нет* для отмены",
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(message, confirm_delete_all_expense)
+        return
+
+    return_to_expense_and_repairs(message)
 
 def delete_expense(user_id, deleted_expense):
     user_data = load_expense_data(user_id).get(str(user_id), {})
-    expenses = user_data.get("expenses", [])
+    expense = user_data.get("expense", [])
 
-    expenses = [expense for expense in expenses if not (
+    expense = [expense for expense in expense if not (
         expense["transport"]["brand"] == deleted_expense["transport"]["brand"] and
         expense["transport"]["model"] == deleted_expense["transport"]["model"] and
         expense["transport"]["license_plate"] == deleted_expense["transport"]["license_plate"] and
@@ -8065,77 +9479,183 @@ def delete_expense(user_id, deleted_expense):
         expense["description"] == deleted_expense["description"]
     )]
 
-    user_data["expenses"] = expenses
+    user_data["expense"] = expense
     save_expense_data(user_id, user_data)
 
-    update_excel_file(user_id)
+    update_excel_file_expense(user_id)
 
-# ---------- 10.5. РЕМОНТЫ (ЗАПИСЬ РЕМОНТОВ) ----------
+def update_excel_file_expense(user_id):
+
+    user_id = str(user_id)  # Гарантируем строковый формат
+    user_data = load_expense_data(user_id).get(user_id, {})
+    expense = user_data.get("expense", [])
+    excel_file_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
+
+    try:
+        # Создаем новый файл, если он не существует
+        if not os.path.exists(excel_file_path):
+            workbook = openpyxl.Workbook()
+            workbook.remove(workbook.active)  # Удаляем пустой лист по умолчанию
+        else:
+            workbook = load_workbook(excel_file_path)
+
+        # Заголовки для всех листов
+        headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+
+        # Обновляем лист Summary
+        summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
+        
+        # Очищаем данные, сохраняя заголовки
+        if summary_sheet.max_row > 1:
+            summary_sheet.delete_rows(2, summary_sheet.max_row - 1)
+        if summary_sheet.max_row == 0:
+            summary_sheet.append(headers)
+            for cell in summary_sheet[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+
+        # Формируем список уникальных транспортов
+        unique_transports = set()
+        valid_expenses = []
+        for exp in expense:
+            transport = exp.get("transport", {})
+            if not all(k in transport for k in ['brand', 'model', 'license_plate']):
+                logging.warning(f"Пропущена трата с некорректным транспортом для user_id {user_id}")
+                continue
+            unique_transports.add((transport["brand"], transport["model"], transport["license_plate"]))
+            valid_expenses.append(exp)
+
+        # Заполняем лист Summary
+        for exp in valid_expenses:
+            transport = exp["transport"]
+            row_data = [
+                f"{transport['brand']} {transport['model']} {transport['license_plate']}",
+                exp.get("category", "Без категории"),
+                exp.get("name", "Без названия"),
+                exp.get("date", ""),
+                float(exp.get("amount", 0)),
+                exp.get("description", "Без описания"),
+            ]
+            summary_sheet.append(row_data)
+
+        # Удаляем устаревшие листы транспорта
+        for sheet_name in workbook.sheetnames:
+            if sheet_name != "Summary":
+                try:
+                    brand, model, license_plate = sheet_name.split('_')
+                    if (brand, model, license_plate) not in unique_transports:
+                        del workbook[sheet_name]
+                except ValueError:
+                    logging.warning(f"Некорректное имя листа {sheet_name} для user_id {user_id}")
+                    continue
+
+        # Обновляем или создаем листы для каждого транспорта
+        for brand, model, license_plate in unique_transports:
+            sheet_name = f"{brand}_{model}_{license_plate}"
+            transport_sheet = workbook[sheet_name] if sheet_name in workbook.sheetnames else workbook.create_sheet(sheet_name)
+
+            # Очищаем данные, сохраняя заголовки
+            if transport_sheet.max_row > 1:
+                transport_sheet.delete_rows(2, transport_sheet.max_row - 1)
+            if transport_sheet.max_row == 0:
+                transport_sheet.append(headers)
+                for cell in transport_sheet[1]:
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal="center")
+
+            # Заполняем лист транспорта
+            for exp in valid_expenses:
+                transport = exp["transport"]
+                if (transport["brand"], transport["model"], transport["license_plate"]) == (brand, model, license_plate):
+                    row_data = [
+                        f"{brand} {model} {license_plate}",
+                        exp.get("category", "Без категории"),
+                        exp.get("name", "Без названия"),
+                        exp.get("date", ""),
+                        float(exp.get("amount", 0)),
+                        exp.get("description", "Без описания"),
+                    ]
+                    transport_sheet.append(row_data)
+
+        # Настраиваем ширину столбцов для всех листов
+        for sheet in workbook:
+            for col in sheet.columns:
+                max_length = max(len(str(cell.value)) for cell in col if cell.value) + 2
+                sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length
+
+        # Сохраняем файл
+        workbook.save(excel_file_path)
+        workbook.close()
+
+    except Exception as e:
+        logging.error(f"Ошибка при обновлении Excel для user_id {user_id}: {str(e)}")
+        raise
+
+
+# ---------- 11. РЕМОНТЫ (ОСНОВНЫЕ ФУНКЦИИ) ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
 REPAIRS_DIR = os.path.join(DATA_BASE_DIR, "repairs")
 
 def ensure_directories():
+    """Создает необходимые директории для хранения данных ремонтов."""
     os.makedirs(REPAIRS_DIR, exist_ok=True)
+    os.makedirs(os.path.join(REPAIRS_DIR, "excel"), exist_ok=True)
 
 ensure_directories()
 
-user_transport = {}
+user_transport = {}  # Глобальный словарь для хранения транспорта пользователей
+
+def format_transport_string(transport):
+    """Форматирует данные транспорта в строку для согласованного сравнения."""
+    if isinstance(transport, dict):
+        return f"{transport.get('brand', '').strip()} {transport.get('model', '').strip()} ({transport.get('license_plate', '').strip()})".lower()
+    return transport.strip().lower()
 
 def save_repair_data(user_id, user_data, selected_transport=None):
-    ensure_directories()  
-
-    if selected_transport:
-        user_data["selected_transport"] = selected_transport
-
+    """Сохраняет данные ремонтов в JSON-файл."""
+    ensure_directories()
+    
     file_path = os.path.join(REPAIRS_DIR, f"{user_id}_repairs.json")
-
+    
     current_data = load_repair_data(user_id)
-
-    if "user_categories" in current_data:
-        user_data["user_categories"] = current_data["user_categories"]
-
-    user_data["selected_transport"] = selected_transport
-
+    
+    if selected_transport:
+        current_data["selected_transport"] = selected_transport
+    else:
+        current_data.setdefault("selected_transport", "")
+    
+    current_data.setdefault("user_categories", [])
+    if "user_categories" in user_data:
+        current_data["user_categories"] = user_data["user_categories"]
+    
+    current_data[str(user_id)] = user_data.get(str(user_id), {"repairs": []})
+    
     with open(file_path, "w", encoding="utf-8") as file:
-        json.dump(user_data, file, ensure_ascii=False, indent=4)
+        json.dump(current_data, file, ensure_ascii=False, indent=4)
 
 def load_repair_data(user_id):
-    ensure_directories() 
-
+    """Загружает данные ремонтов из JSON-файла."""
+    ensure_directories()
+    
     file_path = os.path.join(REPAIRS_DIR, f"{user_id}_repairs.json")
-
+    
     if not os.path.exists(file_path):
-        return {"user_categories": [], "selected_transport": ""}
-
+        return {"user_categories": [], "selected_transport": "", str(user_id): {"repairs": []}}
+    
     try:
         with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
+            data.setdefault("user_categories", [])
             data.setdefault("selected_transport", "")
+            data.setdefault(str(user_id), {"repairs": []})
             return data
-    except:
-        return {"user_categories": [], "selected_transport": ""}
+    except Exception as e:
+        print(f"Ошибка загрузки данных: {e}")
+        return {"user_categories": [], "selected_transport": "", str(user_id): {"repairs": []}}
 
-def get_user_repair_categories(user_id):
-    data = load_repair_data(user_id)
-    system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
-    user_categories = data.get("user_categories", [])
-    return system_categories + user_categories
-
-def add_repair_category(user_id, new_category):
-    data = load_repair_data(user_id)
-    if "user_categories" not in data:
-        data["user_categories"] = []
-    if new_category not in data["user_categories"]:
-        data["user_categories"].append(new_category)
-    save_repair_data(user_id, data)
-
-def remove_repair_category(user_id, category_to_remove):
-    data = load_repair_data(user_id)
-    if "user_categories" in data and category_to_remove in data["user_categories"]:
-        data["user_categories"].remove(category_to_remove)
-        save_repair_data(user_id, data)
+# ---------- 10.5. РЕМОНТЫ (ЗАПИСЬ РЕМОНТОВ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Записать ремонт")
 @check_function_state_decorator('Записать ремонт')
@@ -8147,104 +9667,124 @@ def remove_repair_category(user_id, category_to_remove):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
-@rate_limit_with_captcha
 @text_only_handler
+@rate_limit_with_captcha
 def record_repair(message):
+    """Инициирует процесс записи ремонта."""
     user_id = message.from_user.id
-
+    
     markup = get_user_transport_keyboard(user_id)
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
     markup.add(types.KeyboardButton("В главное меню"))
-
+    
     bot.send_message(user_id, "Выберите транспорт для записи ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_repair)
 
+@text_only_handler
 def handle_transport_selection_for_repair(message):
+    """Обрабатывает выбор транспорта для записи ремонта."""
     user_id = message.from_user.id
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    selected_transport = message.text.strip()
+    
+    if selected_transport == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-    elif message.text == "В главное меню":
+    if selected_transport == "В главное меню":
         return_to_menu(message)
         return
-
-    if message.text == "Добавить транспорт":
+    if selected_transport == "Добавить транспорт":
         add_transport(message)
         return
-
-    selected_transport = message.text
-    for transport in user_transport.get(str(user_id), []):
+    
+    transports = load_transport_data(user_id)
+    for transport in transports:
         formatted_transport = f"{transport['brand']} {transport['model']} ({transport['license_plate']})"
         if formatted_transport == selected_transport:
             brand, model, license_plate = transport['brand'], transport['model'], transport['license_plate']
-            break
-    else:
-        bot.send_message(user_id, "Не удалось найти указанный транспорт. Пожалуйста, выберите снова")
-
-        markup = get_user_transport_keyboard(user_id)
-        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
-        markup.add(types.KeyboardButton("В главное меню"))
-
-        bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=markup)
-        bot.register_next_step_handler(message, handle_transport_selection_for_repair)
-        return
-
-    process_category_selection_repair(user_id, brand, model, license_plate)
+            save_repair_data(user_id, load_repair_data(user_id), selected_transport)
+            process_category_selection_repair(user_id, brand, model, license_plate)
+            return
+    
+    bot.send_message(user_id, "❌ Не удалось найти указанный транспорт! Пожалуйста, выберите снова.", parse_mode="Markdown")
+    markup = get_user_transport_keyboard(user_id)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_transport_selection_for_repair)
 
 def process_category_selection_repair(user_id, brand, model, license_plate):
+    """Отображает список категорий для выбора."""
     categories = get_user_repair_categories(user_id)
-
+    
     system_emoji = "🔹"
     user_emoji = "🔸"
-
+    
     category_list = "\n".join(
         f"{system_emoji if i < 7 else user_emoji} {i + 1}. {category}"
         for i, category in enumerate(categories)
     )
     category_list = f"*Выберите категорию:*\n\n{category_list}"
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(
         types.KeyboardButton("Добавить категорию"),
         types.KeyboardButton("Удалить категорию")
     )
-    markup.add(
-        types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    )
-    markup.add(
-        types.KeyboardButton("В главное меню")
-    )
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    message = bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
 
-    prompt_message = bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
+def get_user_repair_categories(user_id):
+    """Возвращает список системных и пользовательских категорий."""
+    data = load_repair_data(user_id)
+    system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
+    user_categories = data.get("user_categories", [])
+    return system_categories + user_categories
 
-    bot.register_next_step_handler(prompt_message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
+def add_repair_category(user_id, new_category):
+    """Добавляет новую пользовательскую категорию."""
+    data = load_repair_data(user_id)
+    data.setdefault("user_categories", [])
+    if new_category not in data["user_categories"]:
+        data["user_categories"].append(new_category)
+        save_repair_data(user_id, data)
+        return True
+    return False
+
+def remove_repair_category(user_id, category_to_remove):
+    """Удаляет пользовательскую категорию."""
+    data = load_repair_data(user_id)
+    if "user_categories" in data and category_to_remove in data["user_categories"]:
+        data["user_categories"].remove(category_to_remove)
+        save_repair_data(user_id, data)
+        return True
+    return False
 
 @text_only_handler
 def get_repair_category(message, brand, model, license_plate):
+    """Обрабатывает выбор категории ремонта."""
     user_id = message.from_user.id
-    selected_index = message.text.strip() if message.text else ""
-
+    selected_index = message.text.strip()
+    
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
-
-    elif selected_index == "В главное меню":
+    if selected_index == "В главное меню":
         return_to_menu(message)
         return
-
-    if selected_index == 'Добавить категорию':
+    if selected_index == "Добавить категорию":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
         markup.add(types.KeyboardButton("В главное меню"))
         bot.send_message(user_id, "Введите название новой категории:", reply_markup=markup)
         bot.register_next_step_handler(message, partial(add_new_repair_category, brand=brand, model=model, license_plate=license_plate))
         return
-
-    if selected_index == 'Удалить категорию':
+    if selected_index == "Удалить категорию":
         handle_repair_category_removal(message, brand, model, license_plate)
         return
-
+    
     if selected_index.isdigit():
         index = int(selected_index) - 1
         categories = get_user_repair_categories(user_id)
@@ -8252,232 +9792,226 @@ def get_repair_category(message, brand, model, license_plate):
             selected_category = categories[index]
             proceed_to_repair_name(message, selected_category, brand, model, license_plate)
         else:
-            bot.send_message(user_id, "Неверный ввод категории. Попробуйте еще раз")
-            bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
+            bot.send_message(user_id, "❌ Неверный номер категории! Попробуйте снова.", parse_mode="Markdown")
+            process_category_selection_repair(user_id, brand, model, license_plate)
     else:
-        bot.send_message(user_id, "Пожалуйста, введите номер категории")
-        bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
+        bot.send_message(user_id, "❌ Пожалуйста, введите номер категории!", parse_mode="Markdown")
+        process_category_selection_repair(user_id, brand, model, license_plate)
 
 @text_only_handler
 def add_new_repair_category(message, brand, model, license_plate):
+    """Добавляет новую пользовательскую категорию."""
     user_id = message.from_user.id
-
-    if not message.text:
-        bot.send_message(user_id, "Пожалуйста, введите название категории")
+    new_category = message.text.strip()
+    
+    if new_category in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if new_category == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
+        else:
+            return_to_menu(message)
+        return
+    
+    if not new_category:
+        bot.send_message(user_id, "❌ Пожалуйста, введите название категории!", parse_mode="Markdown")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        markup.add(types.KeyboardButton("В главное меню"))
         bot.register_next_step_handler(message, partial(add_new_repair_category, brand=brand, model=model, license_plate=license_plate))
         return
-
-    new_category = message.text.strip()
-
+    
     system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
-
-    if new_category in system_categories:
-        bot.send_message(user_id, "Эта категория уже существует в системе!")
-        process_category_selection_repair(user_id, brand, model, license_plate)
-        return
-
-    data = load_repair_data(user_id)
-    if new_category not in data["user_categories"]:
-        data["user_categories"].append(new_category)
-        with open(os.path.join("data base", "repairs", f"{user_id}_repairs.json"), "w", encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=False, indent=4)
-
-        bot.send_message(user_id, f"Категория *{new_category}* успешно добавлена!", parse_mode="Markdown")
+    if new_category in system_categories or new_category in get_user_repair_categories(user_id):
+        bot.send_message(user_id, f"❌ Категория *{new_category}* уже существует!", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, "Эта категория уже существует")
-
+        if add_repair_category(user_id, new_category):
+            bot.send_message(user_id, f"✅ Категория *{new_category}* успешно добавлена!", parse_mode="Markdown")
+        else:
+            bot.send_message(user_id, f"❌ Ошибка при добавлении категории *{new_category}*!", parse_mode="Markdown")
+    
     process_category_selection_repair(user_id, brand, model, license_plate)
 
 @text_only_handler
 def handle_repair_category_removal(message, brand, model, license_plate):
+    """Инициирует удаление пользовательской категории."""
     user_id = message.from_user.id
     categories = get_user_repair_categories(user_id)
-
     system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
-
-    if not categories:
-        bot.send_message(user_id, "Нет доступных категорий для удаления!")
+    user_categories = [cat for cat in categories if cat not in system_categories]
+    
+    if not user_categories:
+        bot.send_message(user_id, "❌ Нет пользовательских категорий для удаления!", parse_mode="Markdown")
         process_category_selection_repair(user_id, brand, model, license_plate)
         return
-
-    system_emoji = "🔹"
+    
     user_emoji = "🔸"
-
+    
     category_list = "\n".join(
-        f"{system_emoji if category in system_categories else user_emoji} {i + 1}. {category}"
-        for i, category in enumerate(categories)
+        f"{user_emoji} {i + 1}. {category}"
+        for i, category in enumerate(user_categories)
     )
-    bot.send_message(user_id, f"Выберите категорию для удаления или 0 для отмены:\n\n{category_list}")
-
+    bot.send_message(user_id, f"Выберите категорию для удаления или 0 для отмены:\n\n{category_list}", parse_mode="Markdown")
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в меню трат и ремонтов")
-    markup.add("В главное меню")
-    bot.send_message(user_id, "Выберите действие для категории:", reply_markup=markup)
+    markup.add(types.KeyboardButton("0"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, partial(remove_repair_category_handler, user_categories=user_categories, brand=brand, model=model, license_plate=license_plate))
 
-    bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
-
-def remove_repair_category(message, categories, system_categories, brand, model, license_plate):
+@text_only_handler
+def remove_repair_category_handler(message, user_categories, brand, model, license_plate):
+    """Обрабатывает удаление пользовательской категории."""
     user_id = message.from_user.id
-
-    if message.text == "0":
-        process_category_selection_repair(user_id, brand, model, license_plate)
+    selected_index = message.text.strip()
+    
+    if selected_index == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
-        return
-
-    elif message.text == "В главное меню":
+    if selected_index == "В главное меню":
         return_to_menu(message)
         return
-
-    if message.text:
-        try:
-            index = int(message.text) - 1
-            if 0 <= index < len(categories):
-                removed_category = categories[index]
-
-                if removed_category in system_categories:
-                    bot.send_message(user_id, "Это системная категория, удаление невозможно. Попробуйте еще раз")
-                    bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
-                    return
-
-                data = load_repair_data(user_id)
-                data["user_categories"].remove(removed_category)
-
-                with open(os.path.join("data base", "repairs", f"{user_id}_repairs.json"), "w", encoding="utf-8") as file:
-                    json.dump(data, file, ensure_ascii=False, indent=4)
-
-                bot.send_message(user_id, f"Категория *{removed_category}* успешно удалена!", parse_mode="Markdown")
-                process_category_selection_repair(user_id, brand, model, license_plate)
-
+    if selected_index == "0":
+        process_category_selection_repair(user_id, brand, model, license_plate)
+        return
+    
+    if selected_index.isdigit():
+        index = int(selected_index) - 1
+        if 0 <= index < len(user_categories):
+            category_to_remove = user_categories[index]
+            if remove_repair_category(user_id, category_to_remove):
+                bot.send_message(user_id, f"✅ Категория *{category_to_remove}* успешно удалена!", parse_mode="Markdown")
             else:
-                bot.send_message(user_id, "Неверный номер категории. Попробуйте снова")
-                bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
-
-        except ValueError:
-            bot.send_message(user_id, "Пожалуйста, введите корректный номер категории")
-            bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
+                bot.send_message(user_id, f"❌ Ошибка при удалении категории *{category_to_remove}*!", parse_mode="Markdown")
+            process_category_selection_repair(user_id, brand, model, license_plate)
+        else:
+            bot.send_message(user_id, "❌ Неверный номер категории! Попробуйте снова.", parse_mode="Markdown")
+            handle_repair_category_removal(message, brand, model, license_plate)
     else:
-        bot.send_message(user_id, "Пожалуйста, введите номер категории")
-        bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
+        bot.send_message(user_id, "❌ Пожалуйста, введите номер категории или 0!", parse_mode="Markdown")
+        handle_repair_category_removal(message, brand, model, license_plate)
 
+@text_only_handler
 def proceed_to_repair_name(message, selected_category, brand, model, license_plate):
+    """Запрашивает название ремонта."""
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Введите название ремонта:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_repair_name, selected_category, brand, model, license_plate)
+    bot.register_next_step_handler(message, partial(get_repair_name, selected_category=selected_category, brand=brand, model=model, license_plate=license_plate))
 
 @text_only_handler
 def get_repair_name(message, selected_category, brand, model, license_plate):
+    """Обрабатывает название ремонта и запрашивает описание."""
     user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+    repair_name = message.text.strip()
+    
+    if repair_name in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if repair_name == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
-
-    repair_name = message.text
+    
+    if not repair_name:
+        bot.send_message(user_id, "❌ Пожалуйста, введите название ремонта!", parse_mode="Markdown")
+        proceed_to_repair_name(message, selected_category, brand, model, license_plate)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_skip = types.KeyboardButton("Пропустить описание")
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_skip, item_return, item_main_menu)
-
+    markup.add(types.KeyboardButton("Пропустить описание"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Введите описание ремонта или пропустите этот шаг:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_repair_description, selected_category, repair_name, brand, model, license_plate)
+    bot.register_next_step_handler(message, partial(get_repair_description, selected_category=selected_category, repair_name=repair_name, brand=brand, model=model, license_plate=license_plate))
 
 @text_only_handler
 def get_repair_description(message, selected_category, repair_name, brand, model, license_plate):
+    """Обрабатывает описание ремонта и запрашивает дату."""
     user_id = message.from_user.id
-
+    repair_description = message.text.strip() if message.text != "Пропустить описание" else ""
+    
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
-
-    repair_description = message.text if message.text != "Пропустить описание" else ""
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
-    bot.send_message(user_id, "Введите дату ремонта:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_repair_date, selected_category, repair_name, repair_description, brand, model, license_plate)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Введите дату ремонта (ДД.ММ.ГГГГ):", reply_markup=markup)
+    bot.register_next_step_handler(message, partial(get_repair_date, selected_category=selected_category, repair_name=repair_name, repair_description=repair_description, brand=brand, model=model, license_plate=license_plate))
 
 def is_valid_date(date_str):
-    pattern = r'^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(2000|20[01][0-9]|202[0-9]|203[0-9]|[2-9][0-9]{3})$'
+    """Проверяет корректность формата даты ДД.ММ.ГГГГ."""
+    pattern = r'^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(2000|20[0-2][0-9])$'
     return bool(re.match(pattern, date_str))
 
 @text_only_handler
 def get_repair_date(message, selected_category, repair_name, repair_description, brand, model, license_plate):
+    """Обрабатывает дату ремонта и запрашивает сумму."""
     user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+    repair_date = message.text.strip()
+    
+    if repair_date in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if repair_date == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
-
-    repair_date = message.text
-
+    
     if not is_valid_date(repair_date):
-        bot.send_message(user_id, "Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ")
-        bot.register_next_step_handler(
-            message,
-            get_repair_date,
-            selected_category,
-            repair_name,
-            repair_description,
-            brand,
-            model,
-            license_plate
-        )
+        bot.send_message(user_id, "❌ Неверный формат даты! Введите дату в формате ДД.ММ.ГГГГ.", parse_mode="Markdown")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.register_next_step_handler(message, partial(get_repair_date, selected_category=selected_category, repair_name=repair_name, repair_description=repair_description, brand=brand, model=model, license_plate=license_plate))
         return
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Введите сумму ремонта:", reply_markup=markup)
     bot.register_next_step_handler(
         message,
-        save_repair_data_final,
-        selected_category,
-        repair_name,
-        repair_description,
-        repair_date,
-        brand,
-        model,
-        license_plate,
-        f"{brand} {model} {license_plate}"
+        partial(
+            save_repair_data_final,
+            selected_category=selected_category,
+            repair_name=repair_name,
+            repair_description=repair_description,
+            repair_date=repair_date,
+            brand=brand,
+            model=model,
+            license_plate=license_plate,
+            selected_transport=f"{brand} {model} ({license_plate})"
+        )
     )
 
 @text_only_handler
 def save_repair_data_final(message, selected_category, repair_name, repair_description, repair_date, brand, model, license_plate, selected_transport):
+    """Сохраняет данные ремонта в JSON и Excel."""
     user_id = message.from_user.id
-
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+    repair_amount = message.text.strip()
+    
+    if repair_amount in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if repair_amount == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
-
+    
     try:
-        repair_amount = float(message.text)
+        repair_amount = float(repair_amount)
+        if repair_amount < 0:
+            raise ValueError("Сумма не может быть отрицательной")
+        
         repair_data = {
             "category": selected_category,
             "name": repair_name,
@@ -8490,23 +10024,22 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
                 "license_plate": license_plate
             }
         }
-
-        data = load_repair_data(user_id)
-        if str(user_id) not in data:
-            data[str(user_id)] = {"repairs": []}
-
-        repairs = data[str(user_id)].get("repairs", [])
-        repairs.append(repair_data)
-        data[str(user_id)]["repairs"] = repairs
-
-        save_repair_data(user_id, data, selected_transport)
+        
+        user_data = load_repair_data(user_id)
+        user_data.setdefault(str(user_id), {"repairs": []})
+        user_data[str(user_id)]["repairs"].append(repair_data)
+        
+        save_repair_data(user_id, user_data, selected_transport)
         save_repair_to_excel(user_id, repair_data)
-
-        bot.send_message(user_id, "Ремонт успешно записан")
-        send_menu(user_id)
-
+        
+        bot.send_message(user_id, f"✅ Ремонт *{repair_name}* успешно записан!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+    
     except ValueError:
-        bot.send_message(user_id, "Пожалуйста, введите корректную сумму")
+        bot.send_message(user_id, "❌ Пожалуйста, введите корректную сумму!", parse_mode="Markdown")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        markup.add(types.KeyboardButton("В главное меню"))
         bot.register_next_step_handler(
             message,
             partial(
@@ -8521,42 +10054,46 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
                 selected_transport=selected_transport
             )
         )
-        
+
 def save_repair_to_excel(user_id, repair_data):
-    excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
-
-    directory = os.path.dirname(excel_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
+    """Сохраняет данные ремонта в Excel-файл."""
+    excel_path = os.path.join(REPAIRS_DIR, "excel", f"{user_id}_repairs.xlsx")
+    
     try:
         if os.path.exists(excel_path):
-            workbook = load_workbook(excel_path)
+            try:
+                workbook = load_workbook(excel_path)
+            except Exception:
+                workbook = Workbook()
+                workbook.remove(workbook.active)
         else:
             workbook = Workbook()
             workbook.remove(workbook.active)
-
-        summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
-
-        transport_sheet_name = f"{repair_data['transport']['brand']}_{repair_data['transport']['model']}_{repair_data['transport']['license_plate']}"
+        
+        if "Summary" not in workbook.sheetnames:
+            summary_sheet = workbook.create_sheet("Summary")
+        else:
+            summary_sheet = workbook["Summary"]
+        
+        transport_sheet_name = f"{repair_data['transport']['brand']}_{repair_data['transport']['model']}_{repair_data['transport']['license_plate']}"[:31]
         if transport_sheet_name not in workbook.sheetnames:
             transport_sheet = workbook.create_sheet(transport_sheet_name)
         else:
             transport_sheet = workbook[transport_sheet_name]
-
+        
         headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
-
+        
         def setup_sheet(sheet):
-            if sheet.max_row == 1:
+            if sheet.max_row == 0 or sheet[1][0].value != headers[0]:
                 sheet.append(headers)
                 for cell in sheet[1]:
                     cell.font = Font(bold=True)
                     cell.alignment = Alignment(horizontal="center")
-
+        
         for sheet in [summary_sheet, transport_sheet]:
             setup_sheet(sheet)
             row_data = [
-                f"{repair_data['transport']['brand']} {repair_data['transport']['model']} {repair_data['transport']['license_plate']}",
+                f"{repair_data['transport']['brand']} {repair_data['transport']['model']} ({repair_data['transport']['license_plate']})",
                 repair_data["category"],
                 repair_data["name"],
                 repair_data["date"],
@@ -8564,50 +10101,46 @@ def save_repair_to_excel(user_id, repair_data):
                 repair_data["description"],
             ]
             sheet.append(row_data)
-
+        
         for sheet in [summary_sheet, transport_sheet]:
             for col in sheet.columns:
-                max_length = max(len(str(cell.value)) for cell in col)
+                max_length = max(len(str(cell.value)) for cell in col if cell.value)
                 sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
-
+        
         workbook.save(excel_path)
+        workbook.close()
+    
     except Exception as e:
-        pass
+        print(f"Ошибка при сохранении Excel: {e}")
+        bot.send_message(user_id, "❌ Ошибка при сохранении данных в Excel! Попробуйте снова.", parse_mode="Markdown")
 
 # ---------- 10.6. РЕМОНТЫ (ПРОСМОТР РЕМОНТОВ) ----------
 
 selected_repair_transport_dict = {}
 
 def filter_repairs_by_transport(user_id, repairs):
-    selected_transport = selected_repair_transport_dict.get(user_id)
-
+    """Фильтрует ремонты по выбранному транспорту."""
+    selected_transport = selected_repair_transport_dict.get(user_id, load_repair_data(user_id).get("selected_transport", ""))
     if not selected_transport:
         return repairs
-
+    
+    selected_transport = format_transport_string(selected_transport)
+    
     filtered_repairs = [
         repair for repair in repairs
-        if f"{repair['transport']['brand']} {repair['transport']['model']} ({repair['transport']['license_plate']})" == selected_transport
+        if format_transport_string(repair.get("transport", {})) == selected_transport
     ]
     return filtered_repairs
 
-def send_message_with_split(user_id, message_text):
-    bot.send_message(user_id, message_text, parse_mode="Markdown")
-
 def send_repair_menu(user_id):
+    """Отображает меню просмотра ремонтов."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Ремонты (месяц)")
-    item2 = types.KeyboardButton("Ремонты (год)")
-    item3 = types.KeyboardButton("Ремонты (все время)")
-    item4 = types.KeyboardButton("Ремонты (по категориям)")
-    item5 = types.KeyboardButton("Посмотреть ремонты в EXCEL")
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item4, item1)
-    markup.add(item2, item3)
-    markup.add(item5)
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
+    markup.add(types.KeyboardButton("Ремонты (по категориям)"), types.KeyboardButton("Ремонты (месяц)"))
+    markup.add(types.KeyboardButton("Ремонты (год)"), types.KeyboardButton("Ремонты (все время)"))
+    markup.add(types.KeyboardButton("Посмотреть ремонты в EXCEL"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите вариант просмотра ремонтов:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты")
@@ -8620,54 +10153,58 @@ def send_repair_menu(user_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_repairs(message):
+    """Инициирует просмотр ремонтов."""
     user_id = message.from_user.id
-
     transport_list = load_transport_data(user_id)
-
+    
     if not transport_list:
-        bot.send_message(user_id, "У вас нет сохраненного транспорта. Хотите добавить транспорт?", reply_markup=create_transport_options_markup())
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Добавить транспорт"))
+        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        bot.send_message(user_id, "⚠️ У вас нет сохраненного транспорта! Хотите добавить транспорт?", reply_markup=markup)
         bot.register_next_step_handler(message, ask_add_transport)
         return
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
     transport_buttons = [
         types.KeyboardButton(f"{transport['brand']} {transport['model']} ({transport['license_plate']})")
         for transport in transport_list
     ]
     for i in range(0, len(transport_buttons), 2):
         markup.add(*transport_buttons[i:i+2])
-
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main)
-
+    
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите ваш транспорт для просмотра ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_repairs)
 
+@text_only_handler
 def handle_transport_selection_for_repairs(message):
+    """Обрабатывает выбор транспорта для просмотра ремонтов."""
     user_id = message.from_user.id
-    selected_transport = message.text
-
+    selected_transport = message.text.strip()
+    
     if selected_transport == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+        return_to_expense_and_repairs(message)
         return
-
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
-
+    
+    transport_list = load_transport_data(user_id)
+    if selected_transport not in [f"{t['brand']} {t['model']} ({t['license_plate']})" for t in transport_list]:
+        bot.send_message(user_id, "❌ Выбранный транспорт не найден! Попробуйте снова.", parse_mode="Markdown")
+        view_repairs(message)
+        return
+    
     selected_repair_transport_dict[user_id] = selected_transport
-
-    bot.send_message(
-        user_id,
-        f"Показываю ремонты для транспорта: *{selected_transport}*",
-        parse_mode="Markdown"
-    )
-
+    save_repair_data(user_id, load_repair_data(user_id), selected_transport)
+    
+    bot.send_message(user_id, f"👀 Показываю ремонты для транспорта: *{selected_transport}*", parse_mode="Markdown")
     send_repair_menu(user_id)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты в EXCEL")
@@ -8680,31 +10217,23 @@ def handle_transport_selection_for_repairs(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def send_repairs_excel(message):
+    """Отправляет пользователю Excel-файл с ремонтами."""
     user_id = message.from_user.id
-
-    excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
-
+    excel_path = os.path.join(REPAIRS_DIR, "excel", f"{user_id}_repairs.xlsx")
+    
     if not os.path.exists(excel_path):
-        bot.send_message(user_id, "Файл с вашими ремонтами не найден!")
+        bot.send_message(user_id, "❌ Файл с вашими ремонтами не найден!", parse_mode="Markdown")
         return
-
-    with open(excel_path, 'rb') as excel_file:
-        bot.send_document(user_id, excel_file)
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_message_with_split(user_id, message_text):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text, parse_mode="Markdown")
-    else:
-        message_parts = [
-            message_text[i:i + MAX_MESSAGE_LENGTH]
-            for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)
-        ]
-        for part in message_parts:
-            bot.send_message(user_id, part, parse_mode="Markdown")
+    
+    try:
+        with open(excel_path, 'rb') as excel_file:
+            bot.send_document(user_id, excel_file)
+    except Exception as e:
+        bot.send_message(user_id, "❌ Ошибка при отправке файла Excel! Попробуйте снова.", parse_mode="Markdown")
+        print(f"Ошибка при отправке Excel: {e}")
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
 @check_function_state_decorator('Ремонты (по категориям)')
@@ -8716,66 +10245,63 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_repairs_by_category(message):
+    """Отображает ремонты по выбранной категории."""
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
-
-    repairs = filter_repairs_by_transport(user_id, repairs)
-
-    categories = {repair['category'] for repair in repairs}
-
+    
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    categories = sorted(set(repair["category"] for repair in filtered_repairs))
+    
     if not categories:
-        bot.send_message(user_id, "*Нет доступных категорий* для выбранного транспорта", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ Нет доступных категорий для выбранного транспорта!", parse_mode="Markdown")
         send_repair_menu(user_id)
         return
-
-    category_buttons = [types.KeyboardButton(category) for category in categories]
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(*category_buttons)
-    item_return_to_repairs = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_return_to_main = types.KeyboardButton("В главное меню")
-    markup.add(item_return_to_repairs)
-    markup.add(item_return_to_main)
-
+    markup.add(*[types.KeyboardButton(category) for category in categories])
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите категорию для просмотра ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_repair_category_selection)
 
+@text_only_handler
 def handle_repair_category_selection(message):
+    """Обрабатывает выбор категории для просмотра ремонтов."""
     user_id = message.from_user.id
-    selected_category = message.text.strip().lower()
-
-    if not selected_category or selected_category == "вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    selected_category = message.text.strip()
+    
+    if selected_category in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if selected_category == "Вернуться в меню трат и ремонтов":
+            return_to_expense_and_repairs(message)
+        else:
+            return_to_menu(message)
         return
-    if selected_category == "в главное меню":
-        return_to_menu(message)
-        return
-
+    
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
-
-    repairs = filter_repairs_by_transport(user_id, repairs)
-
-    available_categories = {repair['category'].lower() for repair in repairs}
-
-    if selected_category not in available_categories:
-        bot.send_message(user_id, "Выбранная категория не найдена! Пожалуйста, выберите корректную категорию")
-        view_repairs_by_category(message)
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    category_repairs = [repair for repair in filtered_repairs if repair["category"] == selected_category]
+    
+    if not category_repairs:
+        bot.send_message(user_id, f"❌ В категории *{selected_category}* ремонтов не найдено!", parse_mode="Markdown")
+        send_repair_menu(user_id)
         return
-
-    category_repairs = [repair for repair in repairs if repair['category'].lower() == selected_category]
-
+    
     total_repairs_amount = 0
     repair_details = []
-
+    
     for index, repair in enumerate(category_repairs, start=1):
         repair_name = repair.get("name", "Без названия")
-        repair_date = repair.get("date", "")
+        repair_date = repair.get("date", "Неизвестно")
         repair_amount = float(repair.get("amount", 0))
         total_repairs_amount += repair_amount
-
+        
         repair_details.append(
             f"🔧 *№ {index}*\n\n"
             f"📂 *Категория:* {repair['category']}\n"
@@ -8784,36 +10310,16 @@ def handle_repair_category_selection(message):
             f"💰 *Сумма:* {repair_amount:.2f} руб.\n"
             f"📝 *Описание:* {repair.get('description', 'Без описания')}\n"
         )
-
-    if repair_details:
-        message_text = f"*Ремонты* в категории *{selected_category}*:\n\n\n" + "\n\n".join(repair_details)
-        send_message_with_split(user_id, message_text)
-        bot.send_message(
-            user_id,
-            f"Итоговая сумма ремонтов в категории *{selected_category}*: *{total_repairs_amount:.2f}* руб.",
-            parse_mode="Markdown"
-        )
-    else:
-        bot.send_message(
-            user_id,
-            f"В категории *{selected_category}* ремонтов не найдено!",
-            parse_mode="Markdown"
-        )
-
+    
+    message_text = f"*Ремонты* в категории *{selected_category}*:\n\n" + "\n\n".join(repair_details)
+    send_message_with_split(user_id, message_text, parse_mode="Markdown")
+    bot.send_message(
+        user_id,
+        f"Итоговая сумма ремонтов в категории *{selected_category}*: *{total_repairs_amount:.2f}* руб.",
+        parse_mode="Markdown"
+    )
+    
     send_repair_menu(user_id)
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_message_with_split(user_id, message_text):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text, parse_mode="Markdown")
-    else:
-        message_parts = [
-            message_text[i:i + MAX_MESSAGE_LENGTH]
-            for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)
-        ]
-        for part in message_parts:
-            bot.send_message(user_id, part, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
 @check_function_state_decorator('Ремонты (месяц)')
@@ -8825,103 +10331,74 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_repairs_by_month(message):
+    """Запрашивает месяц и год для просмотра ремонтов."""
     user_id = message.from_user.id
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main)
-
-    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_month)
 
 @text_only_handler
 def get_repairs_by_month(message):
+    """Отображает ремонты за указанный месяц."""
     user_id = message.from_user.id
-    date = message.text.strip() if message.text else None
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    date = message.text.strip()
+    
+    if date == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if message.text == "В главное меню":
+    if date == "В главное меню":
         return_to_menu(message)
         return
-
-    if "." in date:
-        parts = date.split(".")
-        if len(parts) == 2:
-            month, year = parts
-            if month.isdigit() and year.isdigit() and 1 <= int(month) <= 12 and 2000 <= int(year) <= 3000:
-                month, year = map(int, parts)
-
-                user_data = load_repair_data(user_id)
-                repairs = user_data.get(str(user_id), {}).get("repairs", [])
-
-                repairs = filter_repairs_by_transport(user_id, repairs)
-
-                total_repairs = 0
-                repair_details = []
-
-                for index, repair in enumerate(repairs, start=1):
-                    repair_date = repair.get("date", "")
-                    repair_date_parts = repair_date.split(".")
-                    if len(repair_date_parts) >= 2:
-                        repair_month, repair_year = map(int, repair_date_parts[1:3])
-
-                        if repair_month == month and repair_year == year:
-                            amount = float(repair.get("amount", 0))
-                            total_repairs += amount
-
-                            repair_name = repair.get("name", "Без названия")
-                            description = repair.get("description", "")
-                            category = repair.get("category", "Без категории")
-
-                            repair_details.append(
-                                f"🔧 *№ {index}*\n\n"
-                                f"📂 *Категория:* {category}\n"
-                                f"📌 *Название:* {repair_name}\n"
-                                f"📅 *Дата:* {repair_date}\n"
-                                f"💰 *Сумма:* {amount} руб.\n"
-                                f"📝 *Описание:* {description}\n"
-                            )
-
-                if repair_details:
-                    message_text = f"Ремонты за *{date}* месяц:\n\n\n" + "\n\n".join(repair_details)
-                    send_message_with_split(user_id, message_text)
-                    bot.send_message(user_id, f"Итоговая сумма ремонтов за *{date}* месяц: *{total_repairs}* руб.", parse_mode="Markdown")
-                else:
-                    bot.send_message(user_id, f"За *{date}* месяц ремонтов не найдено!", parse_mode="Markdown")
-
-                send_repair_menu(user_id)
-            else:
-                bot.send_message(user_id, "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ")
-                bot.register_next_step_handler(message, get_repairs_by_month)
-                return
-        else:
-            bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ")
-            bot.register_next_step_handler(message, get_repairs_by_month)
-            return
-    else:
-        bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ")
+    
+    match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2})$", date)
+    if not match:
+        bot.send_message(user_id, "❌ Введите корректный месяц и год в формате ММ.ГГГГ!", parse_mode="Markdown")
         bot.register_next_step_handler(message, get_repairs_by_month)
         return
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_message_with_split(user_id, message_text):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text, parse_mode="Markdown")
+    
+    month, year = match.groups()
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    total_repairs = 0
+    repair_details = []
+    
+    for index, repair in enumerate(filtered_repairs, start=1):
+        repair_date = repair.get("date", "")
+        if repair_date and repair_date.split(".")[1:3] == [month, year]:
+            amount = float(repair.get("amount", 0))
+            total_repairs += amount
+            
+            repair_name = repair.get("name", "Без названия")
+            description = repair.get("description", "Без описания")
+            category = repair.get("category", "Без категории")
+            
+            repair_details.append(
+                f"🔧 *№ {index}*\n\n"
+                f"📂 *Категория:* {category}\n"
+                f"📌 *Название:* {repair_name}\n"
+                f"📅 *Дата:* {repair_date}\n"
+                f"💰 *Сумма:* {amount:.2f} руб.\n"
+                f"📝 *Описание:* {description}\n"
+            )
+    
+    if repair_details:
+        message_text = f"*Ремонты* за *{date}* месяц:\n\n" + "\n\n".join(repair_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(user_id, f"Итоговая сумма ремонтов за *{date}* месяц: *{total_repairs:.2f}* руб.", parse_mode="Markdown")
     else:
-        message_parts = [
-            message_text[i:i + MAX_MESSAGE_LENGTH]
-            for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)
-        ]
-        for part in message_parts:
-            bot.send_message(user_id, part, parse_mode="Markdown")
+        bot.send_message(user_id, f"❌ За *{date}* месяц ремонтов не найдено!", parse_mode="Markdown")
+    
+    send_repair_menu(user_id)
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (год)")
 @check_function_state_decorator('Ремонты (год)')
@@ -8933,96 +10410,71 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_repairs_by_year(message):
+    """Запрашивает год для просмотра ремонтов."""
     user_id = message.from_user.id
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main)
-
-    bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра ремонтов за этот год:", reply_markup=markup)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Введите год (ГГГГ) для просмотра ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_year)
 
 @text_only_handler
 def get_repairs_by_year(message):
+    """Отображает ремонты за указанный год."""
     user_id = message.from_user.id
-
-    year_input = message.text.strip()
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+    year = message.text.strip()
+    
+    if year == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if message.text == "В главное меню":
+    if year == "В главное меню":
         return_to_menu(message)
         return
-
-    if not year_input.isdigit() or len(year_input) != 4:
-        bot.send_message(user_id, "Пожалуйста, введите год в формате ГГГГ.")
+    
+    if not re.match(r"^(20[0-9]{2})$", year):
+        bot.send_message(user_id, "❌ Введите корректный год в формате ГГГГ!", parse_mode="Markdown")
         bot.register_next_step_handler(message, get_repairs_by_year)
         return
-
-    year = int(year_input)
-    if year < 2000 or year > 3000:
-        bot.send_message(user_id, "Введите год в формате ГГГГ.")
-        bot.register_next_step_handler(message, get_repairs_by_year)
-        return
-
+    
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
-
-    repairs = filter_repairs_by_transport(user_id, repairs)
-
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
     total_repairs = 0
     repair_details = []
-
-    for index, repair in enumerate(repairs, start=1):
+    
+    for index, repair in enumerate(filtered_repairs, start=1):
         repair_date = repair.get("date", "")
-        if "." in repair_date:
-            date_parts = repair_date.split(".")
-            if len(date_parts) >= 3:
-                repair_year = int(date_parts[2])
-                if repair_year == year:
-                    amount = float(repair.get("amount", 0))
-                    total_repairs += amount
-
-                    repair_name = repair.get("name", "Без названия")
-                    description = repair.get("description", "")
-                    category = repair.get("category", "Без категории")
-
-                    repair_details.append(
-                        f"🔧 *№ {index}*\n\n"
-                        f"📂 *Категория:* {category}\n"
-                        f"📌 *Название:* {repair_name}\n"
-                        f"📅 *Дата:* {repair_date}\n"
-                        f"💰 *Сумма:* {amount} руб.\n"
-                        f"📝 *Описание:* {description}\n"
-                    )
-
+        if repair_date and repair_date.split(".")[-1] == year:
+            amount = float(repair.get("amount", 0))
+            total_repairs += amount
+            
+            repair_name = repair.get("name", "Без названия")
+            description = repair.get("description", "Без описания")
+            category = repair.get("category", "Без категории")
+            
+            repair_details.append(
+                f"🔧 *№ {index}*\n\n"
+                f"📂 *Категория:* {category}\n"
+                f"📌 *Название:* {repair_name}\n"
+                f"📅 *Дата:* {repair_date}\n"
+                f"💰 *Сумма:* {amount:.2f} руб.\n"
+                f"📝 *Описание:* {description}\n"
+            )
+    
     if repair_details:
-        message_text = f"Ремонты за *{year}* год:\n\n\n" + "\n\n".join(repair_details)
-        send_message_with_split(user_id, message_text)
-        bot.send_message(user_id, f"Итоговая сумма ремонтов за *{year}* год: *{total_repairs}* руб.", parse_mode="Markdown")
+        message_text = f"*Ремонты* за *{year}* год:\n\n" + "\n\n".join(repair_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(user_id, f"Итоговая сумма ремонтов за *{year}* год: *{total_repairs:.2f}* руб.", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, f"За *{year}* год ремонтов не найдено!", parse_mode="Markdown")
-
+        bot.send_message(user_id, f"❌ За *{year}* год ремонтов не найдено!", parse_mode="Markdown")
+    
     send_repair_menu(user_id)
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_message_with_split(user_id, message_text):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text, parse_mode="Markdown")
-    else:
-        message_parts = [
-            message_text[i:i + MAX_MESSAGE_LENGTH]
-            for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)
-        ]
-        for part in message_parts:
-            bot.send_message(user_id, part, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (все время)")
 @check_function_state_decorator('Ремонты (все время)')
@@ -9034,53 +10486,51 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_all_repairs(message):
+    """Отображает все ремонты для выбранного транспорта."""
     user_id = message.from_user.id
-
     user_data = load_repair_data(user_id)
     repairs = user_data.get(str(user_id), {}).get("repairs", [])
-
-    repairs = filter_repairs_by_transport(user_id, repairs)
-
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
     total_repairs = 0
     repair_details = []
-
-    for index, repair in enumerate(repairs, start=1):
+    
+    for index, repair in enumerate(filtered_repairs, start=1):
         amount = float(repair.get("amount", 0))
         total_repairs += amount
-
+        
         repair_name = repair.get("name", "Без названия")
-        repair_date = repair.get("date", "")
-        description = repair.get("description", "")
+        repair_date = repair.get("date", "Неизвестно")
+        description = repair.get("description", "Без описания")
         category = repair.get("category", "Без категории")
-
+        
         repair_details.append(
             f"🔧 *№ {index}*\n\n"
             f"📂 *Категория:* {category}\n"
             f"📌 *Название:* {repair_name}\n"
             f"📅 *Дата:* {repair_date}\n"
-            f"💰 *Сумма:* {amount} руб.\n"
+            f"💰 *Сумма:* {amount:.2f} руб.\n"
             f"📝 *Описание:* {description}\n"
         )
-
+    
     if repair_details:
-        message_text = "*Все* ремонты:\n\n\n" + "\n\n".join(repair_details)
-        send_message_with_split(user_id, message_text)
-        bot.send_message(user_id, f"Итоговая сумма всех ремонтов: *{total_repairs}* руб.", parse_mode="Markdown")
+        message_text = "*Все ремонты*:\n\n" + "\n\n".join(repair_details)
+        send_message_with_split(user_id, message_text, parse_mode="Markdown")
+        bot.send_message(user_id, f"Итоговая сумма всех ремонтов: *{total_repairs:.2f}* руб.", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, "Ремонтов не найдено", parse_mode="Markdown")
-
+        bot.send_message(user_id, "❌ Ремонтов не найдено!", parse_mode="Markdown")
+    
     send_repair_menu(user_id)
 
 # ---------- 10.7. РЕМОНТЫ (УДАЛЕНИЕ РЕМОНТОВ) ----------
 
 selected_repair_transports = {}
-
-def save_selected_repair_transport(user_id, selected_transport):
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    user_data["selected_transport"] = selected_transport
-    save_repair_data(user_id, {str(user_id): user_data})
+repairs_to_delete_dict = {}
+selected_repair_categories = {}
+user_repairs_to_delete = {}
 
 @bot.message_handler(func=lambda message: message.text == "Удалить ремонты")
 @check_function_state_decorator('Удалить ремонты')
@@ -9092,21 +10542,21 @@ def save_selected_repair_transport(user_id, selected_transport):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def delete_repairs_menu(message):
+    """Инициирует удаление ремонтов."""
     user_id = message.from_user.id
-
     transport_data = load_transport_data(user_id)
+    
     if not transport_data:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item_add_transport = types.KeyboardButton("Добавить транспорт")
-        item_cancel = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-        markup.add(item_add_transport)
-        markup.add(item_cancel)
-        bot.send_message(user_id, "У вас нет сохраненного транспорта. Хотите добавить транспорт?", reply_markup=markup)
+        markup.add(types.KeyboardButton("Добавить транспорт"))
+        markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        bot.send_message(user_id, "⚠️ У вас нет сохраненного транспорта! Хотите добавить транспорт?", reply_markup=markup)
         bot.register_next_step_handler(message, ask_add_transport)
         return
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     transport_buttons = [
         types.KeyboardButton(f"{transport['brand']} {transport['model']} ({transport['license_plate']})")
@@ -9114,46 +10564,46 @@ def delete_repairs_menu(message):
     ]
     for i in range(0, len(transport_buttons), 2):
         markup.add(*transport_buttons[i:i+2])
-
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
+    
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите транспорт для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_repair_transport_selection_for_deletion)
 
+@text_only_handler
 def handle_repair_transport_selection_for_deletion(message):
+    """Обрабатывает выбор транспорта для удаления ремонтов."""
     user_id = message.from_user.id
     selected_transport = message.text.strip()
-
+    
     if selected_transport == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+        return_to_expense_and_repairs(message)
         return
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
-
+    
+    transport_data = load_transport_data(user_id)
+    transport_exists = any(
+        f"{t['brand']} {t['model']} ({t['license_plate']})" == selected_transport
+        for t in transport_data
+    )
+    if not transport_exists:
+        bot.send_message(user_id, "❌ Выбранный транспорт не найден! Попробуйте снова.", parse_mode="Markdown")
+        delete_repairs_menu(message)
+        return
+    
     selected_repair_transports[user_id] = selected_transport
-    save_selected_repair_transport(user_id, selected_transport)
-
+    save_repair_data(user_id, load_repair_data(user_id), selected_transport)
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_month = types.KeyboardButton("Del ремонты (месяц)")
-    item_license_plate = types.KeyboardButton("Del ремонты (год)")
-    item_all_time = types.KeyboardButton("Del ремонты (все время)")
-    item_del_category_rep = types.KeyboardButton("Del ремонты (категория)")
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-
-    markup.add(item_del_category_rep, item_month)
-    markup.add(item_license_plate, item_all_time)
-    markup.add(item_return)
-    markup.add(item_main_menu)
+    markup.add(types.KeyboardButton("Del ремонты (категория)"), types.KeyboardButton("Del ремонты (месяц)"))
+    markup.add(types.KeyboardButton("Del ремонты (год)"), types.KeyboardButton("Del ремонты (все время)"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите вариант удаления ремонтов:", reply_markup=markup)
-
-repairs_to_delete_dict = {}
-selected_repair_categories = {}
-user_repairs_to_delete = {}
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (категория)")
 @check_function_state_decorator('Del ремонты (категория)')
@@ -9165,135 +10615,141 @@ user_repairs_to_delete = {}
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def delete_repairs_by_category(message):
+    """Инициирует удаление ремонтов по категории."""
     user_id = message.from_user.id
-    selected_transport = selected_repair_transports.get(user_id)
-
+    selected_transport = selected_repair_transports.get(user_id) or load_repair_data(user_id).get("selected_transport", "")
+    
     if not selected_transport:
-        selected_transport = load_repair_data(user_id).get("selected_transport")
-        if not selected_transport:
-            bot.send_message(user_id, "Не выбран транспорт")
-            send_menu(user_id)
-            return
-
-    selected_transport_info = selected_transport.strip().lower().replace('(', '').replace(')', '')
-
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    categories = list({
-        repair.get("category")
-        for repair in repairs
-        if f"{repair.get('transport', {}).get('brand', '').strip().lower()} {repair.get('transport', {}).get('model', '').strip().lower()} {str(repair.get('transport', {}).get('license_plate', '')).strip().lower()}" == selected_transport_info
-    })
-
-    if not categories:
-        bot.send_message(user_id, "Нет категорий ремонтов для выбранного транспорта")
-        send_menu(user_id)
+        bot.send_message(user_id, "❌ Не выбран транспорт!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
         return
-
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not filtered_repairs:
+        bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    categories = sorted(set(repair["category"] for repair in filtered_repairs))
+    
+    if not categories:
+        bot.send_message(user_id, f"❌ Нет категорий ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
     markup.add(*[types.KeyboardButton(category) for category in categories])
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
     markup.add(types.KeyboardButton("В главное меню"))
-
+    
     bot.send_message(user_id, "Выберите категорию для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_repair_category_selection_for_deletion)
 
+@text_only_handler
 def handle_repair_category_selection_for_deletion(message):
+    """Обрабатывает выбор категории для удаления ремонтов."""
     user_id = message.from_user.id
     selected_category = message.text.strip()
-
+    
     if selected_category in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if selected_category == "Вернуться в меню трат и ремонтов":
-            send_menu(user_id)
+            return_to_expense_and_repairs(message)
         else:
             return_to_menu(message)
         return
-
-    selected_repair_categories[user_id] = selected_category
-
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    selected_transport = selected_repair_transports.get(user_id)
-    if not selected_transport:
-        selected_transport = load_repair_data(user_id).get("selected_transport")
-        if not selected_transport:
-            bot.send_message(user_id, "Не выбран транспорт")
-            send_menu(user_id)
-            return
-
-    selected_transport_info = selected_transport.strip().lower().replace('(', '').replace(')', '')
-
-    repairs_to_delete = [
-        repair for repair in repairs
-        if repair.get("category") == selected_category and
-           f"{repair.get('transport', {}).get('brand', '').strip().lower()} {repair.get('transport', {}).get('model', '').strip().lower()} {str(repair.get('transport', {}).get('license_plate', '')).strip().lower()}" == selected_transport_info
-    ]
-
-    if not repairs_to_delete:
-        bot.send_message(user_id, f"Нет ремонтов в категории *{selected_category.lower()}* для выбранного транспорта", parse_mode="Markdown")
-        send_menu(user_id)
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not any(repair["category"] == selected_category for repair in filtered_repairs):
+        bot.send_message(user_id, f"❌ Категория *{selected_category}* не найдена!", parse_mode="Markdown")
+        delete_repairs_by_category(message)
         return
-
+    
+    selected_repair_categories[user_id] = selected_category
+    repairs_to_delete = [
+        repair for repair in filtered_repairs
+        if repair["category"] == selected_category
+    ]
+    
+    if not repairs_to_delete:
+        bot.send_message(user_id, f"❌ Нет ремонтов в категории *{selected_category}* для транспорта!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
     user_repairs_to_delete[user_id] = repairs_to_delete
-
-    repair_list_text = f"Список ремонтов в категории *{selected_category.lower()}*:\n\n\n"
+    
+    repair_list_text = f"Список ремонтов в категории *{selected_category}*:\n\n"
     for index, repair in enumerate(repairs_to_delete, start=1):
         repair_name = repair.get("name", "Без названия")
         repair_date = repair.get("date", "Неизвестно")
-        repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n\n"
-
-    repair_list_text += "\nВведите номер ремонта для удаления:"
-
-    send_long_message(user_id, repair_list_text)
-
+        repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n"
+    
+    repair_list_text += "\nВведите номер ремонта для удаления или 0 для отмены:"
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в меню трат и ремонтов")
-    markup.add("В главное меню")
-
+    markup.add(types.KeyboardButton("0"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    send_message_with_split(user_id, repair_list_text, parse_mode="Markdown")
+    bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repair_confirmation)
 
+@text_only_handler
 def delete_repair_confirmation(message):
+    """Подтверждает удаление выбранного ремонта."""
     user_id = message.from_user.id
-
     selected_option = message.text.strip()
-
-    if selected_option in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        if selected_option == "Вернуться в меню трат и ремонтов":
-            send_menu(user_id)
-        else:
-            return_to_menu(message)
+    
+    if selected_option == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
+    if selected_option == "В главное меню":
+        return_to_menu(message)
+        return
+    if selected_option == "0":
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
     if not selected_option.isdigit():
-        bot.send_message(user_id, "Введите корректный номер ремонта из списка")
+        bot.send_message(user_id, "❌ Введите корректный номер ремонта или 0 для отмены!", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_repair_confirmation)
         return
-
+    
     repair_index = int(selected_option) - 1
     repairs_to_delete = user_repairs_to_delete.get(user_id, [])
-
-    if 0 <= repair_index < len(repairs_to_delete):
-        user_data = load_repair_data(user_id).get(str(user_id), {})
-        user_repairs = user_data.get("repairs", [])
-
-        deleted_repair = repairs_to_delete.pop(repair_index)
-        user_repairs.remove(deleted_repair)
-        user_data["repairs"] = user_repairs
-        save_repair_data(user_id, {str(user_id): user_data})
-
-        bot.send_message(
-            user_id,
-            f"Ремонт *{deleted_repair.get('name', 'Без названия')}* успешно удален", parse_mode="Markdown"
-        )
-
-        send_menu(user_id)
-    else:
-        bot.send_message(user_id, "Неверный номер ремонта. Попробуйте снова")
+    
+    if not (0 <= repair_index < len(repairs_to_delete)):
+        bot.send_message(user_id, "❌ Неверный номер ремонта! Попробуйте снова.", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_repair_confirmation)
+        return
+    
+    deleted_repair = repairs_to_delete[repair_index]
+    
+    user_data = load_repair_data(user_id)
+    user_repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    user_repairs.remove(deleted_repair)
+    user_data[str(user_id)]["repairs"] = user_repairs
+    save_repair_data(user_id, user_data)
+    
+    update_repairs_excel_file(user_id)
+    
+    bot.send_message(
+        user_id,
+        f"✅ Ремонт *{deleted_repair.get('name', 'Без названия')}* успешно удален!",
+        parse_mode="Markdown"
+    )
+    
+    return_to_expense_and_repairs(message)
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (месяц)")
 @check_function_state_decorator('Del ремонты (месяц)')
@@ -9305,143 +10761,133 @@ def delete_repair_confirmation(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
-def delete_repair_by_month(message):
+def delete_repairs_by_month(message):
+    """Запрашивает месяц и год для удаления ремонтов."""
     user_id = message.from_user.id
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления ремонтов за этот месяц:", reply_markup=markup)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_month_handler)
 
 @text_only_handler
 def delete_repairs_by_month_handler(message):
+    """Обрабатывает удаление ремонтов за указанный месяц."""
     user_id = message.from_user.id
-    month_year = message.text.strip() if message.text else None
-
+    month_year = message.text.strip()
+    
+    if month_year == "Вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
+        return
+    if month_year == "В главное меню":
+        return_to_menu(message)
+        return
+    
     match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2})$", month_year)
     if not match:
-        bot.send_message(user_id, "Введен неверный месяц или год. Пожалуйста, введите корректные данные (ММ.ГГГГ)")
+        bot.send_message(user_id, "❌ Введите корректный месяц и год в формате ММ.ГГГГ!", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_repairs_by_month_handler)
         return
-
+    
     selected_month, selected_year = match.groups()
-
-    selected_transport = selected_repair_transports.get(user_id)
+    
+    selected_transport = selected_repair_transports.get(user_id) or load_repair_data(user_id).get("selected_transport", "")
     if not selected_transport:
-        bot.send_message(user_id, "Транспорт не выбран. Пожалуйста, выберите транспорт")
-        send_menu(user_id)
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
         return
-
-    transport_info = selected_transport.split(" ")
-    selected_brand = transport_info[0].strip()
-    selected_model = transport_info[1].strip()
-    selected_license_plate = transport_info[2].strip().replace("(", "").replace(")", "")
-
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    if not repairs:
-        bot.send_message(user_id, f"У вас нет сохраненных ремонтов за *{month_year}* месяц", parse_mode="Markdown")
-        send_menu(user_id)
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not filtered_repairs:
+        bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
         return
-
-    repairs_to_delete = []
-    for index, repair in enumerate(repairs, start=1):
-        repair_date = repair.get("date", "")
-
-        if not repair_date or len(repair_date.split(".")) != 3:
-            continue
-
-        repair_day, repair_month, repair_year = repair_date.split(".")
-
-        if repair_month == selected_month and repair_year == selected_year:
-            repair_license_plate = repair.get("transport", {}).get("license_plate", "").strip()
-            repair_brand = repair.get("transport", {}).get("brand", "").strip()
-            repair_model = repair.get("transport", {}).get("model", "").strip()
-
-            if (repair_license_plate == selected_license_plate and
-                repair_brand == selected_brand and
-                repair_model == selected_model):
-                repairs_to_delete.append((index, repair))
-
-    if repairs_to_delete:
-        repairs_to_delete_dict[user_id] = repairs_to_delete
-
-        repair_list_text = f"Список ремонтов для удаления за *{month_year}* месяц:\n\n\n"
-        for index, repair in repairs_to_delete:
-            repair_name = repair.get("name", "Без названия")
-            repair_date = repair.get("date", "Неизвестно")
-            repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n\n"
-
-        repair_list_text += "\nВведите номер ремонта для удаления:"
-
-        send_long_message(user_id, repair_list_text)
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("Вернуться в меню трат и ремонтов")
-        markup.add("В главное меню")
-        bot.register_next_step_handler(message, confirm_delete_repair_month)
-    else:
-        bot.send_message(user_id, f"Нет ремонтов для удаления за *{month_year}* месяц", parse_mode="Markdown")
-        send_menu(user_id)
+    
+    repairs_to_delete = [
+        (index + 1, repair)
+        for index, repair in enumerate(filtered_repairs)
+        if repair.get("date", "").split(".")[1:3] == [selected_month, selected_year]
+    ]
+    
+    if not repairs_to_delete:
+        bot.send_message(user_id, f"❌ Нет ремонтов за *{month_year}* для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    repairs_to_delete_dict[user_id] = repairs_to_delete
+    
+    repair_list_text = f"Список ремонтов за *{month_year}*:\n\n"
+    for index, repair in repairs_to_delete:
+        repair_name = repair.get("name", "Без названия")
+        repair_date = repair.get("date", "Неизвестно")
+        repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n"
+    
+    repair_list_text += "\nВведите номер ремонта для удаления или 0 для отмены:"
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("0"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    send_message_with_split(user_id, repair_list_text, parse_mode="Markdown")
+    bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, confirm_delete_repair_month)
 
 @text_only_handler
 def confirm_delete_repair_month(message):
+    """Подтверждает удаление ремонта за месяц."""
     user_id = message.from_user.id
-
     selected_option = message.text.strip()
-
+    
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
-
     if selected_option == "В главное меню":
         return_to_menu(message)
         return
-
-    if selected_option.isdigit():
-        repair_index = int(selected_option) - 1
-        repairs_to_delete = repairs_to_delete_dict.get(user_id, [])
-
-        if 0 <= repair_index < len(repairs_to_delete):
-            _, deleted_repair = repairs_to_delete.pop(repair_index)
-
-            user_data = load_repair_data(user_id).get(str(user_id), {})
-            if "repairs" in user_data and deleted_repair in user_data["repairs"]:
-                user_data["repairs"].remove(deleted_repair)
-                save_repair_data(user_id, {str(user_id): user_data})
-
-            bot.send_message(
-                user_id,
-                f"Ремонт *{deleted_repair.get('name', 'Без названия').lower()}* успешно удален",
-                parse_mode="Markdown"
-            )
-
-            repairs_to_delete_dict[user_id] = repairs_to_delete
-            send_menu(user_id)
-        else:
-            bot.send_message(user_id, "Неверный выбор. Пожалуйста, попробуйте снова")
-            bot.register_next_step_handler(message, confirm_delete_repair_month)
-    else:
-        bot.send_message(user_id, "Некорректный ввод. Пожалуйста, введите номер ремонта")
+    if selected_option == "0":
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    if not selected_option.isdigit():
+        bot.send_message(user_id, "❌ Введите корректный номер ремонта или 0 для отмены!", parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_delete_repair_month)
-
-MAX_MESSAGE_LENGTH = 4096
-
-def send_long_message(user_id, message_text, parse_mode='Markdown'):
-    if len(message_text) <= MAX_MESSAGE_LENGTH:
-        bot.send_message(user_id, message_text, parse_mode="Markdown")
-    else:
-        message_parts = [
-            message_text[i:i + MAX_MESSAGE_LENGTH]
-            for i in range(0, len(message_text), MAX_MESSAGE_LENGTH)
-        ]
-        for part in message_parts:
-            bot.send_message(user_id, part, parse_mode="Markdown")
+        return
+    
+    repair_index = int(selected_option) - 1
+    repairs_to_delete = repairs_to_delete_dict.get(user_id, [])
+    
+    selected_repair = next((r for i, r in repairs_to_delete if i == repair_index + 1), None)
+    if not selected_repair:
+        bot.send_message(user_id, "❌ Неверный номер ремонта! Попробуйте снова.", parse_mode="Markdown")
+        bot.register_next_step_handler(message, confirm_delete_repair_month)
+        return
+    
+    _, deleted_repair = selected_repair
+    
+    user_data = load_repair_data(user_id)
+    user_repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    user_repairs.remove(deleted_repair)
+    user_data[str(user_id)]["repairs"] = user_repairs
+    save_repair_data(user_id, user_data)
+    
+    update_repairs_excel_file(user_id)
+    
+    bot.send_message(
+        user_id,
+        f"✅ Ремонт *{deleted_repair.get('name', 'Без названия')}* успешно удален!",
+        parse_mode="Markdown"
+    )
+    
+    return_to_expense_and_repairs(message)
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (год)")
 @check_function_state_decorator('Del ремонты (год)')
@@ -9453,123 +10899,130 @@ def send_long_message(user_id, message_text, parse_mode='Markdown'):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def delete_repairs_by_year(message):
+    """Запрашивает год для удаления ремонтов."""
     user_id = message.from_user.id
-
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-    bot.send_message(user_id, "Введите год (ГГГГ) для удаления ремонтов за этот год:", reply_markup=markup)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(user_id, "Введите год (ГГГГ) для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_year_handler)
 
 @text_only_handler
 def delete_repairs_by_year_handler(message):
+    """Обрабатывает удаление ремонтов за указанный год."""
     user_id = message.from_user.id
-    year = message.text.strip() if message.text else None
-
+    year = message.text.strip()
+    
     if year == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
-
     if year == "В главное меню":
         return_to_menu(message)
         return
-
-    if not re.match(r"^(20[0-9]{2}|2[1-9][0-9]{2}|3000)$", year):
-        bot.send_message(user_id, "Введен неверный год. Пожалуйста, введите корректный год")
+    
+    if not re.match(r"^(20[0-9]{2})$", year):
+        bot.send_message(user_id, "❌ Введите корректный год в формате ГГГГ!", parse_mode="Markdown")
         bot.register_next_step_handler(message, delete_repairs_by_year_handler)
         return
-
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    selected_transport = selected_repair_transports.get(user_id, None)
-
-    if selected_transport:
-        transport_info = selected_transport.split(" ")
-        selected_brand = transport_info[0].strip()
-        selected_model = transport_info[1].strip()
-        selected_license_plate = str(transport_info[2].strip())
-    else:
-        selected_brand = selected_model = selected_license_plate = None
-
-    if not repairs:
-        bot.send_message(user_id, f"У вас пока нет сохраненных ремонтов за *{year}* год для удаления!", parse_mode="Markdown")
-        send_menu(user_id)
+    
+    selected_transport = selected_repair_transports.get(user_id) or load_repair_data(user_id).get("selected_transport", "")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
         return
-
-    repairs_to_delete = []
-    for index, repair in enumerate(repairs, start=1):
-        repair_date = repair.get("date", "")
-        repair_year = repair_date.split(".")[2]
-
-        repair_brand = repair.get("transport", {}).get("brand", "").strip()
-        repair_model = repair.get("transport", {}).get("model", "").strip()
-
-        if (repair_year == year and
-           repair_brand == selected_brand and
-           repair_model == selected_model):
-            repairs_to_delete.append((index, repair))
-
-    if repairs_to_delete:
-        repairs_to_delete_dict[user_id] = repairs_to_delete
-
-        repair_list_text = f"Список ремонтов для удаления за *{year}* год:\n\n\n"
-        for index, repair in repairs_to_delete:
-            repair_name = repair.get("name", "Без названия")
-            repair_date = repair.get("date", "Неизвестно")
-            repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n\n"
-
-        repair_list_text += "\nВведите номер ремонта для удаления:"
-        send_long_message(user_id, repair_list_text)
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("Вернуться в меню трат и ремонтов")
-        markup.add("В главное меню")
-        bot.register_next_step_handler(message, confirm_delete_repair)
-    else:
-        bot.send_message(user_id, f"За *{year}* год ремонтов не найдено для удаления", parse_mode="Markdown")
-        send_menu(user_id)
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not filtered_repairs:
+        bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    repairs_to_delete = [
+        (index + 1, repair)
+        for index, repair in enumerate(filtered_repairs)
+        if repair.get("date", "").split(".")[-1] == year
+    ]
+    
+    if not repairs_to_delete:
+        bot.send_message(user_id, f"❌ Нет ремонтов за *{year}* для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    repairs_to_delete_dict[user_id] = repairs_to_delete
+    
+    repair_list_text = f"Список ремонтов за *{year}*:\n\n"
+    for index, repair in repairs_to_delete:
+        repair_name = repair.get("name", "Без названия")
+        repair_date = repair.get("date", "Неизвестно")
+        repair_list_text += f"🔧 №{index}. {repair_name} - ({repair_date})\n"
+    
+    repair_list_text += "\nВведите номер ремонта для удаления или 0 для отмены:"
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("0"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    send_message_with_split(user_id, repair_list_text, parse_mode="Markdown")
+    bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, confirm_delete_repair_year)
 
 @text_only_handler
-def confirm_delete_repair(message):
+def confirm_delete_repair_year(message):
+    """Подтверждает удаление ремонта за год."""
     user_id = message.from_user.id
-
     selected_option = message.text.strip()
-
+    
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_expense_and_repairs(message)
         return
-
     if selected_option == "В главное меню":
         return_to_menu(message)
         return
-
+    if selected_option == "0":
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    if not selected_option.isdigit():
+        bot.send_message(user_id, "❌ Введите корректный номер ремонта или 0 для отмены!", parse_mode="Markdown")
+        bot.register_next_step_handler(message, confirm_delete_repair_year)
+        return
+    
+    repair_index = int(selected_option) - 1
     repairs_to_delete = repairs_to_delete_dict.get(user_id, [])
-
-    if selected_option.isdigit():
-        repair_index = int(selected_option) - 1
-
-        if 0 <= repair_index < len(repairs_to_delete):
-            _, deleted_repair = repairs_to_delete.pop(repair_index)
-
-            user_data = load_repair_data(user_id).get(str(user_id), {})
-            user_data["repairs"].remove(deleted_repair)
-            save_repair_data(user_id, {str(user_id): user_data})
-
-            bot.send_message(user_id, f"Ремонт *{deleted_repair.get('name', 'Без названия').lower()}* успешно удален", parse_mode="Markdown")
-
-            repairs_to_delete_dict[user_id] = repairs_to_delete
-            send_menu(user_id)
-        else:
-            bot.send_message(user_id, "Неверный выбор. Пожалуйста, попробуйте снова")
-            bot.register_next_step_handler(message, confirm_delete_repair)
-    else:
-        bot.send_message(user_id, "Некорректный ввод. Пожалуйста, введите номер ремонта")
-        bot.register_next_step_handler(message, confirm_delete_repair)
+    
+    selected_repair = next((r for i, r in repairs_to_delete if i == repair_index + 1), None)
+    if not selected_repair:
+        bot.send_message(user_id, "❌ Неверный номер ремонта! Попробуйте снова.", parse_mode="Markdown")
+        bot.register_next_step_handler(message, confirm_delete_repair_year)
+        return
+    
+    _, deleted_repair = selected_repair
+    
+    user_data = load_repair_data(user_id)
+    user_repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    user_repairs.remove(deleted_repair)
+    user_data[str(user_id)]["repairs"] = user_repairs
+    save_repair_data(user_id, user_data)
+    
+    update_repairs_excel_file(user_id)
+    
+    bot.send_message(
+        user_id,
+        f"✅ Ремонт *{deleted_repair.get('name', 'Без названия')}* успешно удален!",
+        parse_mode="Markdown"
+    )
+    
+    return_to_expense_and_repairs(message)
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (все время)")
 @check_function_state_decorator('Del ремонты (все время)')
@@ -9581,181 +11034,187 @@ def confirm_delete_repair(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def delete_all_repairs_for_selected_transport(message):
+    """Инициирует удаление всех ремонтов для выбранного транспорта."""
     user_id = message.from_user.id
-
+    
+    selected_transport = selected_repair_transports.get(user_id) or load_repair_data(user_id).get("selected_transport", "")
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not filtered_repairs:
+        bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
-
-    bot.send_message(user_id,
-                     "Вы уверены, что хотите удалить все ремонты для выбранного транспорта?\n\n"
-                     "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены",
-                     reply_markup=markup, parse_mode="Markdown")
+    markup.add(types.KeyboardButton("Да"), types.KeyboardButton("Нет"))
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(
+        user_id,
+        f"⚠️ Вы уверены, что хотите удалить все ремонты для транспорта *{selected_transport}*?\n\n"
+        "Выберите *Да* для подтверждения или *Нет* для отмены.",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
     bot.register_next_step_handler(message, confirm_delete_all_repairs)
 
 @text_only_handler
 def confirm_delete_all_repairs(message):
+    """Подтверждает удаление всех ремонтов."""
     user_id = message.from_user.id
-
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+    response = message.text.strip().lower()
+    
+    if response == "вернуться в меню трат и ремонтов":
+        return_to_expense_and_repairs(message)
         return
-
-    if message.text == "В главное меню":
+    if response == "в главное меню":
         return_to_menu(message)
         return
-
-    response = message.text.strip().lower()
-
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    selected_transport = user_data.get("selected_transport")
-    if selected_transport:
-        transport_info = selected_transport.split()
-        selected_brand = transport_info[0].strip()
-        selected_model = transport_info[1].strip()
-        selected_license_plate = transport_info[2].strip()
-    else:
-        selected_brand = selected_model = selected_license_plate = None
-
-    if not repairs:
-        bot.send_message(user_id, "У вас пока нет сохраненных ремонтов для удаления!")
-        send_menu(user_id)
+    
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    selected_transport = selected_repair_transports.get(user_id) or user_data.get("selected_transport", "")
+    
+    if not selected_transport:
+        bot.send_message(user_id, "❌ Транспорт не выбран!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
         return
-
+    
+    filtered_repairs = filter_repairs_by_transport(user_id, repairs)
+    
+    if not filtered_repairs:
+        bot.send_message(user_id, f"❌ Нет ремонтов для транспорта *{selected_transport}*!", parse_mode="Markdown")
+        return_to_expense_and_repairs(message)
+        return
+    
     if response == "да":
-        repairs_to_keep = []
-        for repair in repairs:
-            repair_brand = repair.get("transport", {}).get("brand", "").strip()
-            repair_model = repair.get("transport", {}).get("model", "").strip()
-
-            if not (repair_brand == selected_brand and repair_model == selected_model):
-                repairs_to_keep.append(repair)
-
-        user_data["repairs"] = repairs_to_keep
-        save_repair_data(user_id, {str(user_id): user_data})
-
+        user_data[str(user_id)]["repairs"] = [
+            repair for repair in repairs
+            if format_transport_string(repair.get("transport", {})) != format_transport_string(selected_transport)
+        ]
+        save_repair_data(user_id, user_data)
+        
         update_repairs_excel_file(user_id)
-
-        bot.send_message(user_id, f"Все ремонты для транспорта *{selected_brand} {selected_model} {selected_license_plate}* успешно удалены", parse_mode="Markdown")
+        
+        bot.send_message(
+            user_id,
+            f"✅ Все ремонты для транспорта *{selected_transport}* успешно удалены!",
+            parse_mode="Markdown"
+        )
     elif response == "нет":
-        bot.send_message(user_id, "Удаление ремонтов отменено")
+        bot.send_message(user_id, "✅ Удаление отменено!", parse_mode="Markdown")
     else:
-        bot.send_message(user_id, "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены.", parse_mode="Markdown")
+        bot.send_message(user_id, "❌ Пожалуйста, выберите *Да* или *Нет*!", parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_delete_all_repairs)
         return
-
-    send_menu(user_id)
-
-def delete_repairs(user_id, deleted_repair):
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    repairs = [repair for repair in repairs if not (
-        repair["transport"]["brand"] == deleted_repair["transport"]["brand"] and
-        repair["transport"]["model"] == deleted_repair["transport"]["model"] and
-        repair["transport"]["license_plate"] == deleted_repair["transport"]["license_plate"] and
-        repair["category"] == deleted_repair["category"] and
-        repair["name"] == deleted_repair["name"] and
-        repair["date"] == deleted_repair["date"] and
-        repair["amount"] == deleted_repair["amount"] and
-        repair["description"] == deleted_repair["description"]
-    )]
-
-    user_data["repairs"] = repairs
-    save_repair_data(user_id, user_data)
-
-    update_repairs_excel_file(user_id)
+    
+    return_to_expense_and_repairs(message)
 
 def update_repairs_excel_file(user_id):
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    repairs = user_data.get("repairs", [])
-
-    excel_file_path = f"data base/repairs/excel/{user_id}_repairs.xlsx"
-
-    if not os.path.exists(excel_file_path):
-        workbook = Workbook()
-        workbook.save(excel_file_path)
-
+    """Обновляет Excel-файл с данными ремонтов."""
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+    
+    excel_file_path = os.path.join(REPAIRS_DIR, "excel", f"{user_id}_repairs.xlsx")
+    
     try:
-        workbook = load_workbook(excel_file_path)
-    except Exception as e:
-        workbook = Workbook()
-        workbook.save(excel_file_path)
-        workbook = load_workbook(excel_file_path)
-
-    if "Summary" not in workbook.sheetnames:
-        summary_sheet = workbook.create_sheet("Summary")
-    else:
-        summary_sheet = workbook["Summary"]
-        summary_sheet.delete_rows(2, summary_sheet.max_row)
-
-    headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
-
-    if summary_sheet.max_row == 0:
-        summary_sheet.append(headers)
-        for cell in summary_sheet[1]:
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center")
-
-    for repair in repairs:
-        transport = repair["transport"]
-        row_data = [
-            f"{transport['brand']} {transport['model']} {transport['license_plate']}",
-            repair["category"],
-            repair["name"],
-            repair["date"],
-            float(repair["amount"]),
-            repair["description"],
-        ]
-        summary_sheet.append(row_data)
-
-    unique_transports = set((rep["transport"]["brand"], rep["transport"]["model"], rep["transport"]["license_plate"]) for rep in repairs)
-    existing_sheets = set(workbook.sheetnames) - {"Summary"}
-
-    for sheet_name in existing_sheets:
-        parts = sheet_name.split("_")
-        if len(parts) < 3 or tuple(parts) not in unique_transports:
-            del workbook[sheet_name]
-
-    for brand, model, license_plate in unique_transports:
-        sheet_name = f"{brand}_{model}_{license_plate}".replace(" ", "_")[:31]
-        if sheet_name not in workbook.sheetnames:
-            transport_sheet = workbook.create_sheet(sheet_name)
-            transport_sheet.append(headers)
-            for cell in transport_sheet[1]:
+        if not os.path.exists(excel_file_path):
+            workbook = Workbook()
+            workbook.remove(workbook.active)
+        else:
+            try:
+                workbook = load_workbook(excel_file_path)
+            except Exception:
+                workbook = Workbook()
+                workbook.remove(workbook.active)
+        
+        if "Summary" not in workbook.sheetnames:
+            summary_sheet = workbook.create_sheet("Summary")
+        else:
+            summary_sheet = workbook["Summary"]
+            if summary_sheet.max_row > 1:
+                summary_sheet.delete_rows(2, summary_sheet.max_row)
+        
+        headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+        
+        if summary_sheet.max_row == 0:
+            summary_sheet.append(headers)
+            for cell in summary_sheet[1]:
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
-        else:
-            transport_sheet = workbook[sheet_name]
-            transport_sheet.delete_rows(2, transport_sheet.max_row)
-
+        
         for repair in repairs:
-            if (repair["transport"]["brand"], repair["transport"]["model"], repair["transport"]["license_plate"]) == (brand, model, license_plate):
-                row_data = [
-                    f"{brand} {model} {license_plate}",
-                    repair["category"],
-                    repair["name"],
-                    repair["date"],
-                    float(repair["amount"]),
-                    repair["description"],
-                ]
-                transport_sheet.append(row_data)
-
-    for sheet in workbook.sheetnames:
-        current_sheet = workbook[sheet]
-        for col in current_sheet.columns:
-            max_length = max((len(str(cell.value)) if cell.value else 0) for cell in col)
-            adjusted_width = max_length + 2
-            current_sheet.column_dimensions[get_column_letter(col[0].column)].width = adjusted_width
-
-    workbook.save(excel_file_path)
-    workbook.close()
+            transport = repair.get("transport", {})
+            row_data = [
+                f"{transport.get('brand', '')} {transport.get('model', '')} ({transport.get('license_plate', '')})",
+                repair.get("category", ""),
+                repair.get("name", ""),
+                repair.get("date", ""),
+                float(repair.get("amount", 0)),
+                repair.get("description", ""),
+            ]
+            summary_sheet.append(row_data)
+        
+        unique_transports = set(
+            (rep.get("transport", {}).get("brand", ""), rep.get("transport", {}).get("model", ""), rep.get("transport", {}).get("license_plate", ""))
+            for rep in repairs
+        )
+        
+        for sheet_name in workbook.sheetnames[:]:
+            if sheet_name == "Summary":
+                continue
+            parts = sheet_name.split("_")
+            if len(parts) != 3 or (parts[0], parts[1], parts[2]) not in unique_transports:
+                del workbook[sheet_name]
+        
+        for brand, model, license_plate in unique_transports:
+            sheet_name = f"{brand}_{model}_{license_plate}"[:31]
+            if sheet_name not in workbook.sheetnames:
+                transport_sheet = workbook.create_sheet(sheet_name)
+                transport_sheet.append(headers)
+                for cell in transport_sheet[1]:
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal="center")
+            else:
+                transport_sheet = workbook[sheet_name]
+                if transport_sheet.max_row > 1:
+                    transport_sheet.delete_rows(2, transport_sheet.max_row)
+            
+            for repair in repairs:
+                if (repair.get("transport", {}).get("brand", ""), repair.get("transport", {}).get("model", ""), repair.get("transport", {}).get("license_plate", "")) == (brand, model, license_plate):
+                    row_data = [
+                        f"{brand} {model} ({license_plate})",
+                        repair.get("category", ""),
+                        repair.get("name", ""),
+                        repair.get("date", ""),
+                        float(repair.get("amount", 0)),
+                        repair.get("description", ""),
+                    ]
+                    transport_sheet.append(row_data)
+        
+        for sheet_name in workbook.sheetnames:
+            sheet = workbook[sheet_name]
+            for col in sheet.columns:
+                max_length = max(len(str(cell.value)) for cell in col if cell.value)
+                sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+        
+        workbook.save(excel_file_path)
+        workbook.close()
+    
+    except Exception as e:
+        print(f"Ошибка при обновлении Excel: {e}")
+        bot.send_message(user_id, "❌ Ошибка при обновлении данных в Excel! Попробуйте снова.", parse_mode="Markdown")
 
 # ---------- 11. ПОИСК МЕСТ ----------
 
@@ -12037,461 +13496,6 @@ def parse_fuel_prices():
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
-# ---------- 17. ВАШ ТРАНСПОРТ ----------
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TRANSPORT_DIR = os.path.join(BASE_DIR, "data base", "transport")
-
-def ensure_transport_directory():
-    os.makedirs(TRANSPORT_DIR, exist_ok=True)
-
-ensure_transport_directory()
-
-class States:
-    ADDING_TRANSPORT = 1
-    CONFIRMING_DELETE = 2
-
-user_transport = {}
-
-def save_transport_data(user_id, user_data):
-    file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
-    with open(file_path, "w", encoding="utf-8") as file:
-        json.dump(user_data, file, ensure_ascii=False, indent=4)
-
-def load_transport_data(user_id):
-    file_path = os.path.join(TRANSPORT_DIR, f"{user_id}_transport.json")
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except json.JSONDecodeError:
-            return []
-    return []
-
-def load_all_transport():
-    for user_file in os.listdir(TRANSPORT_DIR):
-        if user_file.endswith("_transport.json"):
-            user_id = user_file.split("_")[0]
-            user_transport[user_id] = load_transport_data(user_id)
-
-load_all_transport()
-
-@bot.message_handler(func=lambda message: message.text == "Ваш транспорт")
-@check_function_state_decorator('Ваш транспорт')
-@track_usage('Ваш транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def manage_transport(message):
-    user_id = str(message.chat.id)
-
-    keyboard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    keyboard.add("Добавить транспорт", "Посмотреть транспорт", "Удалить транспорт")
-    keyboard.add("Вернуться в меню трат и ремонтов")
-    keyboard.add("В главное меню")
-
-    bot.send_message(user_id, "Выберите действие для транспорта:", reply_markup=keyboard)
-
-def create_transport_keyboard():
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    item_main_menu = types.KeyboardButton("В главное меню")
-    item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
-    markup.add(item_return_transport)
-    markup.add(item_main_menu)
-    return markup
-
-# ---------- 17.1 ВАШ ТРАНСПОРТ (ДОБАВЛЕНИЕ ТРАНСПОРТА) ----------
-
-@bot.message_handler(func=lambda message: message.text == "Добавить транспорт")
-@check_function_state_decorator('Добавить транспорт')
-@track_usage('Добавить транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-@text_only_handler
-def add_transport(message):
-    user_id = str(message.chat.id)
-    bot.send_message(user_id, "Введите марку транспорта:", reply_markup=create_transport_keyboard())
-    bot.register_next_step_handler(message, process_brand)
-
-def format_brand_model(text):
-    return " ".join(word.capitalize() for word in text.split())
-
-@text_only_handler
-def process_brand(message):
-    user_id = str(message.chat.id)
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    brand = format_brand_model(message.text)
-    bot.send_message(user_id, "Введите модель транспорта:", reply_markup=create_transport_keyboard())
-    bot.register_next_step_handler(message, process_model, brand)
-
-@text_only_handler
-def process_model(message, brand):
-    user_id = str(message.chat.id)
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    model = format_brand_model(message.text)
-    bot.send_message(user_id, "Введите год транспорта:", reply_markup=create_transport_keyboard())
-    bot.register_next_step_handler(message, process_year, brand, model)
-
-@text_only_handler
-def process_year(message, brand, model):
-    user_id = str(message.chat.id)
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    try:
-        year = int(message.text)
-        if year < 1960 or year > 3000:
-            raise ValueError("Год должен быть от 1960 г. до 3000 г.")
-    except ValueError:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите корректный год (от 1960 г. до 3000 г.). Попробуйте снова", reply_markup=create_transport_keyboard())
-        bot.register_next_step_handler(message, process_year, brand, model)
-        return
-
-    bot.send_message(user_id, "Введите госномер:", reply_markup=create_transport_keyboard())
-    bot.register_next_step_handler(message, process_license_plate, brand, model, year)
-
-@text_only_handler
-def process_license_plate(message, brand, model, year):
-    user_id = str(message.chat.id)
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    license_plate = message.text.upper()
-
-    pattern = r'^[АВЕКМНОРСТУХABEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{2,3}$'
-    if not re.match(pattern, license_plate):
-        bot.send_message(user_id, "Ошибка! Госномер должен соответствовать формату госномеров РФ. Попробуйте снова", reply_markup=create_transport_keyboard())
-        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
-        return
-
-    if any(t["license_plate"] == license_plate for t in user_transport.get(user_id, [])):
-        bot.send_message(user_id, "Ошибка! Такой госномер уже существует. Попробуйте снова", reply_markup=create_transport_keyboard())
-        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
-        return
-
-    if user_id not in user_transport:
-        user_transport[user_id] = []
-
-    user_transport[user_id].append({"brand": brand, "model": model, "year": year, "license_plate": license_plate})
-    save_transport_data(user_id, user_transport[user_id])
-
-    bot.send_message(user_id, f"🚗 *Транспорт добавлен 🚗*\n\n*{brand} - {model} - {year} - {license_plate}*", parse_mode="Markdown", reply_markup=create_transport_keyboard())
-
-    manage_transport(message)
-
-def delete_expenses_related_to_transport(user_id, transport, selected_transport=""):
-    expenses_data = load_expense_data(user_id)
-    if user_id in expenses_data:
-        updated_expenses = []
-        for expense in expenses_data[user_id]['expenses']:
-            transport_data = expense.get('transport', {})
-            if (transport_data.get('brand') != transport.get('brand') or
-                transport_data.get('model') != transport.get('model') or
-                transport_data.get('year') != transport.get('year')):
-                updated_expenses.append(expense)
-
-        expenses_data[user_id]['expenses'] = updated_expenses
-        save_expense_data(user_id, expenses_data, selected_transport)
-
-def delete_repairs_related_to_transport(user_id, transport):
-    repair_data = load_repair_data(user_id)
-    if user_id in repair_data:
-        updated_repairs = []
-        for repair in repair_data[user_id].get("repairs", []):
-            transport_data = repair.get('transport', {})
-            if (transport_data.get('brand') != transport.get('brand') or
-                transport_data.get('model') != transport.get('model') or
-                transport_data.get('year') != transport.get('year')):
-                updated_repairs.append(repair)
-
-        repair_data[user_id]["repairs"] = updated_repairs
-        save_repair_data(user_id, repair_data, selected_transport="")
-
-# ---------- 17.2 ВАШ ТРАНСПОРТ (УДАЛЕНИЕ ТРАНСПОРТА) ----------
-
-@bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
-@check_function_state_decorator('Удалить транспорт')
-@track_usage('Удалить транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def delete_transport(message):
-    user_id = str(message.chat.id)
-    if user_id in user_transport and user_transport[user_id]:
-        keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        transport_list = user_transport[user_id]
-
-        for index, item in enumerate(transport_list, start=1):
-            keyboard.add(f"№{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
-
-        item_main_menu = types.KeyboardButton("В главное меню")
-        item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
-        keyboard.add("Удалить весь транспорт")
-        keyboard.add(item_return_transport)
-        keyboard.add(item_main_menu)
-
-        bot.send_message(user_id, "Выберите транспорт для удаления:", reply_markup=keyboard)
-        bot.register_next_step_handler(message, process_transport_selection)
-    else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта!")
-
-def process_transport_selection(message):
-    user_id = str(message.chat.id)
-    selected_transport = message.text.strip()
-
-    if selected_transport == "В главное меню":
-        return_to_menu(message)
-        return
-
-    if selected_transport == "Удалить весь транспорт":
-        delete_all_transports(message)
-        return
-
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    transport_list = user_transport.get(user_id, [])
-    if transport_list:
-        try:
-            index = int(selected_transport.split('.')[0].replace("№", "").strip()) - 1
-            if 0 <= index < len(transport_list):
-                transport_to_delete = transport_list[index]
-                bot.send_message(
-    user_id,
-    f"*Вы точно хотите удалить данный транспорт?\n\n{transport_to_delete['brand']} - {transport_to_delete['model']} - {transport_to_delete['year']} - {transport_to_delete['license_plate']}*\n\n"
-    "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
-    "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены",
-    parse_mode="Markdown",
-    reply_markup=get_return_menu_keyboard()
-)
-                bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
-            else:
-                raise ValueError("Индекс вне диапазона")
-        except ValueError:
-            bot.send_message(user_id, "Ошибка! Пожалуйста, выберите транспорт для удаления из списка")
-            delete_transport(message)
-    else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта!")
-
-def process_confirmation(message, transport_to_delete):
-    user_id = str(message.chat.id)
-    confirmation = message.text.strip().upper()
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    elif message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    if confirmation == "ДА":
-        if user_id in user_transport and transport_to_delete in user_transport[user_id]:
-            user_transport[user_id].remove(transport_to_delete)
-            delete_expenses_related_to_transport(user_id, transport_to_delete)
-            delete_repairs_related_to_transport(user_id, transport_to_delete)
-            save_transport_data(user_id, user_transport[user_id])
-            update_excel_file(user_id)
-            update_repairs_excel_file(user_id)
-            bot.send_message(user_id, "Транспорт и связанные с ним траты и ремонты успешно удалены!")
-            manage_transport(message)
-        else:
-            bot.send_message(user_id, "Ошибка удаления: транспорт не найден")
-    elif confirmation == "НЕТ":
-        bot.send_message(user_id, "Удаление отменено!")
-        manage_transport(message)
-    else:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
-        bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
-
-def process_delete_all_confirmation(message):
-    user_id = str(message.chat.id)
-    confirmation = message.text.strip().upper()
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    elif message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    if confirmation == "ДА":
-        if user_id in user_transport:
-            transports = user_transport[user_id]
-            user_transport[user_id] = []
-            save_transport_data(user_id, user_transport[user_id])
-
-            for transport in transports:
-                delete_expenses_related_to_transport(user_id, transport)
-                delete_repairs_related_to_transport(user_id, transport)
-
-            bot.send_message(user_id, "Весь транспорт и связанные с ним траты и ремонты успешно удалены!")
-            manage_transport(message)
-        else:
-            bot.send_message(user_id, "У вас нет добавленного транспорта!")
-    elif confirmation == "НЕТ":
-        bot.send_message(user_id, "Удаление отменено!")
-        manage_transport(message)
-    else:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_delete_all_confirmation)
-
-def get_return_menu_keyboard():
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    item_main_menu = types.KeyboardButton("В главное меню")
-    item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
-    markup.add(item_return_transport)
-    markup.add(item_main_menu)
-    return markup
-
-@bot.message_handler(func=lambda message: message.text == "Удалить весь транспорт")
-@check_function_state_decorator('Удалить весь транспорт')
-@track_usage('Удалить весь транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def delete_all_transports(message):
-    user_id = str(message.chat.id)
-    if user_id in user_transport and user_transport[user_id]:
-        bot.send_message(
-    user_id,
-    "*Вы уверены, что хотите удалить весь транспорт?*\n\n"
-    "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
-    "Введите *ДА* для подтверждения или *НЕТ* для отмены",
-    parse_mode="Markdown",
-    reply_markup=get_return_menu_keyboard()
-)
-        bot.register_next_step_handler(message, process_delete_all_confirmation)
-    else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта!")
-
-def process_delete_all_confirmation(message):
-    user_id = str(message.chat.id)
-    confirmation = message.text.strip().upper()
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    elif message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    if confirmation == "ДА":
-        if user_id in user_transport:
-            transports = user_transport[user_id]
-            user_transport[user_id] = []
-            save_transport_data(user_id, user_transport[user_id])
-
-            for transport in transports:
-                delete_expenses_related_to_transport(user_id, transport)
-                delete_repairs_related_to_transport(user_id, transport)
-
-            bot.send_message(user_id, "Весь транспорт и связанные с ним траты и ремонты успешно удалены!")
-            manage_transport(message)
-        else:
-            bot.send_message(user_id, "У вас нет добавленного транспорта!")
-    elif confirmation == "НЕТ":
-        bot.send_message(user_id, "Удаление отменено!")
-        manage_transport(message)
-    else:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_delete_all_confirmation)
-
-# ---------- 17.3 ВАШ ТРАНСПОРТ (ПРОСМОТР ТРАНСПОРТА) ----------
-
-@bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
-@check_function_state_decorator('Посмотреть транспорт')
-@track_usage('Посмотреть транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def view_transport(message):
-    user_id = str(message.chat.id)
-    if user_id in user_transport and user_transport[user_id]:
-        transport_list = user_transport[user_id]
-        response = "\n\n".join([
-            f"№{index + 1}. {item['brand']} - {item['model']} - {item['year']} - `{item['license_plate']}`"
-            for index, item in enumerate(transport_list)
-        ])
-        bot.send_message(
-            user_id,
-            f"🚙 *Ваш транспорт* 🚙\n\n{response}",
-            parse_mode="Markdown"
-        )
-    else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта!")
-
-    manage_transport(message)
-
-@bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
-@check_function_state_decorator('Вернуться в ваш транспорт')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription_chanal
-@rate_limit_with_captcha
-def return_to_transport_menu(message):
-    manage_transport(message)
-
 # ---------- 18 АНТИ-РАДАР ----------
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13288,7 +14292,7 @@ def obd2_request(message, show_description=True):
     markup.add(telebot.types.KeyboardButton("В главное меню"))
 
     help_text = (
-        "ℹ️ *Краткая справка по чтению кодов OBD2*\n\n\n"
+        "ℹ️ *Краткая справка по чтению кодов OBD2*\n\n"
         "📌 *Первая позиция:*\n"
         "*P* - код связан с работой двигателя и/или АКПП\n"
         "*B* - код связан с работой \"кузовных систем\" (подушки безопасности, центральный замок, электростеклоподъемники)\n"
@@ -17341,7 +18345,7 @@ def process_unrestricted_accidents_step(message):
 
     accidents = message.text.strip()
     if accidents not in ["Да", "Нет"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите да или нет")
         bot.register_next_step_handler(msg, process_unrestricted_accidents_step)
         return
 
@@ -17467,7 +18471,7 @@ def process_driver_accidents_step(message, driver_num):
 
     accidents = message.text.strip()
     if accidents not in ["Да", "Нет"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите да или нет")
         bot.register_next_step_handler(msg, lambda m: process_driver_accidents_step(m, driver_num))
         return
 
@@ -18468,7 +19472,7 @@ def process_extra_payments_step(message):
         markup.add('Вернуться в автокредит')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите да или нет", reply_markup=markup)
         bot.register_next_step_handler(msg, process_extra_payments_step)
         return
     
@@ -20521,7 +21525,7 @@ def process_expensive_car_step(message):
         markup.add("Вернуться в налог")
         markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите да или нет", reply_markup=markup)
         bot.register_next_step_handler(msg, process_expensive_car_step)
         return
 
@@ -20703,7 +21707,7 @@ def process_benefits_step(message):
         markup.add("Вернуться в налог")
         markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите да или нет", reply_markup=markup)
         bot.register_next_step_handler(msg, process_benefits_step)
         return
 
@@ -33179,7 +34183,7 @@ def handle_delete_all_dialogs_user_selection(message):
         try:
             bot.send_message(
                 message.chat.id,
-                f"⚠️ Вы уверены, что хотите удалить все диалоги с пользователем {escape_markdown(selected_username)} - `{selected_user_id}`?\n\nВведите *ДА* для принятия или *НЕТ* для отклонения:",
+                f"⚠️ Вы уверены, что хотите удалить все диалоги с пользователем {escape_markdown(selected_username)} - `{selected_user_id}`?\n\nВведите *да* для принятия или *нет* для отклонения:",
                 parse_mode="Markdown"
             )
         except ApiTelegramException as e:
@@ -33205,7 +34209,7 @@ def handle_delete_all_dialogs_user_selection(message):
 @check_user_blocked
 def handle_confirm_delete_all_dialogs(message):
     if message.text.lower() not in ["да", "нет"]:
-        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите *ДА* для удаления или *НЕТ* для отмены", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите *да* для удаления или *нет* для отмены", parse_mode="Markdown")
         return
 
     if message.text.lower() == "да":
