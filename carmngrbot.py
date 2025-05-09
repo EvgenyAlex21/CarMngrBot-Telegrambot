@@ -4068,6 +4068,25 @@ user_data = {}  # Словарь для хранения данных польз
 
 os.makedirs(os.path.join('data base', 'azs'), exist_ok=True)
 
+# Путь к файлу для сохранения данных
+DATA_FILE_PATH = os.path.join('data base', 'city_for_the_price.json')
+
+# Обновление функции для загрузки данных
+def load_citys_users_data():
+    global user_data
+    if os.path.exists(DATA_FILE_PATH):
+        with open(DATA_FILE_PATH, 'r', encoding='utf-8') as f:
+            user_data = json.load(f)
+    else:
+        user_data = {}
+
+# Функция для сохранения данных городов пользователей в JSON
+def save_citys_users_data():
+    with open(DATA_FILE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(user_data, f, ensure_ascii=False, indent=4)
+
+# Загружаем данные пользователей при запуске бота
+load_citys_users_data()
 
 # Функция для чтения городов и создания словаря для их URL
 def load_cities():
@@ -4079,7 +4098,7 @@ def load_cities():
                     city, city_code = line.strip().split(' - ')
                     cities[city.lower()] = city_code  # Приводим название города к нижнему регистру
     except FileNotFoundError:
-        print("Файл 'combined_cities.txt' не найден.")
+        pass  # Если файл не найден, просто продолжаем
     return cities
 
 # Загружаем города при запуске бота
@@ -4119,21 +4138,33 @@ def load_saved_data(city_code):
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
 def fuel_prices_command(message):
     chat_id = message.chat.id
+    load_citys_users_data()  # Загружаем данные перед использованием
     user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
-    
-    # Создаем клавиатуру с кнопкой "В главное меню"
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("В главное меню")
-    markup.add(item1)
-    
-    # Отправляем сообщение с просьбой ввести город и клавиатурой
-    bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_city_selection)
 
+    str_chat_id = str(chat_id)
+
+    # Создаем клавиатуру с кнопкой "В главное меню" и последними городами
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+
+    if str_chat_id in user_data and 'recent_cities' in user_data[str_chat_id]:
+        recent_cities = user_data[str_chat_id]['recent_cities']
+        city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
+        markup.row(*city_buttons)  # Все кнопки городов будут в одной строке
+    else:
+        pass  # Нет недавних городов
+
+    markup.add(types.KeyboardButton("В главное меню"))
+
+    # Отправляем сообщение с просьбой ввести город
+    bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
+    # Регистрируем следующий шаг для обработки ввода города
+    bot.register_next_step_handler(message, process_city_selection)
+    
 # Обработчик выбора города
 # Обработчик выбора города
 def process_city_selection(message):
     chat_id = message.chat.id
+    str_chat_id = str(chat_id)
 
     if user_state.get(chat_id) != "choosing_city":
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
@@ -4148,19 +4179,48 @@ def process_city_selection(message):
     
     city_code = get_city_code(city_name)  # Поиск кода города
     if city_code:
-        # Обновляем город в данных пользователя
-        user_data[chat_id] = {'city_code': city_code}  # Сохраняем новый код города
+        # Убедимся, что данные о пользователе существуют
+        if str_chat_id not in user_data:
+            user_data[str_chat_id] = {'recent_cities': [], 'city_code': None}
+
+        # Обновляем список последних городов
+        update_recent_cities(str_chat_id, city_name)
+        
+        user_data[str_chat_id]['city_code'] = city_code  # Сохраняем новый код города
+        save_citys_users_data()  # Сохраняем данные после обновления city_code
         show_fuel_price_menu(chat_id, city_code)
     else:
         bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
         
-        # Создаем клавиатуру с одной кнопкой "В главное меню"
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
-
-        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
         bot.register_next_step_handler(message, process_city_selection)
+
+# Функция для обновления списка последних городов
+# В функции update_recent_cities добавьте вызов сохранения данных
+# Функция для обновления списка последних городов
+def update_recent_cities(chat_id, city_name):
+    # Убедитесь, что данные о пользователе существуют
+    if chat_id not in user_data:
+        user_data[chat_id] = {'recent_cities': [], 'city_code': None}
+
+    # Извлекаем список последних городов
+    recent_cities = user_data[chat_id].get('recent_cities', [])
+
+    # Удаляем город, если он уже есть, и добавляем в конец
+    if city_name in recent_cities:
+        recent_cities.remove(city_name)
+    elif len(recent_cities) >= 3:
+        # Удаляем первый город, если уже 3 города
+        recent_cities.pop(0)
+
+    # Добавляем новый город в конец списка
+    recent_cities.append(city_name)
+
+    # Сохраняем обновлённые данные пользователей
+    user_data[chat_id]['recent_cities'] = recent_cities
+    save_citys_users_data()  # Сохраняем данные в файл
 
 # Определяем доступные типы топлива
 fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
@@ -4258,11 +4318,18 @@ def process_next_action(message):
     elif text == "выбрать другой город":
         user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item1 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
 
-        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Добавляем клавиатуру
-        bot.register_next_step_handler(message, process_city_selection)  # Правильное перенаправление
+        # Добавляем кнопки с последними городами, если они есть
+        if chat_id in user_data and 'recent_cities' in user_data[chat_id]:
+            recent_cities = user_data[chat_id]['recent_cities']
+            city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
+            markup.row(*city_buttons)  # Все кнопки городов будут в одной строке
+
+        # Добавляем кнопку "В главное меню" на отдельную строку
+        markup.add(types.KeyboardButton("В главное меню"))
+
+        bot.send_message(chat_id, "Введите название города или выберите из последних:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_city_selection)
     elif text == "в главное меню":
         return_to_menu(message)
     else:
@@ -4272,30 +4339,42 @@ def process_next_action(message):
 # Функция для обработки данных по всем видам топлива и их сохранения
 def process_city_fuel_data(city_code, selected_fuel_type):
     today = datetime.now().date()
-
     saved_data = load_saved_data(city_code)
 
-    # Если данные уже сохранены, обновляем их только для выбранного типа топлива
+    # Проверяем дату файла
+    filepath = os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json")
     if saved_data:
-        # Фильтруем сохраненные данные по выбранному типу топлива
-        filtered_prices = [
-            item for item in saved_data 
-            if item[1].lower() == selected_fuel_type.lower() or
-            (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
-        ]
-        return remove_duplicate_prices(filtered_prices)  # Удаляем дублирующиеся цены из сохранённых данных
-    else:
-        all_fuel_prices = []
+        file_modification_time = datetime.fromtimestamp(os.path.getmtime(filepath)).date()
+        if file_modification_time < today:  # Если файл устарел
+            # Получаем новые данные
+            all_fuel_prices = []
+            for fuel_type in fuel_types:
+                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+                fuel_prices = remove_duplicate_prices(fuel_prices)
+                all_fuel_prices.extend(fuel_prices)
 
-        # Проходим по каждому типу топлива и получаем цены
+            # Сохраняем новые данные
+            save_data(city_code, all_fuel_prices)
+            saved_data = all_fuel_prices  # Обновляем saved_data
+
+    # Если данных нет, пытаемся их получить
+    if not saved_data:
+        all_fuel_prices = []
         for fuel_type in fuel_types:
             fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
-            fuel_prices = remove_duplicate_prices(fuel_prices)  # Удаляем дубликаты после парсинга
-            all_fuel_prices.extend(fuel_prices)  # Добавляем данные по каждому топливу в общий список
+            fuel_prices = remove_duplicate_prices(fuel_prices)
+            all_fuel_prices.extend(fuel_prices)
 
-        # Сохраняем все данные в JSON
-        save_data(city_code, all_fuel_prices)  # Убрали today из вызова
-        return all_fuel_prices
+        save_data(city_code, all_fuel_prices)
+        saved_data = all_fuel_prices  # Возвращаем полученные данные
+
+    # Фильтруем и возвращаем данные по выбранному типу топлива
+    filtered_prices = [
+        item for item in saved_data 
+        if item[1].lower() == selected_fuel_type.lower() or
+        (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
+    ]
+    return remove_duplicate_prices(filtered_prices)
 
 # Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
 def remove_duplicate_prices(fuel_prices):
