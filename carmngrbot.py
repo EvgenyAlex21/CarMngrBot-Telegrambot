@@ -7519,22 +7519,29 @@ def create_filename(city_code, date):
     date_str = date.strftime('%d_%m_%Y')
     return f"{city_code}_table_azs_data_{date_str}.json"
 
-# Обновление функции для загрузки данных
-def load_citys_users_data():
-    global user_data
-    if os.path.exists(DATA_FILE_PATH):
-        with open(DATA_FILE_PATH, 'r', encoding='utf-8') as f:
-            user_data = json.load(f)
-    else:
-        user_data = {}
+# Функция для сохранения данных в JSON
+def save_fuel_data(city_code, fuel_prices):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
 
-# Функция для сохранения данных городов пользователей в JSON
-def save_citys_users_data():
-    with open(DATA_FILE_PATH, 'w', encoding='utf-8') as f:
-        json.dump(user_data, f, ensure_ascii=False, indent=4)
+    # Сохраняем данные в файл, заменяя содержимое
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
+    print(f"Данные успешно сохранены для города {city_code} в файл {filepath}")
 
-# Загружаем данные пользователей при запуске бота
-load_citys_users_data()
+# Функция для загрузки сохранённых данных из JSON
+def load_saved_data(city_code):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            print(f"Данные успешно загружены для города {city_code} из файла {filepath}")
+            return data
+    except FileNotFoundError:
+        print(f"Файл данных для города {city_code} не найден: {filepath}")
+        return None
 
 # Функция для чтения городов и создания словаря для их URL
 def load_cities():
@@ -7556,31 +7563,6 @@ cities_dict = load_cities()
 def get_city_code(city_name):
     # Здесь не нужно дополнительно приводить к нижнему регистру, так как он уже приведен в load_cities
     return cities_dict.get(city_name.lower())  # Приводим введённое название города к нижнему регистру
-
-# Функция для создания имени файла на основе города и даты
-def create_filename(city_code, date):
-    date_str = date.strftime('%d_%m_%Y')  # Преобразуем дату в строку формата 'день_месяц_год'
-    return f"{city_code}_table_azs_data_{date_str}.json"
-
-# Функция для сохранения данных в JSON
-def save_fuel_data(city_code, fuel_prices):
-    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
-    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
-
-    # Сохраняем данные в файл, заменяя содержимое
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
-
-# Функция для загрузки сохранённых данных из JSON
-def load_saved_data(city_code):
-    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
-    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
-    
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
 
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
@@ -7611,7 +7593,7 @@ def fuel_prices_command(message):
     bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
     # Регистрируем следующий шаг для обработки ввода города
     bot.register_next_step_handler(message, process_city_selection)
-    
+
 # Обработчик выбора города
 def process_city_selection(message):
     chat_id = message.chat.id
@@ -7713,8 +7695,25 @@ def show_fuel_price_menu(chat_id, city_code, site_type):
     sent = bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
     bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
 
-# Обработчик выбора топлива
+# Глобальная переменная для отслеживания прогресса
+progress = 0
+progress_lock = threading.Lock()
+
+def update_progress(chat_id, message_id, bot, start_time):
+    global progress
+    while progress < 100:
+        time.sleep(1)  # Обновляем прогресс каждую секунду
+        elapsed_time = time.time() - start_time
+        with progress_lock:
+            current_progress = progress
+        bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=f"Данные обрабатываются. Ожидайте! Никуда не выходите!\nВыполнено: {current_progress:.2f}%\nПрошло времени: {elapsed_time:.2f} секунд"
+        )
+
 def process_fuel_price_selection(message, city_code, site_type):
+    global progress
     chat_id = message.chat.id
 
     if chat_id not in user_data:
@@ -7742,11 +7741,76 @@ def process_fuel_price_selection(message, city_code, site_type):
 
     actual_fuel_types = fuel_type_mapping[selected_fuel_type]
 
+    # Отправляем сообщение о начале обработки данных
+    progress_message = bot.send_message(chat_id, "Данные обрабатываются. Ожидайте! Никуда не выходите!")
+    message_id = progress_message.message_id
+
+    # Запускаем поток для обновления прогресса
+    start_time = time.time()
+    progress_thread = threading.Thread(target=update_progress, args=(chat_id, message_id, bot, start_time))
+    progress_thread.start()
+
     try:
         # Проверяем наличие сохранённых данных или парсим сайт
         fuel_prices = []
-        for fuel_type in actual_fuel_types:
-            fuel_prices.extend(process_city_fuel_data(city_code, fuel_type, site_type, actual_fuel_types))
+        total_steps = len(actual_fuel_types) * 2  # Количество шагов для обновления прогресса
+        current_step = 0
+
+        saved_data = load_saved_data(city_code)
+        today = datetime.now().date()
+
+        if saved_data:
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            if file_modification_time >= today:
+                print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем парсинг.")
+                fuel_prices = [
+                    item for item in saved_data
+                    if item[1].lower() == selected_fuel_type.lower() or
+                    (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт") or
+                    any(premium_type in item[1].lower() for premium_type in ["премиум 92", "премиум 95", "премиум 98", "премиум 100", "премиум дт"])
+                ]
+                with progress_lock:
+                    progress = 100
+            else:
+                for fuel_type in actual_fuel_types:
+                    try:
+                        print(f"Пытаемся получить данные с сайта AZCPRICE для города {city_code} и типа топлива {fuel_type}")
+                        fuel_prices.extend(get_fuel_prices_from_site(fuel_type, city_code, "azcprice"))
+                        current_step += 1
+                    except ValueError:
+                        try:
+                            print(f"Сайт AZCPRICE недоступен. Пытаемся получить данные с сайта petrolplus для города {city_code} и типа топлива {fuel_type}")
+                            fuel_prices.extend(get_fuel_prices_from_site(fuel_type, city_code, "petrolplus"))
+                            current_step += 1
+                        except ValueError:
+                            print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
+                            current_step += 1
+
+                    with progress_lock:
+                        progress = (current_step / total_steps) * 100
+
+                # Сохраняем данные в файл
+                save_fuel_data(city_code, fuel_prices)
+        else:
+            for fuel_type in actual_fuel_types:
+                try:
+                    print(f"Пытаемся получить данные с сайта AZCPRICE для города {city_code} и типа топлива {fuel_type}")
+                    fuel_prices.extend(get_fuel_prices_from_site(fuel_type, city_code, "azcprice"))
+                    current_step += 1
+                except ValueError:
+                    try:
+                        print(f"Сайт AZCPRICE недоступен. Пытаемся получить данные с сайта petrolplus для города {city_code} и типа топлива {fuel_type}")
+                        fuel_prices.extend(get_fuel_prices_from_site(fuel_type, city_code, "petrolplus"))
+                        current_step += 1
+                    except ValueError:
+                        print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
+                        current_step += 1
+
+                with progress_lock:
+                    progress = (current_step / total_steps) * 100
+
+            # Сохраняем данные в файл
+            save_fuel_data(city_code, fuel_prices)
 
         if not fuel_prices:
             raise ValueError("Нет данных по ценам.")
@@ -7784,7 +7848,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         premium_prices_message = "\n\n".join([f"⛽ {i + 1}. {brand} - {avg_price:.2f} руб./л." for i, (brand, avg_price) in enumerate(sorted_premium_prices)])
 
         # Разбиваем сообщения на части, если они слишком длинные
-        max_length = 3000
+        max_length = 4000
         normal_parts = [normal_prices_message[i:i + max_length] for i in range(0, len(normal_prices_message), max_length)]
         premium_parts = [premium_prices_message[i:i + max_length] for i in range(0, len(premium_prices_message), max_length)]
 
@@ -7814,6 +7878,10 @@ def process_fuel_price_selection(message, city_code, site_type):
         user_state[chat_id] = "next_action"
         sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или выбрать другой город.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_next_action)
+
+        # Обновляем прогресс до 100%
+        with progress_lock:
+            progress = 100
 
     except Exception as e:
         print(f"Ошибка: {e}")
@@ -7854,7 +7922,6 @@ def process_next_action(message):
         bot.register_next_step_handler(message, process_next_action)
 
 # Функция для обработки данных по всем видам топлива и их сохранения
-# Обработка данных по всем видам топлива и их сохранение
 def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel_types):
     today = datetime.now().date()
     saved_data = load_saved_data(city_code)
@@ -7866,19 +7933,25 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
         if file_modification_time < today:  # Если файл устарел
             # Получаем новые данные
             all_fuel_prices = []
-            for fuel_type in fuel_types:
+            for fuel_type in actual_fuel_types:
                 try:
-                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+                    print(f"Пытаемся получить данные с сайта AZCPRICE для города {city_code} и типа топлива {fuel_type}")
+                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "azcprice")
                 except ValueError:
-                    # Если таблица не найдена, возвращаем последние сохраненные данные
-                    if saved_data:
-                        return [
-                            item for item in saved_data
-                            if item[1].lower() == selected_fuel_type.lower() or
-                            (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
-                        ]
-                    # Если данных нет, вызываем ту же ошибку
-                    raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+                    try:
+                        print(f"Сайт AZCPRICE недоступен. Пытаемся получить данные с сайта petrolplus для города {city_code} и типа топлива {fuel_type}")
+                        fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
+                    except ValueError:
+                        print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
+                        # Если таблица не найдена, возвращаем последние сохраненные данные
+                        if saved_data:
+                            return [
+                                item for item in saved_data
+                                if item[1].lower() == selected_fuel_type.lower() or
+                                (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
+                            ]
+                        # Если данных нет, вызываем ту же ошибку
+                        raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
                 fuel_prices = remove_duplicate_prices(fuel_prices)
                 all_fuel_prices.extend(fuel_prices)
@@ -7890,12 +7963,18 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
     # Если данных нет, пытаемся их получить
     if not saved_data:
         all_fuel_prices = []
-        for fuel_type in fuel_types:
+        for fuel_type in actual_fuel_types:
             try:
-                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+                print(f"Пытаемся получить данные с сайта AZCPRICE для города {city_code} и типа топлива {fuel_type}")
+                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "azcprice")
             except ValueError:
-                # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
-                raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+                try:
+                    print(f"Сайт AZCPRICE недоступен. Пытаемся получить данные с сайта petrolplus для города {city_code} и типа топлива {fuel_type}")
+                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
+                except ValueError:
+                    print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
+                    # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
+                    raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
             fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
@@ -7910,6 +7989,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
         (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт") or
         any(premium_type in item[1].lower() for premium_type in ["премиум 92", "премиум 95", "премиум 98", "премиум 100", "премиум дт"])
     ]
+    print(f"Отфильтрованные данные для города {city_code} и типа топлива {selected_fuel_type}: {filtered_prices}")
     return remove_duplicate_prices(filtered_prices)
 
 # Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
@@ -7923,34 +8003,77 @@ def remove_duplicate_prices(fuel_prices):
     return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
 
 # Функция для парсинга данных с сайта
-def get_fuel_prices_from_site(selected_fuel_type, city_code):
-    url = f'https://azsprice.ru/benzin-{city_code}'
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+def get_fuel_prices_from_site(selected_fuel_type, city_code, site_type):
+    if site_type == "azcprice":
+        print(f"Парсинг данных с сайта AZCPRICE для города {city_code}")
+        url = f'https://azsprice.ru/benzin-{city_code}'
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-    table = soup.find('table')
-    if not table:
-        raise ValueError("Не найдена таблица с ценами")
+        table = soup.find('table')
+        if not table:
+            raise ValueError("Не найдена таблица с ценами")
 
-    fuel_prices = []
+        fuel_prices = []
 
-    rows = table.find_all('tr')
-    for row in rows[1:]:
-        columns = row.find_all('td')
-        if len(columns) < 5:
-            continue
+        rows = table.find_all('tr')
+        for row in rows[1:]:
+            columns = row.find_all('td')
+            if len(columns) < 5:
+                continue
 
-        brand = columns[1].text.strip()
-        fuel_type = columns[2].text.strip()
-        today_price = clean_price(columns[3].text.strip())
+            brand = columns[1].text.strip()
+            fuel_type = columns[2].text.strip()
+            today_price = clean_price(columns[3].text.strip())
 
-        # Добавляем логику для обработки премиальных видов топлива
-        if fuel_type.lower() == selected_fuel_type.lower() or (fuel_type.lower() == "газ спбт" and selected_fuel_type.lower() == "газ"):
-            fuel_prices.append((brand, fuel_type, today_price))
-        elif any(premium_type in fuel_type.lower() for premium_type in ["премиум 92", "премиум 95", "премиум 98", "премиум 100", "премиум дт"]):
-            fuel_prices.append((brand, fuel_type, today_price))
+            # Добавляем логику для обработки премиальных видов топлива
+            if fuel_type.lower() == selected_fuel_type.lower() or (fuel_type.lower() == "газ спбт" and selected_fuel_type.lower() == "газ"):
+                fuel_prices.append((brand, fuel_type, today_price))
+            elif any(premium_type in fuel_type.lower() for premium_type in ["премиум 92", "премиум 95", "премиум 98", "премиум 100", "премиум дт"]):
+                fuel_prices.append((brand, fuel_type, today_price))
 
-    return fuel_prices
+        return fuel_prices
+    elif site_type == "petrolplus":
+        print(f"Парсинг данных с сайта petrolplus для города {city_code}")
+        base_url = f'https://www.petrolplus.ru/fuelstations/{city_code}/?PAGEN_='
+        page = 1
+        all_fuel_prices = []
+
+        while True:
+            url = f'{base_url}{page}'
+            response = requests.get(url)
+
+            # Проверка успешности запроса
+            if response.status_code != 200:
+                print(f"Ошибка получения данных с сайта: {response.status_code}")
+                break
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Находим таблицу с данными
+            table = soup.find('table')
+            if not table:
+                print(f"Не найдена таблица с ценами для города {city_code} на странице {page}")
+                break
+
+            # Парсим строки таблицы
+            for row in table.find_all('tr')[1:]:  # Пропускаем заголовок таблицы
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    address = cols[0].text.strip()
+                    brand = cols[1].text.strip()
+                    fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
+                    prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
+
+                    for fuel_type, price in zip(fuel_types, prices):
+                        all_fuel_prices.append((brand, fuel_type, clean_price(price)))
+
+            page += 1
+
+        print(f"Данные успешно получены для города {city_code}: {all_fuel_prices}")
+        return all_fuel_prices
+    else:
+        raise ValueError("Неизвестный тип сайта")
 
 # Функция для очистки цены
 def clean_price(price):
@@ -7974,12 +8097,22 @@ def parse_fuel_prices():
         # Если файл устарел или не существует, парсим новые данные
         all_fuel_prices = []
         for fuel_type in fuel_types:
-            fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+            try:
+                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "azcprice")
+            except ValueError:
+                try:
+                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
+                except ValueError:
+                    print(f"Оба сайта недоступны для города {city_code}")
+                    continue
+
+            fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
 
         print(f"Сохранение данных для города {city_code} с {len(all_fuel_prices)} записями.")
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
+
 
 
 # !!!!!!!!!!!!!!!!!!!ЭТО ОБЩИЙ ПЛАНИРОВЩИК ЗАДАЧ!!!!!!!!!!!!!!!!!!!!!
