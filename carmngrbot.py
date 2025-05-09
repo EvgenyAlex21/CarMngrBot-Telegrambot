@@ -576,7 +576,8 @@ def create_main_menu():
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
     item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Прочее")
+    item11 = types.KeyboardButton("Калькуляторы")
+    item12 = types.KeyboardButton("Прочее")
 
     markup.add(itembuysub)
     markup.add(item1, item2)
@@ -585,6 +586,7 @@ def create_main_menu():
     markup.add(item6, item8)
     markup.add(item9, item10)
     markup.add(item11)
+    markup.add(item12)
     return markup
 
 def set_free_trial_period(user_id, days):
@@ -926,7 +928,7 @@ def start(message):
 
         bot.send_message(
             chat_id,
-            "👋 Добро пожаловать в бот @newpidore3qf_bot!\n\n"
+            "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
             "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашение! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
             "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:",
             reply_markup=markup,
@@ -10431,6 +10433,895 @@ def view_others(message):
     markup.add('Уведомления', 'Чат с админом') 
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
+
+
+# --------------------------------------------------------------------------------------------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "Калькуляторы")
+# @check_function_state_decorator('Калькуляторы')
+# @track_usage('Калькуляторы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+def view_calculators(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Алкоголь', 'Автокредит', 'Налог') 
+    markup.add('Растаможка', 'ОСАГО', 'Шины') 
+    markup.add('Документы') 
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите калькулятор для рассчетов:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "Документы")
+# @check_function_state_decorator('Документы')
+# @track_usage('Документы')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+def view_documents(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('ДКП', 'Доверенность') 
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите документ для формирования:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в калькуляторы")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+def return_to_calculators(message):
+    view_calculators(message)
+
+# --------------------------------------------------------------------------------------------------------------------------------
+
+
+# ---------- n. АЛКОГОЛЬ ----------
+
+@bot.message_handler(func=lambda message: message.text == "Алкоголь")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+def view_alc_calc(message):
+    global stored_message
+    stored_message = message
+
+    description = (
+        "ℹ️ *Краткая справка по расчету алкоголя в крови*\n\n\n"
+        "📌 *Расчет алкоголя:*\n"
+        "Расчет ведется по следующим данным - *пол, вес, что пили, сколько, как быстро выпили, как давно закончили, еда*\n"
+        "_P.S. калькулятор не сможет дать 100% точный результат! Если вы выпили, то НИ в коем случае нельзя садиться за руль после алкоголя в течение суток!!!_"
+        "\n\n"
+        "📌 *Просмотр алкоголя:*\n"
+        "Вы можете посмотреть свои расчеты и вспомнить, что вы пили и сколько\n\n"
+        "📌 *Удаление алкоголя:*\n"
+        "Вы можете удалить свои расчеты, если они вам не нужны"
+    )
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Рассчитать алкоголь', 'Просмотр алкоголя', 'Удаление алкоголя')
+    markup.add('Вернуться в калькуляторы')
+    markup.add('В главное меню')
+
+    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    bot.send_message(message.chat.id, "Выберите действия из алкоголя:", reply_markup=markup)
+
+# ---------- n.n АЛКОГОЛЬ (РАСЧЕТ) ----------
+
+ALKO_JSON_PATH = os.path.join('files', 'alko.json')
+USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'alcohol', 'alko_users.json')
+
+alko_data = {}
+user_history = {}
+user_data = {}
+
+def ensure_path_and_file(file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    if not os.path.exists(file_path):
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
+
+def load_alko_data():
+    global alko_data
+    try:
+        with open(ALKO_JSON_PATH, 'r', encoding='utf-8') as file:
+            alko_data = json.load(file)
+        if 'drinks' in alko_data:
+            alko_data['drinks'] = sorted(alko_data['drinks'], key=lambda x: x['strength'])
+        else:
+            print("Ключ 'drinks' не найден в данных!")
+    except Exception as e:
+        print(f"Ошибка при загрузке файла alko.json: {e}")
+
+def load_user_history_alko():
+    global user_history
+    try:
+        if os.path.exists(USER_HISTORY_PATH):
+            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
+                user_history = json.load(db_file)
+        else:
+            print(f"Файл {USER_HISTORY_PATH} не найден! Создание новго...")
+            user_history = {}
+    except Exception as e:
+        print(f"Ошибка при загрузке истории пользователей: {e}")
+        user_history = {}
+
+def save_user_history():
+    try:
+        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Ошибка при сохранении истории: {e}")
+
+ensure_path_and_file(ALKO_JSON_PATH)
+ensure_path_and_file(USER_HISTORY_PATH)
+load_alko_data()
+load_user_history_alko()
+
+@bot.message_handler(func=lambda message: message.text == "Рассчитать алкоголь")
+def start_alcohol_calculation(message):
+    if not alko_data.get('drinks'):
+        bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
+        return
+
+    user_id = message.from_user.id
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
+
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add("Мужской", "Женский")
+    markup.add("Вернуться в алкоголь")
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Укажите ваш пол:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_gender)
+
+def process_gender(message):
+    user_id = message.from_user.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        gender = message.text.strip().lower()
+
+        if gender not in ['мужской', 'женский']:
+            raise ValueError
+
+        user_data[user_id]['gender'] = gender
+
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=False, resize_keyboard=True)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(message.chat.id, "Укажите ваш вес в киллограммах:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_weight)
+
+    except:
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Мужской", "Женский")
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите пол:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_gender)
+
+def process_weight(message):
+    user_id = message.from_user.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        weight_str = message.text.strip().replace(',', '.')
+        weight = float(weight_str)
+
+        if weight <= 0 or weight > 300:
+            raise ValueError
+
+        user_data[user_id]['weight'] = weight
+
+        show_drinks_menu(message.chat.id)
+
+    except:
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=False, resize_keyboard=True)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, укажите ваш вес в килограммах:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_weight)
+
+def show_drinks_menu(chat_id):
+    if not alko_data.get('drinks'):
+        bot.send_message(chat_id, "❌ Данные для расчета не найдены!")
+        return
+
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+
+    if 'selected_drinks' in user_data[chat_id] and user_data[chat_id]['selected_drinks']:
+        markup.row("Убрать последний", "Готово", "Убрать все")
+    else:
+        markup.row("Готово")
+
+    markup.row("Вернуться в алкоголь")
+    markup.row("В главное меню")
+
+    drinks_buttons = [drink['name'] for drink in alko_data['drinks']]
+    for i in range(0, len(drinks_buttons), 3):
+        markup.row(*drinks_buttons[i:i+3])
+
+    if 'selected_drinks' in user_data[chat_id] and user_data[chat_id]['selected_drinks']:
+        selected = ", ".join([f"*{drink['name'].lower()}*" for drink in user_data[chat_id]['selected_drinks']])
+        msg_text = f"✅ Выбрано: {selected}\n\nПродолжайте выбирать напитки или нажмите *ГОТОВО* для продолжения:"
+    else:
+        msg_text = "Что вы пили?\nВыбирайте напитки из кнопок:"
+
+    msg = bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_drinks_selection)
+
+def process_drinks_selection(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    if message.text == "Готово":
+        if 'selected_drinks' not in user_data[user_id] or not user_data[user_id]['selected_drinks']:
+            bot.send_message(chat_id, "❌ Вы не выбрали ни одного напитка!\nПожалуйста, выберите хотя бы один:")
+            bot.register_next_step_handler(message, process_drinks_selection)
+            return
+
+        process_next_drink_volume(chat_id)
+        return
+
+    elif message.text == "Убрать последний":
+        if 'selected_drinks' in user_data[user_id] and user_data[user_id]['selected_drinks']:
+            removed_drink = user_data[user_id]['selected_drinks'].pop()
+            bot.send_message(chat_id, f"✅ Удален напиток: *{removed_drink['name'].lower()}*!", parse_mode='Markdown')
+        show_drinks_menu(chat_id)
+        return
+
+    elif message.text == "Убрать все":
+        if 'selected_drinks' in user_data[user_id] and user_data[user_id]['selected_drinks']:
+            user_data[user_id]['selected_drinks'] = []
+            bot.send_message(chat_id, "✅ Все напитки удалены!")
+        show_drinks_menu(chat_id)
+        return
+
+    try:
+        drink_name = message.text.strip()
+        selected_drink = next((drink for drink in alko_data['drinks'] if drink['name'] == drink_name), None)
+
+        if not selected_drink:
+            raise ValueError
+
+        if 'selected_drinks' not in user_data[user_id]:
+            user_data[user_id]['selected_drinks'] = []
+
+        if selected_drink not in user_data[user_id]['selected_drinks']:
+            user_data[user_id]['selected_drinks'].append(selected_drink)
+            bot.send_message(chat_id, f"✅ Добавлен напиток: *{selected_drink['name'].lower()}*!", parse_mode='Markdown')
+
+        show_drinks_menu(chat_id)
+
+    except ValueError:
+        bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выбирайте напитки из списка")
+        bot.register_next_step_handler(message, process_drinks_selection)
+
+def process_next_drink_volume(chat_id):
+    user_id = user_data[chat_id]['user_id']
+    if 'current_drink_index' not in user_data[user_id]:
+        user_data[user_id]['current_drink_index'] = 0
+        user_data[user_id]['drinks_volumes'] = {}
+
+    current_index = user_data[user_id]['current_drink_index']
+    if current_index >= len(user_data[user_id]['selected_drinks']):
+        show_drinking_speed_menu(chat_id)
+        return
+
+    current_drink = user_data[user_id]['selected_drinks'][current_index]
+
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+
+    liters_buttons = [f"{vol} л" for vol in alko_data['volume_liters'] if vol <= 2.0]
+    for i in range(0, len(liters_buttons), 3):
+        markup.row(*liters_buttons[i:i+3])
+
+    for cont in alko_data['volume_containers']:
+        markup.add(f"{cont['name']} ({cont['volume']} мл)")
+
+    markup.add("Вернуться в алкоголь")
+    markup.add("В главное меню")
+
+    msg = bot.send_message(chat_id, f"Выберите объем для *{current_drink['name'].lower()}*:",
+                         reply_markup=markup, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_volume_selection)
+
+def process_volume_selection(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        volume_text = message.text.strip()
+        current_index = user_data[user_id]['current_drink_index']
+        current_drink = user_data[user_id]['selected_drinks'][current_index]
+
+        if volume_text.endswith(' л'):
+            volume_liters = float(volume_text.split(' ')[0])
+        elif '(' in volume_text and 'мл' in volume_text:
+            volume_ml = int(volume_text.split('(')[1].split(' ')[0])
+            volume_liters = volume_ml / 1000
+        else:
+            raise ValueError
+
+        user_data[user_id]['drinks_volumes'][current_drink['id']] = volume_liters
+
+        user_data[user_id]['current_drink_index'] += 1
+        process_next_drink_volume(chat_id)
+
+    except ValueError:
+        current_index = user_data[user_id]['current_drink_index']
+        current_drink = user_data[user_id]['selected_drinks'][current_index]
+        bot.send_message(chat_id, f"Некорректный ввод! Пожалуйста, выберите объем для *{current_drink['name'].lower()}*:", parse_mode='Markdown')
+        bot.register_next_step_handler(message, process_volume_selection)
+
+def show_drinking_speed_menu(chat_id):
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    markup.add(alko_data['drinking_speed'][0]['name'])
+
+    speed_buttons = [speed['name'] for speed in alko_data['drinking_speed'][1:]]
+    for i in range(0, len(speed_buttons), 3):
+        markup.row(*speed_buttons[i:i+3])
+
+    markup.add("Вернуться в алкоголь")
+    markup.add("В главное меню")
+
+    msg = bot.send_message(
+        chat_id,
+        "Как быстро выпили?",
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(msg, process_drinking_speed)
+
+def process_drinking_speed(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        speed_name = message.text.strip()
+        speed = next((s for s in alko_data['drinking_speed'] if s['name'] == speed_name), None)
+
+        if not speed:
+            raise ValueError
+
+        user_data[user_id]['drinking_speed'] = speed['id']
+
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add(alko_data['time_since_last_drink'][0]['name'])
+        time_buttons = [time['name'] for time in alko_data['time_since_last_drink'][1:]]
+        markup.row(*time_buttons)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(chat_id, "Как давно закончили пить?", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_time_since_last_drink)
+
+    except ValueError:
+        bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите за какое время выпили")
+        bot.register_next_step_handler(message, process_drinking_speed)
+
+def process_time_since_last_drink(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        time_name = message.text.strip()
+        time = next((t for t in alko_data['time_since_last_drink'] if t['name'] == time_name), None)
+
+        if not time:
+            raise ValueError
+
+        user_data[user_id]['time_since_last_drink'] = time['id']
+
+        if time['id'] == 0:
+            user_data[user_id]['time_since_value'] = 0
+
+            markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+            food_buttons = [food['name'] for food in alko_data['food']]
+            markup.row(*food_buttons)
+            markup.add("Вернуться в алкоголь")
+            markup.add("В главное меню")
+
+            msg = bot.send_message(chat_id, "Что-нибудь ели?", reply_markup=markup)
+            bot.register_next_step_handler(msg, process_food)
+        else:
+            markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+            markup.add("Вернуться в алкоголь")
+            markup.add("В главное меню")
+
+            time_type = "мин." if time['id'] == 2 else "ч."
+            msg = bot.send_message(
+                chat_id,
+                f"Укажите сколько {time_type} :",
+                reply_markup=markup
+            )
+            bot.register_next_step_handler(msg, process_time_since_value)
+
+    except:
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add(alko_data['time_since_last_drink'][0]['name'])
+
+        time_buttons = [time['name'] for time in alko_data['time_since_last_drink'][1:]]
+        markup.row(*time_buttons)
+
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите вариант:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_time_since_last_drink)
+
+def process_time_since_value(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        time_value = float(message.text.strip())
+        user_data[user_id]['time_since_value'] = time_value
+
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        food_buttons = [food['name'] for food in alko_data['food']]
+        markup.row(*food_buttons)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(chat_id, "Что-нибудь ели?", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_food)
+
+    except:
+        time_id = user_data[user_id]['time_since_last_drink']
+        time_type = next((time['name'] for time in alko_data['time_since_last_drink'] if time['id'] == time_id), "")
+
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(
+            chat_id,
+            f"Некорректный ввод! Укажите сколько {time_type} :",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(msg, process_time_since_value)
+
+def process_food(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    try:
+        food_name = message.text.strip()
+        food = next((f for f in alko_data['food'] if f['name'] == food_name), None)
+
+        if not food:
+            raise ValueError
+
+        user_data[user_id]['food'] = food['id']
+
+        calculate_and_show_result(chat_id)
+
+    except:
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        food_buttons = [food['name'] for food in alko_data['food']]
+        markup.row(*food_buttons)
+        markup.add("Вернуться в алкоголь")
+        markup.add("В главное меню")
+
+        msg = bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите вариант:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_food)
+
+def calculate_and_show_result(chat_id):
+    user_id = user_data[chat_id]['user_id']
+    data = user_data[user_id]
+
+    r = 0.70 if data['gender'] == 'мужской' else 0.60
+
+    total_alcohol_grams = 0
+
+    for drink in data['selected_drinks']:
+        drink_id = drink['id']
+        volume_liters = data['drinks_volumes'][drink_id]
+        strength = drink['strength'] / 100
+
+        alcohol_grams = volume_liters * 1000 * strength * 0.79
+        total_alcohol_grams += alcohol_grams
+
+    c = total_alcohol_grams / (data['weight'] * r)
+
+    drinking_speed = data['drinking_speed']
+    if drinking_speed > 1:
+        hours_drinking = drinking_speed - 1
+        c = c * 0.8
+
+    food_id = data['food']
+    if food_id == 2:
+        c = c * 0.9
+    elif food_id == 3:
+        c = c * 0.7
+
+    time_id = data['time_since_last_drink']
+    if time_id != 0:
+        time_value = data['time_since_value']
+        if time_id == 1:
+            hours_passed = time_value
+        else:
+            hours_passed = time_value / 60
+
+        elimination_rate = 0.15 if data['gender'] == 'мужской' else 0.10
+        c = max(0, c - (hours_passed * elimination_rate))
+
+    c = round(c, 2)
+
+    if c > 0:
+        elimination_rate = 0.15 if data['gender'] == 'мужской' else 0.10
+        hours_to_sober = c / elimination_rate
+        sober_time = datetime.now() + timedelta(hours=hours_to_sober)
+        sober_time_str = sober_time.strftime("%d.%m.%Y в %H:%M")
+
+        recommendations = get_recommendations(c, data['gender'])
+
+        result = (
+            f"📊 *Итоговый расчёт*\n\n"
+            f"🔹 Сейчас в вашей крови примерно: *{c}%*\n"
+            f"🔹 Вы будете трезвы примерно через *{int(hours_to_sober)} ч. {int((hours_to_sober % 1) * 60)} мин.*\n"
+            f"🔹 Алкоголь выведется из крови примерно *{sober_time_str}*\n\n"
+            f"📌 *Рекомендации:*\n{recommendations}"
+        )
+    else:
+        result = "📊 *Итоговый расчёт*\n\n✅ Вы уже трезвы или алкоголь еще не поступил в кровь!"
+
+    save_calculation_to_history(chat_id, c)
+    user_data[user_id] = data
+    bot.send_message(chat_id, result, parse_mode='Markdown')
+    view_alc_calc(stored_message)
+
+def get_recommendations(promille, gender):
+    if promille <= 0:
+        return "✅ Вы трезвы! Можете управлять транспортным средством!"
+
+    recommendations = []
+
+    if promille > 0.3:
+        recommendations.append("⚠️ Внимание! Превышена допустимая норма алкоголя в крови (0.3%). Управление транспортным средством запрещено!")
+        recommendations.append("🚫 В таком состоянии вы можете представлять опасность для себя и окружающих!")
+    elif promille > 0.16:
+        recommendations.append("⚠️ Будьте осторожны! Вы близки к превышению допустимой нормы алкоголя в крови...")
+        recommendations.append("🚦 Лучше воздержаться от управления транспортным средством!")
+    else:
+        recommendations.append("✅ Уровень алкоголя в пределах допустимой нормы, но будьте осторожны!")
+        recommendations.append("🔄 Алкоголь еще продолжает всасываться в кровь")
+
+    if promille < 0.3:
+        recommendations.append("\n😊 Легкая степень опьянения:")
+        recommendations.append("- Вы можете чувствовать расслабленность и улучшение настроения")
+        recommendations.append("- Незначительное снижение концентрации внимания")
+        recommendations.append("- Минимальное влияние на координацию движений")
+    elif promille < 0.6:
+        recommendations.append("\n🍷 Умеренное опьянение:")
+        recommendations.append("- Нарушения координации становятся заметными")
+        recommendations.append("- Снижается скорость реакции")
+        recommendations.append("- Может появиться излишняя разговорчивость")
+    elif promille < 1.0:
+        recommendations.append("\n🚨 Заметное опьянение:")
+        recommendations.append("- Явные нарушения координации движений")
+        recommendations.append("- Замедленная реакция на внешние раздражители")
+        recommendations.append("- Эмоциональная нестабильность")
+        recommendations.append("- Ухудшение оценки расстояний и скорости")
+    elif promille < 1.5:
+        recommendations.append("\n⚠️ Сильное опьянение:")
+        recommendations.append("- Серьезные нарушения моторики и мышления")
+        recommendations.append("- Несвязная речь")
+        recommendations.append("- Проблемы с равновесием")
+        recommendations.append("- Высокий риск потери сознания")
+    elif promille < 2.0:
+        recommendations.append("\n❌ Опасное опьянение:")
+        recommendations.append("- Высокий риск для здоровья")
+        recommendations.append("- Возможна тошнота и рвота")
+        recommendations.append("- Сильное головокружение")
+        recommendations.append("- Проблемы с передвижением без помощи")
+    else:
+        recommendations.append("\n🆘 Критическое опьянение!")
+        recommendations.append("- Немедленно прекратите употребление алкоголя")
+        recommendations.append("- Обеспечьте постоянное наблюдение")
+        recommendations.append("- При ухудшении состояния вызовите врача")
+        recommendations.append("- Риск алкогольного отравления")
+
+    recommendations.append("\n💡 Советы по восстановлению:")
+    recommendations.append("- Пейте больше воды (1 стакан каждые 30 минут)")
+    recommendations.append("- Примите активированный уголь (1 таблетка на 10 кг веса)")
+    recommendations.append("- Выпейте крепкий сладкий чай с лимоном")
+    recommendations.append("- Примите прохладный душ (не холодный!)")
+    recommendations.append("- Съешьте что-то жирное (молоко, сыр, орехи)")
+    recommendations.append("- Избегайте кофеина - он усиливает обезвоживание")
+    recommendations.append("- Не принимайте лекарства без консультации врача")
+
+    if gender == 'женский':
+        recommendations.append("\n♀️ Для женщин:")
+        recommendations.append("- Алкоголь выводится медленнее на 15-20%")
+        recommendations.append("- Будьте особенно осторожны с дозировками")
+
+    if promille > 0.5:
+        recommendations.append("\n🚑 При сильном опьянении:")
+        recommendations.append("- Лягте на бок, чтобы избежать аспирации при возможной рвоте")
+        recommendations.append("- Не оставляйте человека одного")
+        recommendations.append("- Контролируйте дыхание и пульс")
+        recommendations.append("- При потере сознания немедленно вызывайте скорую")
+
+    return "\n".join(recommendations)
+
+def format_timestamp(timestamp):
+    dt = datetime.strptime(timestamp, "%d.%m.%Y в %H:%M")
+    return dt.strftime("%d.%m.%Y в %H:%M")
+
+def save_calculation_to_history(chat_id, promille):
+    user_id = user_data[chat_id]['user_id']
+    username = user_data[chat_id].get('username', 'unknown')
+
+    sober_time = datetime.now() + timedelta(hours=promille / 0.15)
+    sober_time_str = sober_time.strftime("%d.%m.%Y в %H:%M")
+
+    calculation_data = {
+        'timestamp': datetime.now().strftime("%d.%m.%Y в %H:%M"),
+        'promille': promille,
+        'sober_time': sober_time_str,
+        'drinks': [
+            {
+                'name': drink['name'],
+                'volume': user_data[user_id]['drinks_volumes'][drink['id']],
+                'strength': drink['strength']
+            } for drink in user_data[user_id]['selected_drinks']
+        ],
+        'weight': user_data[user_id]['weight'],
+        'gender': user_data[user_id]['gender']
+    }
+
+    if str(user_id) not in user_history:
+        user_history[str(user_id)] = {
+            'username': username,
+            'calculations': []
+        }
+
+    user_history[str(user_id)]['calculations'].append(calculation_data)
+    save_user_history()
+
+# ---------- n.n АЛКОГОЛЬ (ПРОСМОТР АЛКОГОЛЯ) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Просмотр алкоголя")
+def handle_view_alcohol(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(message)  
+        return
+    view_calculations(message.chat.id)
+
+def view_calculations(chat_id):
+    user_id = str(stored_message.from_user.id) if stored_message else str(bot.get_chat_member(chat_id, chat_id).user.id)
+
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(stored_message if stored_message else bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']
+        message_text += f"🕒 №{i}. {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_view_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в алкоголь')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+
+def process_view_selection(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1) 
+
+        if invalid_indices:
+            if len(indices) == 1:  
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_alc_calc(message)
+                return
+            else: 
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_alc_calc(message)
+            return
+
+        for index in valid_indices:
+            calc = calculations[index]
+            timestamp = calc['timestamp']
+            drinks = "\n".join([f"{i+1}. {drink['name']} ({drink['strength']}%) - {drink['volume']} л." for i, drink in enumerate(calc['drinks'])])
+            result = (
+                f"📊 *Расчет от {timestamp}*\n\n\n"
+                f"🚹 Ваш пол - {calc['gender']}\n"
+                f"🏋️ Ваш вес - {calc['weight']} кг\n\n"
+                f"🍷 Вы пили:\n{drinks}\n\n\n"
+                f"🔍 *Итоговый расчет:*\n\n"
+                f"🔹 Сейчас в вашей крови примерно: *{calc['promille']}%*\n"
+                f"🔹 Вы будете трезвы примерно через *{int(calc['promille'] / 0.15)} ч. {int((calc['promille'] / 0.15 % 1) * 60)} мин.*\n"
+                f"🔹 Алкоголь выведется из крови примерно *{calc['sober_time']}*"
+            )
+            bot.send_message(chat_id, result, parse_mode='Markdown')
+
+        view_alc_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+        view_alc_calc(message)
+
+# ---------- n.n АЛКОГОЛЬ (УДАЛЕНИЕ АЛКОГОЛЯ) ----------
+
+@bot.message_handler(func=lambda message: message.text == "Удаление алкоголя")
+def handle_delete_alcohol(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(message) 
+        return
+    delete_calculations(message.chat.id)
+
+def delete_calculations(chat_id):
+    user_id = str(stored_message.from_user.id) if stored_message else str(bot.get_chat_member(chat_id, chat_id).user.id)
+
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(stored_message if stored_message else bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']
+        message_text += f"🕒 №{i}. {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_delete_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в алкоголь')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
+
+def process_delete_selection(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в алкоголь":
+        view_alc_calc(message)
+        return
+
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        view_alc_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1)  
+
+        if invalid_indices:
+            if len(indices) == 1: 
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_alc_calc(message)
+                return
+            else: 
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_alc_calc(message)
+            return
+
+        valid_indices.sort(reverse=True)  
+        for index in valid_indices:
+            del calculations[index]
+
+        save_user_history()
+        bot.send_message(chat_id, "✅ Выбранные расчеты успешно удалены!")
+        view_alc_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+        view_alc_calc(message)
+
 
 
 
@@ -19946,7 +20837,8 @@ def start_menu(user_id):
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
     item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Прочее")
+    item11 = types.KeyboardButton("Калькуляторы")
+    item12 = types.KeyboardButton("Прочее")
 
     markup.add(itembuysub)
     markup.add(item1, item2)
@@ -19955,6 +20847,7 @@ def start_menu(user_id):
     markup.add(item6, item8)
     markup.add(item9, item10)
     markup.add(item11)
+    markup.add(item12)
 
     welcome_message = f"Добро пожаловать, {escape_markdown(username)}!\nВыберите действие из меню:"
     send_message_to_user(user_id, welcome_message, parse_mode="Markdown", reply_markup=markup)
