@@ -7312,13 +7312,20 @@ def start_antiradar(message):
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False}
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    button_geo = telebot.types.KeyboardButton(text="📍 Транслировать геопозицию", request_location=True)
-    item1 = telebot.types.KeyboardButton("В главное меню")
+    button_geo = telebot.types.KeyboardButton(text="Отправить геопозицию", request_location=True)
+    button_off_geo = telebot.types.KeyboardButton(text="Выключить анти-радар")
     keyboard.add(button_geo)
-    keyboard.add(item1)
-    bot.send_message(user_id, "🔔 Пожалуйста, разрешите доступ к геопозиции для запуска анти-радара. Нажмите кнопку, чтобы начать трансляцию своей геопозиции.", reply_markup=keyboard)
+    keyboard.add(button_off_geo)
+    bot.send_message(user_id, "Пожалуйста, разрешите доступ к геопозиции для запуска анти-радара. Нажмите кнопку, чтобы отправить геопозицию", reply_markup=keyboard)
 
-# Обработчик для получения геопозиции при активированном анти-радаре
+    # Отправка сообщения с камерами
+    message_text = "⚠️ Внимание! Камеры впереди:\n\n"  # Заголовок сообщения
+    sent_message = bot.send_message(user_id, message_text, parse_mode="Markdown")
+    
+    # Закрепляем сообщение
+    bot.pin_chat_message(user_id, sent_message.message_id)  # Закрепляем сообщение
+    user_tracking[user_id]['last_camera_message'] = sent_message.message_id  # Сохраняем ID сообщения для дальнейшего использования
+
 # Обработчик для получения геопозиции при активированном анти-радаре
 @bot.message_handler(content_types=['location'])
 @restricted
@@ -7331,7 +7338,7 @@ def handle_antiradar_location(message):
         latitude = message.location.latitude
         longitude = message.location.longitude
     else:
-        bot.send_message(user_id, "Геолокация недоступна. Попробуйте снова.")
+        bot.send_message(user_id, "Геолокация недоступна. Попробуйте снова")
         return
 
     # Проверка: если анти-радар включен
@@ -7344,8 +7351,9 @@ def handle_antiradar_location(message):
             user_tracking[user_id]['started'] = True
             track_user_location(user_id, message.location)
     else:
-        bot.send_message(user_id, "Пожалуйста, выберите категорию из меню.")
+        bot.send_message(user_id, "Пожалуйста, выберите категорию из меню")
 
+# Обработчик для выключения анти-радара
 @bot.message_handler(func=lambda message: message.text == "Выключить анти-радар")
 @restricted
 @track_user_activity
@@ -7353,9 +7361,18 @@ def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
         user_tracking[user_id]['tracking'] = False
-        bot.send_message(user_id, "🚫 Анти-радар остановлен. Трансляция геопозиции отключена.")
+        bot.send_message(user_id, "Анти-радар остановлен")
+
+        # Удаление закрепленного сообщения с камерами
+        if user_tracking[user_id].get('last_camera_message'):
+            bot.unpin_chat_message(user_id, user_tracking[user_id]['last_camera_message'])  # Убираем закрепление
+            bot.delete_message(user_id, user_tracking[user_id]['last_camera_message'])  # Удаляем сообщение
+
+        # Возврат в главное меню
+        return_to_main_menu(message)
+
     else:
-        bot.send_message(user_id, "❌ Анти-радар не был запущен.")
+        bot.send_message(user_id, "Анти-радар не был запущен")
 
 def delete_messages(user_id, message_id):
     time.sleep(6)
