@@ -3674,40 +3674,104 @@ def send_forecast_monthly(chat_id, coords, url, days=30):
 
 # ЦЕНЫ НА ТОПЛИВО
 
-# Добавляем словарь для отслеживания состояния пользователя
+# Словарь для отслеживания состояния пользователя
 user_state = {}
+
+# Функция для чтения городов и создания словаря для их URL
+def load_cities():
+    cities = {}
+    try:
+        with open('files/combined_cities.txt', 'r', encoding='utf-8') as file:
+            for line in file:
+                if '-' in line:  # Проверяем, что в строке есть дефис
+                    city, city_code = line.strip().split(' - ')
+                    cities[city] = city_code  # Сохраняем в словаре
+    except FileNotFoundError:
+        print("Файл 'combined_cities.txt' не найден.")
+    return cities
+
+# Загружаем города при запуске бота
+cities_dict = load_cities()
+
+# Функция для получения кода города на английском по его названию на русском
+def get_city_code(city_name):
+    return cities_dict.get(city_name)
 
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
 def fuel_prices_command(message):
     chat_id = message.chat.id
-    user_state[chat_id] = "choosing_fuel"  # Устанавливаем состояние выбора топлива
-    show_fuel_price_menu(chat_id)
+    user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
+    
+    # Создаем клавиатуру с кнопкой "В главное меню"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    
+    # Отправляем сообщение с просьбой ввести город и клавиатурой
+    bot.send_message(chat_id, "Введите название города (на русском):", reply_markup=markup)
+
+    # Регистрация следующего шага
+    bot.register_next_step_handler(message, process_city_selection)
+
+# Обработчик выбора города
+def process_city_selection(message):
+    chat_id = message.chat.id
+    
+    # Проверяем состояние пользователя
+    if user_state.get(chat_id) != "choosing_city":
+        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+        return
+    
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    city_name = message.text.strip()  # Получаем название города
+    cities = load_cities()  # Загружаем словарь городов
+    
+    # Проверяем, существует ли город в словаре
+    city_code = cities.get(city_name)
+    if city_code:
+        # Вместо вывода сообщения о найденном городе, открываем меню выбора топлива
+        show_fuel_price_menu(chat_id, city_code)
+    else:
+        bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
+        # Запросить ввод города снова
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        bot.send_message(chat_id, "Введите название города (на русском):", reply_markup=markup)  # Отправляем сообщение с клавиатурой
+        bot.register_next_step_handler(message, process_city_selection)
 
 # Определяем доступные типы топлива
 fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
 
 # Функция для создания клавиатуры с типами топлива
-def show_fuel_price_menu(chat_id):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+def show_fuel_price_menu(chat_id, city_code):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     
     # Добавляем кнопки с типами топлива
-    row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
-    row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
-    row3 = [KeyboardButton("В главное меню")]
+    row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
+    row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
+    row3 = [types.KeyboardButton("В главное меню")]
     
     markup.add(*row1, *row2, *row3)
     
     sent = bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_fuel_price_selection)
+    bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code))
 
 # Обработчик выбора топлива
-def process_fuel_price_selection(message):
+def process_fuel_price_selection(message, city_code):
     chat_id = message.chat.id
 
-    # Проверка состояния пользователя
-    if user_state.get(chat_id) != "choosing_fuel":
-        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+    # Проверка, существует ли chat_id в user_data
+    if chat_id not in user_data:
+        # Инициализация user_data для нового пользователя
+        user_data[chat_id] = {'city_code': city_code}
+    
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
 
     # Запрет на мультимедийные сообщения
@@ -3717,10 +3781,6 @@ def process_fuel_price_selection(message):
         return
 
     selected_fuel_type = message.text.strip().lower()
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
 
     # Соответствие типов топлива
     fuel_type_mapping = {
@@ -3735,14 +3795,14 @@ def process_fuel_price_selection(message):
     # Проверка корректности выбранного топлива
     if selected_fuel_type not in fuel_type_mapping:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов.")
-        bot.register_next_step_handler(sent, process_fuel_price_selection)
+        bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code))
         return
 
     actual_fuel_type = fuel_type_mapping[selected_fuel_type]
 
-    # Получаем цены на топливо с сайта
+    # Обработка и отправка данных о ценах
     try:
-        fuel_prices = get_fuel_prices_from_site(actual_fuel_type)
+        fuel_prices = get_fuel_prices_from_site(actual_fuel_type, city_code)
         if not fuel_prices:
             raise ValueError("Нет данных по ценам.")
 
@@ -3781,27 +3841,31 @@ def process_fuel_price_selection(message):
         bot.register_next_step_handler(sent, process_next_action)
 
     except Exception as e:
-        bot.send_message(chat_id, f"Ошибка получения цен: {e}")
-        return
+        bot.send_message(chat_id, f"Ошибка получения цен: {e}\nПопробуйте выбрать другой тип топлива.")
+        # Возвращаем пользователя к выбору топлива
+        user_state[chat_id] = "choosing_fuel"
+        show_fuel_price_menu(chat_id, city_code)
 
 # Обработчик для следующего шага
 def process_next_action(message):
     chat_id = message.chat.id
 
-    # Проверяем, что пользователь находится в нужном состоянии
-    if user_state.get(chat_id) != "next_action":
-        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+    if message.text == "В главное меню":
+        return_to_menu(message)
         return
 
-    if message.text == "Посмотреть цены на другое топливо":
-        # Переключаем состояние обратно на выбор топлива
-        user_state[chat_id] = "choosing_fuel"
-        show_fuel_price_menu(chat_id)  # Отображаем клавиатуру снова
-    elif message.text == "В главное меню":
-        return_to_menu(message)
-    else:
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.")
-        bot.register_next_step_handler(sent, process_next_action)
+    # Сброс состояния перед новым выбором топлива
+    user_state[chat_id] = "waiting_for_fuel_selection"
+
+    # Создаем клавиатуру для выбора топлива
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
+    row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
+    row3 = [types.KeyboardButton("В главное меню")]
+    markup.add(*row1, *row2, *row3)
+
+    sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
+    bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, user_data[chat_id]['city_code']))
 
 # Возврат в главное меню
 def return_to_menu(message):
@@ -3810,8 +3874,8 @@ def return_to_menu(message):
     start(message)
 
 # Функция для получения данных с сайта
-def get_fuel_prices_from_site(selected_fuel_type):
-    url = 'https://azsprice.ru/benzin-cheboksary'  # Замените на актуальный URL
+def get_fuel_prices_from_site(selected_fuel_type, city_code):
+    url = f'https://azsprice.ru/benzin-{city_code}'  # Используем код города в URL
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
