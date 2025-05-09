@@ -664,7 +664,6 @@ def load_users_data():
             data[user_id].setdefault('username', 'неизвестный')
             data[user_id].setdefault('usage_stats', {})
             data[user_id].setdefault('activity', {})
-            data[user_id].setdefault('auto_renew', False)
             data[user_id].setdefault('last_promo_used', None)
         
         save_users_data(data)
@@ -733,7 +732,6 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         users_data[user_id_str] = {
             "username": formatted_username or "неизвестный",
             "activity": {},
-            "auto_renew": False,
             "usage_stats": {},
             "join_date": now,
             "last_promo_used": None,
@@ -754,7 +752,6 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         users_data[user_id_str]['phone'] = phone
         users_data[user_id_str]['last_active'] = current_time
         users_data[user_id_str].setdefault('activity', {})
-        users_data[user_id_str].setdefault('auto_renew', False)
         users_data[user_id_str].setdefault('usage_stats', {})
         users_data[user_id_str].setdefault('join_date', now)
         users_data[user_id_str].setdefault('last_promo_used', None)
@@ -993,16 +990,13 @@ def process_successful_payment(message):
     users_data = load_users_data()
     user_data = data['subscriptions']['users'].get(user_id, {"plans": []})
     
-    # Извлекаем длительность подписки
     payload_parts = payment_info.invoice_payload.split('_')
     plan_name = payload_parts[0]
     plan_duration = int(payload_parts[2])  # 7, 30, 365
     
-    # Определяем даты подписки
     latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
     new_end = latest_end + timedelta(days=plan_duration)
     
-    # Проверка последовательных месяцев для скидки
     consecutive_months = users_data.get(user_id, {}).get('consecutive_months', 0)
     if (datetime.now() - latest_end).days <= 1:
         consecutive_months += 1
@@ -1020,7 +1014,6 @@ def process_successful_payment(message):
     
     price = payment_info.total_amount / 100 * (1 - discount / 100)
     
-    # Добавляем новую подписку
     user_data['plans'].append({
         "plan_name": plan_name,
         "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
@@ -1033,7 +1026,7 @@ def process_successful_payment(message):
     user_data['total_amount'] = user_data.get('total_amount', 0) + price
     data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
     
-    # Начисление баллов пользователю
+    # Начисление баллов
     is_first_purchase = not any(plan['source'] == "user" for plan in user_data['plans'][:-1])
     bonus_points = 0
     if is_first_purchase:
@@ -1072,7 +1065,6 @@ def process_successful_payment(message):
             "Спасибо за приглашение! 😊"
         ), parse_mode="Markdown")
     
-    # Обновление данных пользователя
     users_data.setdefault(user_id, {})
     users_data[user_id]['consecutive_months'] = consecutive_months
     users_data[user_id]['discount'] = discount
@@ -1081,15 +1073,6 @@ def process_successful_payment(message):
     save_payments_data(data)
     save_users_data(users_data)
     
-    # Уведомление об автопродлении
-    if users_data[user_id].get('auto_renew'):
-        bot.send_message(user_id, (
-            "🔄 *Автопродление включено!*\n\n"
-            "📅 Ваша подписка будет автоматически продлена!\n\n"
-            "😊 Спасибо за доверие!"
-        ), parse_mode="Markdown")
-    
-    # Уведомление о подписке
     bot.send_message(user_id, (
         "🎉 *Спасибо за оплату*!\n\n"
         f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
@@ -1327,20 +1310,8 @@ def background_subscription_expiration_check():
                         "🎉 Не упустите возможность продлить доступ и наслаждаться полным функционалом!"
                     ), parse_mode="Markdown")
                     user_data['trial_ended_notified'] = True
-                    if users_data[user_id].get('auto_renew'):
-                        send_subscription_invoice_auto(user_id, plan['plan_name'])
                     save_payments_data(data)
         time.sleep(86400)
-
-def send_subscription_invoice_auto(user_id, plan_name):
-    plans = {"weekly": "weekly_subscription_7", "monthly": "monthly_subscription_31", "yearly": "yearly_subscription_365"}
-    bot.send_invoice(user_id, f"🔄 Автопродление {plan_name.capitalize()}", (
-        "🔄 *Автоматическое продление подписки!*\n\n"
-        "📅 Ваша подписка будет продлена автоматически!\n\n"
-        "Спасибо за доверие! 😊"
-    ), PAYMENT_PROVIDER_TOKEN, "sub", "RUB", 
-                     [types.LabeledPrice(plan_name.capitalize(), {"weekly": 14900, "monthly": 39900, "yearly": 299900}[plan_name])], 
-                     plans[plan_name])
 
 thread_expiration = threading.Thread(target=background_subscription_expiration_check, daemon=True)
 thread_expiration.start()
@@ -1363,7 +1334,6 @@ def send_special_offer_invoice(call):
 
 @bot.message_handler(func=lambda message: message.text == "Подписка на бота")
 def payments_function(message):
-    # Убираем проверку "Вернуться в подписку", так как она бессмысленна в этой функции
     if message.text == "В главное меню":
         return_to_menu(message)
         return
@@ -1387,7 +1357,7 @@ def payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Купить подписку')
     markup.add('Посмотреть подписку', 'История подписок', 'Отменить подписку')
-    markup.add('Реферальная система', 'Настроить автопродление')
+    markup.add('Реферальная система')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, description, reply_markup=markup, parse_mode="Markdown")
 
@@ -1405,63 +1375,6 @@ def buy_subscription(message):
         return
     
     send_subscription_options(message)
-
-@bot.message_handler(func=lambda message: message.text == "Настроить автопродление")
-def configure_auto_renew(message):
-    if message.text == "Вернуться в реферальную систему":
-        return_to_referral_menu(message)
-        return
-    if message.text == "Вернуться в подписку":
-        payments_function(message)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    user_id = message.from_user.id
-    users_data = load_users_data()
-    current_status = users_data.get(str(user_id), {}).get('auto_renew', False)
-    
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    action_text = "Выключить" if current_status else "Включить"
-    markup.add(types.KeyboardButton(f"{action_text} автопродление"))
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-    markup.add(types.KeyboardButton("Вернуться в подписку"))
-    markup.add(types.KeyboardButton("В главное меню"))
-    
-    bot.send_message(user_id, (
-        f"🔄 *Настройка автопродления*\n\n"
-        f"Текущий статус: *{'Включено' if current_status else 'Выключено'}*\n"
-        "Выберите действие:"
-    ), parse_mode="Markdown", reply_markup=markup)
-    bot.register_next_step_handler(message, process_auto_renew, current_status)
-
-def process_auto_renew(message, current_status):
-    if message.text == "Вернуться в реферальную систему":
-        return_to_referral_menu(message)
-        return
-    if message.text == "Вернуться в подписку":
-        payments_function(message)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-        
-    user_id = message.from_user.id
-    users_data = load_users_data()
-    
-    if message.text in ["Включить автопродление", "Выключить автопродление"]:
-        new_status = not current_status
-        users_data[str(user_id)]['auto_renew'] = new_status
-        save_users_data(users_data)
-        
-        status_text = "включено" if new_status else "выключено"
-        bot.send_message(user_id, (
-            f"🔄 *Автопродление {status_text}!*\n\n"
-            f"📅 Теперь подписка будет {'автоматически продлеваться' if new_status else 'продлеваться вручную'}!\n\n"
-            "😊 Спасибо за использование!"
-        ), parse_mode="Markdown")
-    payments_function(message)
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
     max_length = 4096
@@ -1725,8 +1638,8 @@ def view_subscription_history(message):
 def refferal_payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ваша ссылка', 'Ваши рефералы и бонусы')
-    markup.add('Топ рефералов', 'Баллы')  # Заменяем "Обменять баллы" на "Баллы"
-    markup.add('Ввести промокод', 'Получить день за рекламу')
+    markup.add('Топ рефералов', 'Баллы')  
+    markup.add('Ввести промокод', 'Рекламные каналы')
     markup.add('Вернуться в подписку')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из реферальной системы:", reply_markup=markup, parse_mode="Markdown")
@@ -2350,7 +2263,7 @@ def process_gift_amount(message, recipient_id, sender_points):
         bot.send_message(message.chat.id, f"❌ {error_msg}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
 
-@bot.message_handler(func=lambda message: message.text == "Получить день за рекламу")
+@bot.message_handler(func=lambda message: message.text == "Рекламные каналы")
 def get_day_for_ad(message):
     if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
         globals()[message.text.lower().replace(" ", "_")](message)
@@ -2364,7 +2277,7 @@ def get_day_for_ad(message):
         markup.add(InlineKeyboardButton(f"Подписаться на {name}", callback_data=f"subscribe_ad_{chat_id}"))
     
     bot.send_message(user_id, (
-        "📢 *Подпишитесь на один из наших рекламных каналов!* 📢\n\n"
+        "📢 *Подпишитесь на один из наших рекламных каналов!*\n\n"
         "✨ Получите *+1 день подписки* за подписку на любой канал!\n"
         "Выберите канал ниже:"
     ), reply_markup=markup, parse_mode="Markdown")
