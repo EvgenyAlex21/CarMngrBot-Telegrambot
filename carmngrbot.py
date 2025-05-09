@@ -26,6 +26,7 @@ from scipy.spatial import cKDTree
 import threading
 import csv
 import shutil
+import hashlib
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -99,9 +100,18 @@ def restricted(func):
     """Декоратор для ограничения доступа заблокированным пользователям."""
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
+        username = message.from_user.username
+
+        # Проверка по ID
         if is_user_blocked(user_id):
             bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
             return
+
+        # Проверка по username
+        if username and is_user_blocked(get_user_id_by_username(username)):
+            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            return
+        
         return func(message, *args, **kwargs)
     return wrapper
 
@@ -6884,229 +6894,45 @@ def return_to_transport_menu(message):
 
 
 
-# АААААААААААААААДДДДДДДДДДДДДДДДДДДММММММММММММММММММММММИИИИИИИИИИИИИИИИИИИИИИИИИИИННННННННННННННН
+# (ADMIN) ----------------------------------------------- КОД ДЛЯ "АНМИН-ПАНЕЛИ" ------------------------------------------------------
 
+# (ADMIN 1) -------------------------------------------------"ВХОД ДЛЯ АДМИНА" --------------------------------------------------------
 
-
+# (ADMIN 1.1) --------------------------------- "ОБЪЯВЛЕНИЕ ЛОГИНА И ПАРОЛЯ АДМИН-ПАНЕЛИ" --------------------------------------------- 
 ADMIN_USERNAME = "Alex"
 ADMIN_PASSWORD = "lox"
-ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
-FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
-USER_DATA_PATH = 'data base/admin/users.json'
-BLOCKED_USERS_PATH = 'data base/admin/blocked_users.json'
 
-# Глобальные переменные и структура данных
 admin_sessions = set()
 active_users = {}
 total_users = set()
-function_usage = {'Статистика': 0, 'Отзывы': 0, 'Просмотр файлов БД': 0, 'Просмотр всех файлов': 0}
-INACTIVE_TIME = timedelta(minutes=1)
 
+ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
+ADMINS_DATA_PATH = 'data base/admin/admins.json'
+USER_DATA_PATH = 'data base/admin/users.json'
+INACTIVE_TIME = timedelta(minutes=5)
 
-# Глобальные переменные для хранения статистики
-active_users = {}  # {user_id: last_active_time}
-total_users = set()  # Общее количество пользователей
-function_usage = {
-    'Статистика': 0,
-    'Отзывы': 0,
-    'Просмотр файлов БД': 0,
-    'Просмотр всех файлов': 0,
-}  # Статистика использования функций
-
-INACTIVE_TIME = timedelta(minutes=1)  # Время для определения неактивного пользователя
-
-# Проверка и создание необходимых директорий
-os.makedirs('data base/admin', exist_ok=True)
-
-# Функции для загрузки и сохранения данных
-def load_feedback():
-    if os.path.exists(FEEDBACK_FILE_PATH):
-        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
-
-def load_user_data():
-    if os.path.exists(USER_DATA_PATH):
-        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
-
-def load_blocked_users():
-    if os.path.exists(BLOCKED_USERS_PATH):
-        with open(BLOCKED_USERS_PATH, 'r', encoding='utf-8') as file:
-            return set(json.load(file))
-    return set()
-
-def save_user_data(user_data):
-    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
-        json.dump(user_data, file)
-
-def save_blocked_users(blocked_users):
-    with open(BLOCKED_USERS_PATH, 'w', encoding='utf-8') as file:
-        json.dump(list(blocked_users), file)
-
-# Обновляем активность пользователя
-def update_user_activity(user_id, username=None):
-    active_users[user_id] = datetime.now()
-    total_users.add(user_id)  # Добавляем пользователя в список всех, кто когда-либо использовал бот
-
-    # Сохраняем информацию о пользователе
-    user_data = load_user_data()
-    if user_id not in user_data:
-        user_data[user_id] = {'username': username, 'last_active': datetime.now().isoformat()}
-        save_user_data(user_data)
-
-# Получаем ID пользователя по никнейму
-def get_user_id_by_username(username):
-    user_data = load_user_data()
-    for user_id, data in user_data.items():
-        if data['username'] == username:
-            return user_id
-    return None
-
-# Получаем список активных пользователей
-def list_active_users():
-    user_data = load_user_data()
-    active_user_list = [
-        f"ID: {user_id}, Username: {data['username']}"
-        for user_id, data in user_data.items() if user_id in active_users
-    ]
-    return "\n".join(active_user_list)
-
-def block_user(user_id):
-    blocked_users = load_blocked_users()
-    blocked_users.add(user_id)
-    save_blocked_users(blocked_users)
-
-def unblock_user(user_id):
-    blocked_users = load_blocked_users()
-    blocked_users.discard(user_id)
-    save_blocked_users(blocked_users)
-
-def is_user_blocked(user_id):
-    blocked_users = load_blocked_users()
-    return user_id in blocked_users
-
-def get_active_users_count():
-    now = datetime.now()
-    return sum(1 for last_active in active_users.values() if now - last_active <= INACTIVE_TIME)
-
-def get_statistics():
-    online_count = get_active_users_count()
-    total_count = len(total_users)
-    return online_count, total_count, function_usage
-
-# Проверка и создание нужных директорий
-os.makedirs('data base/admin', exist_ok=True)
-
-# Загрузка сессий при старте
+# Функция загрузки и сохранения сессий администраторов
 def load_admin_sessions():
     if os.path.exists(ADMIN_SESSIONS_PATH):
         with open(ADMIN_SESSIONS_PATH, 'r') as file:
             return set(json.load(file))
     return set()
 
-# Сохранение сессий
-def save_admin_sessions():
-    with open(ADMIN_SESSIONS_PATH, 'w') as file:
-        json.dump(list(admin_sessions), file)
-
-# Инициализация сессий
-
-# Проверка и создание нужных директорий
-os.makedirs('data base/admin', exist_ok=True)
-
-# Функции для загрузки и сохранения данных
-def load_feedback():
-    if os.path.exists(FEEDBACK_FILE_PATH):
-        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
-
-def load_user_data():
-    if os.path.exists(USER_DATA_PATH):
-        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
-
-def load_blocked_users():
-    if os.path.exists(BLOCKED_USERS_PATH):
-        with open(BLOCKED_USERS_PATH, 'r', encoding='utf-8') as file:
-            return set(json.load(file))
-    return set()
-
-def save_user_data(user_data):
-    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
-        json.dump(user_data, file)
-
-def save_blocked_users(blocked_users):
-    with open(BLOCKED_USERS_PATH, 'w', encoding='utf-8') as file:
-        json.dump(list(blocked_users), file)
-
-# Функция для загрузки сессий админов при старте бота
-def load_admin_sessions():
-    if os.path.exists(ADMIN_SESSIONS_PATH):
-        with open(ADMIN_SESSIONS_PATH, 'r') as file:
-            return set(json.load(file))
-    return set()
-
-admin_sessions = load_admin_sessions()
-
-# Функция для сохранения сессий админов
 def save_admin_sessions():
     with open(ADMIN_SESSIONS_PATH, 'w') as file:
         json.dump(list(admin_sessions), file)
 
 admin_sessions = load_admin_sessions()
 
-# Декоратор для ограничений доступа
-def restricted(func):
-    def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        if is_user_blocked(user_id):
-            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
-            return
-        return func(message, *args, **kwargs)
-    return wrapper
-
-# Проверка блокировки пользователя
-def is_user_blocked(user_id):
-    blocked_users = load_blocked_users()
-    return user_id in blocked_users
-
-# Обновляем активность пользователя
-def update_user_activity(user_id, username=None):
-    active_users[user_id] = datetime.now()
-    total_users.add(user_id)
-
-    # Сохраняем информацию о пользователе
-    user_data = load_user_data()
-    if user_id not in user_data:
-        user_data[user_id] = {'username': username, 'last_active': datetime.now().isoformat()}
-        save_user_data(user_data)
-
-# Получаем ID пользователя по никнейму
-def get_user_id_by_username(username):
-    user_data = load_user_data()
-    for user_id, data in user_data.items():
-        if data['username'] == username:
-            return user_id
-    return None
-
-# Проверка и загрузка статистики пользователей
-def get_statistics():
-    online_count = sum(1 for last_active in active_users.values() if datetime.now() - last_active <= INACTIVE_TIME)
-    total_count = len(total_users)
-    return online_count, total_count, function_usage
-
-
-import hashlib
-
-# Создаём хеш от текущего логина и пароля
+# Функции для хеша логина и пароля
 def get_login_password_hash():
     return hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
 
-# Проверка и загрузка сохранённого хеша логина и пароля
+def save_login_password_hash():
+    path = 'data base/admin/login_password_hash.json'
+    with open(path, 'w') as file:
+        json.dump({"hash": get_login_password_hash()}, file)
+
 def load_saved_login_password_hash():
     path = 'data base/admin/login_password_hash.json'
     if os.path.exists(path):
@@ -7114,33 +6940,72 @@ def load_saved_login_password_hash():
             return json.load(file).get("hash")
     return None
 
-# Сохранение хеша логина и пароля
-def save_login_password_hash():
-    path = 'data base/admin/login_password_hash.json'
-    with open(path, 'w') as file:
-        json.dump({"hash": get_login_password_hash()}, file)
-
-# При старте бота: загрузить хеш логина и пароля, сравнить, сбросить сессии если изменилось
+# Проверка хеша при старте
 saved_hash = load_saved_login_password_hash()
 current_hash = get_login_password_hash()
-
 if saved_hash != current_hash:
-    # Хеш логина и пароля изменился, удаляем сессии
     admin_sessions.clear()
     save_admin_sessions()
     save_login_password_hash()
 
-# Основная обработка команды /admin
+# Функция изменения логина и пароля
+def change_admin_credentials(new_username, new_password):
+    global ADMIN_USERNAME, ADMIN_PASSWORD
+    ADMIN_USERNAME = new_username
+    ADMIN_PASSWORD = new_password
+    save_login_password_hash()  # Перезаписываем хеш
+
+# Функции для управления администраторами
+def load_admins():
+    if os.path.exists(ADMINS_DATA_PATH):
+        with open(ADMINS_DATA_PATH, 'r', encoding='utf-8') as file:
+            # Предполагаем, что ID администраторов хранятся как строки
+            return {str(k): v for k, v in json.load(file).items()}
+    return {}
+
+def save_admins(admins_data):
+    with open(ADMINS_DATA_PATH, 'w', encoding='utf-8') as file:
+        # Сохраняем ID как строки
+        json.dump({str(k): v for k, v in admins_data.items()}, file, ensure_ascii=False, indent=4)
+
+def add_admin(admin_id, username, permissions):
+    admins = load_admins()
+    if admin_id not in admins:
+        admins[admin_id] = {"username": username, "permissions": permissions}
+        admin_sessions.add(admin_id)  # Добавляем ID нового админа в сессии
+        save_admin_sessions()           # Сохраняем сессии администраторов
+        save_admins(admins)
+        bot.send_message(admin_id, "Вы стали администратором!")
+    else:
+        bot.send_message(admin_id, "Вы уже являетесь администратором.")
+
+def remove_admin(admin_id):
+    admins = load_admins()
+    if admin_id in admins:
+        del admins[admin_id]
+        save_admins(admins)
+
+        # Удаляем admin_id из admin_sessions
+        if admin_id in admin_sessions:
+            admin_sessions.remove(admin_id)  # Удаляем ID из сессий
+            save_admin_sessions()              # Сохраняем изменения в файле
+        bot.send_message(admin_id, "Вас удалили из администраторов.")
+    else:
+        bot.send_message(admin_id, "Администратор с таким ID не найден.")
+
+def check_permission(admin_id, permission):
+    admins = load_admins()
+    return permission in admins.get(admin_id, {}).get("permissions", [])
+
+# Обработчик входа в админ-панель
 @bot.message_handler(commands=['admin'])
 def handle_admin_login(message):
-    if message.chat.id in admin_sessions:
-        # Сессия есть, предложить быстрый вход
+    if message.chat.id in admin_sessions:  # Проверка наличия в сессиях
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add('Быстрый вход', 'Ввести логин и пароль заново')
         bot.send_message(message.chat.id, "Выберите способ входа:", reply_markup=markup)
         bot.register_next_step_handler(message, process_login_choice)
     else:
-        # Сессии нет, запрос логина
         bot.send_message(message.chat.id, "Введите логин:")
         bot.register_next_step_handler(message, verify_username)
 
@@ -7168,15 +7033,400 @@ def verify_password(message, username):
         bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
         handle_admin_login(message)
 
-import shutil
+# Обработчик для кнопки "Настройка"
+@bot.message_handler(func=lambda message: message.text == 'Админ')
+def show_settings_menu(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(
+        'Смена данных входа',
+        'Добавить админа',
+        'Удалить админа',
+        'В меню админ-панели'
+    )
+    bot.send_message(message.chat.id, "Выберите настройку:", reply_markup=markup)
+
+
+# Обработчики смены логина и пароля
+@bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and message.chat.id in admin_sessions)
+def change_credentials(message):
+    if message.chat.id in admin_sessions:
+        bot.send_message(message.chat.id, "Введите новый логин:")
+        bot.register_next_step_handler(message, process_new_username)
+    else:
+        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
+
+def process_new_username(message):
+    new_username = message.text
+    bot.send_message(message.chat.id, "Введите новый пароль:")
+    bot.register_next_step_handler(message, process_new_password, new_username)
+
+def process_new_password(message, new_username):
+    new_password = message.text
+    change_admin_credentials(new_username, new_password)
+    bot.send_message(message.chat.id, "Логин и пароль успешно обновлены.")  # Теперь message.chat.id доступно здесь
+
+# Добавление и удаление администраторов
+@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and message.chat.id in admin_sessions)
+def handle_add_admin(message):
+    if message.chat.id in admin_sessions:
+        bot.send_message(message.chat.id, "Введите ID нового администратора:")
+        bot.register_next_step_handler(message, process_new_admin_id)
+    else:
+        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
+
+def process_new_admin_id(message):
+    admin_id = message.text
+    bot.send_message(message.chat.id, "Введите username нового администратора:")
+    bot.register_next_step_handler(message, process_new_admin_username, admin_id)
+
+def process_new_admin_username(message, admin_id):
+    username = message.text
+    add_admin(admin_id, username, permissions=["view_stats", "manage_users"])
+    bot.send_message(message.chat.id, f"Администратор {username} добавлен.")
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить админа' and message.chat.id in admin_sessions)
+def handle_remove_admin(message):
+    if message.chat.id in admin_sessions:
+        bot.send_message(message.chat.id, "Введите ID администратора для удаления:")
+        bot.register_next_step_handler(message, process_remove_admin_id)
+    else:
+        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
+
+def process_remove_admin_id(message):
+    admin_id = int(message.text)  # Преобразуйте текст в целое число
+    remove_admin(admin_id)
+
+
+# Пример использования прав
+@bot.message_handler(commands=['some_command'])
+def some_command(message):
+    if check_permission(message.chat.id, "some_permission"):
+        bot.send_message(message.chat.id, "Команда выполнена.")
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
+
+# (ADMIN 2) ---------------------------------------------- "МЕНЮ ДЛЯ АДМИН-ПАНЕЛИ" ------------------------------------------------
+
+# Показ админ-панели
+def show_admin_panel(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2)
+    markup.add(
+        'Админ',
+        'Бан',
+        'Статистика',
+        'Резервная копия',
+        'Выход'
+    )
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+# Обработчик для кнопки "В меню админ-панели"
+@bot.message_handler(func=lambda message: message.text == 'В меню админ-панели')
+def handle_return_to_admin_panel(message):
+    show_admin_panel(message)
+
+# (ADMIN 3) ------------------------------------------ "БАН ПОЛЬЗОВАТЕЛЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
+
+BLOCKED_USERS_PATH = 'data base/admin/blocked_users.json'
+
+# Декоратор для ограничения доступа
+def restricted(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_PATH, 'w', encoding='utf-8') as file:
+        json.dump(list(blocked_users), file)
+
+# Загрузка и сохранение данных заблокированных пользователей
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_PATH):
+        with open(BLOCKED_USERS_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)  # Вернем данные как список
+    return []  # Пустой список, если файл не существует
+
+# Получаем ID пользователя по никнейму
+def get_user_id_by_username(username):
+    user_data = load_user_data()
+    for user_id, data in user_data.items():
+        if data['username'] == username:
+            return user_id
+    return None
+
+# Обработка команд админа
+@bot.message_handler(func=lambda message: message.text == 'Бан' and message.chat.id in admin_sessions)
+def ban_user_prompt(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Заблокировать", "Разблокировать", "В меню админ-панели")
+    bot.send_message(message.chat.id, "Выберите действие для пользователя:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_ban_action)
+
+def choose_ban_action(message):
+    if message.text == "Заблокировать":
+        choose_block_method(message)
+    elif message.text == "Разблокировать":
+        choose_unblock_method(message)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+
+def choose_block_method(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По никнейму (@username)", "В меню админ-панели")
+    bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_block_method)
+
+def process_block_method(message):
+    if message.text == "По ID":
+        bot.send_message(message.chat.id, "Введите ID пользователя для блокировки:")
+        bot.register_next_step_handler(message, block_user_by_id)
+    elif message.text == "По никнейму (@username)":
+        bot.send_message(message.chat.id, "Введите никнейм пользователя для блокировки (например, @username):")
+        bot.register_next_step_handler(message, block_user_by_username)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+
+# Блокировка пользователя по ID
+def block_user(user_id, username):
+    blocked_users = load_blocked_users()
+    if any(user['id'] == user_id for user in blocked_users):
+        return "Этот пользователь уже заблокирован."
+    blocked_users.append({'id': user_id, 'username': username})
+    save_blocked_users(blocked_users)
+    return f"Пользователь с ID {user_id} заблокирован."
+
+def block_user_by_username(message):
+    username = message.text.strip().lstrip('@')
+    user_id = get_user_id_by_username(username)
+
+    if user_id is not None:
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Этот пользователь уже заблокирован.")
+        else:
+            block_user(user_id, username)  # Передайте оба аргумента
+            bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} заблокирован.")
+    else:
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
+
+def block_user_by_id(message):
+    user_id = message.text
+    if user_id.isdigit():
+        user_id = int(user_id)
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Этот пользователь уже заблокирован.")
+        else:
+            username = get_username_by_id(user_id)  # Добавьте функцию для получения username по ID
+            block_user(user_id, username)  # Передайте оба аргумента
+            bot.send_message(message.chat.id, f"Пользователь с ID {user_id} заблокирован.")
+    else:
+        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
+
+def is_user_blocked(user_id):
+    blocked_users = load_blocked_users()
+    for user in blocked_users:
+        if user['id'] == str(user_id):
+            return True
+    return False
+
+def choose_unblock_method(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По никнейму (@username)", "В меню админ-панели")
+    bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_unblock_method)
+
+def process_unblock_method(message):
+    if message.text == "По ID":
+        bot.send_message(message.chat.id, "Введите ID пользователя для разблокировки:")
+        bot.register_next_step_handler(message, unblock_user_by_id)
+    elif message.text == "По никнейму (@username)":
+        bot.send_message(message.chat.id, "Введите никнейм пользователя для разблокировки (например, @username):")
+        bot.register_next_step_handler(message, unblock_user_by_username)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+
+# Разблокировка пользователя по ID
+def unblock_user(user_id):
+    blocked_users = load_blocked_users()
+    updated_blocked_users = [user for user in blocked_users if user['id'] != str(user_id)]
+    if len(blocked_users) == len(updated_blocked_users):
+        return "Этот пользователь уже разблокирован."
+    save_blocked_users(updated_blocked_users)
+    return f"Пользователь с ID {user_id} разблокирован."
+
+# Функции для разблокировки по ID или никнейму
+def unblock_user_by_id(message):
+    user_id = message.text
+    if user_id.isdigit():
+        user_id = int(user_id)
+        if not is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Этот пользователь уже разблокирован.")
+        else:
+            unblock_user(user_id)
+            bot.send_message(message.chat.id, f"Пользователь с ID {user_id} разблокирован.")
+    else:
+        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
+    show_admin_panel(message)
+
+def unblock_user_by_username(message):
+    username = message.text.strip().lstrip('@')
+    user_id = get_user_id_by_username(username)
+
+    if user_id is not None:
+        if not is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Этот пользователь уже разблокирован.")
+        else:
+            unblock_user(user_id)
+            bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} разблокирован.")
+    else:
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
+    show_admin_panel(message)
+
+# (ADMIN 4) ------------------------------------------ "СТАТИСТИКА ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
+
+USER_DATA_PATH = 'data base/admin/users.json'
+function_usage = {'Статистика': 0, 'Отзывы': 0, 'Просмотр файлов БД': 0, 'Просмотр всех файлов': 0}
+INACTIVE_TIME = timedelta(minutes=1)
+
+def save_user_data(user_data):
+    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
+        json.dump(user_data, file, ensure_ascii=False, indent=4)
+
+# Функции для загрузки и сохранения данных
+def load_user_data():
+    if os.path.exists(USER_DATA_PATH):
+        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+# Пример обработчика для команды статистики
+@bot.message_handler(func=lambda message: message.text == 'Статистика' and message.chat.id in admin_sessions)
+def show_statistics(message):
+    """Показать статистику пользователей."""
+    online_count, total_count, function_usage = get_statistics()  # Получаем статистику
+
+    # Получаем список активных пользователей
+    active_user_list = list_active_users()  # Получаем список активных пользователей
+
+    response_message = (
+        f"Пользователи онлайн: {online_count}\n"
+        f"Всего пользователей: {total_count}\n\n"
+        f"Использование функций:\n"
+        f"Статистика: {function_usage['Статистика']}\n"
+        f"Отзывы: {function_usage['Отзывы']}"
+    )
+
+    bot.send_message(message.chat.id, response_message)
+
+    if active_user_list:
+        bot.send_message(message.chat.id, "Пользователи онлайн:\n" + active_user_list)
+    else:
+        bot.send_message(message.chat.id, "Нет активных пользователей.")
+
+# Проверка и загрузка статистики пользователей
+def get_statistics():
+    online_count = sum(1 for last_active in active_users.values() if datetime.now() - last_active <= INACTIVE_TIME)
+    total_count = len(total_users)
+    return online_count, total_count, function_usage
+
+# Функция обновления активности пользователя
+def update_user_activity(user_id, username=None):
+    active_users[user_id] = datetime.now()
+    total_users.add(user_id)
+
+    user_data = load_user_data()
+    if user_id in user_data:
+        user_data[user_id]['username'] = username
+        user_data[user_id]['last_active'] = datetime.now().isoformat()
+    else:
+        user_data[user_id] = {
+            'username': username,
+            'last_active': datetime.now().isoformat()
+        }
+    save_user_data(user_data)
+
+def add_or_update_user(user_id, username):
+    """Добавить нового пользователя или обновить существующего."""
+    users_data = load_user_data()  # Загрузка текущих данных пользователей
+    current_time = datetime.now().isoformat()  # Получаем текущее время
+
+    # Обновляем или добавляем пользователя
+    users_data[user_id] = {"username": username, "last_active": current_time}
+    save_user_data(users_data)  # Сохраняем обновленные данные
+
+def is_user_active(last_active):
+    """Проверить, активен ли пользователь."""
+    active_threshold = 1 * 60  # 1(5) минут
+    last_active_time = datetime.fromisoformat(last_active)
+    active = (datetime.now() - last_active_time).total_seconds() < active_threshold
+    print(f"Пользователь активен: {active}, последний актив: {last_active}, текущее время: {datetime.now().isoformat()}")  # Отладочная информация
+    return active
+
+def get_statistics():
+    """Получить статистику пользователей."""
+    users_data = load_user_data()  # Загрузка данных пользователей
+    online_users = len([user for user in users_data.values() if is_user_active(user["last_active"])])
+    total_users = len(users_data)
+
+    function_usage = {
+        "Статистика": 0,
+        "Отзывы": 0
+    }
+
+    print(f"Всего пользователей: {total_users}, Онлайн пользователей: {online_users}")  # Отладочная информация
+
+    return online_users, total_users, function_usage
+
+def list_active_users():
+    """Получить список активных пользователей с их ID и нумерацией."""
+    users_data = load_user_data()  # Загрузка данных пользователей
+    active_users = [
+        f"{index + 1}) {user_id}: @{user['username']}" 
+        for index, (user_id, user) in enumerate(users_data.items())
+        if is_user_active(user["last_active"])
+    ]
+    return "\n".join(active_users) if active_users else None
+
+
+# (ADMIN 5) ------------------------------------------ "РЕЗЕРВНАЯ КОПИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 # Путь к директории для бэкапов и текущего исполняемого файла
 BACKUP_DIR = 'D:\\2024\\carmanger_local\\backups'
 SOURCE_DIR = 'D:\\2024\\carmanger_local'
-EXECUTABLE_FILE = 'CAR MANAGER TG BOT (official) v0924.py'
+EXECUTABLE_FILE = '(59 update ) CAR MANAGER TG BOT (official) v0924.py'
 
 def normalize_name(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+# Обработчик для кнопки "Резервная копия"
+@bot.message_handler(func=lambda message: message.text == 'Резервная копия')
+def show_backup_menu(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(
+        'Создать копию',
+        'Восстановить данные',
+        'В меню админ-панели'
+    )
+    bot.send_message(message.chat.id, "Выберите действие с резервной копией:", reply_markup=markup)
+
+# Обработчик для кнопки "Создать копию"
+@bot.message_handler(func=lambda message: message.text == 'Создать копию')
+def handle_create_backup(message):
+    backup_path = create_backup()
+    bot.send_message(message.chat.id, f"Резервная копия создана:\n\n{backup_path}")
+    show_admin_panel(message)
+
+# Обработчик для кнопки "Восстановить данные"
+@bot.message_handler(func=lambda message: message.text == 'Восстановить данные')
+def handle_restore_backup(message):
+    success = restore_latest_backup()
+    if success:
+        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа.")
+    else:
+        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден.")
+    show_admin_panel(message)
 
 # Функция для создания резервной копии
 def create_backup():
@@ -7246,160 +7496,25 @@ def restore_latest_backup():
     
     return True
 
-# Показ админ-панели
-def show_admin_panel(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add(
-        'Просмотр пользователей',
-        'Блокировка пользователей',
-        'Разблокировать пользователя',
-        'Статистика',
-        'Резервная копия',
-        'Выход'
-    )
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
-
-# Обработчик для кнопки "Резервная копия"
-@bot.message_handler(func=lambda message: message.text == 'Резервная копия')
-def show_backup_menu(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add(
-        'Создать копию',
-        'Восстановить данные',
-        'В меню админ-панели'
-    )
-    bot.send_message(message.chat.id, "Выберите действие с резервной копией:", reply_markup=markup)
-
-# Обработчик для кнопки "Создать копию"
-@bot.message_handler(func=lambda message: message.text == 'Создать копию')
-def handle_create_backup(message):
-    backup_path = create_backup()
-    bot.send_message(message.chat.id, f"Резервная копия создана:\n\n{backup_path}")
-    show_admin_panel(message)
-
-# Обработчик для кнопки "Восстановить данные"
-@bot.message_handler(func=lambda message: message.text == 'Восстановить данные')
-def handle_restore_backup(message):
-    success = restore_latest_backup()
-    if success:
-        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа.")
-    else:
-        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден.")
-    show_admin_panel(message)
-
-# Обработчик для кнопки "В меню админ-панели"
-@bot.message_handler(func=lambda message: message.text == 'В меню админ-панели')
-def handle_return_to_admin_panel(message):
-    show_admin_panel(message)
-
-@bot.message_handler(func=lambda message: message.text == 'Просмотр пользователей' and message.chat.id in admin_sessions)
-def view_users(message):
-    users = list_active_users()
-    if users:
-        bot.send_message(message.chat.id, f"Список активных пользователей:\n{users}")
-    else:
-        bot.send_message(message.chat.id, "Нет зарегистрированных активных пользователей.")
-
-@bot.message_handler(func=lambda message: message.text == 'Блокировка пользователей' and message.chat.id in admin_sessions)
-def block_user_prompt(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("По ID", "По никнейму (@username)")
-    bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
-    bot.register_next_step_handler(message, choose_block_method)
-
-def choose_block_method(message):
-    if message.text == "По ID":
-        bot.send_message(message.chat.id, "Введите ID пользователя для блокировки:")
-        bot.register_next_step_handler(message, block_user_by_id)
-    elif message.text == "По никнейму (@username)":
-        bot.send_message(message.chat.id, "Введите никнейм пользователя для блокировки (например, @username):")
-        bot.register_next_step_handler(message, block_user_by_username)
-
-def block_user_by_id(message):
-    user_id = message.text
-    if user_id.isdigit():
-        block_user(int(user_id))
-        bot.send_message(message.chat.id, f"Пользователь с ID {user_id} заблокирован.")
-    else:
-        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
-        block_user_prompt(message)
-
-def block_user_by_username(message):
-    username = message.text.strip()
-    if username.startswith('@'):
-        username = username[1:]  # Убираем @ из никнейма
-    user_id = get_user_id_by_username(username)
-    if user_id is not None:
-        block_user(user_id)
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} заблокирован.")
-    else:
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
-        block_user_prompt(message)
-
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    user_id = message.from_user.id
-    username = message.from_user.username
-    # Проверяем, заблокирован ли пользователь
-    if is_user_blocked(user_id):
-        bot.send_message(message.chat.id, "Вы заблокированы и не можете использовать бота.")
-        return
-    update_user_activity(user_id, username)  # Обновляем активность пользователя
-    bot.send_message(message.chat.id, "Добро пожаловать!")
-
-@bot.message_handler(func=lambda message: message.text == 'Разблокировать пользователя' and message.chat.id in admin_sessions)
-def unblock_user_prompt(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("По ID", "По никнейму (@username)")
-    bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
-    bot.register_next_step_handler(message, choose_unblock_method)
-
-def choose_unblock_method(message):
-    if message.text == "По ID":
-        bot.send_message(message.chat.id, "Введите ID пользователя для разблокировки:")
-        bot.register_next_step_handler(message, unblock_user_by_id)
-    elif message.text == "По никнейму (@username)":
-        bot.send_message(message.chat.id, "Введите никнейм пользователя для разблокировки (например, @username):")
-        bot.register_next_step_handler(message, unblock_user_by_username)
-
-def unblock_user_by_id(message):
-    user_id = message.text
-    if user_id.isdigit():
-        unblock_user(int(user_id))
-        bot.send_message(message.chat.id, f"Пользователь с ID {user_id} разблокирован.")
-    else:
-        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
-        unblock_user_prompt(message)
-
-def unblock_user_by_username(message):
-    username = message.text.strip()
-    if username.startswith('@'):
-        username = username[1:]  # Убираем @ из никнейма
-    user_id = get_user_id_by_username(username)
-    if user_id is not None:
-        unblock_user(user_id)
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} разблокирован.")
-    else:
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
-        unblock_user_prompt(message)
-    
-@bot.message_handler(func=lambda message: message.text == 'Статистика' and message.chat.id in admin_sessions)
-def show_statistics(message):
-    online_count, total_count, function_usage = get_statistics()
-    usage_summary = "\n".join([f"{func}: {count}" for func, count in function_usage.items()])
-    response_message = (
-        f"Пользователи онлайн: {online_count}\n"
-        f"Всего пользователей: {total_count}\n\n"
-        f"Использование функций:\n{usage_summary}"
-    )
-    bot.send_message(message.chat.id, response_message)
-    show_admin_panel(message)
+# (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 # Функция выхода из админ-панели
 @bot.message_handler(func=lambda message: message.text == 'Выход' and message.chat.id in admin_sessions)
 def admin_logout(message):
     bot.send_message(message.chat.id, "Вы вышли из админ-панели. Быстрый вход сохранен.")
     return_to_menu(message)
+
+
+# (FEEDBACK) ------------------------------------------ "ОТЗЫВЫ" ---------------------------------------------------
+
+FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
+
+# Функции для загрузки и сохранения данных
+def load_feedback():
+    if os.path.exists(FEEDBACK_FILE_PATH):
+        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
 
 @bot.message_handler(commands=['feedback'])
 def get_feedback(message):
