@@ -783,7 +783,12 @@ def create_main_menu():
     markup.add(item11)
     return markup
 
+
 @bot.message_handler(commands=['start'])
+@restricted
+@track_user_activity
+@check_chat_state
+@log_user_actions
 def start(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -793,34 +798,35 @@ def start(message):
     update_user_activity(user_id, username)
 
     # Проверяем существование канала
+    channel_exists = True
     try:
         channel = bot.get_chat(CHANNEL_CHAT_ID)
         print(f"Канал найден: {channel.title}")
     except Exception as e:
         print(f"Ошибка: Канал не найден или удалён. {e}")
-        bot.send_message(chat_id, "Канал не найден! Пожалуйста, обратитесь к администратору")
-        return
+        channel_exists = False
 
-    # Проверяем подписку
-    if not is_user_subscribed(user_id):
-        try:
-            member = bot.get_chat_member(CHANNEL_CHAT_ID, user_id)
-            if member.status == 'kicked':
-                bot.send_message(chat_id, "Вы были заблокированы в канале! Пожалуйста, обратитесь к администратору")
-            else:
-                markup = InlineKeyboardMarkup()
-                subscribe_button = InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/carmngbotchanal")
-                confirm_button = InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
-                markup.add(subscribe_button)
-                markup.add(confirm_button)  # Кнопка "Я подписался" теперь ниже
-                # Убираем клавиатуру и отправляем одно сообщение
-                bot.send_message(chat_id, "Добро пожаловать в бот @newpidore3qf_bot!\nЕсли вы новый пользователь или не являетесь подписчиком нашего канала, пожалуйста, подпишитесь сейчас:", reply_markup=types.ReplyKeyboardRemove())
-                bot.send_message(chat_id, "Для использования бота необходимо подписаться на канал!", reply_markup=markup)
-        except Exception as e:
-            print(f"Ошибка обработки подписки: {e}")
-        return
+    # Если канал существует, проверяем подписку
+    if channel_exists:
+        if not is_user_subscribed(user_id):
+            try:
+                member = bot.get_chat_member(CHANNEL_CHAT_ID, user_id)
+                if member.status == 'kicked':
+                    bot.send_message(chat_id, "Вы были заблокированы в канале! Пожалуйста, обратитесь к администратору")
+                else:
+                    markup = InlineKeyboardMarkup()
+                    subscribe_button = InlineKeyboardButton("Подписаться на канал", url=f"https://t.me/carmngbotchanal")
+                    confirm_button = InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
+                    markup.add(subscribe_button)
+                    markup.add(confirm_button)  # Кнопка "Я подписался" теперь ниже
+                    # Убираем клавиатуру и отправляем одно сообщение
+                    bot.send_message(chat_id, "Добро пожаловать в бот @newpidore3qf_bot!\nЕсли вы новый пользователь или не являетесь подписчиком нашего канала, пожалуйста, подпишитесь сейчас:", reply_markup=types.ReplyKeyboardRemove())
+                    bot.send_message(chat_id, "Для использования бота необходимо подписаться на канал!", reply_markup=markup)
+            except Exception as e:
+                print(f"Ошибка обработки подписки: {e}")
+            return
 
-    # Если подписка есть, показываем меню
+    # Если подписка есть или канал не существует, показываем меню
     markup = create_main_menu()
     welcome_message = f"Добро пожаловать, @{escape_markdown(username)}!\nВыберите действие из меню:"
     bot.send_message(chat_id, welcome_message, parse_mode="Markdown", reply_markup=markup)
