@@ -9614,7 +9614,7 @@ def show_admin_panel(message):
 
     markup = types.ReplyKeyboardMarkup(row_width=3)
     markup.add('Админ','Бан','Функции')
-    markup.add('Оповещения','Общение','Статистика')
+    markup.add('Общение','Статистика')
     markup.add('Файлы','Резервная копия')
     markup.add('Выход')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
@@ -9843,6 +9843,7 @@ def process_new_login_and_password_step2(message, new_login):
     update_admin_login_credentials(message, message.chat.id, new_username=new_login, new_password=new_password)
 
 def escape_markdown(text):
+    # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 # Функция для отображения списка администраторов для удаления
@@ -10173,7 +10174,7 @@ def process_admin_selection(message):
 
 def get_available_permissions(admin_id):
     all_permissions = [
-        "Админ", "Бан", "Функции", "Оповещения", "Общение", "Статистика", "Файлы", "Резервная копия",
+        "Админ", "Бан", "Функции", "Общение", "Статистика", "Файлы", "Резервная копия",
         "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль",
         "Админ: Удалить админа", "Админ: Добавить админа", "Бан: Заблокировать", "Бан: Разблокировать",
         "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
@@ -10201,7 +10202,7 @@ def get_available_permissions(admin_id):
 
 
 def format_permissions_with_headers(permissions):
-    main_functions = ['Админ', 'Бан', 'Функции', 'Оповещения', 'Общение', 'Статистика', 'Файлы', 'Резервная копия', 'Просмотр файлов']
+    main_functions = ['Админ', 'Бан', 'Функции', 'Общение', 'Статистика', 'Файлы', 'Резервная копия', 'Просмотр файлов']
     formatted_permissions = []
     counter = 1
 
@@ -10261,7 +10262,7 @@ def process_permission_action(message, admin_id):
 
 # Функция для форматирования списка прав с основными функциями
 def format_permissions_with_main_functions(permissions):
-    main_functions = ['Админ', 'Бан', 'Функции', 'Оповещения', 'Общение', 'Статистика', 'Файлы', 'Резервная копия']
+    main_functions = ['Админ', 'Бан', 'Функции', 'Общение', 'Статистика', 'Файлы', 'Резервная копия']
     formatted_permissions = []
     counter = 1
 
@@ -12836,8 +12837,9 @@ def show_communication_menu(message):
         bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    markup.add('Чат', 'Запросы', 'Диалоги')
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Чат', 'Запросы')
+    markup.add('Оповещения', 'Диалоги')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
@@ -13060,7 +13062,7 @@ def return_admin_to_menu(admin_id):
     bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Админ', 'Бан', 'Функции')
-    markup.add('Оповещения', 'Общение', 'Статистика')
+    markup.add('Общение', 'Статистика')
     markup.add('Файлы', 'Резервная копия')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
@@ -13141,7 +13143,7 @@ def stop_chat(message):
         bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Оповещения', 'Общение', 'Статистика')
+        markup.add('Общение', 'Статистика')
         markup.add('Файлы', 'Резервная копия')
         markup.add('Выход')
         bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
@@ -13160,7 +13162,7 @@ def stop_chat(message):
         bot.send_message(user_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Оповещения', 'Общение', 'Статистика')
+        markup.add('Общение', 'Статистика')
         markup.add('Файлы', 'Резервная копия')
         markup.add('Выход')
         bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
@@ -13200,6 +13202,527 @@ def check_admin_access(message):
     else:
         bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции!")
         return False
+
+
+
+# (ADMIN N) ------------------------------------------ "ФАЙЛЫ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
+    
+# Максимальная длина сообщения в Telegram
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+# Определение корневой директории на основе исполняемого файла
+EXECUTABLE_FILE = '(93 update ИСПРАВЛЕНИЕ25  ( (  )) CAR MANAGER TG BOT (official) v0924.py'
+BASE_DIR = os.path.dirname(os.path.abspath(EXECUTABLE_FILE))
+
+# Пути к директориям и файлам
+BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
+FILES_PATH = os.path.join(BASE_DIR, 'data base')
+ADDITIONAL_FILES_PATH = os.path.join(BASE_DIR, 'files')
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'admin_sessions.json')
+
+# Словарь для хранения данных о файлах и директориях
+bot_data = {}
+
+# Загрузка админских сессий из JSON файла
+def load_admin_sessions():
+    with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    return data['admin_sessions']
+
+# Функция для проверки прав доступа
+def check_admin_access(message):
+    admin_sessions = load_admin_sessions()
+    if str(message.chat.id) in admin_sessions:
+        return True
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        return False
+
+# Общий обработчик для команды "Файлы"
+@bot.message_handler(commands=['files'])
+@bot.message_handler(func=lambda message: message.text == 'Файлы' and check_admin_access(message))
+def show_files_menu(message):
+    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    markup.add('Просмотр файлов', 'Поиск файлов по ID')
+    markup.add('Добавить файлы', 'Замена файлов', 'Удалить файлы')
+    markup.add('В меню админ-панели')
+
+    bot.send_message(message.chat.id, "Выберите действие с файлами:", reply_markup=markup)
+
+# Обработчик для кнопки "Просмотр файлов"
+@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and check_admin_access(message))
+def view_files(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Просмотр файлов'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    files_list = []
+    extensions = set()
+
+    # Проверка файлов в корневой директории
+    for file_name in os.listdir(BASE_DIR):
+        file_path = os.path.join(BASE_DIR, file_name)
+        if os.path.isfile(file_path):
+            files_list.append(file_path)
+            extension = os.path.splitext(file_name)[1]
+            extensions.add(extension)
+
+    for root, dirs, files in os.walk(FILES_PATH):
+        for file_name in files:
+            files_list.append(os.path.join(root, file_name))
+            extension = os.path.splitext(file_name)[1]
+            extensions.add(extension)
+
+    for root, dirs, files in os.walk(ADDITIONAL_FILES_PATH):
+        for file_name in files:
+            files_list.append(os.path.join(root, file_name))
+            extension = os.path.splitext(file_name)[1]
+            extensions.add(extension)
+
+    response = "*Список расширений файлов:*\n\n\n"
+    response += "📁 1. *Отправка всех файлов*\n\n"
+    response += "\n\n".join([f"📄 {i + 2}. *{ext[1:]}*" for i, ext in enumerate(extensions)])
+
+    bot_data[message.chat.id] = {
+        "files_list": files_list,
+        "extensions": list(extensions)
+    }
+
+    for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+        bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер для выбора расширения:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_extension_selection)
+
+def process_extension_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_extension_selection)
+        return
+
+    try:
+        selection = int(message.text.strip())
+        if selection == 1:
+            files_list = bot_data[message.chat.id]["files_list"]
+        else:
+            extensions = bot_data[message.chat.id]["extensions"]
+            if 1 < selection <= len(extensions) + 1:
+                selected_extension = extensions[selection - 2]
+                files_list = [file for file in bot_data[message.chat.id]["files_list"] if file.endswith(selected_extension)]
+            else:
+                bot.send_message(message.chat.id, "Некорректный номер.")
+                bot.register_next_step_handler(message, process_extension_selection)
+                return
+
+        if files_list:
+            response = "*Показаны файлы с расширением {selected_extension[1:]}:*\n\n"
+            response += "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
+            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode='Markdown')
+            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
+            bot.register_next_step_handler(message, process_file_selection, files_list)
+        else:
+            bot.send_message(message.chat.id, "Файлы с выбранным расширением не найдены.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.register_next_step_handler(message, process_extension_selection)
+
+def process_extension_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_extension_selection)
+        return
+
+    try:
+        selection = int(message.text.strip())
+        if selection == 1:
+            files_list = bot_data[message.chat.id]["files_list"]
+        else:
+            extensions = bot_data[message.chat.id]["extensions"]
+            if 1 < selection <= len(extensions) + 1:
+                selected_extension = extensions[selection - 2]
+                files_list = [file for file in bot_data[message.chat.id]["files_list"] if file.endswith(selected_extension)]
+            else:
+                bot.send_message(message.chat.id, "Некорректный номер.")
+                bot.register_next_step_handler(message, process_extension_selection)
+                return
+
+        if files_list:
+            response = "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
+            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
+            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
+            bot.register_next_step_handler(message, process_file_selection, files_list)
+        else:
+            bot.send_message(message.chat.id, "Файлы с выбранным расширением не найдены.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.register_next_step_handler(message, process_extension_selection)
+
+def process_file_selection(message, matched_files):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_file_selection, matched_files)
+        return
+
+    try:
+        file_number = int(message.text.strip()) - 1
+        if 0 <= file_number < len(matched_files):
+            file_path = matched_files[file_number]
+            with open(file_path, 'rb') as file:
+                bot.send_document(message.chat.id, file)
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер файла.")
+            bot.register_next_step_handler(message, process_file_selection, matched_files)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+        bot.register_next_step_handler(message, process_file_selection, matched_files)
+
+# Поиск файлов пользователя по ID
+@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and check_admin_access(message))
+def search_files_by_id(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Поиск файлов по ID'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    list_users_for_files(message)
+
+def search_id_in_json(data, user_id):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == user_id or (isinstance(value, str) and user_id in value):
+                return True
+            if search_id_in_json(value, user_id):
+                return True
+    elif isinstance(data, list):
+        for item in data:
+            if search_id_in_json(item, user_id):
+                return True
+    return False
+
+USER_DATA_PATH = 'data base/admin/users.json'
+
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
+def load_user_data():
+    with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+def list_users_for_files(message):
+    users_data = load_user_data()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер пользователя, username или ID для поиска файлов:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_user_input_for_file_search)
+
+def process_user_input_for_file_search(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_user_input_for_file_search)
+        return
+
+    user_input = message.text.strip()
+    users_data = load_user_data()
+
+    if user_input.isdigit():
+        # Проверяем, является ли ввод номером пользователя
+        user_index = int(user_input) - 1
+        if 0 <= user_index < len(users_data):
+            user_id = list(users_data.keys())[user_index]
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер пользователя.")
+            bot.register_next_step_handler(message, process_user_input_for_file_search)
+            return
+    elif user_input.startswith('@'):
+        # Проверяем, является ли ввод username
+        username = user_input[1:]
+        user_id = next((user_id for user_id, data in users_data.items() if data['username'] == username), None)
+        if not user_id:
+            bot.send_message(message.chat.id, "Пользователь с таким username не найден.")
+            bot.register_next_step_handler(message, process_user_input_for_file_search)
+            return
+    else:
+        # Проверяем, является ли ввод ID
+        user_id = user_input
+        if user_id not in users_data:
+            bot.send_message(message.chat.id, "Пользователь с таким ID не найден.")
+            bot.register_next_step_handler(message, process_user_input_for_file_search)
+            return
+
+    bot.send_message(message.chat.id, f"Поиск файлов для пользователя с ID: {user_id}")
+    process_file_search(message, user_id)
+
+def process_file_search(message, user_id):
+    matched_files = []
+
+    search_paths = [BASE_DIR, BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH]
+
+    for search_path in search_paths:
+        for root, dirs, files in os.walk(search_path):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                if user_id in file_name:
+                    matched_files.append(file_path)
+                else:
+                    if file_name.endswith('.json'):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = json.load(f)
+                                if search_id_in_json(content, user_id):
+                                    matched_files.append(file_path)
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            print(f"Не удалось прочитать файл {file_path}, пропуск...")
+                    elif file_name.endswith(('.txt', '.log', '.csv')):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                                if re.search(rf'\b{user_id}\b', content):
+                                    matched_files.append(file_path)
+                        except UnicodeDecodeError:
+                            print(f"Не удалось прочитать файл {file_path}, пропуск...")
+
+    if matched_files:
+        response = "\n".join([f"📄 {i + 1}. {os.path.basename(path)}" for i, path in enumerate(matched_files)])
+        for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+            bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
+        bot.send_message(message.chat.id, "Выберите номер файла для отправки:")
+        bot.register_next_step_handler(message, process_file_selection, matched_files)
+    else:
+        bot.send_message(message.chat.id, "Файлы с указанным ID не найдены.")
+
+# Замена файла
+@bot.message_handler(func=lambda message: message.text == 'Замена файлов' and check_admin_access(message))
+def handle_file_replacement(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Замена файлов'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Отправьте новый файл для замены.", reply_markup=markup)
+    bot.register_next_step_handler(message, process_file_replacement)
+
+def process_file_replacement(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.document:
+        file_name = message.document.file_name
+        file_path = None
+
+        # Поиск файла в директориях BACKUP_DIR, FILES_PATH и ADDITIONAL_FILES_PATH
+        search_paths = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
+
+        for search_path in search_paths:
+            for root, dirs, files in os.walk(search_path):
+                if file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    break
+            if file_path:
+                break
+
+        if file_path:
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as new_file:
+                new_file.write(downloaded_file)
+            bot.send_message(message.chat.id, "Файл успешно заменен!")
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Файл для замены не найден. Попробуйте отправить другой файл.")
+            bot.register_next_step_handler(message, process_file_replacement)
+    else:
+        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
+        bot.register_next_step_handler(message, process_file_replacement)
+
+@bot.message_handler(func=lambda message: message.text == 'Добавить файлы' and check_admin_access(message))
+def add_files(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    directories = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
+    response = "*Список директорий:*\n\n"
+    response += "\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
+    bot.send_message(message.chat.id, response, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите директорию для добавления файла:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_file_directory_selection)
+
+def process_add_file_directory_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_add_file_directory_selection)
+        return
+
+    try:
+        selection = int(message.text.strip())
+        if 1 <= selection <= 4:  # Убедитесь, что индексы соответствуют количеству директорий
+            selected_directory = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR][selection - 1]
+            bot_data[message.chat.id] = {"selected_directory": selected_directory}
+            bot.send_message(message.chat.id, "Отправьте файл для добавления:")
+            bot.register_next_step_handler(message, process_add_file)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер.")
+            bot.register_next_step_handler(message, process_add_file_directory_selection)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.register_next_step_handler(message, process_add_file_directory_selection)
+
+def process_add_file(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.document:
+        file_name = message.document.file_name
+        selected_directory = bot_data[message.chat.id]["selected_directory"]
+        file_path = os.path.join(selected_directory, file_name)
+
+        if os.path.exists(file_path):
+            bot.send_message(message.chat.id, "Файл с таким именем уже существует. Пожалуйста, отправьте файл с другим именем.")
+            bot.register_next_step_handler(message, process_add_file)
+        else:
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as new_file:
+                new_file.write(downloaded_file)
+            bot.send_message(message.chat.id, "Файл успешно добавлен!")
+            show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
+        bot.register_next_step_handler(message, process_add_file)
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить файлы' and check_admin_access(message))
+def delete_files(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    directories = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
+    response = "*Список директорий:*\n\n\n"
+    response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
+    bot.send_message(message.chat.id, response, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите директорию для удаления файла:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_delete_file_directory_selection)
+
+def process_delete_file_directory_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_delete_file_directory_selection)
+        return
+
+    try:
+        selection = int(message.text.strip())
+        if 1 <= selection <= 4:  # Убедитесь, что индексы соответствуют количеству директорий
+            selected_directory = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR][selection - 1]
+            files_list = [os.path.join(selected_directory, file) for file in os.listdir(selected_directory) if os.path.isfile(os.path.join(selected_directory, file))]
+            response = "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
+            bot_data[message.chat.id] = {"files_list": files_list}
+
+            # Разбиваем сообщение на части, если оно слишком длинное
+            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
+
+            bot.send_message(message.chat.id, "Выберите файл для удаления:")
+            bot.register_next_step_handler(message, process_delete_file_selection)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер.")
+            bot.register_next_step_handler(message, process_delete_file_directory_selection)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.register_next_step_handler(message, process_delete_file_directory_selection)
+
+def process_delete_file_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_delete_file_selection)
+        return
+
+    try:
+        file_number = int(message.text.strip()) - 1
+        files_list = bot_data[message.chat.id]["files_list"]
+        if 0 <= file_number < len(files_list):
+            file_path = files_list[file_number]
+            os.remove(file_path)
+            bot.send_message(message.chat.id, "Файл успешно удален!")
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер файла.")
+            bot.register_next_step_handler(message, process_delete_file_selection)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+        bot.register_next_step_handler(message, process_delete_file_selection)
+
+#----------------------------------------------------------(ДИАЛОГИ)-----------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
 def show_dialogs_menu(message):
@@ -13746,160 +14269,7 @@ def check_chat_activity():
 # Запуск фонового потока для проверки активности чатов
 threading.Thread(target=check_chat_activity, daemon=True).start()
 
-# (ADMIN N) ------------------------------------------ "ФАЙЛЫ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
-    
-# Максимальная длина сообщения в Telegram
-TELEGRAM_MESSAGE_LIMIT = 4096
 
-# Путь к основной директории файлов
-# Определяем основную директорию файлов относительно директории, где находится текущий скрипт
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILES_PATH = os.path.join(BASE_DIR, 'data base')
-
-# Словарь для хранения данных о файлах и директориях
-bot_data = {}
-
-@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and message.chat.id in admin_sessions)
-def view_files(message):
-
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Просмотр файлов'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
-
-    bot.send_message(message.chat.id, "Введите путь к директории для просмотра:")
-    bot.register_next_step_handler(message, process_directory_view)
-
-def process_directory_view(message):
-    directory = os.path.join(FILES_PATH, message.text.strip())
-    if os.path.exists(directory) and os.path.isdir(directory):
-        files_list = os.listdir(directory)
-        
-        if files_list:
-            # Нумеруем список файлов
-            response = "\n".join([f"{i + 1}. {file_name}" for i, file_name in enumerate(files_list)])
-            
-            # Сохраняем список файлов и директорию для дальнейшего использования
-            bot_data[message.chat.id] = {
-                "directory": directory,
-                "files_list": files_list
-            }
-            
-            # Разбиваем длинное сообщение на части, если оно превышает лимит
-            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
-                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
-
-            # Запрашиваем у пользователя выбор файла
-            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
-            bot.register_next_step_handler(message, process_file_selection, files_list)  # Передаем список файлов
-        else:
-            bot.send_message(message.chat.id, "Директория пуста.")
-    else:
-        bot.send_message(message.chat.id, "Директория не найдена или доступ запрещен.")
-
-# Обработчик для отправки файла по выбранному номеру
-def process_file_selection(message, matched_files):
-    try:
-        file_number = int(message.text.strip()) - 1
-        
-        # Проверяем, что номер файла корректный
-        if 0 <= file_number < len(matched_files):
-            directory = bot_data[message.chat.id]["directory"]
-            file_name = matched_files[file_number]
-            file_path = os.path.join(directory, file_name)
-            
-            # Отправляем файл
-            with open(file_path, 'rb') as file:
-                bot.send_document(message.chat.id, file)
-        else:
-            bot.send_message(message.chat.id, "Некорректный номер файла.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
-
-# Поиск файлов пользователя по ID
-@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and message.chat.id in admin_sessions)
-def search_files_by_id(message):
-
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Поиск файлов по ID'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
-
-    bot.send_message(message.chat.id, "Введите ID пользователя для поиска файлов:")
-    bot.register_next_step_handler(message, process_file_search)
-
-def process_file_search(message):
-    user_id = message.text.strip()
-    matched_files = []
-
-    for root, dirs, files in os.walk(FILES_PATH):
-        for file_name in files:
-            file_path = os.path.join(root, file_name)
-            # Проверка ID в названии файла
-            if user_id in file_name:
-                matched_files.append(file_path)
-            else:
-                # Проверка ID внутри файла только для текстовых файлов
-                if file_name.endswith(('.txt', '.log', '.csv')):  # Пропускать бинарные файлы
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                            if re.search(rf'\b{user_id}\b', content):
-                                matched_files.append(file_path)
-                    except UnicodeDecodeError:
-                        print(f"Не удалось прочитать файл {file_path}, пропуск...")
-
-    # Разбиение длинного ответа на части
-    if matched_files:
-        response = "\n".join([f"{i + 1}. {os.path.basename(path)}" for i, path in enumerate(matched_files)])
-        for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
-            bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
-        bot.send_message(message.chat.id, "Выберите номер файла для отправки:")
-        bot.register_next_step_handler(message, process_file_selection, matched_files)
-    else:
-        bot.send_message(message.chat.id, "Файлы с указанным ID не найдены.")
-
-def process_file_selection(message, matched_files):
-    try:
-        file_number = int(message.text.strip()) - 1
-        if 0 <= file_number < len(matched_files):
-            file_path = matched_files[file_number]
-            with open(file_path, 'rb') as file:
-                bot.send_document(message.chat.id, file)
-        else:
-            bot.send_message(message.chat.id, "Некорректный номер файла.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
-
-# Замена файла
-@bot.message_handler(func=lambda message: message.text == 'Замена файлов' and message.chat.id in admin_sessions)
-def handle_file_replacement(message):
-
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Замена файлов'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
-
-    bot.send_message(message.chat.id, "Введите путь к файлу для замены:")
-    bot.register_next_step_handler(message, process_file_replacement)
-
-def process_file_replacement(message):
-    file_path = os.path.join(FILES_PATH, message.text.strip())
-    if os.path.exists(file_path):
-        bot.send_message(message.chat.id, "Отправьте новый файл для замены.")
-        bot.register_next_step_handler(message, replace_file, file_path)
-    else:
-        bot.send_message(message.chat.id, "Файл не найден.")
-
-def replace_file(message, file_path):
-    if message.document:
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
-        bot.send_message(message.chat.id, "Файл успешно заменен.")
-    else:
-        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
 
 # (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
