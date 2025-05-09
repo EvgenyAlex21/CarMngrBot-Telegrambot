@@ -97,7 +97,7 @@ def check_chat_state(func):
         # Проверяем, есть ли у пользователя активный запрос на чат
         if user_id in active_chats and active_chats[user_id].get("awaiting_response", False):
             if message.text.strip().lower() not in ["принять", "отклонить"]:
-                bot.send_message(user_id, "Пожалуйста, выберите *ПРИНЯТЬ* или *ОТКЛОНИТЬ*", parse_mode="Markdown")
+                bot.send_message(user_id, "Пожалуйста, выберите *ПРИНЯТЬ* или *ОТКЛОНИТЬ*!", parse_mode="Markdown")
                 return
 
         return func(message, *args, **kwargs)
@@ -17179,7 +17179,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
 # Пути к файлам
@@ -17192,6 +17192,7 @@ CHAT_HISTORY_PATH = 'data base/admin/chats/chat_history.json'
 active_chats = {}
 user_requests = {}
 dialog_states = {}  # Новая структура для хранения состояния диалогов
+current_dialogs = {}  # Новая структура для хранения текущих диалогов
 
 # Загрузка активных чатов из файла
 def load_active_chats():
@@ -17208,7 +17209,6 @@ def load_active_chats():
     else:
         active_chats = {}
         user_requests = {}
-
 
 # Загрузка активных чатов при запуске бота
 load_active_chats()
@@ -17239,7 +17239,7 @@ def load_chat_history():
     return {}
 
 # Сохранение сообщения в историю чата
-def save_message_to_history(admin_id, user_id, message_content, message_type):
+def save_message_to_history(admin_id, user_id, message_content, message_type, caption=None):
     chat_history = load_chat_history()
 
     # Генерируем ключ для чата
@@ -17251,14 +17251,15 @@ def save_message_to_history(admin_id, user_id, message_content, message_type):
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
     # Проверяем, существует ли текущий диалог
-    if not chat_history[chat_key] or chat_history[chat_key][-1][-1]['timestamp'] != timestamp:
-        chat_history[chat_key].append([])  # Создаем новый диалог
+    if chat_key not in current_dialogs:
+        current_dialogs[chat_key] = []  # Создаем новый диалог
 
     # Добавляем новое сообщение в текущий диалог
-    chat_history[chat_key][-1].append({
+    current_dialogs[chat_key].append({
         "type": message_type,  # 'admin' или 'user'
         "content": message_content,
-        "timestamp": timestamp  # Время отправки сообщения
+        "timestamp": timestamp,  # Время отправки сообщения
+        "caption": caption.lower() if caption else None  # Подпись, если есть
     })
 
     # Сохраняем обновленную историю в файл
@@ -17314,8 +17315,7 @@ def list_users_for_chat(message):
         message.chat.id,
         "Пожалуйста, укажите *один* из следующих параметров для начала чата:\n\n\n"
         "1. *ID* пользователя в формате: `/chat id`\n\n"
-        "2. *USERNAME* в формате: `/chat @username`\n\n"
-        "3. *Номер* из списка в формате: `/chat номер`",
+        "2. *USERNAME* в формате: `/chat @username`\n\n",
         parse_mode="Markdown",
         reply_markup=markup
     )
@@ -17340,6 +17340,8 @@ def show_communication_menu(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Пример использования функции save_last_bot_message
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == "Чат с админом")
 @restricted
 @track_user_activity
@@ -17361,16 +17363,17 @@ def request_chat_with_admin(message):
     # Проверяем количество запросов на сегодня
     user_requests_today = user_requests.get(user_id, {}).get(today, 0)
     if user_requests_today >= 3:
-        bot.send_message(user_id, "Вы исчерпали лимит запросов на сегодня! Попробуйте завтра")
+        bot.send_message(user_id, "Вы исчерпали лимит запросов на сегодня! Попробуйте завтра...")
         return
 
     # Запрашиваем тему для общения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(types.KeyboardButton('В главное меню'))
-    bot.send_message(user_id, "Пожалуйста, укажите тему для общения с администратором", reply_markup=markup)
+    bot.send_message(user_id, "Пожалуйста, укажите тему для общения с администратором!", reply_markup=markup)
     active_chats[user_id] = {"user_id": user_id, "status": "waiting_for_topic", "awaiting_response": False}
     save_active_chats()
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: any(chat_data.get("user_id") == message.from_user.id and chat_data.get("status") == "waiting_for_topic" for chat_data in active_chats.values()))
 def handle_chat_topic(message):
     user_id = message.from_user.id
@@ -17397,6 +17400,8 @@ def handle_chat_topic(message):
     bot.send_message(user_id, "У вас уже есть запрос на чат к администратору! Ожидайте!")
 
 # Команда для администратора для связи с пользователем
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Чат' and check_admin_access(message))
 @bot.message_handler(commands=['chat'])
 def initiate_chat(message):
@@ -17413,23 +17418,35 @@ def initiate_chat(message):
         user_input = command_parts[1]
         users_data = load_users()
 
-        # Проверка, является ли ввод ID пользователя или номером
-        if len(user_input) > 5:
-            user_id = user_input
-            if user_id not in users_data:
-                bot.send_message(message.chat.id, f"Пользователь с таким *ID* - `{user_id}` не найден", parse_mode="Markdown")
+        # Проверка, является ли ввод ID пользователя
+        if user_input.isdigit():
+            user_id = int(user_input)
+            if str(user_id) not in users_data:
+                bot.send_message(message.chat.id, f"Пользователь с таким *ID* - `{user_id}` не найден!", parse_mode="Markdown")
                 return
-            username = users_data[user_id]['username']
+            username = users_data[str(user_id)]['username']
+        # Проверка, является ли ввод username
+        elif user_input.startswith('@'):
+            username = user_input
+            user_id = None
+            for uid, data in users_data.items():
+                if data.get('username') == username:
+                    user_id = int(uid)
+                    break
+            if user_id is None:
+                bot.send_message(message.chat.id, f"Пользователь с таким *USERNAME* - {escape_markdown(username)} не найден!", parse_mode="Markdown")
+                return
+        # Проверка, является ли ввод номером из списка
         else:
             try:
                 user_number = int(user_input)
                 if user_number < 1 or user_number > len(users_data):
-                    bot.send_message(message.chat.id, "Неверный номер пользователя")
+                    bot.send_message(message.chat.id, "Неверный номер пользователя!")
                     return
                 user_id = list(users_data.keys())[user_number - 1]
                 username = users_data[user_id]['username']
             except ValueError:
-                bot.send_message(message.chat.id, "Неверный формат номера пользователя")
+                bot.send_message(message.chat.id, "Неверный формат номера пользователя!")
                 return
 
         # Проверка, если чат уже активен
@@ -17439,21 +17456,14 @@ def initiate_chat(message):
                 active_chats[user_id]["admin_id"] = message.chat.id
                 save_active_chats()
             else:
-                bot.send_message(message.chat.id, "Этот пользователь уже *находится в активном чате* с другим администратором!", parse_mode="Markdown")
-                show_communication_menu(message)  # Вызываем меню общения
+                bot.send_message(message.chat.id, "Этот пользователь уже находится в активном чате с другим администратором!")
                 return
 
-        # Проверка, что администратор не начинает чат с самим собой
-        if user_id == admin_id:
-            bot.send_message(message.chat.id, "Вы не можете начать чат с самим собой!")
-            return
-
         # Отправляем запрос пользователю
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add(types.KeyboardButton('Принять'))
-        markup.add(types.KeyboardButton('Отклонить'))
-        bot.send_message(user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
-        save_last_bot_message(user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения")
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Принять', 'Отклонить')
+        markup.add('В главное меню')
+        bot.send_message(user_id, "Администратор хочет связаться с вами!\n\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения!", parse_mode="Markdown", reply_markup=markup)
         bot.send_message(message.chat.id, f"Запрос отправлен пользователю {escape_markdown(username)} - `{user_id}`! Ожидаем ответа...", parse_mode="Markdown")
 
         # Сохраняем запрос в active_chats
@@ -17462,6 +17472,7 @@ def initiate_chat(message):
 
     else:
         list_users_for_chat(message)
+
 
 # Команда для администратора для просмотра запросов на чат
 #@log_user_actions
@@ -17505,6 +17516,7 @@ def list_chat_requests(message):
     active_chats[admin_id] = {"status": "select_request", "requests": requests}
     save_active_chats()
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.from_user.id in active_chats and active_chats[message.from_user.id]["status"] == "select_request")
 def handle_request_selection(message):
     admin_id = message.from_user.id
@@ -17517,7 +17529,7 @@ def handle_request_selection(message):
         selected_index = int(message.text) - 1
         requests = active_chats[admin_id]["requests"]
         if selected_index < 0 or selected_index >= len(requests):
-            raise IndexError("Номер запроса вне диапазона")
+            raise IndexError("Номер запроса вне диапазона!")
 
         selected_user_id, topic = requests[selected_index]
         users_data = load_users()
@@ -17537,7 +17549,7 @@ def handle_request_selection(message):
         markup.add('Принять', 'Отклонить')
         markup.add('В главное меню')
 
-        bot.send_message(selected_user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(selected_user_id, "Администратор хочет связаться с вами!\n\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения!", parse_mode="Markdown", reply_markup=markup)
         bot.send_message(admin_id, f"Запрос отправлен пользователю {escape_markdown(username)} - `{selected_user_id}`! Ожидаем ответа...", parse_mode="Markdown")
 
         active_chats[selected_user_id] = {"admin_id": admin_id, "status": "pending", "awaiting_response": True}
@@ -17550,7 +17562,7 @@ def handle_request_selection(message):
         save_active_chats()
 
     except (ValueError, IndexError) as e:
-        bot.send_message(admin_id, f"Ошибка: {e}. Пожалуйста, введите корректный номер запроса")
+        bot.send_message(admin_id, f"Ошибка: {e}! Пожалуйста, введите корректный номер запроса")
 
 #@log_user_actions
 def return_admin_to_menu(admin_id):
@@ -17558,14 +17570,15 @@ def return_admin_to_menu(admin_id):
     bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode="Markdown")
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Админ', 'Бан', 'Функции')
-    markup.add('Общение', 'Статистика', 'Редакция')
-    markup.add('Файлы', 'Резервная копия')
+    markup.add('Общение', 'Реклама', 'Статистика')
+    markup.add('Файлы', 'Резервная копия', 'Редакция')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
 
 # Обработка ответов пользователя на запрос чата
-@bot.message_handler(func=lambda message: message.text.lower() in ["принять", "отклонить"])
-@check_chat_state
+
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text.lower() in ["принять", "отклонить"] and message.from_user.id in active_chats and active_chats[message.from_user.id]["status"] == "pending")
 def handle_chat_response(message):
     user_id = message.from_user.id
 
@@ -17597,12 +17610,12 @@ def handle_chat_response(message):
     else:
         # Если нет активного запроса на чат, игнорируем сообщение
         return
-
         
 # Обработчик для возврата в главное меню
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
-#@log_user_actions
 def return_to_menu(message):
     user_id = message.from_user.id
 
@@ -17619,9 +17632,10 @@ def send_message_to_user(user_id, text, reply_markup=None):
     bot.send_message(user_id, text, reply_markup=reply_markup)
 
 # Функция для завершения чата
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Стоп')
 @bot.message_handler(commands=['stopchat'])
-#@log_user_actions
 def stop_chat(message):
     user_id = message.from_user.id
 
@@ -17641,14 +17655,17 @@ def stop_chat(message):
         save_active_chats()
         start_menu(user_id)  # Перенаправляем пользователя в меню
 
+        # Сохраняем текущий диалог в историю
+        chat_key = f"{admin_id}_{user_id}"
+        if chat_key in current_dialogs:
+            chat_history = load_chat_history()
+            chat_history[chat_key].append(current_dialogs[chat_key])
+            del current_dialogs[chat_key]
+            with open(CHAT_HISTORY_PATH, 'w', encoding='utf-8') as file:
+                json.dump(chat_history, file, ensure_ascii=False, indent=4)
+
         # Перенаправляем администратора в меню админ-панели
-        bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode="Markdown")
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Общение', 'Реклама', 'Статистика')
-        markup.add('Файлы', 'Резервная копия', 'Редакция')
-        markup.add('Выход')
-        bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
+        return_admin_to_menu(admin_id)
 
     elif user_id in active_admin_chats:
         target_user_id = active_admin_chats[user_id]
@@ -17660,14 +17677,17 @@ def stop_chat(message):
         save_active_chats()
         start_menu(target_user_id)  # Перенаправляем пользователя в меню
 
+        # Сохраняем текущий диалог в историю
+        chat_key = f"{user_id}_{target_user_id}"
+        if chat_key in current_dialogs:
+            chat_history = load_chat_history()
+            chat_history[chat_key].append(current_dialogs[chat_key])
+            del current_dialogs[chat_key]
+            with open(CHAT_HISTORY_PATH, 'w', encoding='utf-8') as file:
+                json.dump(chat_history, file, ensure_ascii=False, indent=4)
+
         # Перенаправляем администратора в меню админ-панели
-        bot.send_message(user_id, "Чат с пользователем был *завершен*!", parse_mode="Markdown")
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Общение', 'Реклама', 'Статистика')
-        markup.add('Файлы', 'Резервная копия', 'Редакция')
-        markup.add('Выход')
-        bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
+        return_admin_to_menu(user_id)
 
     else:
         bot.send_message(user_id, "Нет активного чата для завершения!")
@@ -17704,7 +17724,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции!")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
 
@@ -18307,8 +18327,8 @@ def process_delete_file_selection(message):
 
 #----------------------------------------------------------(ДИАЛОГИ)-----------------------------------------------------
 
-@bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
 def show_dialogs_menu(message):
 
     admin_id = str(message.chat.id)
@@ -18318,9 +18338,10 @@ def show_dialogs_menu(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Просмотр диалогов", "Удалить диалоги")
+    markup.add("Вернуться в общение") 
     markup.add("В меню админ-панели")
 
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите действие для диалогов:", reply_markup=markup)
 
 #@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Просмотр диалогов' and check_admin_access(message))
@@ -18331,6 +18352,10 @@ def show_user_dialogs(message):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
+
     chat_history = load_chat_history()
     users = load_users()
 
@@ -18338,12 +18363,13 @@ def show_user_dialogs(message):
     user_ids = [user_id.split('_')[1] for user_id in chat_history.keys()]
     user_ids = list(set(user_ids))  # Убираем повторяющиеся идентификаторы
 
-    user_list = "\n".join(
+    user_list = "\n\n".join(
         f"№{i + 1}. {escape_markdown(users.get(user_id, {}).get('username', 'N/A'))} - `{user_id}`"
         for i, user_id in enumerate(user_ids)
     )
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    keyboard.add(KeyboardButton("Вернуться в общение"))
     keyboard.add(KeyboardButton("В меню админ-панели"))
 
     bot.send_message(
@@ -18356,19 +18382,26 @@ def show_user_dialogs(message):
     dialog_states[message.chat.id] = {"state": "select_user", "user_ids": user_ids}
     save_dialog_states()
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_user")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_user")
 def handle_user_selection(message):
+
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
         save_dialog_states()
         return
 
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
+        
     if message.text == "Удалить диалоги":
         dialog_states.pop(message.chat.id, None)
         save_dialog_states()
         show_delete_dialogs_menu(message)
         return
+
 
     user_ids = dialog_states[message.chat.id]["user_ids"]
     users = load_users()
@@ -18416,10 +18449,10 @@ def handle_user_selection(message):
         save_dialog_states()
 
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер пользователя")
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_dialog")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_dialog")
 def handle_dialog_selection(message):
     selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
     chat_key = f"{message.chat.id}_{selected_user_id}"
@@ -18427,7 +18460,11 @@ def handle_dialog_selection(message):
 
     if not chat_history:
         bot.send_message(message.chat.id, "*История* переписки с этим пользователем *пуста*!", parse_mode="Markdown")
-        show_admin_panel(message)  # Возврат в меню
+        show_communication_menu(message)  # Возврат в меню
+        return
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
         return
 
     try:
@@ -18439,7 +18476,7 @@ def handle_dialog_selection(message):
 
         if not selected_dialog:
             bot.send_message(message.chat.id, "Выбранный диалог пуст!")
-            show_admin_panel(message)  # Возврат в меню
+            show_communication_menu(message)  # Возврат в меню
             return
 
         # Отправка всех сообщений выбранного диалога
@@ -18447,70 +18484,119 @@ def handle_dialog_selection(message):
             timestamp = entry['timestamp']
             sender = entry['type']
             content = entry['content']
+            caption = entry.get('caption')  # Получаем подпись
+
+            if caption is not None:
+                caption = caption.lower()  # Приводим к нижнему регистру, если подпись существует
 
             if content.startswith("photo:"):
                 # Отправляем фото
                 photo_id = content.replace("photo:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Фотография]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Фотография]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {caption}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_photo(message.chat.id, photo_id)
 
             elif content.startswith("sticker:"):
                 # Отправляем стикер
                 sticker_id = content.replace("sticker:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Стикер]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Стикер]"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_sticker(message.chat.id, sticker_id)
 
             elif content.startswith("voice:"):
                 # Отправляем голосовое сообщение
                 voice_id = content.replace("voice:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Голосовое сообщение]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Голосовое сообщение]"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_voice(message.chat.id, voice_id)
 
             elif content.startswith("video:"):
                 # Отправляем видео
                 video_id = content.replace("video:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Видео]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Видео]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {caption}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_video(message.chat.id, video_id)
 
             elif content.startswith("document:"):
                 # Отправляем документ
                 document_id = content.replace("document:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Документ]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Документ]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {caption}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_document(message.chat.id, document_id)
+
+            elif content.startswith("animation:"):
+                # Отправка анимации отдельно
+                animation_id = content.replace("animation:", "").strip()
+                message_text = f"👤 *{sender.upper()}* - [Анимация]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {escape_markdown(caption)}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+                bot.send_animation(message.chat.id, animation_id)
 
             elif content.startswith("audio:"):
                 # Отправляем аудиофайл
                 audio_id = content.replace("audio:", "").strip()
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Аудио]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Аудио]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {caption}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_audio(message.chat.id, audio_id)
 
             elif content.startswith("location:"):
                 # Отправляем локацию
                 location_data = content.replace("location:", "").strip()
                 lat, lon = map(float, location_data.split(","))
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Локация]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Локация]"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_location(message.chat.id, latitude=lat, longitude=lon)
 
             elif content.startswith("contact:"):
                 # Отправляем контакт
                 contact_data = content.replace("contact:", "").strip()
                 phone, first_name, last_name = contact_data.split(",", maxsplit=2)
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - [Контакт]\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Контакт]"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
                 bot.send_contact(message.chat.id, phone_number=phone, first_name=first_name, last_name=last_name)
+
+            elif content.startswith("gif:"):
+                # Отправляем GIF
+                gif_id = content.replace("gif:", "").strip()
+                message_text = f"👤 *{sender.upper()}* - [GIF]"
+                if caption:
+                    message_text += f"\n✍ Подпись - {caption}"
+                message_text += f"\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+                bot.send_document(message.chat.id, gif_id)
 
             else:
                 # Отправляем текстовое сообщение
-                bot.send_message(message.chat.id, f"👤 *{sender.upper()}* - {content}\n📅 *Дата и время*: _{timestamp}_", parse_mode="Markdown")
+                message_text = f"👤 *{sender.upper()}* - [Текст]\n📝 Текст - {content}\n📅 *Дата и время*: _{timestamp}_"
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
 
         # Завершаем диалог
         del dialog_states[message.chat.id]
         save_dialog_states()
 
         # Возврат в меню
-        show_admin_panel(message)
+        show_communication_menu(message)
 
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер диалога")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер диалога")
 
 def save_dialog_states():
     with open('data base/admin/chats/dialog_states.json', 'w', encoding='utf-8') as file:
@@ -18528,17 +18614,22 @@ def show_delete_dialogs_menu(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Удалить диалог", "Удалить все диалоги")
+    markup.add("Вернуться в общение")
     markup.add("В меню админ-панели")
 
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите действие для удаления диалогов:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить диалог' and check_admin_access(message))
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Удалить диалог' and check_admin_access(message))
 def delete_dialog(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить диалог'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
         return
 
     chat_history = load_chat_history()
@@ -18547,12 +18638,13 @@ def delete_dialog(message):
     user_ids = [user_id.split('_')[1] for user_id in chat_history.keys()]
     user_ids = list(set(user_ids))
 
-    user_list = "\n".join(
+    user_list = "\n\n".join(
         f"№{i + 1}. {escape_markdown(users.get(user_id, {}).get('username', 'N/A'))} - `{user_id}`"
         for i, user_id in enumerate(user_ids)
     )
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    keyboard.add(KeyboardButton("Вернуться в общение"))
     keyboard.add(KeyboardButton("В меню админ-панели"))
 
     bot.send_message(
@@ -18565,9 +18657,14 @@ def delete_dialog(message):
     dialog_states[message.chat.id] = {"state": "delete_dialog_select_user", "user_ids": user_ids}
     save_dialog_states()
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_user")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_user")
 def handle_delete_dialog_user_selection(message):
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
         save_dialog_states()
@@ -18617,10 +18714,10 @@ def handle_delete_dialog_user_selection(message):
         save_dialog_states()
 
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер пользователя")
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_dialog")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_dialog")
 def handle_delete_dialog_selection(message):
     selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
     chat_key = f"{message.chat.id}_{selected_user_id}"
@@ -18628,7 +18725,11 @@ def handle_delete_dialog_selection(message):
 
     if not chat_history:
         bot.send_message(message.chat.id, "*История* переписки с этим пользователем *пуста*!", parse_mode="Markdown")
-        return show_admin_panel(message)
+        return show_communication_menu(message)
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
 
     try:
         selected_dialog_index = int(message.text) - 1
@@ -18644,15 +18745,14 @@ def handle_delete_dialog_selection(message):
             json.dump(chat_history_data, file, ensure_ascii=False, indent=4)
 
         bot.send_message(message.chat.id, "Диалог успешно *удален*!", parse_mode="Markdown")
-        return show_admin_panel(message)
+        return show_communication_menu(message)
 
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер диалога")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер диалога")
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить все диалоги' and check_admin_access(message))
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Удалить все диалоги' and check_admin_access(message))
 def delete_all_dialogs(message):
-
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить все диалоги'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
@@ -18664,12 +18764,13 @@ def delete_all_dialogs(message):
     user_ids = [user_id.split('_')[1] for user_id in chat_history.keys()]
     user_ids = list(set(user_ids))
 
-    user_list = "\n".join(
+    user_list = "\n\n".join(
         f"№{i + 1}. {escape_markdown(users.get(user_id, {}).get('username', 'N/A'))} - `{user_id}`"
         for i, user_id in enumerate(user_ids)
     )
 
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    keyboard.add(KeyboardButton("Вернуться в общение"))
     keyboard.add(KeyboardButton("В меню админ-панели"))
 
     bot.send_message(
@@ -18682,9 +18783,13 @@ def delete_all_dialogs(message):
     dialog_states[message.chat.id] = {"state": "delete_all_dialogs_select_user", "user_ids": user_ids}
     save_dialog_states()
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_all_dialogs_select_user")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_all_dialogs_select_user")
 def handle_delete_all_dialogs_user_selection(message):
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
         save_dialog_states()
@@ -18714,11 +18819,15 @@ def handle_delete_all_dialogs_user_selection(message):
         save_dialog_states()
 
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
+        bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер пользователя")
 
-@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "confirm_delete_all_dialogs")
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "confirm_delete_all_dialogs")
 def handle_confirm_delete_all_dialogs(message):
+    if message.text.lower() not in ["да", "нет"]:
+        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите *ДА* для удаления или *НЕТ* для отмены", parse_mode="Markdown")
+        return
+
     if message.text.lower() == "да":
         selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
         chat_key = f"{message.chat.id}_{selected_user_id}"
@@ -18734,14 +18843,14 @@ def handle_confirm_delete_all_dialogs(message):
     else:
         bot.send_message(message.chat.id, "Удаление *всех диалогов* с пользователем *отменено*!", parse_mode="Markdown")
 
-    return show_admin_panel(message)
-
+    return show_communication_menu(message)
 
 
 # Изменения в функции handle_chat_messages для сохранения сообщений в историю
-@bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'animation', 'sticker', 'audio', 'contact', 'voice', 'video_note'])
-@check_chat_state
+
 #@log_user_actions
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'animation', 'sticker', 'audio', 'contact', 'voice', 'video_note', 'gif'])
+@check_chat_state
 def handle_chat_messages(message):
     user_id = message.from_user.id
 
@@ -18764,37 +18873,39 @@ def handle_chat_messages(message):
             media_group = []
             media_group.append(types.InputMediaPhoto(message.photo[-1].file_id, caption=message.caption))
             bot.send_media_group(target_user_id, media_group)
-            save_message_to_history(user_id, target_user_id, f"photo: {message.photo[-1].file_id}", 'admin')  # Сохранение сообщения
+            save_message_to_history(user_id, target_user_id, f"photo: {message.photo[-1].file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'video':
             media_group = []
             media_group.append(types.InputMediaVideo(message.video.file_id, caption=message.caption))
             bot.send_media_group(target_user_id, media_group)
-            save_message_to_history(user_id, target_user_id, f"video: {message.video.file_id}", 'admin')  # Сохранение сообщения
+            save_message_to_history(user_id, target_user_id, f"video: {message.video.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'document':
             media_group = []
             media_group.append(types.InputMediaDocument(message.document.file_id, caption=message.caption))
             bot.send_media_group(target_user_id, media_group)
-            save_message_to_history(user_id, target_user_id, f"document: {message.document.file_id}", 'admin')  # Сохранение сообщения
+            save_message_to_history(user_id, target_user_id, f"document: {message.document.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'animation':
-            media_group = []
-            media_group.append(types.InputMediaAnimation(message.animation.file_id, caption=message.caption))
-            bot.send_media_group(target_user_id, media_group)
-            save_message_to_history(user_id, target_user_id, f"animation: {message.animation.file_id}", 'admin')  # Сохранение сообщения
+            # Отправка анимации отдельно
+            bot.send_animation(target_user_id, message.animation.file_id, caption=message.caption)
+            save_message_to_history(user_id, target_user_id, f"animation: {message.animation.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'sticker':
             bot.send_sticker(target_user_id, message.sticker.file_id)
             save_message_to_history(user_id, target_user_id, f"sticker: {message.sticker.file_id}", 'admin')  # Сохранение сообщения
         elif message.content_type == 'audio':
             bot.send_audio(target_user_id, message.audio.file_id, caption=message.caption)
-            save_message_to_history(user_id, target_user_id, f"audio: {message.audio.file_id}", 'admin')  # Сохранение сообщения
+            save_message_to_history(user_id, target_user_id, f"audio: {message.audio.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'contact':
             bot.send_contact(target_user_id, message.contact.phone_number, message.contact.first_name)
             save_message_to_history(user_id, target_user_id, f"contact: {message.contact.phone_number}", 'admin')  # Сохранение сообщения
         elif message.content_type == 'voice':
             bot.send_voice(target_user_id, message.voice.file_id, caption=message.caption)
-            save_message_to_history(user_id, target_user_id, f"voice: {message.voice.file_id}", 'admin')  # Сохранение сообщения
+            save_message_to_history(user_id, target_user_id, f"voice: {message.voice.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'video_note':
             bot.send_video_note(target_user_id, message.video_note.file_id)
             save_message_to_history(user_id, target_user_id, f"video_note: {message.video_note.file_id}", 'admin')  # Сохранение сообщения
+        elif message.content_type == 'gif':
+            bot.send_document(target_user_id, message.document.file_id, caption=message.caption)
+            save_message_to_history(user_id, target_user_id, f"gif: {message.document.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
         print(f"Сообщение от админа {user_id} переслано пользователю {target_user_id}: {message.content_type}")
 
     # Если сообщение от пользователя
@@ -18807,38 +18918,41 @@ def handle_chat_messages(message):
             media_group = []
             media_group.append(types.InputMediaPhoto(message.photo[-1].file_id, caption=message.caption))
             bot.send_media_group(target_admin_id, media_group)
-            save_message_to_history(target_admin_id, user_id, f"photo: {message.photo[-1].file_id}", 'user')  # Сохранение сообщения
+            save_message_to_history(target_admin_id, user_id, f"photo: {message.photo[-1].file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'video':
             media_group = []
             media_group.append(types.InputMediaVideo(message.video.file_id, caption=message.caption))
             bot.send_media_group(target_admin_id, media_group)
-            save_message_to_history(target_admin_id, user_id, f"video: {message.video.file_id}", 'user')  # Сохранение сообщения
+            save_message_to_history(target_admin_id, user_id, f"video: {message.video.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'document':
             media_group = []
             media_group.append(types.InputMediaDocument(message.document.file_id, caption=message.caption))
             bot.send_media_group(target_admin_id, media_group)
-            save_message_to_history(target_admin_id, user_id, f"document: {message.document.file_id}", 'user')  # Сохранение сообщения
+            save_message_to_history(target_admin_id, user_id, f"document: {message.document.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'animation':
-            media_group = []
-            media_group.append(types.InputMediaAnimation(message.animation.file_id, caption=message.caption))
-            bot.send_media_group(target_admin_id, media_group)
-            save_message_to_history(target_admin_id, user_id, f"animation: {message.animation.file_id}", 'user')  # Сохранение сообщения
+            # Отправка анимации отдельно
+            bot.send_animation(target_admin_id, message.animation.file_id, caption=message.caption)
+            save_message_to_history(target_admin_id, user_id, f"animation: {message.animation.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'sticker':
             bot.send_sticker(target_admin_id, message.sticker.file_id)
             save_message_to_history(target_admin_id, user_id, f"sticker: {message.sticker.file_id}", 'user')  # Сохранение сообщения
         elif message.content_type == 'audio':
             bot.send_audio(target_admin_id, message.audio.file_id, caption=message.caption)
-            save_message_to_history(target_admin_id, user_id, f"audio: {message.audio.file_id}", 'user')  # Сохранение сообщения
+            save_message_to_history(target_admin_id, user_id, f"audio: {message.audio.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'contact':
             bot.send_contact(target_admin_id, message.contact.phone_number, message.contact.first_name)
             save_message_to_history(target_admin_id, user_id, f"contact: {message.contact.phone_number}", 'user')  # Сохранение сообщения
         elif message.content_type == 'voice':
             bot.send_voice(target_admin_id, message.voice.file_id, caption=message.caption)
-            save_message_to_history(target_admin_id, user_id, f"voice: {message.voice.file_id}", 'user')  # Сохранение сообщения
+            save_message_to_history(target_admin_id, user_id, f"voice: {message.voice.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         elif message.content_type == 'video_note':
             bot.send_video_note(target_admin_id, message.video_note.file_id)
             save_message_to_history(target_admin_id, user_id, f"video_note: {message.video_note.file_id}", 'user')  # Сохранение сообщения
+        elif message.content_type == 'gif':
+            bot.send_document(target_admin_id, message.document.file_id, caption=message.caption)
+            save_message_to_history(target_admin_id, user_id, f"gif: {message.document.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
         print(f"Сообщение от пользователя {user_id} переслано администратору {target_admin_id}: {message.content_type}")
+
 
 def check_chat_activity():
     while True:
@@ -18846,7 +18960,7 @@ def check_chat_activity():
         for user_id, chat_data in list(active_chats.items()):
             if chat_data["status"] == "active":
                 last_activity_time = chat_data.get("last_activity_time", current_time)
-                if current_time - last_activity_time > 300:  # 5 минут = 300 секунд
+                if current_time - last_activity_time > 65:  # 5 минут = 300 секунд
                     admin_id = chat_data.get("admin_id")
                     users_data = load_users()
                     username = users_data.get(str(user_id), {}).get('username', 'Unknown')
@@ -18854,8 +18968,21 @@ def check_chat_activity():
 
                     if admin_id:
                         bot.send_message(admin_id, f"Чат с пользователем {escaped_username} - `{user_id}` был автоматически *завершен* из-за неактивности!", parse_mode="Markdown")
+                        # Перенаправляем администратора в меню админ-панели
+                        return_admin_to_menu(admin_id)
+
                     bot.send_message(user_id, "Чат с администратором был автоматически *завершен* из-за неактивности!", parse_mode="Markdown")
                     start_menu(user_id)  # Перебросить пользователя в главное меню
+
+                    # Сохраняем текущий диалог в историю
+                    chat_key = f"{admin_id}_{user_id}"
+                    if chat_key in current_dialogs:
+                        chat_history = load_chat_history()
+                        chat_history[chat_key].append(current_dialogs[chat_key])
+                        del current_dialogs[chat_key]
+                        with open(CHAT_HISTORY_PATH, 'w', encoding='utf-8') as file:
+                            json.dump(chat_history, file, ensure_ascii=False, indent=4)
+
                     del active_chats[user_id]
                     save_active_chats()
         time.sleep(60)  # Проверяем каждую минуту
