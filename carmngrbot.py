@@ -58,54 +58,6 @@ def load_trip_data(user_id):
 
 # (3.2) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ТРАТЫ) ---------------
 
-# def save_expense_data(user_id, user_data):
-#     folder_path = "data base"  
-#     if not os.path.exists(folder_path):  
-#         os.makedirs(folder_path)
-
-#     with open(os.path.join(folder_path, f"expenses_{user_id}.json"), "w", encoding="utf-8") as file:
-#         json.dump(user_data, file, ensure_ascii=False, indent=4)
-
-# def load_expense_data(user_id):
-#     folder_path = "data base" 
-#     try:
-#         with open(os.path.join(folder_path, f"expenses_{user_id}.json"), "r", encoding="utf-8") as file:
-#             data = json.load(file)
-#             if not isinstance(data, dict):
-#                 raise ValueError("Данные не являются словарем.")
-#     except (FileNotFoundError, ValueError) as e:
-#         print("Ошибка загрузки данных:", e)  # Отладочная информация
-#         data = {}
-#     return data
-
-
-# (3.3) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (РЕМОНТЫ) ---------------
-
-# # Функция для сохранения данных о ремонте
-# def save_repair_data(user_id, user_data):
-#     folder_path = "data base"
-#     if not os.path.exists(folder_path):
-#         os.makedirs(folder_path)
-#     data = load_repair_data(user_id)
-#     data.update(user_data)
-#     with open(os.path.join(folder_path, f"repairs_{user_id}.json"), "w", encoding="utf-8") as file:
-#         json.dump({str(user_id): data}, file, ensure_ascii=False, indent=4)
-
-# # Функция для загрузки данных о ремонте
-# def load_repair_data(user_id):
-#     folder_path = "data base"
-#     try:
-#         with open(os.path.join(folder_path, f"repairs_{user_id}.json"), "r", encoding="utf-8") as file:
-#             data = json.load(file)
-#     except FileNotFoundError:
-#         data = {}
-
-#     # Убедимся, что возвращаемый объект — это словарь
-#     if isinstance(data, dict):
-#         return data.get(str(user_id), {})
-#     else:
-#         return {}
-
 # (3.4) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ГЕОПОЗИЦИЯ) ---------------
 
 def save_location_data(location_data):
@@ -200,7 +152,7 @@ def information_handler(message):
         return  
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)
+        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)  # type: ignore
         return
     try:
         with open('files/manual.txt', 'r', encoding='utf-8') as information_file:
@@ -220,7 +172,7 @@ def privacy_policy_handler(message):
         return 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)
+        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption) # type: ignore
         return
     try:
         with open('files/privacy_policy.txt', 'r', encoding='utf-8') as policy_file:
@@ -240,7 +192,7 @@ def user_agreement_handler(message):
         return
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)
+        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption) # type: ignore
         return
     try:
         with open('files/user_agreement.txt', 'r', encoding='utf-8') as agreement_file:
@@ -366,7 +318,7 @@ def process_start_location_step(message):
         location = message.location
         try:
             start_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         trip_data[chat_id] = {
@@ -381,7 +333,7 @@ def process_start_location_step(message):
         start_location = message.text
         try:
             location = geolocator.geocode(start_location, timeout=10)
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -427,7 +379,7 @@ def process_start_location_step(message):
         location = message.location
         try:
             start_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         trip_data[chat_id] = {
@@ -442,7 +394,7 @@ def process_start_location_step(message):
         start_location = message.text
         try:
             location = geolocator.geocode(start_location, timeout=10)
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -487,7 +439,7 @@ def process_end_location_step(message):
         location = message.location
         try:
             end_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         trip_data[chat_id]["end_location"] = {
@@ -500,7 +452,7 @@ def process_end_location_step(message):
         end_location = message.text
         try:
             location = geolocator.geocode(end_location, timeout=10)
-        except GeocoderUnavailable:
+        except GeocoderUnavailable: # type: ignore
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -1344,7 +1296,7 @@ def restart_handler(message):
         user_trip_data[user_id] = load_trip_data(user_id)
     user_trip_data[user_id] = load_trip_data(user_id)
     
-    start_fuel_calculation_menu(message)
+    start_fuel_calculation_menu(message) 
 
 
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
@@ -4779,13 +4731,57 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
 
 # ЦЕНЫ НА ТОПЛИВО
 
+import threading
+
+# Переменные для состояния пользователя и данных
 user_state = {}
-user_data = {}  # Словарь для хранения данных пользователей
+user_data = {}
 
 os.makedirs(os.path.join('data base', 'azs'), exist_ok=True)
 
 # Путь к файлу для сохранения данных
 DATA_FILE_PATH = os.path.join('data base', 'city_for_the_price.json')
+
+# Функция для загрузки данных пользователей
+def load_citys_users_data():
+    global user_data
+    if os.path.exists(DATA_FILE_PATH):
+        with open(DATA_FILE_PATH, 'r', encoding='utf-8') as f:
+            user_data = json.load(f)
+    else:
+        user_data = {}
+
+# Функция для сохранения данных пользователей
+def save_citys_users_data():
+    with open(DATA_FILE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(user_data, f, ensure_ascii=False, indent=4)
+
+# Загружаем данные пользователей при запуске
+load_citys_users_data()
+
+# Функция для создания имени файла на основе города и даты
+def create_filename(city_code, date):
+    date_str = date.strftime('%d_%m_%Y')
+    return f"{city_code}_table_azs_data_{date_str}.json"
+
+# Функция для сохранения данных в JSON
+def save_data(city_code, fuel_prices):
+    filename = f'{city_code}_table_azs_data.json'
+    filepath = os.path.join('data base', 'azs', filename)
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
+
+# Функция для загрузки сохранённых данных из JSON
+def load_saved_data(city_code):
+    filename = f'{city_code}_table_azs_data.json'
+    filepath = os.path.join('data base', 'azs', filename)
+    
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
 
 # Обновление функции для загрузки данных
 def load_citys_users_data():
@@ -5124,7 +5120,6 @@ def get_fuel_prices_from_site(selected_fuel_type, city_code):
         fuel_type = columns[2].text.strip()
         today_price = clean_price(columns[3].text.strip())
 
-        # Добавьте условие для учета ГАЗа
         if fuel_type.lower() == selected_fuel_type.lower() or (fuel_type.lower() == "газ спбт" and selected_fuel_type.lower() == "газ"):
             fuel_prices.append((brand, fuel_type, today_price))
     
@@ -5135,6 +5130,40 @@ def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
     return cleaned_price
 
+# Функция для проверки обновления и парсинга данных
+def parse_fuel_prices():
+    cities_to_parse = os.listdir(os.path.join('data base', 'azs'))  # Список городов для парсинга
+    for city_code in cities_to_parse:
+        city_code = city_code.replace('_table_azs_data.json', '')  # Убираем расширение для получения кода города
+        saved_data = load_saved_data(city_code)
+        
+        today = datetime.now().date()
+        if saved_data:
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            if file_modification_time >= today:
+                print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем.")
+                continue
+
+        # Если файл устарел или не существует, парсим новые данные
+        all_fuel_prices = []
+        for fuel_type in fuel_types:
+            fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+            all_fuel_prices.extend(fuel_prices)
+
+        save_data(city_code, all_fuel_prices)
+        print(f"Данные для города {city_code} успешно обновлены.")
+
+# Функция планировщика
+def schedule_parsing():
+    while True:
+        now = datetime.now()
+        if now.hour == 23 and now.minute == 00:  # Запуск в 00:00
+            parse_fuel_prices()
+            time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
+        time.sleep(60)  # Проверка каждые 60 секунд
+
+# Запуск планировщика в отдельном потоке
+threading.Thread(target=schedule_parsing, daemon=True).start()
 
 
 # Определение состояний
