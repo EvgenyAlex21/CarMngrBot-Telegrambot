@@ -91,11 +91,27 @@ except FileNotFoundError:
 # (5) --------------- ОБРАБОТЧИК КОМАНДЫ /START ---------------
 
 # Обработчик команды /start
+def restricted(func):
+    """Декоратор для ограничения доступа заблокированным пользователям."""
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
 @bot.message_handler(commands=['start'])
+@restricted
 def start(message):
     chat_id = message.chat.id
-    user_id = message.chat.id
+    user_id = message.from_user.id
+    username = message.from_user.username if message.from_user.username else "Неизвестный пользователь"
 
+    # Сохраняем информацию о пользователе
+    update_user_activity(user_id, username)
+
+    # Создание кнопок меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Расход топлива")
     item2 = types.KeyboardButton("Траты и ремонты")
@@ -104,7 +120,7 @@ def start(message):
     item5 = types.KeyboardButton("Погода")
     item6 = types.KeyboardButton("Код региона")
     item7 = types.KeyboardButton("Цены на топливо")
-    
+
     markup.add(item1, item2)
     markup.add(item3, item4)
     markup.add(item5, item7)
@@ -204,6 +220,7 @@ def user_agreement_handler(message):
 # (8) --------------- ОБРАБОТЧИК КОМАНДЫ "РАСХОД ТОПЛИВА"---------------
 
 @bot.message_handler(func=lambda message: message.text == "Расход топлива")
+@restricted
 def handle_fuel_expense(message):
     user_id = message.from_user.id
 
@@ -240,7 +257,9 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 # (9.2) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДЫ /restart1 ) ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
+@restricted
 @bot.message_handler(commands=['restart1'])
+@restricted
 def restart_handler(message):
     chat_id = message.chat.id
     user_id = message.chat.id
@@ -276,6 +295,7 @@ def reset_user_data(user_id):
 # (9.4) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ НАЧАЛЬНОГО МЕСТОПОЛОЖЕНИЯ) ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать расход топлива")
+@restricted
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
 
@@ -646,6 +666,7 @@ def show_calendar(chat_id, user_code):
     bot.send_message(chat_id, "Выберите дату", reply_markup=calendar)
 
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+@restricted
 def handle_calendar(call):
     result, key, step = DetailedTelegramCalendar(
         min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), unique_key=call.data
@@ -1243,6 +1264,7 @@ def save_trip_to_excel(user_id, trip):
 # (9.14) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "СОХРАНИТЬ ПОЕЗДКУ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Сохранить поездку")
+@restricted
 def save_data_handler(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
@@ -1276,7 +1298,9 @@ def save_data_handler(message):
 # (9.15) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "В ГЛАВНОЕ МЕНЮ  ВРЕМЕННЫХ ДАННЫХ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
+@restricted
 @bot.message_handler(commands=['mainmenu'])
+@restricted
 def return_to_menu(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data:
@@ -1286,7 +1310,9 @@ def return_to_menu(message):
 # (9.16) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ВЕРНУТЬСЯ В МЕНЮ РАСЧЕТА ТОПЛИВА   ВРЕМЕННЫХ ДАННЫХ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
+@restricted
 @bot.message_handler(commands=['restart1'])
+@restricted
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -1302,6 +1328,7 @@ def restart_handler(message):
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть поездки")
+@restricted
 def view_trips(message):
     user_id = message.chat.id
     if user_id in user_trip_data:
@@ -1328,6 +1355,7 @@ def view_trips(message):
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть в Excel")
+@restricted
 def send_excel_file(message):
     user_id = message.chat.id
     excel_file_path = f"data base/{user_id}_trips.xlsx"
@@ -1339,6 +1367,7 @@ def send_excel_file(message):
         bot.send_message(user_id, "Файл Excel не найден. Убедитесь, что у вас есть сохраненные поездки.")
 
 @bot.message_handler(func=lambda message: message.text and message.text.startswith(tuple([f"{i}. " for i in range(1, 10)])))
+@restricted
 def show_trip_details(message):
     user_id = message.chat.id
     trips = user_trip_data.get(user_id, [])
@@ -1385,17 +1414,22 @@ def show_trip_details(message):
 
 # Обработчик для кнопки "Посмотреть другие поездки"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть другие поездки")
+@restricted
+
 def view_other_trips(message):
     view_trips(message)  # Вызываем функцию для повторного отображения списка поездок
 
 # Обработчики для кнопок "Вернуться в меню расчета топлива" и "В главное меню"
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
+@restricted
+
 def return_to_fuel_calc_menu(message):
     chat_id = message.chat.id
     reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
     bot.send_message(chat_id, "Вы вернулись в меню расчета топлива.", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
+@restricted
 def return_to_main_menu(message):
     chat_id = message.chat.id
     return_to_menu(message)  # Ваша функция для возврата в главное меню
@@ -1404,6 +1438,7 @@ def return_to_main_menu(message):
 # (9.18) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "УДАЛИТЬ ПОЕЗДКУ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Удалить поездку")
+@restricted
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
@@ -1508,6 +1543,7 @@ def confirm_delete_all(message):
 # (10.1) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "ТРАТЫ И РЕМОНТЫ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Траты и ремонты")
+@restricted
 def handle_expenses_and_repairs(message):
     user_id = message.from_user.id
 
@@ -1562,7 +1598,9 @@ def send_menu(user_id):
     bot.send_message(user_id, "Вы вернулись в меню. Выберите действие:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню трат и ремонтов")
+@restricted
 @bot.message_handler(commands=['restart2'])
+@restricted
 def return_to_menu_2(message):
     user_id = message.from_user.id
     send_menu(user_id)
@@ -1635,6 +1673,7 @@ def remove_user_category(user_id, category_to_remove):
 
 # Основная функция для записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
+@restricted
 def record_expense(message):
     user_id = message.from_user.id
 
@@ -1959,6 +1998,7 @@ def save_expense_to_excel(user_id, expense_data):
 # Удаление категории
 # Удаление категории
 @bot.message_handler(func=lambda message: message.text == "Удалить категорию")
+@restricted
 def handle_category_removal(message, brand=None, model=None, year=None):
     user_id = message.from_user.id
     categories = get_user_categories(user_id)
@@ -2091,6 +2131,7 @@ def send_menu1(user_id):
 
 # Обработчик для просмотра трат
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты")
+@restricted
 def view_expenses(message):
     user_id = message.from_user.id
 
@@ -2129,6 +2170,7 @@ def handle_transport_selection(message):
     send_menu1(user_id)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты в EXCEL")
+@restricted
 def send_expenses_excel(message):
     user_id = message.from_user.id
 
@@ -2146,6 +2188,7 @@ def send_expenses_excel(message):
 
 # Обработчик для просмотра трат по категориям
 @bot.message_handler(func=lambda message: message.text == "Траты (по категориям)")
+@restricted
 def view_expenses_by_category(message):
     user_id = message.from_user.id
     user_data = load_expense_data(user_id)
@@ -2230,6 +2273,7 @@ def handle_category_selection(message):
 
 # Обработчик трат за месяц
 @bot.message_handler(func=lambda message: message.text == "Траты (месяц)")
+@restricted
 def view_expenses_by_month(message):
     user_id = message.from_user.id
 
@@ -2306,6 +2350,7 @@ def get_expenses_by_month(message):
 
 # Обработчик трат за год
 @bot.message_handler(func=lambda message: message.text == "Траты (год)")
+@restricted
 def view_expenses_by_year(message):
     user_id = message.from_user.id
 
@@ -2371,6 +2416,7 @@ def get_expenses_by_year(message):
 
 # Обработчик всех трат
 @bot.message_handler(func=lambda message: message.text == "Траты (всё время)")
+@restricted
 def view_all_expenses(message):
     user_id = message.from_user.id
 
@@ -2424,6 +2470,7 @@ def save_selected_transport(user_id, selected_transport):
     print(f"Транспорт сохранён: {user_data['selected_transport']}")  # Для отладки
 
 @bot.message_handler(func=lambda message: message.text == "Удалить траты")
+@restricted
 def delete_expenses_menu(message):
     user_id = message.from_user.id
 
@@ -2483,6 +2530,7 @@ def handle_transport_selection_for_deletion(message):
     bot.send_message(user_id, "Выберите вариант удаления трат:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (категория)")
+@restricted
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_transports.get(user_id)  # Получаем транспорт из глобального словаря
@@ -2642,6 +2690,7 @@ def confirm_delete_expense_by_category(message, expenses_to_delete):
 # Удаление трат за месяц
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (месяц)")
+@restricted
 def delete_expense_by_month(message):
     user_id = message.from_user.id
 
@@ -2758,6 +2807,7 @@ def confirm_delete_expense_month(message, expenses_to_delete):
 
 # Удаление трат за год
 @bot.message_handler(func=lambda message: message.text == "Del траты (год)")
+@restricted
 def delete_expense_by_year(message):
     user_id = message.from_user.id
 
@@ -2868,6 +2918,7 @@ def confirm_delete_expense_year(message, expenses_to_delete):
 # Удаление всех трат
 # Удаление всех трат
 @bot.message_handler(func=lambda message: message.text == "Del траты (всё время)")
+@restricted
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -3200,6 +3251,7 @@ def load_repair_data(user_id):
     return data
 
 @bot.message_handler(func=lambda message: message.text == "Записать ремонт")
+@restricted
 def record_repair(message):
     user_id = message.from_user.id
     if contains_media(message):
@@ -3667,6 +3719,7 @@ def send_repair_menu(user_id):
 
 # Обработчик для просмотра ремонтов
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты")
+@restricted
 def view_repairs(message):
     user_id = message.from_user.id
 
@@ -3706,6 +3759,7 @@ def handle_transport_selection_for_repairs(message):
 
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты в EXCEL")
+@restricted
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
@@ -3722,6 +3776,7 @@ def send_repairs_excel(message):
         bot.send_document(user_id, excel_file)
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
+@restricted
 def view_repairs_by_category(message):
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
@@ -3806,6 +3861,7 @@ def handle_repair_category_selection(message):
 
 # Обработчик ремонтов за месяц
 @bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
+@restricted
 def view_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -3882,6 +3938,7 @@ def get_repairs_by_month(message):
 
 # Обработчик ремонтов за год
 @bot.message_handler(func=lambda message: message.text == "Ремонты (год)")
+@restricted
 def view_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -3947,6 +4004,7 @@ def get_repairs_by_year(message):
 
 # Обработчик всех ремонтов
 @bot.message_handler(func=lambda message: message.text == "Ремонты (всё время)")
+@restricted
 def view_all_repairs(message):
     user_id = message.from_user.id
 
@@ -4001,6 +4059,7 @@ def save_selected_repair_transport(user_id, selected_transport):
 
 
 @bot.message_handler(func=lambda message: message.text == "Удалить ремонты")
+@restricted
 def delete_repairs_menu(message):
     user_id = message.from_user.id
 
@@ -4058,6 +4117,7 @@ def handle_repair_transport_selection_for_deletion(message):
     bot.send_message(user_id, "Выберите вариант удаления ремонтов:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (категория)")
+@restricted
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_repair_transports.get(user_id)
@@ -4181,6 +4241,7 @@ def confirm_delete_repair_by_category(message, repairs_to_delete):
 
 # Удаление ремонтов за месяц
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (месяц)")
+@restricted
 def delete_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -4276,6 +4337,7 @@ def confirm_delete_repair_month(message, repairs_to_delete):
 
 # Удаление ремонтов за год
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (год)")
+@restricted
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4362,6 +4424,7 @@ def confirm_delete_repair_year(message, repairs_to_delete):
 
 # Удаление всех ремонтов
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (всё время)")
+@restricted
 def delete_all_repairs(message):
     user_id = message.from_user.id
 
@@ -4568,6 +4631,7 @@ def shorten_url(original_url):
 
 # Обработчик для главного меню "Поиск мест"
 @bot.message_handler(func=lambda message: message.text == "Поиск мест")
+@restricted
 def send_welcome(message):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4595,6 +4659,7 @@ def send_welcome(message):
 
 # Обработчик для выбора категории заново
 @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
+@restricted
 def handle_reset_category(message):
     global selected_category
     selected_category = None
@@ -4604,6 +4669,7 @@ selected_category = None
 
 # Обработчик для выбора категории
 @bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"})
+@restricted
 def handle_menu_buttons(message):
     global selected_category 
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:  # Включаем "Штрафстоянка"
@@ -4622,6 +4688,7 @@ def handle_menu_buttons(message):
 
 # Обработчик для получения геолокации
 @bot.message_handler(content_types=['location'])
+@restricted
 def handle_location(message):
     global selected_category, user_locations
     latitude = message.location.latitude
@@ -4808,6 +4875,7 @@ location_data = load_location_data()
 
 # Обработчик для команды "Найти транспорт"
 @bot.message_handler(func=lambda message: message.text == "Найти транспорт")
+@restricted
 def start_transport_search(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -4870,6 +4938,7 @@ def request_user_location(message):
 
 # Обработка геопозиции транспорта и пользователя
 @bot.message_handler(content_types=['location'])
+@restricted
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -4938,6 +5007,7 @@ def send_map_link(chat_id, start_location, end_location):
 # (14) --------------- КОД ДЛЯ "ПОИСК РЕГИОНА ПО ГОСНОМЕРУ" ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Код региона")
+@restricted
 def handle_start4(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
@@ -5010,6 +5080,7 @@ user_data = {}
 # (15.1) --------------- КОД ДЛЯ "ПОГОДЫ" (ОБРАБОТЧИК "ПОГОДА") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Погода")
+@restricted
 def handle_start_5(message):
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5025,6 +5096,7 @@ def handle_start_5(message):
         bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса. Попробуйте позже.")
 
 @bot.message_handler(content_types=['location'])
+@restricted
 def handle_location_5(message):
     try:
         if message.location:
@@ -5051,6 +5123,7 @@ def handle_location_5(message):
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
+@restricted
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
@@ -5606,6 +5679,7 @@ def load_saved_data(city_code):
 
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
+@restricted
 def fuel_prices_command(message):
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
@@ -5981,6 +6055,7 @@ load_all_transport()
 
 # Команда для управления транспортом
 @bot.message_handler(func=lambda message: message.text == "Ваш транспорт")
+@restricted
 def manage_transport(message):
     user_id = str(message.chat.id)
     
@@ -6017,6 +6092,7 @@ def create_transport_keyboard():
     return markup
 
 @bot.message_handler(func=lambda message: message.text == "Добавить транспорт")
+@restricted
 def add_transport(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id): return
@@ -6128,6 +6204,7 @@ def delete_expenses_related_to_transport(user_id, transport):
         save_expense_data(user_id, expenses_data)  # Сохраняем обновленные данные
 
 @bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
+@restricted
 def delete_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6223,6 +6300,7 @@ def get_return_menu_keyboard():
     return markup
 
 @bot.message_handler(func=lambda message: message.text == "Удалить весь транспорт")
+@restricted
 def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6259,6 +6337,7 @@ def process_delete_all_confirmation(message):
     manage_transport(message)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
+@restricted
 def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6270,20 +6349,33 @@ def view_transport(message):
 
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
+@restricted
 def return_to_transport_menu(message):
     manage_transport(message)  # Возвращаем пользователя в меню транспорта
 
 
+# АААААААААААААААДДДДДДДДДДДДДДДДДДДММММММММММММММММММММММИИИИИИИИИИИИИИИИИИИИИИИИИИИННННННННННННННН
+
+
 
 ADMIN_USERNAME = "Alex"
-ADMIN_PASSWORD = "hh1515az"
-admin_sessions = set()
-
+ADMIN_PASSWORD = "lox"
+ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
 FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
+USER_DATA_PATH = 'data base/admin/users.json'
+BLOCKED_USERS_PATH = 'data base/admin/blocked_users.json'
+
+# Глобальные переменные и структура данных
+admin_sessions = set()
+active_users = {}
+total_users = set()
+function_usage = {'Статистика': 0, 'Отзывы': 0, 'Просмотр файлов БД': 0, 'Просмотр всех файлов': 0}
+INACTIVE_TIME = timedelta(minutes=1)
+
 
 # Глобальные переменные для хранения статистики
 active_users = {}  # {user_id: last_active_time}
-total_users = set()   # Общее количество пользователей
+total_users = set()  # Общее количество пользователей
 function_usage = {
     'Статистика': 0,
     'Отзывы': 0,
@@ -6293,94 +6385,372 @@ function_usage = {
 
 INACTIVE_TIME = timedelta(minutes=1)  # Время для определения неактивного пользователя
 
+# Проверка и создание необходимых директорий
+os.makedirs('data base/admin', exist_ok=True)
+
+# Функции для загрузки и сохранения данных
 def load_feedback():
     if os.path.exists(FEEDBACK_FILE_PATH):
         with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
     return {}
 
-def search_files_by_user_id(user_id):
-    # Код поиска файлов по user_id
-    pass
+def load_user_data():
+    if os.path.exists(USER_DATA_PATH):
+        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_PATH):
+        with open(BLOCKED_USERS_PATH, 'r', encoding='utf-8') as file:
+            return set(json.load(file))
+    return set()
+
+def save_user_data(user_data):
+    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
+        json.dump(user_data, file)
+
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_PATH, 'w', encoding='utf-8') as file:
+        json.dump(list(blocked_users), file)
 
 # Обновляем активность пользователя
-def update_user_activity(user_id):
+def update_user_activity(user_id, username=None):
     active_users[user_id] = datetime.now()
     total_users.add(user_id)  # Добавляем пользователя в список всех, кто когда-либо использовал бот
 
-# Проверяем активных пользователей
+    # Сохраняем информацию о пользователе
+    user_data = load_user_data()
+    if user_id not in user_data:
+        user_data[user_id] = {'username': username, 'last_active': datetime.now().isoformat()}
+        save_user_data(user_data)
+
+# Получаем ID пользователя по никнейму
+def get_user_id_by_username(username):
+    user_data = load_user_data()
+    for user_id, data in user_data.items():
+        if data['username'] == username:
+            return user_id
+    return None
+
+# Получаем список активных пользователей
+def list_active_users():
+    user_data = load_user_data()
+    active_user_list = [
+        f"ID: {user_id}, Username: {data['username']}"
+        for user_id, data in user_data.items() if user_id in active_users
+    ]
+    return "\n".join(active_user_list)
+
+def block_user(user_id):
+    blocked_users = load_blocked_users()
+    blocked_users.add(user_id)
+    save_blocked_users(blocked_users)
+
+def unblock_user(user_id):
+    blocked_users = load_blocked_users()
+    blocked_users.discard(user_id)
+    save_blocked_users(blocked_users)
+
+def is_user_blocked(user_id):
+    blocked_users = load_blocked_users()
+    return user_id in blocked_users
+
 def get_active_users_count():
     now = datetime.now()
     return sum(1 for last_active in active_users.values() if now - last_active <= INACTIVE_TIME)
 
-# Получаем статистику
 def get_statistics():
     online_count = get_active_users_count()
     total_count = len(total_users)
     return online_count, total_count, function_usage
 
+# Проверка и создание нужных директорий
+os.makedirs('data base/admin', exist_ok=True)
+
+# Загрузка сессий при старте
+def load_admin_sessions():
+    if os.path.exists(ADMIN_SESSIONS_PATH):
+        with open(ADMIN_SESSIONS_PATH, 'r') as file:
+            return set(json.load(file))
+    return set()
+
+# Сохранение сессий
+def save_admin_sessions():
+    with open(ADMIN_SESSIONS_PATH, 'w') as file:
+        json.dump(list(admin_sessions), file)
+
+# Инициализация сессий
+
+# Проверка и создание нужных директорий
+os.makedirs('data base/admin', exist_ok=True)
+
+# Функции для загрузки и сохранения данных
+def load_feedback():
+    if os.path.exists(FEEDBACK_FILE_PATH):
+        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+def load_user_data():
+    if os.path.exists(USER_DATA_PATH):
+        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_PATH):
+        with open(BLOCKED_USERS_PATH, 'r', encoding='utf-8') as file:
+            return set(json.load(file))
+    return set()
+
+def save_user_data(user_data):
+    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
+        json.dump(user_data, file)
+
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_PATH, 'w', encoding='utf-8') as file:
+        json.dump(list(blocked_users), file)
+
+# Функция для загрузки сессий админов при старте бота
+def load_admin_sessions():
+    if os.path.exists(ADMIN_SESSIONS_PATH):
+        with open(ADMIN_SESSIONS_PATH, 'r') as file:
+            return set(json.load(file))
+    return set()
+
+admin_sessions = load_admin_sessions()
+
+# Функция для сохранения сессий админов
+def save_admin_sessions():
+    with open(ADMIN_SESSIONS_PATH, 'w') as file:
+        json.dump(list(admin_sessions), file)
+
+admin_sessions = load_admin_sessions()
+
+# Декоратор для ограничений доступа
+def restricted(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if is_user_blocked(user_id):
+            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
+# Проверка блокировки пользователя
+def is_user_blocked(user_id):
+    blocked_users = load_blocked_users()
+    return user_id in blocked_users
+
+# Обновляем активность пользователя
+def update_user_activity(user_id, username=None):
+    active_users[user_id] = datetime.now()
+    total_users.add(user_id)
+
+    # Сохраняем информацию о пользователе
+    user_data = load_user_data()
+    if user_id not in user_data:
+        user_data[user_id] = {'username': username, 'last_active': datetime.now().isoformat()}
+        save_user_data(user_data)
+
+# Получаем ID пользователя по никнейму
+def get_user_id_by_username(username):
+    user_data = load_user_data()
+    for user_id, data in user_data.items():
+        if data['username'] == username:
+            return user_id
+    return None
+
+# Проверка и загрузка статистики пользователей
+def get_statistics():
+    online_count = sum(1 for last_active in active_users.values() if datetime.now() - last_active <= INACTIVE_TIME)
+    total_count = len(total_users)
+    return online_count, total_count, function_usage
+
+
+import hashlib
+
+# Создаём хеш от текущего логина и пароля
+def get_login_password_hash():
+    return hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
+
+# Проверка и загрузка сохранённого хеша логина и пароля
+def load_saved_login_password_hash():
+    path = 'data base/admin/login_password_hash.json'
+    if os.path.exists(path):
+        with open(path, 'r') as file:
+            return json.load(file).get("hash")
+    return None
+
+# Сохранение хеша логина и пароля
+def save_login_password_hash():
+    path = 'data base/admin/login_password_hash.json'
+    with open(path, 'w') as file:
+        json.dump({"hash": get_login_password_hash()}, file)
+
+# При старте бота: загрузить хеш логина и пароля, сравнить, сбросить сессии если изменилось
+saved_hash = load_saved_login_password_hash()
+current_hash = get_login_password_hash()
+
+if saved_hash != current_hash:
+    # Хеш логина и пароля изменился, удаляем сессии
+    admin_sessions.clear()
+    save_admin_sessions()
+    save_login_password_hash()
+
+# Основная обработка команды /admin
 @bot.message_handler(commands=['admin'])
 def handle_admin_login(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("В главное меню")
-    bot.send_message(message.chat.id, "Введите логин:", reply_markup=markup)
-    bot.register_next_step_handler(message, verify_username)
+    if message.chat.id in admin_sessions:
+        # Сессия есть, предложить быстрый вход
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Быстрый вход', 'Ввести логин и пароль заново')
+        bot.send_message(message.chat.id, "Выберите способ входа:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_login_choice)
+    else:
+        # Сессии нет, запрос логина
+        bot.send_message(message.chat.id, "Введите логин:")
+        bot.register_next_step_handler(message, verify_username)
+
+def process_login_choice(message):
+    if message.text == 'Быстрый вход' and message.chat.id in admin_sessions:
+        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Введите логин:")
+        bot.register_next_step_handler(message, verify_username)
 
 def verify_username(message):
-    if message.text.lower() == "в главное меню":
-        return_to_menu(message)
-        return
     username = message.text
     bot.send_message(message.chat.id, "Введите пароль:")
     bot.register_next_step_handler(message, verify_password, username)
 
 def verify_password(message, username):
-    if message.text.lower() == "в главное меню":
-        return_to_menu(message)
-        return
     password = message.text
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         admin_sessions.add(message.chat.id)
+        save_admin_sessions()
         bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
         show_admin_panel(message)
     else:
         bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
         handle_admin_login(message)
 
+# Показ админ-панели
 def show_admin_panel(message):
     markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add('Просмотр файлов БД', 'Просмотр всех файлов', 'Просмотр отзывов', 'Статистика', 'Выход')
+    markup.add('Включить бота', 'Выключить бота', 'Просмотр пользователей', 'Блокировка пользователей', 'Разблокировать пользователя', 'Статистика', 'Выход')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов БД' and message.chat.id in admin_sessions)
-def view_db_files_prompt(message):
-    # Код отображения файлов БД
-    pass
-
-@bot.message_handler(func=lambda message: message.text == 'Просмотр отзывов' and message.chat.id in admin_sessions)
-def view_feedback(message):
-    feedback_data = load_feedback()
-    if feedback_data:
-        feedbacks = "\n".join([f"{user_id}: {feedback}" for user_id, feedback in feedback_data.items()])
-        bot.send_message(message.chat.id, f"Собранные отзывы:\n{feedbacks}")
+@bot.message_handler(func=lambda message: message.text == 'Просмотр пользователей' and message.chat.id in admin_sessions)
+def view_users(message):
+    users = list_active_users()
+    if users:
+        bot.send_message(message.chat.id, f"Список активных пользователей:\n{users}")
     else:
-        bot.send_message(message.chat.id, "Отзывы отсутствуют.")
+        bot.send_message(message.chat.id, "Нет зарегистрированных активных пользователей.")
 
+@bot.message_handler(func=lambda message: message.text == 'Блокировка пользователей' and message.chat.id in admin_sessions)
+def block_user_prompt(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По никнейму (@username)")
+    bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_block_method)
+
+def choose_block_method(message):
+    if message.text == "По ID":
+        bot.send_message(message.chat.id, "Введите ID пользователя для блокировки:")
+        bot.register_next_step_handler(message, block_user_by_id)
+    elif message.text == "По никнейму (@username)":
+        bot.send_message(message.chat.id, "Введите никнейм пользователя для блокировки (например, @username):")
+        bot.register_next_step_handler(message, block_user_by_username)
+
+def block_user_by_id(message):
+    user_id = message.text
+    if user_id.isdigit():
+        block_user(int(user_id))
+        bot.send_message(message.chat.id, f"Пользователь с ID {user_id} заблокирован.")
+    else:
+        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
+        block_user_prompt(message)
+
+def block_user_by_username(message):
+    username = message.text.strip()
+    if username.startswith('@'):
+        username = username[1:]  # Убираем @ из никнейма
+    user_id = get_user_id_by_username(username)
+    if user_id is not None:
+        block_user(user_id)
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} заблокирован.")
+    else:
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
+        block_user_prompt(message)
+
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    # Проверяем, заблокирован ли пользователь
+    if is_user_blocked(user_id):
+        bot.send_message(message.chat.id, "Вы заблокированы и не можете использовать бота.")
+        return
+    update_user_activity(user_id, username)  # Обновляем активность пользователя
+    bot.send_message(message.chat.id, "Добро пожаловать!")
+
+@bot.message_handler(func=lambda message: message.text == 'Разблокировать пользователя' and message.chat.id in admin_sessions)
+def unblock_user_prompt(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По никнейму (@username)")
+    bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_unblock_method)
+
+def choose_unblock_method(message):
+    if message.text == "По ID":
+        bot.send_message(message.chat.id, "Введите ID пользователя для разблокировки:")
+        bot.register_next_step_handler(message, unblock_user_by_id)
+    elif message.text == "По никнейму (@username)":
+        bot.send_message(message.chat.id, "Введите никнейм пользователя для разблокировки (например, @username):")
+        bot.register_next_step_handler(message, unblock_user_by_username)
+
+def unblock_user_by_id(message):
+    user_id = message.text
+    if user_id.isdigit():
+        unblock_user(int(user_id))
+        bot.send_message(message.chat.id, f"Пользователь с ID {user_id} разблокирован.")
+    else:
+        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
+        unblock_user_prompt(message)
+
+def unblock_user_by_username(message):
+    username = message.text.strip()
+    if username.startswith('@'):
+        username = username[1:]  # Убираем @ из никнейма
+    user_id = get_user_id_by_username(username)
+    if user_id is not None:
+        unblock_user(user_id)
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} разблокирован.")
+    else:
+        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден.")
+        unblock_user_prompt(message)
+    
 @bot.message_handler(func=lambda message: message.text == 'Статистика' and message.chat.id in admin_sessions)
 def show_statistics(message):
     online_count, total_count, function_usage = get_statistics()
     usage_summary = "\n".join([f"{func}: {count}" for func, count in function_usage.items()])
-    
     response_message = (
         f"Пользователи онлайн: {online_count}\n"
         f"Всего пользователей: {total_count}\n\n"
         f"Использование функций:\n{usage_summary}"
     )
     bot.send_message(message.chat.id, response_message)
+    show_admin_panel(message)
 
+# Функция выхода из админ-панели
 @bot.message_handler(func=lambda message: message.text == 'Выход' and message.chat.id in admin_sessions)
-def logout(message):
-    admin_sessions.discard(message.chat.id)
+def admin_logout(message):
+    bot.send_message(message.chat.id, "Вы вышли из админ-панели. Быстрый вход сохранен.")
     return_to_menu(message)
 
 @bot.message_handler(commands=['feedback'])
