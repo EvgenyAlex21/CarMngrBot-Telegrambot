@@ -5168,7 +5168,7 @@ def handle_location_5(message):
             longitude = message.location.longitude
 
             # Сохраняем координаты пользователя
-            save_user_location(message.chat.id, latitude, longitude)
+            save_user_location(message.chat.id, latitude, longitude, None)  # city_code пока None
 
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
             markup.row('Сегодня', 'Завтра')
@@ -5196,23 +5196,36 @@ import requests
 import traceback
 from datetime import datetime
 
-def save_user_location(chat_id, latitude, longitude):
-    # Путь к файлу с координатами
-    file_path = 'data base/notifications/notifications.json'
-    
-    # Загружаем текущие данные из файла
+# Путь к файлу notifications.json
+notifications_file_path = 'data base/notifications/notifications.json'
+
+def save_user_location(chat_id, latitude, longitude, city_code):
+    # Загрузка существующих данных
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            user_data = json.load(f)
+        with open('data base/notifications/notifications.json', 'r') as f:
+            notifications = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        user_data = {}
+        notifications = {}
 
-    # Сохраняем новые координаты
-    user_data[str(chat_id)] = {'latitude': latitude, 'longitude': longitude}
+    # Проверка, существует ли запись для пользователя
+    if str(chat_id) not in notifications:
+        notifications[str(chat_id)] = {
+            "latitude": None,
+            "longitude": None,
+            "city_code": None
+        }
 
-    # Сохраняем обновленные данные в файл
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(user_data, f, ensure_ascii=False, indent=4)
+    # Обновление данных
+    if latitude is not None:
+        notifications[str(chat_id)]["latitude"] = latitude
+    if longitude is not None:
+        notifications[str(chat_id)]["longitude"] = longitude
+    if city_code is not None:
+        notifications[str(chat_id)]["city_code"] = city_code
+
+    # Сохранение обратно в файл
+    with open('data base/notifications/notifications.json', 'w') as f:
+        json.dump(notifications, f, ensure_ascii=False, indent=4)
 
 # Функции для загрузки координат и получения погоды
 def load_user_locations():
@@ -5258,7 +5271,7 @@ def get_current_weather(coords):
                 f"🌡️ *Температура:* {temperature}°C\n"
                 f"🌬️ *Ощущается как:* {feels_like}°C\n"
                 f"💧 *Влажность:* {humidity}%\n"
-                f"〽 *Давление:* {pressure} мм рт. ст.\n"
+                f"〽️ *Давление:* {pressure} мм рт. ст.\n"
                 f"💨 *Скорость ветра:* {wind_speed} м/с\n"
                 f"☁️ *Описание:* {description}\n"
             )
@@ -5274,13 +5287,76 @@ def get_current_weather(coords):
         traceback.print_exc()  # Если вы хотите все же видеть стек вызовов для отладки
     return None
 
+def get_average_fuel_prices(city_code):
+    fuel_prices = {}
+    file_path = f'data base/azs/{city_code}_table_azs_data.json'
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            prices_data = json.load(f)
+
+            for entry in prices_data:
+                fuel_type = entry[1]  # Тип топлива
+                price = entry[2]  # Цена топлива
+
+                if fuel_type not in fuel_prices:
+                    fuel_prices[fuel_type] = []
+
+                fuel_prices[fuel_type].append(price)
+
+    except FileNotFoundError:
+        print(f"Файл с ценами на топливо для города '{city_code}' не найден.")
+        return None
+    except json.JSONDecodeError:
+        print("Ошибка при декодировании JSON.")
+        return None
+
+    # Вычисление средних цен
+    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
+
+    return average_prices
+
+def load_city_names(file_path):
+    city_names = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                # Разделяем строку на название города и его код
+                city_data = line.strip().split(' - ')
+                if len(city_data) == 2:
+                    city_name, city_code = city_data
+                    city_names[city_code] = city_name  # Добавляем в словарь
+    except FileNotFoundError:
+        print(f"Файл с названиями городов '{file_path}' не найден.")
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+    
+    return city_names
+
+
 def send_weather_notifications():
     user_locations = load_user_locations()
+    city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
+    
     for chat_id, coords in user_locations.items():
         weather_message = get_current_weather(coords)
+        
         if weather_message:
+            city_code = coords.get('city_code')
+            city_name = city_names.get(city_code, city_code)  # Получаем название города
+            average_prices = get_average_fuel_prices(city_code)
+
+             # Получаем текущую дату и время
+            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M") 
+
+            fuel_prices_message = ""
+            if average_prices:
+                fuel_prices_message = "\n*Актуальные цены на топливо (город {}) на дату {}:*\n\n".format(city_name, current_time)
+                for fuel_type, price in average_prices.items():
+                    fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
+
             try:
-                bot.send_message(chat_id, weather_message, parse_mode="Markdown")
+                bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
             except Exception as e:
                 print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
                 traceback.print_exc()
@@ -5897,24 +5973,31 @@ def process_city_selection(message):
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
         return
 
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
+    city_name = message.text.strip().lower()
+    city_code = get_city_code(city_name)
 
-    city_name = message.text.strip().lower()  # Приводим к нижнему регистру
-    cities = load_cities()  # Загружаем словарь городов
-    
-    city_code = get_city_code(city_name)  # Поиск кода города
     if city_code:
-        # Убедимся, что данные о пользователе существуют
         if str_chat_id not in user_data:
             user_data[str_chat_id] = {'recent_cities': [], 'city_code': None}
 
-        # Обновляем список последних городов
         update_recent_cities(str_chat_id, city_name)
-        
-        user_data[str_chat_id]['city_code'] = city_code  # Сохраняем новый код города
-        save_citys_users_data()  # Сохраняем данные после обновления city_code
+        user_data[str_chat_id]['city_code'] = city_code  # Сохраняем код города
+
+        # Получаем координаты пользователя
+        notifications = load_user_locations()  # Функция для загрузки notifications.json
+        user_info = notifications.get(str_chat_id)
+
+        if user_info:
+            latitude = user_info.get('latitude')
+            longitude = user_info.get('longitude')
+        else:
+            latitude = None
+            longitude = None
+
+        # Сохраняем city_code в notifications.json
+        save_user_location(chat_id, latitude, longitude, city_code)
+
+        save_citys_users_data()
         show_fuel_price_menu(chat_id, city_code)
     else:
         bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
