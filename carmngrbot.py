@@ -27636,24 +27636,26 @@ def process_custom_plan_unit(message, user_id):
 @text_only_handler
 @rate_limit_with_captcha
 def process_custom_plan_duration(message, user_id, unit):
-
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
         return
-		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
-
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     try:
-        duration = float(message.text.strip())
+        # Заменяем запятую на точку для корректной обработки
+        input_text = message.text.strip().replace(',', '.')
+        duration = float(input_text)
         if duration <= 0:
             raise ValueError("Длительность должна быть положительным числом!")
-        duration_int = int(duration)  
+        
+        # Форматирование длительности: целое или с 2 знаками после точки
+        duration_display = f"{int(duration)}" if duration.is_integer() else f"{duration:.2f}"
+        duration_int = int(duration)
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].setdefault(str(user_id), {'plans': []})
@@ -27678,13 +27680,13 @@ def process_custom_plan_duration(message, user_id, unit):
 
         if unit.lower() == 'в минутах':
             new_end_date = latest_end_date + timedelta(minutes=duration)
-            duration_str = f"{duration_int} мин."
+            duration_str = f"{duration_display} мин."
         elif unit.lower() == 'в часах':
             new_end_date = latest_end_date + timedelta(hours=duration)
-            duration_str = f"{duration_int} ч."
+            duration_str = f"{duration_display} ч."
         else:
             new_end_date = latest_end_date + timedelta(days=duration)
-            duration_str = f"{duration_int} дн."
+            duration_str = f"{duration_display} дн."
 
         new_plan = {
             "plan_name": "custom",
@@ -28531,12 +28533,14 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         return
 
     try:
-        input_amount = float(message.text.strip())
+        # Заменяем запятую на точку для корректной обработки
+        input_text = message.text.strip().replace(',', '.')
+        input_amount = float(input_text)
         if input_amount <= 0:
             raise ValueError("Количество должно быть положительным!")
 
-        # Сохраняем исходное значение для отображения
-        display_amount = f"{input_amount:.0f}" if input_amount.is_integer() else f"{input_amount:.2f}"
+        # Форматирование количества: целое или с 2 знаками после точки
+        display_amount = f"{int(input_amount)}" if input_amount.is_integer() else f"{input_amount:.2f}"
 
         # Конвертация в дни для времени подписки
         amount = input_amount
@@ -29200,6 +29204,7 @@ def manage_points(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def add_points(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Начисление баллов'):
@@ -29226,6 +29231,7 @@ def add_points(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для начисления баллов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_points)
 
+@text_only_handler
 def process_add_points(message):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29249,12 +29255,12 @@ def process_add_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -29268,6 +29274,7 @@ def process_add_points(message):
     bot.send_message(message.chat.id, "Введите количество баллов для начисления:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_points_amount, user_id)
 
+@text_only_handler
 def process_add_points_amount(message, user_id):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29280,9 +29287,14 @@ def process_add_points_amount(message, user_id):
         return
 
     try:
-        points = float(message.text.strip())
+        # Заменяем запятую на точку для корректной обработки
+        input_text = message.text.strip().replace(',', '.')
+        points = float(input_text)
         if points <= 0:
             raise ValueError("Количество баллов должно быть положительным!")
+
+        # Форматирование баллов: целое или с 2 знаками после точки
+        points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].setdefault(str(user_id), {
@@ -29291,7 +29303,6 @@ def process_add_points_amount(message, user_id):
         users_data = load_users()
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-        # Исправлено: убрано ограничение min(..., 100)
         user_data['referral_points'] = user_data.get('referral_points', 0) + points
         user_data.setdefault('points_history', []).append({
             'action': 'earned',
@@ -29301,8 +29312,8 @@ def process_add_points_amount(message, user_id):
         })
 
         save_payments_data(data)
-        admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{points} баллов*! Текущий баланс: {user_data['referral_points']}"
-        user_message = f"🎉 Администратор начислил вам *{points} баллов*! Текущий баланс: {user_data['referral_points']}"
+        admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{points_display} баллов*!"
+        user_message = f"✅ Администратор начислил вам *{points_display} баллов*!"
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
         manage_points(message)
@@ -29318,6 +29329,7 @@ def process_add_points_amount(message, user_id):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def view_points(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр баллов'):
@@ -29344,6 +29356,7 @@ def view_points(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра баллов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_points)
 
+@text_only_handler
 def process_view_points(message):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29367,12 +29380,12 @@ def process_view_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -29382,36 +29395,105 @@ def process_view_points(message):
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
-    # Исправлено: убрано escape_markdown для username
     username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
 
     history = user_data.get('points_history', [])
     total_earned = sum(entry['points'] for entry in history if entry['action'] == 'earned')
     total_spent = sum(entry['points'] for entry in history if entry['action'] == 'spent')
+
+    # Категории начисления баллов
+    earned_daily = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'] == 'Ежедневный вход')
+    earned_admin = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Начисление от администратора'))
+    earned_gifts = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Подарок от'))
+    earned_first_purchase = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Первая покупка подписки'))
+    earned_points_purchase = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Покупка') and 'баллов' in entry['reason'])
     earned_referrals = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry.get('source') == 'referral')
-    earned_purchases = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry.get('source') == 'purchase')
     earned_top_referrals = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry.get('source') == 'top_referral')
-    earned_gifts = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry.get('source') == 'gift')
-    spent_time = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry.get('reason') == 'Обмен на время')
-    spent_discounts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry.get('reason') == 'Обмен на скидку')
-    spent_features = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry.get('reason') == 'Обмен на функции')
-    gifted_points = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry.get('reason') == 'Подарок другому пользователю')
+    earned_purchases = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry.get('source') == 'purchase')
+
+    # Категории трат баллов
+    spent_gifts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Подарок'))
+    spent_time = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and ('дн.' in entry['reason'] or 'ч.' in entry['reason']))
+    spent_discounts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and '%' in entry['reason'])
+    spent_features = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'] == 'Обмен на функции')
+    spent_admin_delete = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'] == 'удаление покупок администратором')
+    spent_admin = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower() == 'списание администратором')
+
+    # Функция для форматирования чисел
+    def format_number(num):
+        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+
+    # Вычисление времени для "Подарено времени" и "Получено времени"
+    gifted_time_minutes = 0
+    received_time_minutes = 0
+    import re
+    for entry in history:
+        if entry['reason'].startswith('Обмен на') and ('дн.' in entry['reason'] or 'ч.' in entry['reason']):
+            time_str = entry['reason'].split('Обмен на ')[1]
+            days = 0
+            hours = 0
+            if 'дн.' in time_str:
+                days_match = re.search(r'(\d+\.?\d*)\s*дн\.', time_str)
+                if days_match:
+                    days = float(days_match.group(1))
+            if 'ч.' in time_str:
+                hours_match = re.search(r'(\d+\.?\d*)\s*ч\.', time_str)
+                if hours_match:
+                    hours = float(hours_match.group(1))
+            total_minutes = days * 24 * 60 + hours * 60
+            if entry['action'] == 'spent':
+                gifted_time_minutes += total_minutes
+            elif entry['action'] == 'earned':
+                received_time_minutes += total_minutes
+
+    # Функция для форматирования времени
+    def format_time(minutes):
+        if minutes == 0:
+            return "0 мин."
+        days = int(minutes // (24 * 60))
+        remaining_minutes = minutes % (24 * 60)
+        hours = int(remaining_minutes // 60)
+        mins = int(remaining_minutes % 60)
+        if days > 0:
+            parts = []
+            if days > 0:
+                parts.append(f"{days} день" if days == 1 else f"{days} дней")
+            if hours > 0:
+                parts.append(f"{hours} час" if hours == 1 else f"{hours} часов")
+            if mins > 0:
+                parts.append(f"{mins} мин.")
+            return " ".join(parts)
+        elif hours > 0:
+            parts = []
+            if hours > 0:
+                parts.append(f"{hours} час" if hours == 1 else f"{hours} часов")
+            if mins > 0:
+                parts.append(f"{mins} мин.")
+            return " ".join(parts)
+        else:
+            return f"{mins} мин."
 
     points_summary = (
-        f"💰 *Баллы пользователя {username} - `{user_id}`:*\n\n"
-        f"🎁 *Текущие баллы:* {points}\n\n"
-        f"🔥 *Всего заработано:* {total_earned}\n"
-        f"  • За рефералов: {earned_referrals}\n"
-        f"  • За покупки: {earned_purchases}\n"
-        f"  • За топ рефералов: {earned_top_referrals}\n"
-        f"  • Получено в подарок: {earned_gifts}\n\n"
-        f"💸 *Всего потрачено:* {total_spent}\n"
-        f"  • На время: {spent_time}\n"
-        f"  • На скидки: {spent_discounts}\n"
-        f"  • На функции: {spent_features}\n"
-        f"  • Подарено другим: {gifted_points}\n\n"
-        f"⏳ *Подарено времени:* 0 мин.\n"
-        f"⏳ *Получено времени:* 0 мин."
+        f"💰 *Баллы пользователя* {username} - `{str(user_id)}`:\n\n\n"
+        f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
+        f"🔥 *Всего заработано:* {format_number(total_earned)}\n"
+        f"  • Ежедневный вход: {format_number(earned_daily)}\n"
+        f"  • Начисление от администратора: {format_number(earned_admin)}\n"
+        f"  • Подарок от других: {format_number(earned_gifts)}\n"
+        f"  • Первая покупка подписки: {format_number(earned_first_purchase)}\n"
+        f"  • Покупка баллов: {format_number(earned_points_purchase)}\n"
+        f"  • За рефералов: {format_number(earned_referrals)}\n"
+        f"  • За топ рефералов: {format_number(earned_top_referrals)}\n"
+        f"  • За покупки: {format_number(earned_purchases)}\n\n"
+        f"💸 *Всего потрачено:* {format_number(total_spent)}\n"
+        f"  • Подарок другим: {format_number(spent_gifts)}\n"
+        f"  • Обмен на время: {format_number(spent_time)}\n"
+        f"  • Обмен на скидки: {format_number(spent_discounts)}\n"
+        f"  • Обмен на функции: {format_number(spent_features)}\n"
+        f"  • Удаление покупок администратором: {format_number(spent_admin_delete)}\n"
+        f"  • Списание администратором: {format_number(spent_admin)}\n\n"
+        f"⏳ *Подарено времени:* {format_time(gifted_time_minutes)}\n"
+        f"⏳ *Получено времени:* {format_time(received_time_minutes)}"
     )
 
     message_parts = split_message(points_summary)
@@ -29428,6 +29510,7 @@ def process_view_points(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def remove_points(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Списание баллов'):
@@ -29454,6 +29537,7 @@ def remove_points(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для списания баллов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_remove_points)
 
+@text_only_handler
 def process_remove_points(message):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29477,15 +29561,15 @@ def process_remove_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_remove_points)
         return
 
@@ -29493,7 +29577,7 @@ def process_remove_points(message):
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
     if points == 0:
-        bot.send_message(message.chat.id, "У пользователя нет баллов для списания!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ У пользователя нет баллов для списания!", parse_mode="Markdown")
         manage_points(message)
         return
 
@@ -29501,9 +29585,10 @@ def process_remove_points(message):
     markup.add('Вернуться в управление баллами')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, f"Введите количество баллов для списания (текущий баланс: {points}):", reply_markup=markup)
+    bot.send_message(message.chat.id, f"Введите количество баллов для списания:", reply_markup=markup)
     bot.register_next_step_handler(message, process_remove_points_amount, user_id)
 
+@text_only_handler
 def process_remove_points_amount(message, user_id):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29516,20 +29601,22 @@ def process_remove_points_amount(message, user_id):
         return
 
     try:
-        # Исправлено: обработка запятой как десятичного разделителя
+        # Заменяем запятую на точку для корректной обработки
         input_text = message.text.strip().replace(',', '.')
         points = float(input_text)
         if points <= 0:
             raise ValueError("Количество баллов должно быть положительным!")
 
+        # Форматирование баллов: целое или с 2 знаками после точки
+        points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
+
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
         current_points = user_data.get('referral_points', 0)
         if points > current_points:
-            raise ValueError("Недостаточно баллов для списания!")
+            raise ValueError("❌ Недостаточно баллов для списания!")
 
         users_data = load_users()
-        # Исправлено: проверка корректности username
         username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
         if not username.startswith('@'):
             username = f"@{username}"
@@ -29543,9 +29630,8 @@ def process_remove_points_amount(message, user_id):
         })
 
         save_payments_data(data)
-        # Исправлено: форматирование баллов с .1f
-        admin_message = f"✅ С пользователя {username} - `{user_id}` списано *{points:.1f} баллов*! Текущий баланс: {user_data['referral_points']:.1f}"
-        user_message = f"🚫 Администратор списал *{points:.1f} баллов*! Текущий баланс: {user_data['referral_points']:.1f}"
+        admin_message = f"🚫 С пользователя {username} - `{user_id}` списано *{points_display} баллов*!"
+        user_message = f"🚫 Администратор списал *{points_display} баллов*!"
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
         manage_points(message)
@@ -29561,6 +29647,7 @@ def process_remove_points_amount(message, user_id):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def view_points_history(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр истории баллов'):
@@ -29587,6 +29674,7 @@ def view_points_history(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра истории баллов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_points_history)
 
+@text_only_handler
 def process_view_points_history(message):
     if message.text == "Вернуться в управление баллами":
         manage_points(message)
@@ -29610,15 +29698,15 @@ def process_view_points_history(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_view_points_history)
         return
 
@@ -29626,20 +29714,33 @@ def process_view_points_history(message):
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     history = user_data.get('points_history', [])
     if not history:
-        bot.send_message(message.chat.id, "История операций с баллами пуста!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ История операций с баллами пуста!", parse_mode="Markdown")
         manage_points(message)
         return
 
     username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
     if not username.startswith('@'):
         username = f"@{username}"
-    history_summary = f"*История баллов пользователя {username} - `{user_id}`:*\n\n"
+
+    # Функция для форматирования чисел
+    def format_number(num):
+        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+
+    # Функция для форматирования даты (убираем секунды)
+    def format_date(date_str):
+        return re.sub(r'(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2}):\d{2}', r'\1', date_str)
+
+    history_summary = f"*История баллов пользователя* {escape_markdown(username)} - `{user_id}`:\n\n\n"
     for idx, entry in enumerate(history, 1):
         action = "Заработано" if entry['action'] == 'earned' else "Потрачено"
-        # Исправлено: форматирование баллов с .1f
+        points = format_number(entry['points'])
+        date = format_date(entry['date'])
+        reason = escape_markdown(entry['reason'].lower())
         history_summary += (
-            f"📝 *№{idx}.* {entry['date']} - {action}: {entry['points']:.1f} баллов\n"
-            f"📋 *Причина:* {escape_markdown(entry['reason'])}\n\n"
+            f"📝 *№{idx}. {action}:*\n\n"
+            f"💰 *Количество:* {points} баллов\n"
+            f"📅 *Дата:* {date}\n"
+            f"📋 *Причина:* {reason}\n\n\n"
         )
 
     message_parts = split_message(history_summary)
@@ -29647,7 +29748,7 @@ def process_view_points_history(message):
         bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
     manage_points(message)
-
+    
 # ---------- 37. УПРАВЛЕНИЕ ОБМЕНАМИ ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Управление обменами' and check_admin_access(message))
@@ -29655,6 +29756,7 @@ def process_view_points_history(message):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
+@text_only_handler
 def manage_exchanges(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление обменами'):
@@ -29674,6 +29776,7 @@ def manage_exchanges(message):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
+@text_only_handler
 def perform_exchange(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Выполнить обмен'):
@@ -29700,6 +29803,7 @@ def perform_exchange(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для выполнения обмена:", reply_markup=markup)
     bot.register_next_step_handler(message, process_perform_exchange)
 
+@text_only_handler
 def process_perform_exchange(message):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -29723,12 +29827,12 @@ def process_perform_exchange(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -29746,19 +29850,30 @@ def process_perform_exchange(message):
     total_exchanged = sum(h['points'] for h in user_data.get('points_history', []) if h['action'] == "spent")
     exchange_rate = 2.4 if total_exchanged >= 100 else 2.0
 
+    # Функция для форматирования чисел
+    def format_number(num):
+        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+
+    username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
+    if not username.startswith('@'):
+        username = f"@{username}"
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Обмен на время', 'Обмен на скидку', 'Обмен на функции')
     markup.add('Вернуться в управление обменами')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, (
-        f"Выберите тип обмена для пользователя (баллы: {points:.1f}):\n\n"
-        f"- Время подписки: 1 балл = {exchange_rate} часа\n"
-        f"- Скидка: 15 баллов = 5% (макс. 35%)\n"
-        f"- Доступ к функциям: 5 баллов = 15 минут"
+        f"Выберите тип обмена для пользователя {escape_markdown(username)} - `{user_id}`:\n\n\n"
+        f"🎁 *Текущие баллы:* {format_number(points)}\n\n\n"
+        f"🔄 *Возможные обмены:*\n\n"
+        f"⏳ - *Время подписки:* _1 балл = {exchange_rate} часа_\n"
+        f"🏷️ - *Скидка:* _15 баллов = 5% (макс. 35%)_\n"
+        f"🔓 - *Доступ к функциям:* _5 баллов = 15 минут_"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_perform_exchange_type, user_id, exchange_rate)
 
+@text_only_handler
 def process_perform_exchange_type(message, user_id, exchange_rate):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -29780,18 +29895,22 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
 
+    # Функция для форматирования чисел
+    def format_number(num):
+        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в управление обменами')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     if exchange_type == 'Обмен на время':
         bot.send_message(message.chat.id, (
-            f"Введите количество баллов для обмена на время (1 балл = {exchange_rate} часа, баллы: {points:.1f}):"
+            f"Введите количество баллов для обмена на время (1 балл = {exchange_rate} часа, баллы: {format_number(points)}):"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_time, user_id, exchange_rate)
     elif exchange_type == 'Обмен на скидку':
         bot.send_message(message.chat.id, (
-            f"Введите количество баллов для обмена на скидку (15 баллов = 5%, макс. 35%, баллы: {points:.1f}):"
+            f"Введите количество баллов для обмена на скидку (15 баллов = 5%, макс. 35%, баллы: {format_number(points)}):"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
@@ -29809,10 +29928,11 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, (
-            f"Выберите функцию для обмена (5 баллов = 15 минут, баллы: {points:.1f}):"
+            f"Выберите функцию для обмена (5 баллов = 15 минут, баллы: {format_number(points)}):"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_feature, user_id)
 
+@text_only_handler
 def process_perform_exchange_time(message, user_id, exchange_rate):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -29888,7 +30008,7 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
         else:
             user_message += f"*{remaining_hours:.1f} ч.*! "
         user_message += f"Новый срок: {new_end.strftime('%d.%m.%Y в %H:%M')}"
-        
+
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
 
@@ -29897,6 +30017,7 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
         bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_time, user_id, exchange_rate)
 
+@text_only_handler
 def process_perform_exchange_discount(message, user_id):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -29971,6 +30092,7 @@ def process_perform_exchange_discount(message, user_id):
         bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
 
+@text_only_handler
 def process_perform_exchange_feature(message, user_id):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -30006,16 +30128,21 @@ def process_perform_exchange_feature(message, user_id):
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
 
+    # Функция для форматирования чисел
+    def format_number(num):
+        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в управление обменами')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, (
         f"Введите количество баллов для обмена на функцию '{feature}' "
-        f"(5 баллов = 15 минут, баллы: {points:.1f}):"
+        f"(5 баллов = 15 минут, баллы: {format_number(points)}):"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_perform_exchange_feature_amount, user_id, feature)
 
+@text_only_handler
 def process_perform_exchange_feature_amount(message, user_id, feature):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -30101,6 +30228,7 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
+@text_only_handler
 def view_exchanges(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр обменов'):
@@ -30127,6 +30255,7 @@ def view_exchanges(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра обменов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_exchanges)
 
+@text_only_handler
 def process_view_exchanges(message):
     if message.text == "Вернуться в управление обменами":
         manage_exchanges(message)
@@ -30150,12 +30279,12 @@ def process_view_exchanges(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -30177,7 +30306,8 @@ def process_view_exchanges(message):
     exchanges_summary = f"*История обменов пользователя {username} - `{user_id}`:*\n\n"
     for idx, entry in enumerate(exchanges, 1):
         exchanges_summary += (
-            f"📝 *№{idx}.* {entry['date']} - Потрачено: {entry['points']:.1f} баллов\n"
+            f"📝 *№{idx}.* {entry['date']} - Потрачено:\n\n"
+            f"💰 *Количество:* {entry['points']:.1f} баллов\n"
             f"📋 *Причина:* {escape_markdown(entry['reason'])}\n\n"
         )
 
@@ -30211,6 +30341,7 @@ def manage_discounts(message):
 # ---------- 38.1 Создать промокод ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Создать промокод' and check_admin_access(message))
+@text_only_handler
 def create_promo_code(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Создать промокод'):
@@ -30224,6 +30355,7 @@ def create_promo_code(message):
     bot.send_message(message.chat.id, "Введите процент скидки для нового промокода (1-100%):", reply_markup=markup)
     bot.register_next_step_handler(message, process_create_promo_code_discount)
 
+@text_only_handler
 def process_create_promo_code_discount(message):
     if message.text == "Вернуться в управление скидками":
         manage_discounts(message)
@@ -30250,6 +30382,7 @@ def process_create_promo_code_discount(message):
         bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_create_promo_code_discount)
 
+@text_only_handler
 def process_create_promo_code_uses(message, discount):
     if message.text == "Вернуться в управление скидками":
         manage_discounts(message)
@@ -30289,6 +30422,7 @@ def process_create_promo_code_uses(message, discount):
 # ---------- 38.2 Назначить скидку ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Назначить скидку' and check_admin_access(message))
+@text_only_handler
 def assign_discount(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Назначить скидку'):
@@ -30315,6 +30449,7 @@ def assign_discount(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для назначения скидки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_assign_discount)
 
+@text_only_handler
 def process_assign_discount(message):
     if message.text == "Вернуться в управление скидками":
         manage_discounts(message)
@@ -30338,12 +30473,12 @@ def process_assign_discount(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'].lower() == username.lower():
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -30357,6 +30492,7 @@ def process_assign_discount(message):
     bot.send_message(message.chat.id, "Введите процент скидки (1-100%):", reply_markup=markup)
     bot.register_next_step_handler(message, process_assign_discount_amount, user_id)
 
+@text_only_handler
 def process_assign_discount_amount(message, user_id):
     if message.text == "Вернуться в управление скидками":
         manage_discounts(message)
@@ -30422,6 +30558,7 @@ def process_assign_discount_amount(message, user_id):
 # ---------- 38.3 Просмотр промокодов ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр промокодов' and check_admin_access(message))
+@text_only_handler
 def view_promo_codes(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр промокодов'):
@@ -30490,6 +30627,7 @@ def view_promo_codes(message):
 # ---------- 38.4 Удаление промокодов ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Удаление промокодов' and check_admin_access(message))
+@text_only_handler
 def delete_promo_code(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удаление промокодов'):
@@ -30571,6 +30709,7 @@ def delete_promo_code(message):
     bot.send_message(message.chat.id, "Введите номер промокода для удаления:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_promo_code, promo_list)
 
+@text_only_handler
 def process_delete_promo_code(message, promo_list):
     if message.text == "Вернуться в управление скидками":
         manage_discounts(message)
