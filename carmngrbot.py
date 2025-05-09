@@ -212,85 +212,18 @@ def return_to_menu(message):
 
 # (7) --------------- ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ ДЛЯ ПОЛЬЗОВАТЕЛЯ ---------------
 
-# (7.1) --------------- ОБРАБОТЧИК КОМАНДЫ /INFO ---------------
-
-@bot.message_handler(func=lambda message: message.text == "Инфо")
-@bot.message_handler(commands=['info'])
-def information_handler(message):
-    chat_id = message.chat.id
-    if message.text == "Вернуться в меню":
-        reset_and_start_over(chat_id)
-        return  
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption) # type: ignore
-        return
-    try:
-        with open('files/about.txt', 'r', encoding='utf-8') as information_file:
-            information_text = information_file.read()
-        bot.send_message(message.chat.id, information_text)
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, "Извините, информация недоступна в данный момент.")
-
-# (7.2) --------------- ОБРАБОТЧИК КОМАНДЫ /MANUAL---------------
-
-@bot.message_handler(func=lambda message: message.text == "Инструкция")
-@bot.message_handler(commands=['manual'])
-def information_handler(message):
-    chat_id = message.chat.id
-    if message.text == "Вернуться в меню":
-        reset_and_start_over(chat_id)
-        return  
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)  # type: ignore
-        return
-    try:
-        with open('files/manual.txt', 'r', encoding='utf-8') as information_file:
-            information_text = information_file.read()
-        bot.send_message(message.chat.id, information_text)
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, "Извините, инструкция недоступна в данный момент.")
-
-# (7.3) --------------- ОБРАБОТЧИК КОМАНДЫ /POLICY---------------
-
-@bot.message_handler(func=lambda message: message.text == "Политика")
-@bot.message_handler(commands=['policy'])
-def privacy_policy_handler(message):
-    chat_id = message.chat.id
-    if message.text == "Вернуться в меню":
-        reset_and_start_over(chat_id)
-        return 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption) # type: ignore
-        return
-    try:
-        with open('files/privacy_policy.txt', 'r', encoding='utf-8') as policy_file:
-            privacy_policy_text = policy_file.read()
-        bot.send_message(message.chat.id, privacy_policy_text)
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, "Извините, политика конфиденциальности недоступна в данный момент.")
-
-# (7.4) --------------- ОБРАБОТЧИК КОМАНДЫ /AGREEMENT---------------
-
-@bot.message_handler(func=lambda message: message.text == "Соглашение")
-@bot.message_handler(commands=['agreement'])
-def user_agreement_handler(message):
-    chat_id = message.chat.id
-    if message.text == "Вернуться в меню":
-        reset_and_start_over(chat_id)
-        return
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption) # type: ignore
-        return
-    try:
-        with open('files/user_agreement.txt', 'r', encoding='utf-8') as agreement_file:
-            user_agreement_text = agreement_file.read()
-        bot.send_message(message.chat.id, user_agreement_text)
-    except FileNotFoundError:
-        bot.send_message(message.chat.id, "Извините, пользовательское соглашение недоступно в данный момент.")
+@bot.message_handler(func=lambda message: message.text == "Сайт")
+@bot.message_handler(commands=['website'])
+def send_website_file(message):
+    # Отправка гиперссылки на сайт
+    bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")  # http://carmngrbot.com.swtest.ru/ # https://goo.su/5htqWmk
+    
+    # Закомментированная часть для отправки файла
+    # try:
+    #     with open('files/website.html', 'rb') as website_file:
+    #         bot.send_document(chat_id, website_file)
+    # except FileNotFoundError:
+    #     bot.send_message(chat_id, "Извините, файл website не найден")
 
 # (8) --------------- ОБРАБОТЧИК КОМАНДЫ "РАСХОД ТОПЛИВА"---------------
 
@@ -10644,7 +10577,7 @@ def confirm_delete_feedback(message, feedback_data):
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
 # Функция для обработки повторных попыток
-def start_bot_with_retries(retries=5, delay=5):
+def start_bot_with_retries(retries=10000000, delay=5):
     attempt = 0
     while attempt < retries:
         try:
