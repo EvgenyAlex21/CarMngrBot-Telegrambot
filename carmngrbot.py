@@ -38,28 +38,80 @@ bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
 
 def save_data(user_id): 
     if user_id in user_trip_data:
-        folder_path = "data base"
+        folder_path = "data base\\trip"  # или используйте прямой слэш "data base/trip"
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         with open(os.path.join(folder_path, f"{user_id}_trip_data.json"), "w") as json_file:
             json.dump(user_trip_data[user_id], json_file)
 
+# Псевдоданные - просто для примера
+# В реальном случае данные приходят из пользовательского ввода или другого источника
+user_trip_data = {}
+
+# Функция для добавления поездки
+def add_trip(user_id, trip):
+    if user_id not in user_trip_data:
+        user_trip_data[user_id] = []
+    user_trip_data[user_id].append(trip)
+
+# Функция для сохранения данных
+def save_trip_data(user_id):
+    folder_path = "data base\\trip"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    # Сохраняем данные поездок для конкретного пользователя
+    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
+    with open(file_path, "w") as json_file:
+        json.dump(user_trip_data.get(user_id, []), json_file, ensure_ascii=False, indent=4)
+
+# Данные поездок для всех пользователей
+user_trip_data = {}
+
+# Путь к папке с данными
+folder_path = "data base\\trip"
+
+# Функция для загрузки данных для одного пользователя
+def load_trip_data(user_id):
+    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as json_file:
+            return json.load(json_file)
+    else:
+        return []  # Если данных нет, возвращаем пустой список
+
+# Функция для загрузки данных для всех пользователей
+def load_all_user_data():
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)  # Если папка не существует, создаем её
+    for filename in os.listdir(folder_path):
+        if filename.endswith("_trip_data.json"):
+            user_id = filename.split("_")[0]  # Извлекаем user_id из имени файла
+            user_trip_data[user_id] = load_trip_data(user_id)  # Загружаем данные для пользователя
+
+# Функция для сохранения данных
 def save_trip_data(user_id):
     if user_id in user_trip_data:
-        folder_path = "data base"
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        with open(os.path.join(folder_path, f"{user_id}_trip_data.json"), "w") as json_file:
-            json.dump(user_trip_data[user_id], json_file)
+        file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
+        with open(file_path, "w") as json_file:
+            json.dump(user_trip_data[user_id], json_file, ensure_ascii=False, indent=4)
 
-def load_trip_data(user_id):
-    folder_path = "data base" 
-    try:
-        with open(os.path.join(folder_path, f"{user_id}_trip_data.json"), "r") as json_file:
-            return json.load(json_file)
-    except FileNotFoundError:
-        return []
+# Функция для добавления поездки
+def add_trip(user_id, trip):
+    if user_id not in user_trip_data:
+        user_trip_data[user_id] = []
+    user_trip_data[user_id].append(trip)
+
+# Функция для сохранения данных всех пользователей при выходе
+def save_all_trip_data():
+    for user_id in user_trip_data:
+        save_trip_data(user_id)
+
+# Загружаем все данные при старте бота
+load_all_user_data()
+
+
 
 # (3.2) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ТРАТЫ) ---------------
 
@@ -303,24 +355,24 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 
 # (9.2) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДЫ /restart1 ) ---------------
 
+# Пример функции, которая вызывается при выходе в меню расчета топлива
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
 @restricted
 @track_user_activity
-@bot.message_handler(commands=['restart1'])
-@restricted
-@track_user_activity
 def restart_handler(message):
-    chat_id = message.chat.id
     user_id = message.chat.id
-    reset_and_start_over(chat_id)
-    if user_id not in user_trip_data:
-        user_trip_data[user_id] = load_trip_data(user_id)
-    load_trip_data(user_id)
-    for user_id in user_trip_data.keys():
-        user_trip_data[user_id] = load_trip_data(user_id)
+
+    # Сохраняем данные перед выходом в меню
+    save_trip_data(user_id)
+
+    # Загружаем данные для пользователя при возвращении в меню
+    user_trip_data[user_id] = load_trip_data(user_id)
+
+    # Возвращаемся в меню
+    reset_and_start_over(message.chat.id)
 
 def reset_and_start_over(chat_id):
-    save_trip_data(chat_id)
+    # Отправляем новое меню пользователю
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Рассчитать расход топлива")
     item2 = types.KeyboardButton("Посмотреть поездки")
@@ -332,7 +384,10 @@ def reset_and_start_over(chat_id):
     markup.add(item4)
 
     bot.send_message(chat_id, "Вы вернулись в меню расчета топлива. Выберите действие:", reply_markup=markup)
-    pass
+
+# Когда бот завершает работу или пользователь выходит из меню, сохраняем все данные
+# Например, при перезапуске или выходе:
+save_all_trip_data()
 
 # (9.3) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ЗАГРУЗКА ДАННЫХ ПРИ /restart1) ---------------
 
@@ -353,11 +408,12 @@ def calculate_fuel_cost_handler(message):
     bot.clear_step_handler_by_chat_id(chat_id)
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item2 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item3 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
     markup.add(item3)
-    markup.add(item1, item2)
     sent = bot.send_message(chat_id, "Введите начальное местоположение или отправьте геолокацию:", reply_markup=markup)
     reset_user_data(chat_id)  
 
@@ -367,11 +423,12 @@ def calculate_fuel_cost_handler(message):
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item2 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item3 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
     markup.add(item3)
-    markup.add(item1, item2)
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -428,11 +485,12 @@ def process_start_location_step(message):
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    item3 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
+    item2 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item3 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
     markup.add(item3)
-    markup.add(item1, item2)
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -616,7 +674,8 @@ def process_distance_choice_step(message, distance_km):
     item2 = types.KeyboardButton("В главное меню")
 
     markup.add(item_auto, item_input)
-    markup.add(item1, item2)
+    markup.add(item1)
+    markup.add(item2)
 
     if message.text == "Использовать автоматическое расстояние":
         bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.")
@@ -642,7 +701,7 @@ def process_date_step(message, distance):
     if message.text == "Пропустить ввод даты":
         selected_date = "Без даты"
         process_selected_date(message, selected_date)
-        return  # Завершаем выполнение функции, так как дата была пропущена
+        return
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -653,14 +712,20 @@ def process_date_step(message, distance):
         return
 
     if message.text == "Из календаря":
-        show_calendar(chat_id, user_code)  # Передаем user_code
-        pass
+        show_calendar(chat_id, user_code)
     elif message.text == "Ввести дату вручную":
-        # Переход к следующему шагу для ввода даты вручную
-        bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:")
-        bot.register_next_step_handler(message, process_date_input_step, distance)
+        # Создаем разметку с двумя кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        markup.add(item2)
+
+        # Отправляем сообщение с кнопками и текстом для ввода даты вручную
+        sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
     else:
-        # Повторно запрашиваем способ ввода даты, если что-то пошло не так
+        # Повторный запрос способа ввода даты, если ввод неверный
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item_calendar = types.KeyboardButton("Из календаря")
         item_manual = types.KeyboardButton("Ввести дату вручную")
@@ -669,7 +734,8 @@ def process_date_step(message, distance):
 
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
         item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1, item2)
+        markup.add(item1)
+        markup.add(item2)
 
         sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_date_step, distance)
@@ -753,7 +819,7 @@ def handle_calendar(call):
                               reply_markup=key)
     elif result:
         selected_date = result.strftime('%d.%m.%Y')
-        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
+        bot.edit_message_text(f"Вы выбрали дату: {selected_date}",
                               call.message.chat.id,
                               call.message.message_id)
 
@@ -801,7 +867,7 @@ def process_manual_date_step(message, distance):
         if 2000 <= year <= 3000:  # Проверка корректности года
             try:
                 datetime(year, month, day)  # Проверка правильности даты
-                bot.send_message(chat_id, f"Вы выбрали дату {message.text}.", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
+                bot.send_message(chat_id, f"Вы выбрали дату: {message.text}", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
                 show_fuel_types(chat_id, message.text, distance)
             except ValueError:
                 sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату.", reply_markup=markup)
@@ -843,7 +909,7 @@ def handle_calendar(call):
                               reply_markup=key)
     elif result:
         selected_date = result.strftime('%d.%m.%Y')
-        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
+        bot.edit_message_text(f"Вы выбрали дату: {selected_date}",
                               call.message.chat.id,
                               call.message.message_id)
 
@@ -891,7 +957,7 @@ def process_manual_date_step(message, distance):
         if 2000 <= year <= 3000:  # Проверка корректности года
             try:
                 datetime(year, month, day)  # Проверка правильности даты
-                bot.send_message(chat_id, f"Вы выбрали дату {message.text}.", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
+                bot.send_message(chat_id, f"Вы выбрали дату: {message.text}", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
                 show_fuel_types(chat_id, message.text, distance)
             except ValueError:
                 sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату.", reply_markup=markup)
@@ -913,9 +979,11 @@ def show_fuel_types(chat_id, date, distance):
     row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
     
     # Добавляем кнопки для возврата в меню и главное меню
-    row3 = [KeyboardButton("Вернуться в меню расчета топлива"), KeyboardButton("В главное меню")]
-    
+    row3 = [KeyboardButton("Вернуться в меню расчета топлива")]
+    row4 = [KeyboardButton("В главное меню")]
+
     markup.add(*row1, *row2, *row3)
+    markup.add(*row4)
     
     sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_fuel_type, date, distance)
@@ -1031,7 +1099,8 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
         item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1, item2)
+        markup.add(item1)
+        markup.add(item2)
 
         sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
@@ -1213,118 +1282,84 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
         short_url = yandex_maps_url  # Используем оригинальную ссылку, если сокращение не удалось
 
     # Формируем итоговое сообщение
-    summary_message = "*ИНФОРМАЦИЯ О ПОЕЗДКЕ:*\n"
-    summary_message += f"*Начальное местоположение:*\n{start_location['address']}\n"
-    summary_message += f"*Конечное местоположение:*\n{end_location['address']}\n"
-    summary_message += f"*Дата поездки:* {date}\n"
-    summary_message += f"*Расстояние:* {distance:.2f} км.\n"
-    summary_message += f"*Тип топлива:* {fuel_type}\n"
-    summary_message += f"*Цена топлива за литр:* {price_per_liter:.2f} руб.\n"
-    summary_message += f"*Расход топлива на 100 км:* {fuel_consumption} л.\n"
-    summary_message += f"*Количество пассажиров:* {passengers}\n"
-    summary_message += f"*ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА:* {fuel_spent:.2f} л.\n"
-    summary_message += f"*СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ:* {fuel_cost:.2f} руб.\n"
-    summary_message += f"*СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА:* {fuel_cost_per_person:.2f} руб.\n"
+    summary_message = "🚗 *ИНФОРМАЦИЯ О ПОЕЗДКЕ* 🚗\n"
+    summary_message += "-------------------------------------------------------------\n"
+    summary_message += f"📍 *Начальное местоположение:*\n{start_location['address']}\n"
+    summary_message += f"🏁 *Конечное местоположение:*\n{end_location['address']}\n"
+    summary_message += f"🗓️ *Дата поездки:* {date}\n"
+    summary_message += f"📏 *Расстояние:* {distance:.2f} км\n"
+    summary_message += f"⛽ *Тип топлива:* {fuel_type}\n"
+    summary_message += f"💵 *Цена топлива за литр:* {price_per_liter:.2f} руб.\n"
+    summary_message += f"⚙️ *Расход топлива на 100 км:* {fuel_consumption} л.\n"
+    summary_message += f"👥 *Количество пассажиров:* {passengers}\n"
+    summary_message += "-------------------------------------------------------------\n"
+    summary_message += f"🛢️ *ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА:* {fuel_spent:.2f} л.\n"
+    summary_message += f"💰 *СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ:* {fuel_cost:.2f} руб.\n"
+    summary_message += f"👤 *СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА:* {fuel_cost_per_person:.2f} руб.\n"
     summary_message += f"[ССЫЛКА НА МАРШРУТ]({short_url})\n"
 
     summary_message = summary_message.replace('\n', '\n\n')
     bot.clear_step_handler_by_chat_id(chat_id)
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("Сохранить поездку")
+    item1 = types.KeyboardButton("Сохранить поездку")
+    item2 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item3 = types.KeyboardButton("В главное меню")
-    markup.add(item2)
     markup.add(item1)
+    markup.add(item2)
     markup.add(item3)
 
     bot.send_message(chat_id, summary_message, reply_markup=markup, parse_mode="Markdown")
 
 
 def update_excel_file(user_id):
-    # Определяем путь к папке и файлу
-    folder_path = "data base"
+    # Путь к папке с файлами Excel
+    folder_path = "data base/trip/excel"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
     file_path = os.path.join(folder_path, f"{user_id}_trips.xlsx")
 
-    # Проверяем, существует ли файл, если нет, создаем его с заголовками
+    # Проверяем и создаем файл с заголовками
     if not os.path.exists(file_path):
         df = pd.DataFrame(columns=[
             "Дата", "Начальное местоположение", "Конечное местоположение",
             "Расстояние (км)", "Тип топлива", "Цена топлива (руб/л)",
             "Расход топлива (л/100 км)", "Количество пассажиров",
-            "Потрачено литров", "Стоимость топлива (руб)", "Стоимость на человека (руб)", "Ссылка на маршрут"
+            "Потрачено литров", "Стоимость топлива (руб)", 
+            "Стоимость на человека (руб)", "Ссылка на маршрут"
         ])
         df.to_excel(file_path, index=False)
-
-    # Загружаем существующие данные
+    
+    # Обновляем данные файла Excel
     df = pd.read_excel(file_path)
-
-    # Получаем данные поездок для пользователя
     trips = user_trip_data.get(user_id, [])
-
-    # Если поездок нет, удаляем все строки, оставляя только заголовок
-    if not trips:
-        df = df.iloc[0:0]  # Очищаем DataFrame
-    else:
-        # Преобразуем поездки в DataFrame
-        trip_records = []
-        for trip in trips:
-            trip_records.append([
-                trip['start_location']['address'],
-                trip['end_location']['address'],
-                trip['date'],
-                trip['distance'],
-                trip['fuel_type'],
-                trip['price_per_liter'],
-                trip['fuel_consumption'],
-                trip['passengers'],
-                trip['fuel_spent'],
-                trip['fuel_cost'],
-                trip['fuel_cost_per_person'],
-                trip.get('route_link', "Нет ссылки")  # Добавляем ссылку на маршрут
-            ])
-        df = pd.DataFrame(trip_records, columns=[
-            "Начальное местоположение", "Конечное местоположение", "Дата", 
-            "Расстояние (км)", "Тип топлива", "Цена топлива (руб/л)",
-            "Расход топлива (л/100 км)", "Количество пассажиров",
-            "Потрачено литров", "Стоимость топлива (руб)", "Стоимость на человека (руб)", "Ссылка на маршрут"
-        ])
-
-    # Записываем обновленные данные обратно в файл
+    trip_records = [
+        [
+            trip['start_location']['address'], trip['end_location']['address'], trip['date'],
+            trip['distance'], trip['fuel_type'], trip['price_per_liter'], trip['fuel_consumption'], 
+            trip['passengers'], trip['fuel_spent'], trip['fuel_cost'], trip['fuel_cost_per_person'], 
+            trip.get('route_link', "Нет ссылки")
+        ] for trip in trips
+    ]
+    df = pd.DataFrame(trip_records, columns=df.columns)
     df.to_excel(file_path, index=False)
 
-    # Открываем файл Excel для стилизации
+    # Устанавливаем стилизацию Excel
     workbook = load_workbook(file_path)
     worksheet = workbook.active
-
-    # Устанавливаем ширину столбцов на основе максимальной длины содержимого
     for column in worksheet.columns:
-        max_length = 0
-        column_letter = column[0].column_letter  # Получаем букву столбца
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except Exception as e:
-                pass
-        adjusted_width = (max_length + 2)  # Добавляем небольшое значение для отступа
-        worksheet.column_dimensions[column_letter].width = adjusted_width
-
-    # Центровка всех данных
-    for row in worksheet.iter_rows(min_row=2):  # Пропускаем заголовок
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
         for cell in row:
             cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    # Добавляем толстые границы для последних 4 колонок
-    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'), 
                           top=Side(style='thick'), bottom=Side(style='thick'))
-    
-    for row in worksheet.iter_rows(min_row=2, min_col=9, max_col=12):  # Колонки 9-12
+    for row in worksheet.iter_rows(min_row=2, min_col=9, max_col=12):
         for cell in row:
             cell.border = thick_border
-
-    # Сохраняем изменения в Excel
     workbook.save(file_path)
+
 
 import os
 import pandas as pd
@@ -1337,81 +1372,51 @@ import os
 from openpyxl import load_workbook
 
 def save_trip_to_excel(user_id, trip):
-    # Путь к папке для хранения данных
-    directory = "data base"
+    # Путь к папке с файлами Excel
+    directory = "data base/trip/excel"
     if not os.path.exists(directory):
         os.makedirs(directory)
-
     file_path = os.path.join(directory, f"{user_id}_trips.xlsx")
 
-    # Создание DataFrame для новой поездки
+    # Создаем и обновляем файл Excel для конкретной поездки
     new_trip_data = {
         "Начальное местоположение": trip['start_location']['address'],
         "Конечное местоположение": trip['end_location']['address'],
         "Дата": trip['date'],
-        "Расстояние (км)": round(trip.get('distance', None), 2),  # Округление до 2 знаков
+        "Расстояние (км)": round(trip.get('distance', None), 2),
         "Тип топлива": trip.get('fuel_type', None),
-        "Цена топлива (руб/л)": round(trip.get('price_per_liter', None), 2),  # Округление до 2 знаков
-        "Расход топлива (л/100 км)": round(trip.get('fuel_consumption', None), 2),  # Округление до 2 знаков
+        "Цена топлива (руб/л)": round(trip.get('price_per_liter', None), 2),
+        "Расход топлива (л/100 км)": round(trip.get('fuel_consumption', None), 2),
         "Количество пассажиров": trip.get('passengers', None),
-        "Потрачено литров": round(trip.get('fuel_spent', None), 2),  # Округление до 2 знаков
-        "Стоимость топлива (руб)": round(trip.get('fuel_cost', None), 2),  # Округление до 2 знаков
-        "Стоимость на человека (руб)": round(trip.get('fuel_cost_per_person', None), 2),  # Округление до 2 знаков
+        "Потрачено литров": round(trip.get('fuel_spent', None), 2),
+        "Стоимость топлива (руб)": round(trip.get('fuel_cost', None), 2),
+        "Стоимость на человека (руб)": round(trip.get('fuel_cost_per_person', None), 2),
         "Ссылка на маршрут": trip.get('route_link', None)
     }
-
     new_trip_df = pd.DataFrame([new_trip_data])
 
-    # Проверяем, существует ли файл и загружаем существующие данные
     if os.path.exists(file_path):
-        existing_data = pd.read_excel(file_path)
-
-        # Удаляем пустые столбцы из существующих данных
-        existing_data = existing_data.dropna(axis=1, how='all')
-
-        # Объединяем только если существуют данные в обоих DataFrame
-        if not existing_data.empty and not new_trip_df.empty:
-            updated_data = pd.concat([existing_data, new_trip_df], ignore_index=True)
-        else:
-            updated_data = existing_data if not existing_data.empty else new_trip_df
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        updated_data = pd.concat([existing_data, new_trip_df], ignore_index=True)
     else:
-        updated_data = new_trip_df  # Если файла нет, просто используем новые данные
+        updated_data = new_trip_df
 
-    # Сохраняем обновленный DataFrame в Excel
     updated_data.to_excel(file_path, index=False)
-
-    # Открываем файл Excel и растягиваем ячейки
     workbook = load_workbook(file_path)
     worksheet = workbook.active
-
-    # Устанавливаем ширину столбцов на основе максимальной длины содержимого
     for column in worksheet.columns:
-        max_length = 0
-        column_letter = column[0].column_letter  # Получаем букву столбца
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except Exception as e:
-                pass
-        adjusted_width = (max_length + 2)  # Добавляем небольшое значение для отступа
-        worksheet.column_dimensions[column_letter].width = adjusted_width
-
-    # Применяем выравнивание по центру для всех данных
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
     for row in worksheet.iter_rows():
         for cell in row:
             cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Выделяем толстые границы для последних 4 колонок
     thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
                           top=Side(style='thick'), bottom=Side(style='thick'))
-
     for row in worksheet.iter_rows(min_col=worksheet.max_column-3, max_col=worksheet.max_column):
         for cell in row:
             cell.border = thick_border
-
-    # Сохраняем изменения в Excel
     workbook.save(file_path)
+
 
 
 # (9.14) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "СОХРАНИТЬ ПОЕЗДКУ") ---------------
@@ -1463,25 +1468,28 @@ def return_to_menu(message):
         temporary_trip_data[user_id] = []
     start(message)
 
-# (9.16) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ВЕРНУТЬСЯ В МЕНЮ РАСЧЕТА ТОПЛИВА   ВРЕМЕННЫХ ДАННЫХ") ---------------
+# # (9.16) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ВЕРНУТЬСЯ В МЕНЮ РАСЧЕТА ТОПЛИВА   ВРЕМЕННЫХ ДАННЫХ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
-@restricted
-@track_user_activity
-@bot.message_handler(commands=['restart1'])
 @restricted
 @track_user_activity
 def restart_handler(message):
     user_id = message.chat.id
 
+    # Убедитесь, что при возвращении в меню расчета топлива, данные не удаляются
+    # Например, сохраняем данные перед сбросом, если это необходимо
+    if user_id in user_trip_data:
+        # Сохранить данные, прежде чем сбросить, если это требуется
+        save_trip_data(user_id, user_trip_data[user_id])
+
+    # Теперь вызываем reset, если это действительно нужно
     reset_and_start_over(user_id)
 
-    if user_id not in user_trip_data:
-        user_trip_data[user_id] = load_trip_data(user_id)
+    # Загружаем поездки (не сбрасывая их)
     user_trip_data[user_id] = load_trip_data(user_id)
-    
-    start_fuel_calculation_menu(message) 
 
+    # Возвращаем пользователя в меню расчета топлива
+    return_to_fuel_calc_menu(message)
 
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
 
@@ -1490,35 +1498,34 @@ def restart_handler(message):
 @track_user_activity
 def view_trips(message):
     user_id = message.chat.id
-    if user_id in user_trip_data:
-        trips = user_trip_data[user_id]
-        if not trips:
-            bot.send_message(user_id, "У вас нет сохраненных поездок.")
-        else:
-            # Создаем кнопки для выбора поездок
-            markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-            buttons = []
+    trips = load_trip_data(user_id)  # Загрузим поездки из базы данных
 
-            for i, trip in enumerate(trips, start=1):
-                start_address = trip['start_location']['address']
-                end_address = trip['end_location']['address']
-                button_text = f"№{i}. {trip['date']}"
-                buttons.append(types.KeyboardButton(button_text))
+    if trips:
+        # Создаем кнопки для выбора поездок
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        buttons = []
 
-                # Добавляем кнопку в ряд по 3
-                if len(buttons) == 3 or i == len(trips):
-                    markup.row(*buttons)
-                    buttons = []  # Очистить список для следующего ряда
+        for i, trip in enumerate(trips, start=1):
+            start_address = trip['start_location']['address']
+            end_address = trip['end_location']['address']
+            date = trip['date'] if trip['date'] != "Без даты" else "Без даты"  # Обрабатываем специальное значение
+            button_text = f"№{i}. {date}"
+            buttons.append(types.KeyboardButton(button_text))
 
-            # Добавляем дополнительные кнопки
-            markup.add("Посмотреть в Excel")
-            markup.add("Вернуться в меню расчета топлива")
-            markup.add("В главное меню")
+            # Разделяем кнопки на несколько рядов, чтобы было удобнее
+            if len(buttons) == 3 or i == len(trips):
+                markup.row(*buttons)
+                buttons = []  # Очищаем список для следующего ряда
 
-            # Отправляем сообщение с кнопками
-            bot.send_message(user_id, "Выберите поездку для просмотра:", reply_markup=markup)
+        # Добавляем дополнительные кнопки
+        markup.add("Посмотреть в Excel")
+        markup.add("Вернуться в меню расчета топлива")
+        markup.add("В главное меню")
+
+        # Отправляем сообщение с кнопками
+        bot.send_message(user_id, "Выберите поездку для просмотра:", reply_markup=markup)
     else:
-        bot.send_message(user_id, "У вас нет сохраненных поездок.")
+        bot.send_message(user_id, "У вас нет сохраненных поездок")
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть в Excel")
 @restricted
@@ -1533,52 +1540,65 @@ def send_excel_file(message):
     else:
         bot.send_message(user_id, "Файл Excel не найден. Убедитесь, что у вас есть сохраненные поездки.")
 
-@bot.message_handler(func=lambda message: message.text and message.text.startswith(tuple([f"{i}. " for i in range(1, 10)])))
+@bot.message_handler(func=lambda message: message.text and re.match(r"№\d+\.\s*\d{2}\.\d{2}\.\d{4}|№\d+\.\s*Без даты", message.text))
 @restricted
 @track_user_activity
 def show_trip_details(message):
     user_id = message.chat.id
-    trips = user_trip_data.get(user_id, [])
-    
-    # Получаем номер поездки из сообщения пользователя
+    trips = load_trip_data(user_id)  # Загружаем поездки для пользователя
+
     try:
-        trip_index = int(message.text.split(".")[0]) - 1  # Получаем индекс поездки
-        trip = trips[trip_index]
+        # Извлекаем номер поездки из сообщения
+        match = re.match(r"№(\d+)\.\s*(\d{2}\.\d{2}\.\d{4}|Без даты)", message.text)
+        if match:
+            trip_index = int(match.group(1)) - 1  # Получаем индекс поездки
+            if 0 <= trip_index < len(trips):  # Проверка на корректность индекса
+                trip = trips[trip_index]
 
-        # Формируем сообщение с данными поездки
-        start_address = trip['start_location']['address']
-        end_address = trip['end_location']['address']
-        summary_message = f"*ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ* {trip_index + 1}:\n\n"
-        summary_message += f"*Начальное местоположение:*\n\n{start_address}\n\n"
-        summary_message += f"*Конечное местоположение:*\n\n{end_address}\n\n"
-        summary_message += f"*Дата поездки:* {trip['date']}\n\n"
-        summary_message += f"*Расстояние:* {trip['distance']:.2f} км.\n\n"
-        summary_message += f"*Тип топлива:* {trip['fuel_type']}\n\n"
-        summary_message += f"*Цена топлива за литр:* {trip['price_per_liter']:.2f} руб.\n\n"
-        summary_message += f"*Расход топлива на 100 км:* {trip['fuel_consumption']} л.\n\n"
-        summary_message += f"*Количество пассажиров:* {trip['passengers']}\n\n"
-        summary_message += f"*ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА:* {trip['fuel_spent']:.2f} л.\n\n"
-        summary_message += f"*СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ:* {trip['fuel_cost']:.2f} руб.\n\n"
-        summary_message += f"*СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА:* {trip['fuel_cost_per_person']:.2f} руб.\n\n"
+                # Формируем сообщение с данными поездки
+                start_address = trip['start_location']['address']
+                end_address = trip['end_location']['address']
+                date = trip['date'] if trip['date'] != "Без даты" else "Без даты"  # Обработка "Без даты"
+                summary_message = f"*ИТОГОВЫЕ ДАННЫЕ ПОЕЗДКИ* *{trip_index + 1}* \n\n"
+                summary_message += "-------------------------------------------------------------\n\n"
+                summary_message += f"📍 *Начальное местоположение:*\n\n{start_address}\n\n"
+                summary_message += f"🏁 *Конечное местоположение:*\n\n{end_address}\n\n"
+                summary_message += f"🗓️ *Дата поездки:* {date}\n\n"
+                summary_message += f"📏 *Расстояние:* {trip['distance']:.2f} км.\n\n"
+                summary_message += f"⛽ *Тип топлива:* {trip['fuel_type']}\n\n"
+                summary_message += f"💵 *Цена топлива за литр:* {trip['price_per_liter']:.2f} руб.\n\n"
+                summary_message += f"⚙️ *Расход топлива на 100 км:* {trip['fuel_consumption']} л.\n\n"
+                summary_message += f"👥 *Количество пассажиров:* {trip['passengers']}\n\n"
+                summary_message += "-------------------------------------------------------------\n\n"
+                summary_message += f"🛢️ *ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА:* {trip['fuel_spent']:.2f} л.\n\n"
+                summary_message += f"💰 *СТОИМОСТЬ ТОПЛИВА ДЛЯ ПОЕЗДКИ:* {trip['fuel_cost']:.2f} руб.\n\n"
+                summary_message += f"👤 *СТОИМОСТЬ ТОПЛИВА НА ЧЕЛОВЕКА:* {trip['fuel_cost_per_person']:.2f} руб.\n\n"
 
-        # Проверяем, есть ли 'route_link' в данных поездки
-        if 'route_link' in trip:
-            summary_message += f"[ССЫЛКА НА МАРШРУТ]({trip['route_link']})\n\n"
+                # Проверяем, есть ли 'route_link' в данных поездки
+                if 'route_link' in trip:
+                    summary_message += f"[ССЫЛКА НА МАРШРУТ]({trip['route_link']})\n\n"
+                else:
+                    summary_message += "Ссылка на маршрут недоступна.\n\n"
+
+                # Отправляем подробную информацию о поездке
+                bot.send_message(user_id, summary_message, parse_mode="Markdown")
+
+                # Оставляем клавиатуру с кнопками после просмотра поездки
+                markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+                markup.add("Посмотреть другие поездки")
+                markup.add("Вернуться в меню расчета топлива")
+                markup.add("В главное меню")
+
+                bot.send_message(user_id, "Вы можете посмотреть другие поездки или вернуться в меню.", reply_markup=markup)
+
+            else:
+                bot.send_message(user_id, "Поездка с таким номером не найдена. Попробуйте снова.")
         else:
-            summary_message += "Ссылка на маршрут недоступна.\n\n"
+            bot.send_message(user_id, "Ошибка при выборе поездки. Попробуйте снова.")
 
-        # Отправляем подробную информацию о поездке
-        bot.send_message(user_id, summary_message, parse_mode="Markdown")
-
-        # Оставляем клавиатуру с кнопками после просмотра поездки
-        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-        markup.add("Посмотреть другие поездки")  # Эта кнопка будет выше
-        markup.row("Вернуться в меню расчета топлива", "В главное меню")  # Эти кнопки будут на одной строке
-        
-        bot.send_message(user_id, "Вы можете посмотреть другие поездки или вернуться в меню.", reply_markup=markup)
-
-    except (IndexError, ValueError):
-        bot.send_message(user_id, "Ошибка при выборе поездки. Попробуйте снова.")
+    except (IndexError, ValueError) as e:
+        print(f"Error while processing trip data: {e}")
+        bot.send_message(user_id, "Ошибка при обработке данных. Попробуйте снова.")
 
 # Обработчик для кнопки "Посмотреть другие поездки"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть другие поездки")
@@ -1588,15 +1608,15 @@ def show_trip_details(message):
 def view_other_trips(message):
     view_trips(message)  # Вызываем функцию для повторного отображения списка поездок
 
-# Обработчики для кнопок "Вернуться в меню расчета топлива" и "В главное меню"
-@bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
-@restricted
-@track_user_activity
+# # Обработчики для кнопок "Вернуться в меню расчета топлива" и "В главное меню"
+# @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
+# @restricted
+# @track_user_activity
 
-def return_to_fuel_calc_menu(message):
-    chat_id = message.chat.id
-    reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
-    bot.send_message(chat_id, "Вы вернулись в меню расчета топлива.", reply_markup=types.ReplyKeyboardRemove())
+# def return_to_fuel_calc_menu(message):
+#     chat_id = message.chat.id
+#     reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
+#     bot.send_message(chat_id, "Вы вернулись в меню расчета топлива", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @restricted
@@ -1638,9 +1658,9 @@ def ask_for_trip_to_delete(message):
             bot.send_message(user_id, "Выберите номер поездки для удаления или удалите все:", reply_markup=markup)
             bot.register_next_step_handler(message, confirm_trip_deletion)
         else:
-            bot.send_message(user_id, "У вас нет поездок для удаления.")
+            bot.send_message(user_id, "У вас нет поездок для удаления")
     else:
-        bot.send_message(user_id, "У вас нет сохраненных поездок.")
+        bot.send_message(user_id, "У вас нет сохраненных поездок")
 
 def confirm_trip_deletion(message):
     user_id = message.chat.id
@@ -1664,17 +1684,17 @@ def confirm_trip_deletion(message):
             trip_number = int(message.text.split(".")[0][1:])  # Извлекаем номер поездки
             if 1 <= trip_number <= len(user_trip_data[user_id]):
                 deleted_trip = user_trip_data[user_id].pop(trip_number - 1)
-                bot.send_message(user_id, f"Поездка номер {trip_number} успешно удалена.")
+                bot.send_message(user_id, f"Поездка номер {trip_number} успешно удалена")
                 
                 # Обновляем Excel файл
                 update_excel_file(user_id)
 
             else:
-                bot.send_message(user_id, "Неверный номер поездки. Пожалуйста, укажите корректный номер.")
+                bot.send_message(user_id, "Неверный номер поездки. Пожалуйста, укажите корректный номер")
         except ValueError:
-            bot.send_message(user_id, "Произошла ошибка при обработке номера поездки.")
+            bot.send_message(user_id, "Произошла ошибка при обработке номера поездки")
     else:
-        bot.send_message(user_id, "Пожалуйста, выберите номер поездки для удаления с помощью кнопок.")
+        bot.send_message(user_id, "Пожалуйста, выберите номер поездки для удаления с помощью кнопок")
 
     reset_and_start_over(user_id)
 
@@ -1683,7 +1703,7 @@ def confirm_delete_all(message):
     user_id = message.chat.id
     
     if message.text is None:
-        bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение.")
+        bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение")
         bot.register_next_step_handler(message, confirm_delete_all)
         return
 
@@ -1692,11 +1712,11 @@ def confirm_delete_all(message):
     if user_response == "да":
         if user_id in user_trip_data and user_trip_data[user_id]:
             user_trip_data[user_id].clear()
-            bot.send_message(user_id, "Все поездки были успешно удалены.")
+            bot.send_message(user_id, "Все поездки были успешно удалены")
             # Очистка Excel файла
             update_excel_file(user_id)
         else:
-            bot.send_message(user_id, "У вас нет поездок для удаления.")
+            bot.send_message(user_id, "У вас нет поездок для удаления")
             reset_and_start_over(user_id)
         
         # Очищаем Excel файл, оставляя только заголовки
@@ -1710,10 +1730,10 @@ def confirm_delete_all(message):
             workbook.save(excel_file)
 
     elif user_response == "нет":
-        bot.send_message(user_id, "Удаление всех поездок отменено.")
+        bot.send_message(user_id, "Удаление всех поездок отменено")
         reset_and_start_over(user_id)
     else:
-        bot.send_message(user_id, "Пожалуйста, ответьте 'Да' для подтверждения или 'Нет' для отмены.")
+        bot.send_message(user_id, "Пожалуйста, ответьте 'Да' для подтверждения или 'Нет' для отмены")
         bot.register_next_step_handler(message, confirm_delete_all)
 
 # (10) --------------- КОД ДЛЯ "ТРАТ" ---------------
