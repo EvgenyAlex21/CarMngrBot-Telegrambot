@@ -1555,29 +1555,6 @@ def return_to_menu_2(message):
 
 # (10.5) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "ЗАПИСАТЬ ТРАТУ") ---------------
 
-# Функция для получения списка транспорта пользователя
-def get_user_transport_keyboard(user_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    # Получаем список транспорта пользователя
-    user_transport_list = user_transport.get(user_id, [])
-
-    # Если транспорта нет, добавляем кнопку для добавления нового
-    if not user_transport_list:
-        markup.add(types.KeyboardButton("Добавить транспорт"))
-        return markup
-
-    # Добавляем транспорт в клавиатуру
-    for transport in user_transport_list:
-        transport_str = f"{transport['brand']} {transport['model']} {transport['year']}"
-        markup.add(types.KeyboardButton(transport_str))
-
-    markup.add(types.KeyboardButton("Добавить транспорт"))  # Кнопка для добавления нового транспорта
-    return markup
-
-# Обновленная функция для записи трат
-# Обновленная функция для записи трат
-# Отправка сообщения о записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
 def record_expense(message):
     user_id = message.from_user.id
@@ -1605,12 +1582,15 @@ def handle_transport_selection_for_record(message):
         return_to_menu(message)
         return
 
+    # Проверяем, является ли выбор "Добавить транспорт"
     if message.text == "Добавить транспорт":
         add_transport(message)
         return
 
+    # В данном случае message.text - это информация о выбранном транспорте
     selected_transport = message.text
 
+    # Проверяем, соответствует ли текст выбранного транспорта формату
     for transport in user_transport.get(user_id, []):
         if f"{transport['brand']} {transport['model']} {transport['year']}" == selected_transport:
             brand = transport['brand']
@@ -1618,18 +1598,20 @@ def handle_transport_selection_for_record(message):
             year = transport['year']
             break
     else:
+        # Если не нашли транспорт, уведомляем пользователя
         bot.send_message(user_id, "Не удалось найти указанный транспорт. Пожалуйста, выберите снова.")
         bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=get_user_transport_keyboard(user_id))
         return
 
-    # После выбора транспорта просим ввести название траты
+    # Продолжаем с записью траты
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
-    sent = bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
-    bot.register_next_step_handler(sent, get_expense_name, brand, model, year)
+    bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_name, brand, model, year)
+
 
 # Функция получения названия траты
 def get_expense_name(message, brand, model, year):
@@ -1644,88 +1626,16 @@ def get_expense_name(message, brand, model, year):
         return
 
     expense_name = message.text
-
-    # Далее предложим выбрать способ ввода даты
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_calendar = types.KeyboardButton("Выбрать дату из календаря")
-    item_manual = types.KeyboardButton("Ввести дату вручную")
-    markup.add(item_calendar, item_manual)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
-    sent = bot.send_message(user_id, "Выберите способ ввода даты:", reply_markup=markup)
-    bot.register_next_step_handler(sent, handle_date_selection_for_expense, expense_name, brand, model, year)
-
-# Обработка выбора способа ввода даты
-def handle_date_selection_for_expense(message, expense_name, brand, model, year):
-    user_id = message.chat.id
-
-    if message.text == "Выбрать дату из календаря":
-        show_calendar_for_expense(user_id, expense_name, brand, model, year)
-    elif message.text == "Ввести дату вручную":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-        item_main_menu = types.KeyboardButton("В главное меню")
-        markup.add(item_return, item_main_menu)
-
-        sent = bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-        bot.register_next_step_handler(sent, get_expense_date_manual, expense_name, brand, model, year)
-    elif message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-    elif message.text == "В главное меню":
-        return_to_menu(message)
-    else:
-        sent = bot.send_message(user_id, "Пожалуйста, выберите корректный вариант.")
-        bot.register_next_step_handler(sent, handle_date_selection_for_expense, expense_name, brand, model, year)
-
-# Отображение календаря для записи трат
-def show_calendar_for_expense(user_id, expense_name, brand, model, year):
-    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale="ru").build()
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
-    bot.send_message(user_id, "Выберите дату", reply_markup=markup)
-    bot.send_message(user_id, "Календарь:", reply_markup=calendar)
+    bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
 
-    # Сохраняем параметры для передачи в обработку выбора даты
-    bot.set_state(user_id, {'expense_name': expense_name, 'brand': brand, 'model': model, 'year': year})
-
-@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
-def handle_calendar_for_expense(call):
-    result, key, step = DetailedTelegramCalendar(
-        min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale="ru"
-    ).process(call.data)
-
-    if not result and key:
-        bot.edit_message_text(f"Выберите {step}",
-                              call.message.chat.id,
-                              call.message.message_id,
-                              reply_markup=key)
-    elif result:
-        selected_date = result.strftime('%d.%m.%Y')
-        user_id = call.message.chat.id
-
-        # Получаем сохраненные параметры
-        state = bot.get_state(user_id)
-        expense_name = state['expense_name']
-        brand = state['brand']
-        model = state['model']
-        year = state['year']
-
-        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
-                              call.message.chat.id,
-                              call.message.message_id)
-
-        # Переходим к следующему шагу ввода суммы
-        bot.send_message(call.message.chat.id, "Введите сумму траты:")
-        bot.register_next_step_handler(call.message, get_expense_amount, selected_date, expense_name, brand, model, year)
-
-# Ввод даты вручную
-def get_expense_date_manual(message, expense_name, brand, model, year):
+# Функция получения даты траты
+def get_expense_date(message, expense_name, brand, model, transport_year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
@@ -1738,6 +1648,11 @@ def get_expense_date_manual(message, expense_name, brand, model, year):
 
     expense_date = message.text
 
+    if expense_date is None:
+        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
+        return
+
     date_parts = expense_date.split(".")
     if len(date_parts) != 3:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1745,13 +1660,14 @@ def get_expense_date_manual(message, expense_name, brand, model, year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
-    day, month, expense_year = date_parts
+    day, month, expense_year = date_parts  # Переименовываем year в expense_year
+
     if not day.isdigit() or not month.isdigit() or not expense_year.isdigit():
         bot.send_message(user_id, "Пожалуйста, введите дату в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
     day = int(day)
@@ -1760,7 +1676,7 @@ def get_expense_date_manual(message, expense_name, brand, model, year):
 
     if len(str(expense_year)) != 4:
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.")
-        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
     if day < 1 or day > 31 or month < 1 or month > 12:
@@ -1769,19 +1685,28 @@ def get_expense_date_manual(message, expense_name, brand, model, year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.", reply_markup=markup)
-        bot.register_next_step_handler(message, get_expense_date_manual, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
-    # Переход к следующему шагу - вводу суммы траты
     bot.send_message(user_id, "Введите сумму траты:")
-    bot.register_next_step_handler(message, get_expense_amount, expense_date, expense_name, brand, model, year)
+    bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)  # Измените year на transport_year
+
+# Функция для проверки является ли строка числом
+def is_numeric(s):
+    if s is not None:
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+    return False
 
 # Функция получения суммы траты
-def get_expense_amount(message, expense_date, expense_name, brand, model, year):
+def get_expense_amount(message, expense_name, expense_date, brand, model, transport_year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
+        send_menu(user_id) 
         return
 
     if message.text == "В главное меню":
@@ -1789,12 +1714,18 @@ def get_expense_amount(message, expense_date, expense_name, brand, model, year):
         return
 
     expense_amount = message.text
+
     if expense_amount is not None:
         expense_amount = expense_amount.replace(",", ".")
 
+    if expense_date is None:
+        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
+        return
+
     if not is_numeric(expense_amount):
         bot.send_message(user_id, "Пожалуйста, введите сумму траты в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_amount, expense_date, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)
         return
 
     data = load_expense_data(user_id)
@@ -1808,7 +1739,7 @@ def get_expense_amount(message, expense_date, expense_name, brand, model, year):
         "name": expense_name,
         "date": expense_date,
         "amount": expense_amount,
-        "transport": {"brand": brand, "model": model, "year": year}
+        "transport": {"brand": brand, "model": model, "year": transport_year}  # Добавляем информацию о транспорте
     })
 
     data[str(user_id)]["expenses"] = expenses
@@ -1877,9 +1808,10 @@ def send_menu1(user_id):
     item3 = types.KeyboardButton("Траты (всё время)")
     item4 = types.KeyboardButton("Траты (на заправки)")
     item5 = types.KeyboardButton("Траты (на штрафы)")
+    item6 = types.KeyboardButton("Траты (на парковки)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item1, item2, item3, item4, item5)
+    markup.add(item1, item2, item3, item4, item5, item6)
     markup.add(item_return, item_main_menu)
 
     bot.send_message(user_id, "Выберите вариант просмотра трат:", reply_markup=markup)
@@ -2154,6 +2086,43 @@ def view_fine_expenses(message):
 
     send_message_with_split(user_id, message_text)
     bot.send_message(user_id, f"Итоговая сумма трат на штрафы: {total_expenses} руб.")
+
+# Обработчик трат на парковки
+@bot.message_handler(func=lambda message: message.text == "Траты (на парковки)")
+def view_parking_expenses(message):
+    user_id = message.from_user.id
+
+    user_data = load_expense_data(user_id)
+    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+
+    # Фильтруем траты по выбранному транспорту
+    expenses = filter_expenses_by_transport(user_id, expenses)
+
+    total_expenses = 0
+    expense_details = []
+
+    for index, expense in enumerate(expenses, start=1):
+        if "парковка" in expense.get("name", "").lower():
+            amount = float(expense.get("amount", 0))
+            total_expenses += amount
+
+            expense_name = expense.get("name", "Без названия")
+            expense_date = expense.get("date", "")
+
+            expense_details.append(
+                f"  №: {index}\n\n"
+                f"    НАЗВАНИЕ: {expense_name}\n"
+                f"    ДАТА: {expense_date}\n"
+                f"    СУММА: {amount} руб.\n"
+            )
+
+    if expense_details:
+        message_text = "Траты на парковки:\n\n" + "\n\n".join(expense_details)
+    else:
+        message_text = "Трат на парковки не найдено."
+
+    send_message_with_split(user_id, message_text)
+    bot.send_message(user_id, f"Итоговая сумма трат на парковки: {total_expenses} руб.")
 
 # (10.18) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "УДАЛИТЬ ТРАТЫ") ---------------
 
@@ -3560,16 +3529,12 @@ def handle_start_5(message):
         markup.row(telebot.types.KeyboardButton("В главное меню"))
 
         bot.send_message(message.chat.id, "Отправьте свою геопозицию для отображения погоды.", reply_markup=markup)
-
         bot.register_next_step_handler(message, handle_location_5)
     
     except Exception as e:
         print(f"Ошибка в обработчике 'Погода': {e}")
         traceback.print_exc()
-
         bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса. Попробуйте позже.")
-        
-# (15.2) --------------- КОД ДЛЯ "ПОГОДЫ" (ОБРАБОТЧИК "ГЕОЛОКАЦИЯ") ---------------
 
 @bot.message_handler(content_types=['location'])
 def handle_location_5(message):
@@ -3595,24 +3560,7 @@ def handle_location_5(message):
     except Exception as e:
         print(f"Ошибка в обработчике 'Геолокация': {e}")
         traceback.print_exc()
-
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
-
-keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=False, resize_keyboard=True)
-keyboard.row('Сегодня', 'Завтра')
-keyboard.row('Неделя', 'Месяц')
-keyboard.row('Вернуться назад')
-keyboard.row('В главное меню')
-
-# (15.3) --------------- КОД ДЛЯ "ПОГОДЫ" (ОБРАБОТЧИК "НАЗАД") ---------------
-
-@bot.message_handler(func=lambda message: message.text == 'Вернуться назад')
-def handle_back_5(message):
-    chat_id = message.chat.id
-    user_data.pop(chat_id, None)
-    handle_start_5(message)
-
-# (15.4) --------------- КОД ДЛЯ "ПОГОДЫ" (ОБРАБОТЧИК "ВЫБОР ПЕРИОДА") ---------------
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
 def handle_period_5(message):
@@ -3626,24 +3574,16 @@ def handle_period_5(message):
         return
 
     if coords:
-        if period == 'вернуться назад':
-            user_data.pop(chat_id, None)
-            handle_start(message)
-            return
-        elif period == 'сегодня':
+        if period == 'сегодня':
             send_weather(chat_id, coords, WEATHER_URL)
         elif period == 'завтра':
             send_forecast_daily(chat_id, coords, FORECAST_URL, 1)
         elif period == 'неделя':
-            send_forecast_weekly(chat_id, coords, FORECAST_URL, 7)
+            send_forecast_weekly(chat_id, coords, FORECAST_URL, 8)
         elif period == 'месяц':
-            send_forecast_monthly(chat_id, coords, FORECAST_URL, 30)
+            send_forecast_monthly(chat_id, coords, FORECAST_URL, 31)
     else:
         bot.send_message(chat_id, "Не удалось получить координаты. Пожалуйста, отправьте местоположение еще раз.")
-
-    bot.send_message(chat_id, "Выберите действие:", reply_markup=keyboard)
-
-# (15.5) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ТЕКУЩЕЙ ПОГОДЫ) ---------------
 
 def send_weather(chat_id, coords, url):
     try:
@@ -3652,35 +3592,35 @@ def send_weather(chat_id, coords, url):
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
+            'units': 'metric'  # Изменено на 'metric' для получения температуры в Цельсиях
         }
         response = requests.get(url, params=params)
         data = response.json()
 
         if response.status_code == 200:
-            temperature = round(data['main']['temp'] - 273.15)
-            feels_like = round(data['main']['feels_like'] - 273.15)
+            temperature = round(data['main']['temp'])
+            feels_like = round(data['main']['feels_like'])
             humidity = data['main']['humidity']
             pressure = data['main']['pressure']
             wind_speed = data['wind']['speed']
             description = translate_weather_description(data['weather'][0]['description'])
 
-            # Отправка текущей погоды
+            current_time = datetime.now().strftime("%H:%M")
+            current_date = datetime.now().strftime("%d.%m.%Y")
+
             message = (
-                f"Погода сейчас:\n"
-                f"Температура: {temperature}°C\n"
-                f"Ощущается как: {feels_like}°C\n"
-                f"Влажность: {humidity}%\n"
-                f"Давление: {pressure} мм рт. ст\n"
-                f"Скорость ветра: {wind_speed} м/с\n"
-                f"Описание погоды: {description}\n"
+                f"*Погода на {current_date} в {current_time}:*\n\n"
+                f"*Температура:* {temperature}°C\n"
+                f"*Ощущается как:* {feels_like}°C\n"
+                f"*Влажность:* {humidity}%\n"
+                f"*Давление:* {pressure} мм рт. ст.\n"
+                f"*Скорость ветра:* {wind_speed} м/с\n"
+                f"*Описание:* {description}\n"
             )
-            bot.send_message(chat_id, message)
-
-            # Запрос прогноза погоды на оставшуюся часть дня
+            bot.send_message(chat_id, message, parse_mode="Markdown")
             send_forecast_remaining_day(chat_id, coords, FORECAST_URL)
-
         else:
-            bot.send_message(chat_id, "Не удалось получить текущую погоду.")
+            bot.send_message(chat_id, "Не удалось получить текущую погоду. Проверьте, правильно ли указаны координаты.")
     except Exception as e:
         print(f"Ошибка при отправке текущей погоды: {e}")
         traceback.print_exc()
@@ -3692,50 +3632,52 @@ def send_forecast_remaining_day(chat_id, coords, url):
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
         }
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=30)
         data = response.json()
 
         if response.status_code == 200:
             forecasts = data['list']
-
             now = datetime.now()
-            message = "Прогноз на оставшуюся часть дня:\n"
+            message = "*Прогноз на оставшуюся часть дня:*\n\n"
 
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
                 
-                # Фильтрация прогнозов только на текущий день и время до 23:59
-                if now <= date_time <= now.replace(hour=23, minute=59, second=59):
-                    formatted_date = date_time.strftime("%H:%M")
-                    temperature = round(forecast['main']['temp'] - 273.15)
-                    feels_like = round(forecast['main']['feels_like'] - 273.15)
+                # Только прогноз на сегодня
+                if now.date() == date_time.date() and date_time > now:
+                    formatted_date = date_time.strftime("%d.%m.%Y")
+                    formatted_time = date_time.strftime("%H:%M")
+                    temperature = round(forecast['main']['temp'])
+                    feels_like = round(forecast['main']['feels_like'])
                     humidity = forecast['main']['humidity']
                     pressure = forecast['main']['pressure']
                     wind_speed = forecast['wind']['speed']
                     description = translate_weather_description(forecast['weather'][0]['description'])
 
                     message += (
-                        f"{formatted_date}:\n"
-                        f"Температура: {temperature}°C\n"
-                        f"Ощущается как: {feels_like}°C\n"
-                        f"Влажность: {humidity}%\n"
-                        f"Давление: {pressure} мм рт. ст\n"
-                        f"Скорость ветра: {wind_speed} м/с\n"
-                        f"Описание погоды: {description}\n\n"
+                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                        f"*Температура:* {temperature}°C\n"
+                        f"*Ощущается как:* {feels_like}°C\n"
+                        f"*Влажность:* {humidity}%\n"
+                        f"*Давление:* {pressure} мм рт. ст.\n"
+                        f"*Скорость ветра:* {wind_speed} м/с\n"
+                        f"*Описание:* {description}\n\n"
                     )
 
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+            if message == "*Прогноз на оставшуюся часть дня:*\n\n":
+                message = "Нет доступного прогноза на оставшуюся часть дня."
 
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk)
-
+            bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз на оставшийся день.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня.")
     except Exception as e:
-        print(f"Ошибка при отправке прогноза на оставшийся день: {e}")
+        print(f"Ошибка при отправке прогноза на оставшуюся часть дня: {e}")
         traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшийся день. Попробуйте позже.")
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня. Попробуйте позже.")
+
 
 # (15.6) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПЕРЕВОДА) ---------------
 
@@ -3773,7 +3715,7 @@ def send_forecast(chat_id, coords, url, days=1):
 
         if response.status_code == 200:
             forecasts = data['list'][:days * 8]
-            message = "Прогноз на завтра:\n"
+            message = "*Прогноз на завтра:*\n"
 
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
@@ -3787,18 +3729,18 @@ def send_forecast(chat_id, coords, url, days=1):
 
                 message += (
                     f"{formatted_date}:\n"
-                    f"Температура: {temperature}°C\n"
-                    f"Ощущается как: {feels_like}°C\n"
-                    f"Влажность: {humidity}%\n"
-                    f"Давление: {pressure} мм рт. ст\n"
-                    f"Скорость ветра: {wind_speed} м/с\n"
-                    f"Описание погоды: {description}\n\n"
+                    f"*Температура:* {temperature}°C\n"
+                    f"*Ощущается как:* {feels_like}°C\n"
+                    f"*Влажность:* {humidity}%\n"
+                    f"*Давление:* {pressure} мм рт. ст\n"
+                    f"*Скорость ветра:* {wind_speed} м/с\n"
+                    f"*Описание:* {description}\n\n"
                 )
 
             message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
 
             for chunk in message_chunks:
-                bot.send_message(chat_id, chunk)
+                bot.send_message(chat_id, chunk, parse_mode="Markdown")
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз погоды на завтра.")
     except Exception as e:
@@ -3808,146 +3750,254 @@ def send_forecast(chat_id, coords, url, days=1):
 
 # (15.8) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА ЗАВТРА) ---------------
 
-def send_forecast_daily(chat_id, coords, url, days):
+# ---------- ПРОГНОЗ НА ЗАВТРА -----------
+def send_forecast_daily(chat_id, coords, url, days_ahead):
     try:
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
         }
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=30)
         data = response.json()
 
         if response.status_code == 200:
-            forecasts = data['list'][:days * 8]
-            message = "Прогноз на завтра:\n"
+            forecast = data['list'][days_ahead * 8]
+            date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+            temperature = round(forecast['main']['temp'])
+            feels_like = round(forecast['main']['feels_like'])
+            humidity = forecast['main']['humidity']
+            pressure = forecast['main']['pressure']
+            wind_speed = forecast['wind']['speed']
+            description = translate_weather_description(forecast['weather'][0]['description'])
 
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                formatted_date = date_time.strftime("%d-%m-%Y %H:%M:%S")
-                temperature = round(forecast['main']['temp'] - 273.15)
-                feels_like = round(forecast['main']['feels_like'] - 273.15)
-                humidity = forecast['main']['humidity']
-                pressure = forecast['main']['pressure']
-                wind_speed = forecast['wind']['speed']
-                description = translate_weather_description(forecast['weather'][0]['description'])
+            message = (
+                f"*Прогноз на {date_time.strftime('%d.%m.%Y')}*\n\n"
+                f"*Температура:* {temperature}°C\n"
+                f"*Ощущается как:* {feels_like}°C\n"
+                f"*Влажность:* {humidity}%\n"
+                f"*Давление:* {pressure} мм рт. ст.\n"
+                f"*Скорость ветра:* {wind_speed} м/с\n"
+                f"*Описание:* {description}\n"
+            )
+            bot.send_message(chat_id, message, parse_mode="Markdown")
 
-                message += (
-                    f"{formatted_date}:\n"
-                    f"Температура: {temperature}°C\n"
-                    f"Ощущается как: {feels_like}°C\n"
-                    f"Влажность: {humidity}%\n"
-                    f"Давление: {pressure} мм рт. ст\n"
-                    f"Скорость ветра: {wind_speed} м/с\n"
-                    f"Описание погоды: {description}\n\n"
-                )
-
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
-
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk)
+            send_hourly_forecast_tomorrow(chat_id, coords, url)
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз погоды.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на завтра.")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на завтра: {e}")
         traceback.print_exc()
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже.")
 
-        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза погоды. Попробуйте позже.")
+# Функция для отправки почасового прогноза на завтра
+def send_hourly_forecast_tomorrow(chat_id, coords, url):
+    try:
+        params = {
+            'lat': coords['latitude'],
+            'lon': coords['longitude'],
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
 
+        if response.status_code == 200:
+            forecasts = data['list']
+            now = datetime.now()
+            tomorrow = now + timedelta(days=1)
+            message = "*Почасовой прогноз на завтра:*\n\n"  # Добавлен жирный шрифт и пустая строка
+
+            for forecast in forecasts:
+                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                if tomorrow.date() == date_time.date():
+                    formatted_time = date_time.strftime("%H:%M")
+                    formatted_date = date_time.strftime("%d.%m.%Y")  # Форматирование даты
+                    temperature = round(forecast['main']['temp'])
+                    feels_like = round(forecast['main']['feels_like'])
+                    humidity = forecast['main']['humidity']
+                    pressure = forecast['main']['pressure']
+                    wind_speed = forecast['wind']['speed']
+                    description = translate_weather_description(forecast['weather'][0]['description'])
+
+                    message += (
+                        f"*Погода на {formatted_date} в {formatted_time}:*\n\n"
+                        f"*Температура:* {temperature}°C\n"
+                        f"*Ощущается как:* {feels_like}°C\n"
+                        f"*Влажность:* {humidity}%\n"
+                        f"*Давление:* {pressure} мм рт. ст.\n"
+                        f"*Скорость ветра:* {wind_speed} м/с\n"
+                        f"*Описание:* {description}\n\n"  # Пустая строка
+                    )
+
+            if message == "*Почасовой прогноз на завтра:*\n\n":
+                message = "Нет доступного почасового прогноза на завтра."
+
+            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+            for chunk in message_chunks:
+                bot.send_message(chat_id, chunk, parse_mode="Markdown")  # Убедитесь, что используется Markdown
+        else:
+            bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра.")
+    except Exception as e:
+        print(f"Ошибка при отправке почасового прогноза на завтра: {e}")
+        traceback.print_exc()
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра. Попробуйте позже.")
+        
 # (15.9) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА НЕДЕЛЮ) ---------------
 
-def send_forecast_weekly(chat_id, coords, url, days=7):
+from datetime import datetime, timedelta
+from collections import defaultdict
+
+# ---------- ПРОГНОЗ НА НЕДЕЛЮ -----------
+from collections import defaultdict
+from datetime import datetime
+
+def send_forecast_weekly(chat_id, coords, url, retries=3):
     try:
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
         }
-        response = requests.get(url, params=params)
-        data = response.json()
 
-        if response.status_code == 200:
-            forecasts = data['list'][:days * 8]
-            message = "Прогноз на неделю:\n"
+        daily_forecasts = defaultdict(list)
+        message = "*Прогноз на неделю:*\n\n"
 
-            for forecast in forecasts:
-                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                formatted_date = date_time.strftime("%d-%m-%Y %H:%M:%S")
-                temperature = round(forecast['main']['temp'] - 273.15)
-                feels_like = round(forecast['main']['feels_like'] - 273.15)
-                humidity = forecast['main']['humidity']
-                pressure = forecast['main']['pressure']
-                wind_speed = forecast['wind']['speed']
-                description = translate_weather_description(forecast['weather'][0]['description'])
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, params=params, timeout=10)
 
-                message += (
-                    f"{formatted_date}:\n"
-                    f"Температура: {temperature}°C\n"
-                    f"Ощущается как: {feels_like}°C\n"
-                    f"Влажность: {humidity}%\n"
-                    f"Давление: {pressure} мм рт. ст\n"
-                    f"Скорость ветра: {wind_speed} м/с\n"
-                    f"Описание погоды: {description}\n\n"
-                )
+                if response.status_code == 200:
+                    data = response.json()
+                    forecasts = data['list']
 
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+                    # Собираем прогнозы за 7 дней
+                    for forecast in forecasts:
+                        date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                        date_str = date_time.strftime('%d.%m.%Y')
 
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk)
-        else:
-            bot.send_message(chat_id, "Не удалось получить прогноз погоды на неделю.")
+                        if len(daily_forecasts) >= 7 and date_str not in daily_forecasts:
+                            break
+
+                        temperature = round(forecast['main']['temp'])
+                        feels_like = round(forecast['main']['feels_like'])
+                        humidity = forecast['main']['humidity']
+                        pressure = forecast['main']['pressure']
+                        wind_speed = forecast['wind']['speed']
+                        description = translate_weather_description(forecast['weather'][0]['description'])
+
+                        daily_forecasts[date_str].append({
+                            'temperature': temperature,
+                            'feels_like': feels_like,
+                            'humidity': humidity,
+                            'pressure': pressure,
+                            'wind_speed': wind_speed,
+                            'description': description
+                        })
+
+                    for date, forecasts in daily_forecasts.items():
+                        temp_sum = sum(f['temperature'] for f in forecasts)
+                        feels_like_sum = sum(f['feels_like'] for f in forecasts)
+                        count = len(forecasts)
+                        avg_temp = round(temp_sum / count)
+                        avg_feels_like = round(feels_like_sum / count)
+
+                        message += (
+                            f"*Погода на {date}:*\n\n"
+                            f"*Температура:* {avg_temp}°C\n"
+                            f"*Ощущается как:* {avg_feels_like}°C\n"
+                            f"*Влажность:* {forecasts[0]['humidity']}%\n"
+                            f"*Давление:* {forecasts[0]['pressure']} мм рт. ст.\n"
+                            f"*Скорость ветра:* {forecasts[0]['wind_speed']} м/с\n"
+                            f"*Описание:* {forecasts[0]['description']}\n\n"
+                        )
+
+                    bot.send_message(chat_id, message, parse_mode="Markdown")
+                    break
+                else:
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю.")
+                    break
+            except Exception as e:
+                print(f"Ошибка в попытке запроса: {e}")
+                if attempt == retries - 1:
+                    bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток.")
     except Exception as e:
-        print(f"Ошибка при отправке прогноза на неделю: {e}")
-        traceback.print_exc()
+        print(f"Ошибка в send_forecast_weekly: {e}")
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю. Попробуйте позже.")
 
-# (15.10) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА МЕСЯЦ) ---------------
+# ---------- ПРОГНОЗ НА МЕСЯЦ -----------
+from datetime import datetime, timedelta
+from collections import defaultdict
 
-def send_forecast_monthly(chat_id, coords, url, days=30):
+# ---------- ПРОГНОЗ НА МЕСЯЦ -----------
+# ---------- ПРОГНОЗ НА МЕСЯЦ -----------
+import requests
+from datetime import datetime, timedelta
+import traceback
+
+def send_forecast_monthly(chat_id, coords, url, days=31):
     try:
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
             'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
         }
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=30)
         data = response.json()
 
         if response.status_code == 200:
-            forecasts = data['list'][:days * 8]
-            message = "Прогноз на месяц:\n"
+            forecasts = data['list']
+            message = "*Прогноз на месяц:*\n\n"
 
+            # Получаем данные на месяц
+            daily_forecasts = {}
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                formatted_date = date_time.strftime("%d-%m-%Y %H:%M:%S")
-                temperature = round(forecast['main']['temp'] - 273.15)
-                feels_like = round(forecast['main']['feels_like'] - 273.15)
-                humidity = forecast['main']['humidity']
-                pressure = forecast['main']['pressure']
-                wind_speed = forecast['wind']['speed']
-                description = translate_weather_description(forecast['weather'][0]['description'])
+                date_str = date_time.strftime('%d.%m.%Y')  # Изменен формат даты на DD.MM.YYYY
 
+                if date_str not in daily_forecasts:
+                    daily_forecasts[date_str] = {
+                        'temperature': round(forecast['main']['temp']),
+                        'feels_like': round(forecast['main']['feels_like'])
+                    }
+
+            # Формируем сообщение
+            for date, values in daily_forecasts.items():
                 message += (
-                    f"{formatted_date}:\n"
-                    f"Температура: {temperature}°C\n"
-                    f"Ощущается как: {feels_like}°C\n"
-                    f"Влажность: {humidity}%\n"
-                    f"Давление: {pressure} мм рт. ст\n"
-                    f"Скорость ветра: {wind_speed} м/с\n"
-                    f"Описание погоды: {description}\n\n"
+                    f"*{date}:*\n\n"
+                    f"*Температура:* {values['temperature']}°C\n"
+                    f"*Ощущается как:* {values['feels_like']}°C\n\n"
                 )
 
-            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+            # Проверка на отсутствие данных и формирование диапазона
+            unavailable_dates = []
+            for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y'):
+                if date not in daily_forecasts:
+                    unavailable_dates.append(date)
 
-            for chunk in message_chunks:
-                bot.send_message(chat_id, chunk)
+            if unavailable_dates:
+                start_date = unavailable_dates[0]
+                end_date = unavailable_dates[-1]
+                message += (f"*С {start_date} по {end_date}:*\n\n_" 
+                             f"Данные недоступны из-за ограничений._\n\n")  # Курсив
+
+            if message == "*Прогноз на месяц:*\n\n":
+                message = "Нет доступного прогноза на месяц."
+
+            bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, "Не удалось получить прогноз погоды на месяц.")
+            bot.send_message(chat_id, "Не удалось получить прогноз на месяц.")
     except Exception as e:
         print(f"Ошибка при отправке прогноза на месяц: {e}")
         traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже.")
-
 
 # ЦЕНЫ НА ТОПЛИВО
 
