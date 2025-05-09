@@ -395,8 +395,8 @@ def check_user_blocked(func):
 # ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания платной и бесплатной подписки на бот) ---------------------------
 
 paid_features = [
-    "Траты и ремонты", "Найти транспорт", "Поиск мест", "Погода"
-    "Цены на топливо", "Анти-радар", "Калькуляторы"
+    "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+    "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
 ]
 
 def check_subscription(func):
@@ -939,29 +939,19 @@ def save_users_data(data):
 # ------------------------------------ ПОДПИСКА НА БОТА (бесплатные функции, прбный период, фоновые функции) -------------------------------
 
 FREE_FEATURES = [
+    "Калькуляторы", "Вернуться в калькуляторы",     
+    "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя", "Мужской", "Женский", "Убрать последний", "Убрать все", "Готово", 
+    "Налог", "Вернуться в налог", "Вернуться в алкоголь", "Рассчитать налог", "Просмотр налогов", "Удаление налогов","Да", "Нет",
+    "Найти транспорт", "Отправить геопозицию", "Продолжить", "Начать заново",
     "Код региона",
-    "Напоминания", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминание",
-    "Активные", "Истекшие",
-    "Del Активные", "Del Истекшие",
-    "Один раз (активные)", "Ежедневно (активные)", "Еженедельно (активные)", "Ежемесячно (активные)",
-    "Один раз (истекшие)", "Ежедневно (истекшие)", "Еженедельно (истекшие)", "Ежемесячно (истекшие)",
-    "Del Один раз (активные)", "Del Ежедневно (активные)", "Del Еженедельно (активные)", "Del Ежемесячно (активные)",
-    "Del Один раз (истекшие)", "Del Ежедневно (истекшие)", "Del Еженедельно (истекшие)", "Del Ежемесячно (истекшие)",
-    "Удалить все напоминания",
-    "Калькуляторы", "Вернуться в калькуляторы", "Вернуться в алкоголь", "Вернуться в налог",
-    "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя",
-    "Мужской", "Женский", "Убрать последний", "Убрать все", "Готово", "Медленно", "Быстро", "Нет", "Да", "Еда",
-    "Налог", "Рассчитать налог", "Просмотр налогов", "Удаление налогов",
-    "Легковые автомобили",
     "Коды OBD2",
+    "Напоминания", "Вернуться в меню напоминаний", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминания", "Активные", "Истекшие", "Один раз", "Ежедневно", "Еженедельно", "Ежемесячно",
     "Прочее",
     "Новости", "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей", "Еще новости",
-    "Для рекламы", "Заявка на рекламу", "Ваши заявки",
-    "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
-    "Чат с админом",
     "Курсы валют",
-    "Вернуться в главное меню", "Вернуться в меню напоминаний", "Вернуться в меню для рекламы",
-    "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу"
+    "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
+    "Для рекламы", "Вернуться в меню для рекламы", "Заявка на рекламу", "Ваши заявки", "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу",
+    "Чат с админом", "В главное меню"
 ]
 
 def set_free_trial_period(user_id, days, source="default"):
@@ -1287,7 +1277,7 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243' # API
 def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _код региона, коды OBD2, напоминания, калькуляторы (алкоголь, налог), прочее (новости, для рекламы, чат с админом, курсы валют, уведомления)_\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _ калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют, уведомления)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *Неделя:* 149 ₽ — идеально для тестирования всех функций бота!\n"
         "👉 *Месяц:* 399 ₽ — полный доступ ко всем функциям на продолжительный период!\n"
@@ -1929,18 +1919,18 @@ def view_subscription(message):
     if 'plans' not in user_data or not user_data['plans']:
         bot.send_message(user_id, (
             "⚠️ *У вас нет подписок!*\n\n"
-            "🚀 Попробуйте оформить первую подписку прямо сейчас!\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+            "🚀 Попробуй оформить первую подписку прямо сейчас!\n"
+            "👉 Перейди в раздел *«Купить подписку»*!"
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now() 
+    now = datetime.now()
     active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now]
     if not active_plans:
         bot.send_message(user_id, (
             "⚠️ *У вас нет активных подписок!*\n\n"
-            "🚀 Подключите подписку, чтобы воспользоваться функциями бота!\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+            "🚀 Подключи подписку, чтобы воспользоваться функциями бота!\n"
+            "👉 Перейди в раздел *«Купить подписку»*!"
         ), parse_mode="Markdown")
         return
 
@@ -1963,11 +1953,9 @@ def view_subscription(message):
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
 
-
         if plan_name_lower in {"free", "referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx + 1}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -1979,7 +1967,7 @@ def view_subscription(message):
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx + 1}. Платный период:*"
-            else: 
+            else:
                 period_type = f"📦 *№{idx + 1}. Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -1997,7 +1985,7 @@ def view_subscription(message):
         )
         total_cost_active += plan['price']
 
-    send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
+    send_long_message(message.chat.id, plans_summary) 
 
     subtypes = []
     for p in active_plans:
@@ -2029,7 +2017,7 @@ def view_subscription(message):
         f"💰 *Общая стоимость активных подписок:* {total_cost_active_formatted} руб.\n"
         f"💰 *Общая стоимость всех подписок:* {total_amount_formatted} руб.\n"
     )
-    send_long_message(message.chat.id, summary_message, parse_mode="Markdown")
+    send_long_message(message.chat.id, summary_message) 
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (история подписок) -----------------------------------------
 
@@ -2059,17 +2047,14 @@ def view_subscription_history(message):
     if 'plans' not in user_data or not user_data['plans']:
         bot.send_message(user_id, (
             "❌ *У вас нет истории подписок!*\n"
-            "🚀 Попробуйте оформить подписку и начните использовать все возможности бота!"
+            "🚀 Попробуй оформить подписку и начни использовать все возможности бота!"
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now() 
+    now = datetime.now()
     expired_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < now]
     if not expired_plans:
-        bot.send_message(user_id, (
-            "❌ *У вас нет истекших подписок!*\n"
-            "🚀 История подписок появится, когда истечет из срока какая-либо подписка!"
-        ), parse_mode="Markdown")
+        bot.send_messagelul(message)
         return
 
     plans_summary = "📜 *История подписок:*\n\n"
@@ -2093,7 +2078,6 @@ def view_subscription_history(message):
         if plan_name_lower in {"free", "referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx + 1}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -2102,11 +2086,10 @@ def view_subscription_history(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx + 1}. Платный период:*"
-            else: 
+            else:
                 period_type = f"📦 *№{idx + 1}. Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -2123,7 +2106,7 @@ def view_subscription_history(message):
             f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
-    send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
+    send_long_message(message.chat.id, plans_summary)  
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (отмена подписок) -----------------------------------------
 
@@ -2147,11 +2130,6 @@ def load_admin_chat_id():
         return int(admin_sessions[0]) if admin_sessions else None
     except Exception as e:
         return None
-
-def send_long_message(chat_id, message_text, parse_mode='Markdown'):
-    max_length = 4096
-    for i in range(0, len(message_text), max_length):
-        bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
 
 def calculate_refunded_amount(plan):
     try:
@@ -2263,8 +2241,8 @@ def cancel_subscription(message):
     if 'plans' not in user_data or not user_data['plans']:
         bot.send_message(user_id, (
             "⚠️ *У вас нет подписок!*\n\n"
-            "🚀 Попробуйте оформить первую подписку прямо сейчас!\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+            "🚀 Попробуй оформить первую подписку прямо сейчас!\n"
+            "👉 Перейди в раздел *«Купить подписку»*!"
         ), parse_mode="Markdown")
         payments_function(message, show_description=False)
         return
@@ -2279,8 +2257,8 @@ def cancel_subscription(message):
     if not paid_plans:
         bot.send_message(user_id, (
             "⚠️ *У вас нет активных подписок!*\n\n"
-            "🚀 Подключите подписку, чтобы воспользоваться функциями бота!\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+            "🚀 Подключи подписку, чтобы воспользоваться функциями бота!\n"
+            "👉 Перейди в раздел *«Купить подписку»*!"
         ), parse_mode="Markdown")
         payments_function(message, show_description=False)
         return
@@ -2314,7 +2292,7 @@ def cancel_subscription(message):
             f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
 
-    send_long_message(user_id, plans_summary, parse_mode="Markdown")
+    send_long_message(user_id, plans_summary)  
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Вернуться в подписку")
@@ -3031,9 +3009,9 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.register_next_step_handler(message, process_discount_exchange)
     elif message.text == "Обмен на функции":
         paid_features = [
-            "Траты и ремонты", "Найти транспорт", "Поиск мест", 
-            "Погода", "Цены на топливо", "Анти-радар", "Калькуляторы"
-        ]        
+            "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+            "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
+        ]
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
             if i + 1 < len(paid_features):
@@ -3076,10 +3054,9 @@ def process_feature_selection(message, points):
     data = load_payment_data()
     feature = message.text
     paid_features = [
-        "Траты и ремонты", "Найти транспорт", "Поиск мест", 
-        "Погода", "Цены на топливо", "Анти-радар", "Калькуляторы"
+        "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+        "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
     ]
-    
     if feature not in paid_features:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
@@ -4413,7 +4390,7 @@ def show_promo_codes(message):
     
     response += "🚀 Введите новый промокод, чтобы получить ещё больше скидок!"
     
-    send_long_message(user_id, response, parse_mode="Markdown")
+    send_long_message(user_id, response)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (рекламные каналы) -----------------------------------------
 
@@ -4885,7 +4862,7 @@ def view_referrals_and_bonuses(message):
 
         message_text += f"📅 *Бонус реферала:* {referral_bonus_days} дней\n\n"
 
-    send_long_message(message.chat.id, message_text, parse_mode="Markdown")
+    send_long_message(message.chat.id, message_text)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (топ рефералов) -----------------------------------------
 
@@ -4965,7 +4942,7 @@ def view_referral_leaderboard(message):
         position_text = f"📍 *Ваша позиция* (`{user_id}`)*:* \n      Вы пока не в рейтинге!"
         message_text += position_text
     
-    send_long_message(message.chat.id, message_text, parse_mode="Markdown")
+    send_long_message(message.chat.id, message_text)
 
 def check_monthly_leader_bonus():
     while True:
@@ -18994,7 +18971,6 @@ def load_tor_bridges():
                 bridge = line.strip()
                 if bridge and bridge.startswith('obfs4'):
                     bridges.append(bridge)
-        print(f"Загружено {len(bridges)} мостов Tor.")
     except FileNotFoundError:
         print(f"Файл {TOR_BRIDGES_FILE_PATH} не найден.")
     except Exception as e:
@@ -19715,7 +19691,7 @@ threading.Thread(target=schedule_tasks_for_azs, daemon=True).start()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILES_DIR = os.path.join(BASE_DIR, "files")
 FILES_FOR_REGIONS_DIR = os.path.join(FILES_DIR, "files_for_regions")
-REGIONS_FILE_PATH = os.path.join(FILES_DIR, "regions.txt")
+REGIONS_FILE_PATH = os.path.join(FILES_DIR, FILES_FOR_REGIONS_DIR, "regions.txt")
 
 os.makedirs(FILES_DIR, exist_ok=True)
 os.makedirs(FILES_FOR_REGIONS_DIR, exist_ok=True)
@@ -20998,8 +20974,9 @@ def view_exchange_rates(message):
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data', 'user', 'notifications', 'notifications.json')
-OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5' # API
-WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004' # API
+PAYMENTS_PATH = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'payments.json')
+OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
+WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004'
 OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
 OPENMETEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 WEATHERAPI_CURRENT_URL = 'https://api.weatherapi.com/v1/current.json'
@@ -21009,9 +20986,30 @@ def ensure_directory_exists(file_path):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+def load_payment_data():
+    ensure_directory_exists(PAYMENTS_PATH)
+    try:
+        with open(PAYMENTS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"subscriptions": {"users": {}}}
+
+def has_active_subscription(chat_id):
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(chat_id), {})
+    if 'plans' not in user_data:
+        return False
+    for plan in user_data['plans']:
+        try:
+            end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+            if end_date > datetime.now():
+                return True
+        except (ValueError, KeyError):
+            continue
+    return False
+
 def initialize_user_notifications(chat_id):
     ensure_directory_exists(NOTIFICATIONS_PATH)
-
     try:
         with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
             notifications = json.load(f)
@@ -21019,27 +21017,35 @@ def initialize_user_notifications(chat_id):
         notifications = {}
 
     str_chat_id = str(chat_id)
+    active_subscription = has_active_subscription(chat_id)
+    
     if str_chat_id not in notifications:
         notifications[str_chat_id] = {
             "latitude": None,
             "longitude": None,
             "city_code": None,
             "notifications": {
-                "weather": True,
-                "fuel_prices": True,
-                "exchange_rates": True 
+                "weather": False,
+                "fuel_prices": False,
+                "exchange_rates": False
             }
         }
     else:
         if "notifications" not in notifications[str_chat_id]:
             notifications[str_chat_id]["notifications"] = {
-                "weather": True,
-                "fuel_prices": True,
-                "exchange_rates": True  
+                "weather": False,
+                "fuel_prices": False,
+                "exchange_rates": False
             }
         else:
+            if not active_subscription:
+                notifications[str_chat_id]["notifications"] = {
+                    "weather": False,
+                    "fuel_prices": False,
+                    "exchange_rates": False
+                }
             if "exchange_rates" not in notifications[str_chat_id]["notifications"]:
-                notifications[str_chat_id]["notifications"]["exchange_rates"] = True
+                notifications[str_chat_id]["notifications"]["exchange_rates"] = False
 
     with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
         json.dump(notifications, f, ensure_ascii=False, indent=4)
@@ -21048,26 +21054,24 @@ def initialize_user_notifications(chat_id):
 
 def save_user_location(chat_id, latitude, longitude, city_code):
     ensure_directory_exists(NOTIFICATIONS_PATH)
-    
     notifications = initialize_user_notifications(chat_id)
     str_chat_id = str(chat_id)
 
     if latitude is not None:
-        notifications[str_chat_id]["latitude"] = float(latitude)  
+        notifications[str_chat_id]["latitude"] = float(latitude)
     if longitude is not None:
-        notifications[str_chat_id]["longitude"] = float(longitude) 
+        notifications[str_chat_id]["longitude"] = float(longitude)
     if city_code is not None:
         notifications[str_chat_id]["city_code"] = city_code
 
     try:
         with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
             json.dump(notifications, f, ensure_ascii=False, indent=4)
-    except Exception as e:
+    except Exception:
         pass
 
 def load_user_locations():
     ensure_directory_exists(NOTIFICATIONS_PATH)
-    
     try:
         with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -21077,33 +21081,36 @@ def load_user_locations():
         return {}
 
 def toggle_notification(chat_id, notification_type):
+    if not has_active_subscription(chat_id):
+        return False
     ensure_directory_exists(NOTIFICATIONS_PATH)
-    
     notifications = initialize_user_notifications(chat_id)
     user_notifications = notifications.get(str(chat_id), {}).get("notifications", {})
 
     if notification_type in user_notifications:
         user_notifications[notification_type] = not user_notifications[notification_type]
         notifications[str(chat_id)]["notifications"] = user_notifications
-
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f: 
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
             json.dump(notifications, f, ensure_ascii=False, indent=4)
-        
         return user_notifications[notification_type]
+    return False
 
 def get_notification_status(chat_id):
     notifications = load_user_locations()
-    return notifications.get(str(chat_id), {}).get("notifications", {
-        "weather": True, 
-        "fuel_prices": True, 
-        "exchange_rates": True
-    })
+    default_status = {
+        "weather": False,
+        "fuel_prices": False,
+        "exchange_rates": False
+    }
+    if not has_active_subscription(chat_id):
+        return default_status
+    return notifications.get(str(chat_id), {}).get("notifications", default_status)
 
 def get_notification_status_message(chat_id):
     status = get_notification_status(chat_id)
-    weather_status = "включены" if status.get("weather", True) else "выключены"
-    fuel_status = "включены" if status.get("fuel_prices", True) else "выключены"
-    exchange_status = "включены" if status.get("exchange_rates", True) else "выключены"
+    weather_status = "включены" if status.get("weather", False) else "выключены"
+    fuel_status = "включены" if status.get("fuel_prices", False) else "выключены"
+    exchange_status = "включены" if status.get("exchange_rates", False) else "выключены"
     
     return f"📬 Текущий статус уведомлений:\n\n" \
            f"🌤️ Погода: {weather_status}\n" \
@@ -21154,7 +21161,6 @@ def toggle_notifications_handler(message, show_description=True):
     bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
                     reply_markup=markup, parse_mode="Markdown")
 
-
 @bot.message_handler(func=lambda message: message.text in [
     "Включить погоду", "Выключить погоду", 
     "Включить цены", "Выключить цены", 
@@ -21188,8 +21194,14 @@ def toggle_notifications_handler(message, show_description=True):
 @rate_limit_with_captcha
 def handle_notification_toggle(message):
     chat_id = message.chat.id
-    notification_messages = []
+    if not has_active_subscription(chat_id):
+        bot.send_message(
+            chat_id,
+            "❌ Все уведомления отключены, так как у вас нет активной подписки!\n🚀 Чтобы включить уведомления, оформите подписку или обменяйте баллы!", parse_mode="Markdown")
+        toggle_notifications_handler(message, show_description=False)
+        return
 
+    notification_messages = []
     if message.text == "Включить погоду":
         new_status = toggle_notification(chat_id, "weather")
         notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
@@ -21230,75 +21242,19 @@ def handle_notification_toggle(message):
 
     toggle_notifications_handler(message, show_description=False)
 
-@bot.message_handler(func=lambda message: message.text in [
-    "Включить погоду", "Выключить погоду", 
-    "Включить цены", "Выключить цены", 
-    "Включить курсы", "Выключить курсы", 
-    "Включить все", "Выключить все"
-])
-@check_function_state_decorator('Включить погоду')
-@check_function_state_decorator('Выключить погоду')
-@check_function_state_decorator('Включить цены')
-@check_function_state_decorator('Выключить цены')
-@check_function_state_decorator('Включить курсы')
-@check_function_state_decorator('Выключить курсы')
-@check_function_state_decorator('Включить все')
-@check_function_state_decorator('Выключить все')
-@track_usage('Включить погоду')
-@track_usage('Выключить погоду')
-@track_usage('Включить цены')
-@track_usage('Выключить цены')
-@track_usage('Включить курсы')
-@track_usage('Выключить курсы')
-@track_usage('Включить все')
-@track_usage('Выключить все')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def handle_notification_toggle(message):
-    chat_id = message.chat.id
-    if message.text == "Включить погоду":
-        toggle_notification(chat_id, "weather")
-    elif message.text == "Выключить погоду":
-        toggle_notification(chat_id, "weather")
-    elif message.text == "Включить цены":
-        toggle_notification(chat_id, "fuel_prices")
-    elif message.text == "Выключить цены":
-        toggle_notification(chat_id, "fuel_prices")
-    elif message.text == "Включить курсы":
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Выключить курсы":
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Включить все":
-        toggle_notification(chat_id, "weather")
-        toggle_notification(chat_id, "fuel_prices")
-        toggle_notification(chat_id, "exchange_rates")
-    elif message.text == "Выключить все":
-        toggle_notification(chat_id, "weather")
-        toggle_notification(chat_id, "fuel_prices")
-        toggle_notification(chat_id, "exchange_rates")
-
-    toggle_notifications_handler(message, show_description=False)
-
 def get_city_name(latitude, longitude):
     try:
         geocode_url = "https://eu1.locationiq.com/v1/reverse.php"
         params = {
-            'key': 'pk.fa5c52bb6b9e1b801d72b75d151aea63', 
+            'key': 'pk.fa5c52bb6b9e1b801d72b75d151aea63',
             'lat': latitude,
             'lon': longitude,
             'format': 'json',
             'accept-language': 'ru'
         }
         response = requests.get(geocode_url, params=params, timeout=5)
-        response.raise_for_status()  
+        response.raise_for_status()
         data = response.json()
-
         if response.status_code == 200:
             city = data.get("address", {}).get("city", None)
             if city:
@@ -21307,23 +21263,20 @@ def get_city_name(latitude, longitude):
             village = data.get("address", {}).get("village", None)
             return town or village or f"неизвестное место ({latitude}, {longitude})"
         return None
-    except (requests.exceptions.RequestException, ValueError) as e:
+    except (requests.exceptions.RequestException, ValueError):
         pass
 
     try:
-        time.sleep(1)  
+        time.sleep(1)
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
-        headers = {
-            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)' # API  
-        }
+        headers = {'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'} # API
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
         data = response.json()
-
         address = data.get('address', {})
         city = address.get('city') or address.get('town') or address.get('village')
         return city or f"неизвестное место ({latitude}, {longitude})"
-    except (requests.exceptions.RequestException, ValueError) as e:
+    except (requests.exceptions.RequestException, ValueError):
         return f"неизвестное место ({latitude}, {longitude})"
 
 def fetch_weather_data(url_type, params, api_type='openweathermap'):
@@ -21333,7 +21286,6 @@ def fetch_weather_data(url_type, params, api_type='openweathermap'):
             if response.status_code == 200:
                 return response.json(), 'openweathermap'
             return None, 'openweathermap'
-
         elif api_type == 'openmeteo':
             openmeteo_params = {
                 'latitude': params['params'].get('lat') or params['params'].get('latitude'),
@@ -21347,7 +21299,6 @@ def fetch_weather_data(url_type, params, api_type='openweathermap'):
             if response.status_code == 200:
                 return response.json(), 'openmeteo'
             return None, 'openmeteo'
-
         elif api_type == 'weatherapi':
             weatherapi_params = {
                 'key': WEATHERAPI_API_KEY,
@@ -21361,17 +21312,14 @@ def fetch_weather_data(url_type, params, api_type='openweathermap'):
             if response.status_code == 200:
                 return response.json(), 'weatherapi'
             return None, 'weatherapi'
-
     except Exception:
         return None, api_type
 
 def normalize_weather_data(data, api_type, url_type):
     if not data:
         return None
-
     if api_type == 'openweathermap':
         return data
-
     elif api_type == 'openmeteo':
         if url_type == 'weather':
             weather_code = data['current_weather']['weathercode']
@@ -21411,7 +21359,6 @@ def normalize_weather_data(data, api_type, url_type):
                     'weather': [{'description': description}]
                 })
             return {'list': forecasts}
-
     elif api_type == 'weatherapi':
         if url_type == 'weather':
             return {
@@ -21440,7 +21387,6 @@ def normalize_weather_data(data, api_type, url_type):
                         'weather': [{'description': hour['condition']['text']}]
                     })
             return {'list': forecasts}
-
     return None
 
 def get_current_weather(coords):
@@ -21456,7 +21402,6 @@ def get_current_weather(coords):
                 'lang': 'ru'
             }
         }
-
         for api in ['openweathermap', 'openmeteo', 'weatherapi']:
             data, api_type = fetch_weather_data('weather', params, api)
             if data:
@@ -21468,10 +21413,8 @@ def get_current_weather(coords):
                     pressure = data['main']['pressure']
                     wind_speed = data['wind']['speed']
                     description = translate_weather_description(data['weather'][0]['description'])
-
                     current_time = datetime.now().strftime("%H:%M")
                     current_date = datetime.now().strftime("%d.%m.%Y")
-
                     return (
                         f"*Погода на {current_date} в {current_time}*:\n"
                         f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
@@ -21483,36 +21426,27 @@ def get_current_weather(coords):
                         f"☁️ *Описание:* {description}\n\n"
                     )
         return None
-    except Exception as e:
+    except Exception:
         return None
 
 def get_average_fuel_prices(city_code):
     fuel_prices = {}
     file_path = f'data/user/azs/{city_code}_table_azs_data.json'
-
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             prices_data = json.load(f)
-
             for entry in prices_data:
-                fuel_type = entry[1]  
-                price = entry[2]  
-
+                fuel_type = entry[1]
+                price = entry[2]
                 try:
-                    price = float(price) 
+                    price = float(price)
                 except ValueError:
-                    continue  
-
+                    continue
                 if fuel_type not in fuel_prices:
                     fuel_prices[fuel_type] = []
-
                 fuel_prices[fuel_type].append(price)
-
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return None
-    except json.JSONDecodeError:
-        return None
-
     average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
     return average_prices
 
@@ -21537,70 +21471,45 @@ def load_city_names(file_path):
                 city_data = line.strip().split(' - ')
                 if len(city_data) == 2:
                     city_name, city_code = city_data
-                    city_names[city_code] = city_name 
+                    city_names[city_code] = city_name
     except FileNotFoundError:
         pass
-    except Exception as e:
+    except Exception:
         pass
-    
     return city_names
 
 def send_weather_notifications():
     user_locations = load_user_locations()
     city_names = load_city_names('files/files_for_price_weather/combined_cities.txt')
     blocked_users = load_blocked_users()
-    data = load_payment_data()
-
     for chat_id, coords in user_locations.items():
-        if chat_id in blocked_users:
+        if chat_id in blocked_users or not has_active_subscription(chat_id):
             continue
-
-        user_data = data['subscriptions']['users'].get(str(chat_id), {})
-        has_active_subscription = False
-
-        if 'plans' in user_data:
-            for plan in user_data['plans']:
-                if plan['end_date'] and datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now():
-                    has_active_subscription = True
-                    break
-
-        if not has_active_subscription:
-            continue
-
         notification_status = get_notification_status(chat_id)
         messages = []
-
         if notification_status.get("weather"):
             weather_message = get_current_weather(coords)
             if weather_message:
                 messages.append(weather_message)
-
         if notification_status.get("fuel_prices"):
             city_code = coords.get('city_code')
             city_name = city_names.get(city_code, city_code)
             average_prices = get_average_fuel_prices(city_code)
-
             current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-
             if average_prices:
                 fuel_prices_message = "*Актуальные цены на топливо (г. {}) на дату {}:*\n\n".format(city_name, current_time)
-
                 fuel_types_order = [
                     "Аи-92", "Премиум 92", "Аи-95", "Премиум 95", "Аи-98", "Премиум 98",
                     "Аи-100", "Премиум 100", "ДТ", "Премиум ДТ", "Газ"
                 ]
-
                 for fuel_type in fuel_types_order:
                     if fuel_type in average_prices:
                         fuel_prices_message += f"⛽ *{fuel_type}:* {average_prices[fuel_type]:.2f} руб./л.\n"
-
                 messages.append(fuel_prices_message)
-
         if notification_status.get("exchange_rates"):
             exchange_message = get_exchange_rates_message()
             if exchange_message:
                 messages.append(exchange_message)
-
         if messages:
             try:
                 final_message = "🔔 *Вам пришло новое уведомление!*\n\n" + "\n".join(messages)
@@ -25774,8 +25683,8 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
         paid_features = [
-            "Траты и ремонты", "Найти транспорт", "Поиск мест", 
-            "Погода", "Цены на топливо", "Анти-радар", "Калькуляторы"
+            "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+            "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
         ]
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
@@ -25981,10 +25890,10 @@ def process_perform_exchange_feature(message, user_id):
 
     feature = message.text.strip()
     paid_features = [
-        "Траты и ремонты", "Найти транспорт", "Поиск мест", 
-        "Погода", "Цены на топливо", "Анти-радар", "Калькуляторы"
+        "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+        "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
     ]
-    
+ 
     if feature not in paid_features:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
