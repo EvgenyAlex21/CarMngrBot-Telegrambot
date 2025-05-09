@@ -5172,6 +5172,16 @@ def handle_location_5(message):
             latitude = message.location.latitude
             longitude = message.location.longitude
 
+            # Получение названия города по координатам
+            city_name = get_city_name(latitude, longitude)
+
+            # Сохранение координат и названия города
+            save_user_location(message.chat.id, latitude, longitude, city_name)
+    #try:
+        if message.location:
+            latitude = message.location.latitude
+            longitude = message.location.longitude
+
             # Сохраняем координаты пользователя
             save_user_location(message.chat.id, latitude, longitude, None)  # city_code пока None
 
@@ -5243,8 +5253,36 @@ def load_user_locations():
 
 import traceback
 
+def get_city_name(latitude, longitude):
+    try:
+        geocode_url = "https://eu1.locationiq.com/v1/reverse.php"
+        params = {
+            'key': 'pk.fa5c52bb6b9e1b801d72b75d151aea63',  # Ваш API ключ LocationIQ
+            'lat': latitude,
+            'lon': longitude,
+            'format': 'json',
+            'accept-language': 'ru'  # Добавлено для получения названия города на русском
+        }
+        response = requests.get(geocode_url, params=params)
+        data = response.json()
+
+        if response.status_code == 200:
+            # Получаем название города на русском языке
+            city = data.get("address", {}).get("city", None)
+            return city if city else f"неизвестное место ({latitude}, {longitude})"
+        else:
+            print(f"Ошибка геокодирования: {data.get('error', 'Нет описания ошибки')}")
+            return None
+    except Exception as e:
+        print(f"Произошла ошибка при запросе названия города: {e}")
+        return None
+
 def get_current_weather(coords):
     try:
+        # Получаем название города по координатам
+        city_name = get_city_name(coords['latitude'], coords['longitude'])
+
+        # Получение данных о погоде
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
@@ -5252,11 +5290,9 @@ def get_current_weather(coords):
             'units': 'metric',
             'lang': 'ru'
         }
-        response = requests.get(WEATHER_URL, params=params, timeout=30)  # Установите таймаут для запроса
-        
-        print(f"API response status: {response.status_code}")
+        response = requests.get(WEATHER_URL, params=params, timeout=30)
         data = response.json()
-        
+
         if response.status_code == 200:
             temperature = round(data['main']['temp'])
             feels_like = round(data['main']['feels_like'])
@@ -5267,11 +5303,11 @@ def get_current_weather(coords):
 
             current_time = datetime.now().strftime("%H:%M")
             current_date = datetime.now().strftime("%d.%m.%Y")
-            coords_str = f"({coords['latitude']}, {coords['longitude']})"
 
             return (
                 f"*Вам пришло новое уведомление!*🔔\n\n"
-                f"*Погода на {current_date} в {current_time}* 🌞 {coords_str}:\n\n"
+                f"*Погода на {current_date} в {current_time}*:\n"
+                f"*(г. {city_name}, {coords['latitude']}, {coords['longitude']})*\n\n"
                 f"🌡️ *Температура:* {temperature}°C\n"
                 f"🌬️ *Ощущается как:* {feels_like}°C\n"
                 f"💧 *Влажность:* {humidity}%\n"
@@ -5288,7 +5324,7 @@ def get_current_weather(coords):
         print(f"Ошибка подключения: {e}")
     except Exception as e:
         print(f"Произошла ошибка: {e}")
-        traceback.print_exc()  # Если вы хотите все же видеть стек вызовов для отладки
+        traceback.print_exc()
     return None
 
 def get_average_fuel_prices(city_code):
@@ -5399,7 +5435,7 @@ def send_weather_notifications():
             current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
             
             if average_prices:
-                fuel_prices_message = "\n*Актуальные цены на топливо (город {}) на дату {}:*\n\n".format(city_name, current_time)
+                fuel_prices_message = "\n*Актуальные цены на топливо (г. {}) на дату {}:*\n\n".format(city_name, current_time)
                 for fuel_type, price in average_prices.items():
                     fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
         
