@@ -1204,8 +1204,7 @@ def return_to_menu(message):
 PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243'
 
 @bot.message_handler(func=lambda message: message.text == "Подписка на бота")
-def payments_function(message):
-
+def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
         "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _код региона, коды OBD2, напоминания, калькуляторы (алкоголь, налог), прочее (новости, для рекламы, уведомления, чат с админом)_\n\n"
@@ -1231,17 +1230,22 @@ def payments_function(message):
         "🎁 Дарите баллы и время подписки друзьям и получайте скидки за лояльность (до 15%)!\n\n"
         "😊 Спасибо, что выбираете нас!"
     )
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Купить подписку')
     markup.add('Посмотреть подписку', 'История подписок', 'Отменить подписку')
     markup.add('Магазин', 'Баллы')
     markup.add('Реферальная система')
     markup.add('В главное меню')
-    bot.send_message(message.chat.id, description, reply_markup=markup, parse_mode="Markdown")
+
+    if show_description:
+        bot.send_message(message.chat.id, description, reply_markup=markup, parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в подписку")
 def return_to_subscription(message):
-    payments_function(message)
+    payments_function(message, show_description=False)
 
 # ---------- 10.1. ПОДПИСКА НА БОТА (КУПИТЬ ПОДПИСКУ) ----------
 
@@ -1269,7 +1273,7 @@ SUBSCRIPTION_PLANS = {
 @bot.message_handler(func=lambda message: message.text == "Купить подписку")
 def buy_subscription(message):
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -1627,7 +1631,7 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
 @bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
 def view_subscription(message):
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -1722,7 +1726,7 @@ def view_subscription(message):
 @bot.message_handler(func=lambda message: message.text == "История подписок")
 def view_subscription_history(message):
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -1820,7 +1824,7 @@ def cancel_subscription(message):
 
     if 'plans' not in user_data or not user_data['plans']:
         bot.send_message(user_id, "❌ У вас нет активных подписок!", parse_mode="Markdown")
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
 
     paid_plans = [
@@ -1831,7 +1835,7 @@ def cancel_subscription(message):
     ]
     if not paid_plans:
         bot.send_message(user_id, "❌ Нет подписок для отмены!", parse_mode="Markdown")
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
 
     plans_summary = "*Ваши подписки:*\n\n"
@@ -1950,7 +1954,7 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
 def confirm_cancellation(message, user_id, paid_plans):
 
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -1988,7 +1992,7 @@ def confirm_cancellation(message, user_id, paid_plans):
 
         if total_refunded == 0:
             bot.send_message(user_id, "❌ Нет подписок для возврата!", parse_mode="Markdown")
-            payments_function(message)
+            payments_function(message, show_description=False)
             return
 
         refund_summary += f"📥 Итого: *{total_refunded:.2f} руб.*"
@@ -2008,7 +2012,7 @@ def confirm_cancellation(message, user_id, paid_plans):
 def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
 
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2016,7 +2020,7 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
 
     if message.text != "Подтвердить":
         bot.send_message(user_id, "❌ Действие отменено!", parse_mode="Markdown")
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
 
     data = load_payment_data()
@@ -2067,7 +2071,7 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
     else:
         bot.send_message(user_id, "❌ Не удалось отменить подписки!", parse_mode="Markdown")
 
-    payments_function(message)
+    payments_function(message, show_description=False)
 
 # ---------- 10.5. ПОДПИСКА НА БОТА (МАГАЗИН) ----------
 
@@ -2434,7 +2438,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         return_to_scores_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2507,7 +2511,7 @@ def process_feature_selection(message, points):
         return_to_scores_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2553,7 +2557,7 @@ def process_feature_exchange(message, feature, points):
         return_to_scores_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2625,7 +2629,7 @@ def process_points_exchange(message, exchange_rate):
         return_to_scores_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2703,7 +2707,7 @@ def process_discount_exchange(message):
         return_to_scores_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2832,7 +2836,7 @@ def process_gift_recipient(message, sender_points):
         return_to_gifts_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -2894,7 +2898,7 @@ def process_gift_amount(message, recipient_id, sender_points):
         return_to_gifts_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3045,7 +3049,7 @@ def process_gift_time_recipient(message, total_available_minutes):
         return_to_gifts_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3120,7 +3124,7 @@ def process_gift_time_unit(message, recipient_id, total_available_minutes):
         return_to_gifts_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3158,7 +3162,7 @@ def process_gift_time_amount(message, recipient_id, total_available_minutes, uni
         return_to_gifts_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3685,7 +3689,7 @@ def process_promo_code(message):
         return_to_referral_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3708,7 +3712,7 @@ def process_promo_code(message):
                 f"❌ *Вы уже использовали промокод в этом месяце!*\n"
                 f"🔒 Вы сможете использовать следующий промокод через {30 - days_since_last_use} дней!"
             ), parse_mode="Markdown")
-            payments_function(message)
+            payments_function(message, show_description=False)
             return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -3759,7 +3763,7 @@ def process_promo_code(message):
             "📅 Вы сможете использовать следующий промокод через 30 дней!\n"
             "⏳ Если вы не купите подписку в течение 30 дней, скидка сгорит!"
         ), parse_mode="Markdown")
-        payments_function(message)
+        payments_function(message, show_description=False)
     else:
         bot.send_message(user_id, (
             "❌ Неверный или использованный промокод! Проверьте код и попробуйте снова\n\n"
@@ -3823,7 +3827,7 @@ def get_day_for_ad(message):
         return_to_referral_menu(message)
         return
     if message.text == "Вернуться в подписку":
-        payments_function(message)
+        payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -3989,9 +3993,8 @@ load_all_user_data()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def handle_fuel_expense(message):
+def handle_fuel_expense(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по расчету топлива*\n\n\n"
         "📌 *Расчет топлива:*\n"
@@ -4016,17 +4019,16 @@ def handle_fuel_expense(message):
     markup.add(item4)
 
     bot.clear_step_handler_by_chat_id(user_id)
-    bot.send_message(user_id, description, parse_mode="Markdown")
+
+    if show_description:
+        bot.send_message(user_id, description, parse_mode="Markdown")
+
     bot.send_message(user_id, "Меню для учета расхода топлива. Выберите действие:", reply_markup=markup)
 
 user_trip_data = {}
-
 trip_data = {}
-
 temporary_trip_data = {}
-
 fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "ГАЗ"]
-
 date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
@@ -4107,7 +4109,7 @@ def process_start_location_step(message):
     markup.add(item3)
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -4168,7 +4170,7 @@ def process_start_location_step(message):
     markup.add(item3)
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -4227,7 +4229,7 @@ def process_end_location_step(message):
     markup.add(item2)
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -4301,7 +4303,7 @@ def process_custom_distance_step(message):
         return
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4333,7 +4335,7 @@ def process_distance_choice_step(message, distance_km):
     trip_data[chat_id]["distance"] = distance_km
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4377,7 +4379,7 @@ def process_date_step(message, distance):
         return
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4430,7 +4432,7 @@ def handle_date_selection(message, distance):
         process_selected_date(message, selected_date)
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4449,7 +4451,7 @@ def handle_date_selection(message, distance):
         sent = bot.send_message(chat_id, "Введите дату поездки:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_manual_date_step, distance)
     elif message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
     elif message.text == "В главное меню":
         return_to_menu(message)
     else:
@@ -4502,7 +4504,7 @@ def process_manual_date_step(message, distance):
     date_pattern = r"\d{2}\.\d{2}\.\d{4}"
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4654,7 +4656,7 @@ def process_fuel_type(message, date, distance):
     chat_id = message.chat.id
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -4733,7 +4735,7 @@ def handle_price_input_choice(message, date, distance, fuel_type):
             bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
 
     elif message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
     elif message.text == "В главное меню":
         return_to_menu(message)
     else:
@@ -4744,7 +4746,7 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
     chat_id = message.chat.id
 
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -4779,7 +4781,7 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
 def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_liter):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -4803,7 +4805,7 @@ def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_
 def process_passengers_step(message, date, distance, fuel_type, price_per_liter, fuel_consumption):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
+        reset_and_start_over(chat_id, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -5022,7 +5024,7 @@ def save_data_handler(message):
 
         bot.send_message(user_id, "Данные поездки успешно сохранены!", reply_markup=markup)
 
-        handle_fuel_expense(message)
+        handle_fuel_expense(message, show_description=False)
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
@@ -5055,7 +5057,7 @@ def restart_handler(message):
 
     user_trip_data[user_id] = load_trip_data(user_id)
 
-    reset_and_start_over(message)
+    reset_and_start_over(message, show_description=False)
 
 # ---------- 9.4 РАСХОД ТОПЛИВА (ПРОСМОТР ПОЕЗДОК) ----------
 
@@ -5323,8 +5325,7 @@ def confirm_delete_all(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
-def handle_expenses_and_repairs(message):
-
+def handle_expenses_and_repairs(message, show_description=True):
     user_id = message.from_user.id
 
     expense_data = load_expense_data(user_id).get(str(user_id), {})
@@ -5364,7 +5365,10 @@ def handle_expenses_and_repairs(message):
     markup.add(item7)
 
     bot.clear_step_handler_by_chat_id(user_id)
-    bot.send_message(user_id, description, parse_mode='Markdown')
+
+    if show_description:
+        bot.send_message(user_id, description, parse_mode='Markdown')
+
     bot.send_message(user_id, "Меню для учета трат и ремонтов. Выберите действие:", reply_markup=markup)
 
 def contains_media(message):
@@ -5515,7 +5519,7 @@ def handle_transport_selection_for_expense(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
     elif message.text == "В главное меню":
         return_to_menu(message)
@@ -5590,7 +5594,7 @@ def get_expense_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
@@ -5647,7 +5651,7 @@ def add_new_category(message, brand, model, license_plate):
 
     if new_category in ["вернуться в меню трат и ремонтов", "в главное меню"]:
         if new_category == "вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -5688,7 +5692,7 @@ def get_expense_name(message, selected_category, brand, model, license_plate):
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -5715,7 +5719,7 @@ def get_expense_description(message, selected_category, expense_name, brand, mod
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -5741,7 +5745,7 @@ def get_expense_date(message, selected_category, expense_name, description, bran
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -5908,7 +5912,7 @@ def remove_selected_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
@@ -6133,7 +6137,7 @@ def handle_category_selection(message):
     selected_category = message.text
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -6236,7 +6240,7 @@ def get_expenses_by_month(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -6346,7 +6350,7 @@ def get_expenses_by_license_plate(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -6619,7 +6623,7 @@ def handle_category_selection_for_deletion(message):
         return
 
     if selected_category == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_category == "В главное меню":
@@ -6684,7 +6688,7 @@ def delete_expense_confirmation(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_option == "В главное меню":
@@ -6857,7 +6861,7 @@ def confirm_delete_expense_month(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_option == "В главное меню":
@@ -6944,7 +6948,7 @@ def delete_expenses_by_license_plate(message):
         return
 
     if license_plate == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if license_plate == "В главное меню":
@@ -7028,7 +7032,7 @@ def confirm_delete_expense_license_plate(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_option == "В главное меню":
@@ -7099,7 +7103,7 @@ def confirm_delete_all_expenses(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -7347,7 +7351,7 @@ def handle_transport_selection_for_repair(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
     elif message.text == "В главное меню":
         return_to_menu(message)
@@ -7419,7 +7423,7 @@ def get_repair_category(message, brand, model, license_plate):
         return
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     elif selected_index == "В главное меню":
@@ -7537,7 +7541,7 @@ def remove_repair_category(message, categories, system_categories, brand, model,
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     elif message.text == "В главное меню":
@@ -7607,7 +7611,7 @@ def get_repair_name(message, selected_category, brand, model, license_plate):
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -7645,7 +7649,7 @@ def get_repair_description(message, selected_category, repair_name, brand, model
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -7702,7 +7706,7 @@ def get_repair_date(message, selected_category, repair_name, repair_description,
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -7784,7 +7788,7 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message)
+            return_to_menu_2(message, show_description=False)
         else:
             return_to_menu(message)
         return
@@ -8060,7 +8064,7 @@ def handle_repair_category_selection(message):
     selected_category = message.text.strip().lower()
 
     if not selected_category or selected_category == "вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
     if selected_category == "в главное меню":
         return_to_menu(message)
@@ -8171,7 +8175,7 @@ def get_repairs_by_month(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -8294,7 +8298,7 @@ def get_repairs_by_year(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -8754,7 +8758,7 @@ def confirm_delete_repair_month(message):
     selected_option = message.text.strip()
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_option == "В главное меню":
@@ -8843,7 +8847,7 @@ def delete_repairs_by_year_handler(message):
         return
 
     if year == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if year == "В главное меню":
@@ -8922,7 +8926,7 @@ def confirm_delete_repair(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message)
+        return_to_menu_2(message, show_description=False)
         return
 
     if selected_option == "В главное меню":
@@ -9178,9 +9182,8 @@ def shorten_url(original_url):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def send_welcome(message):
+def send_welcome(message, show_description=True):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -9209,7 +9212,9 @@ def send_welcome(message):
         "Вывод ссылки(-ок) с ближайшими местами по вашей геопозиции\n\n"
     )
 
-    bot.send_message(user_id, help_message, parse_mode="Markdown")
+    if show_description:
+        bot.send_message(user_id, help_message, parse_mode="Markdown")
+
     bot.send_message(user_id, "Выберите категорию для ближайшего поиска:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
@@ -9220,12 +9225,11 @@ def send_welcome(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def handle_reset_category(message):
     global selected_category
     selected_category = None
-    send_welcome(message)
+    send_welcome(message, show_description=False)
 
 selected_category = None
 
@@ -9728,10 +9732,8 @@ location_data = load_location_data()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def start_transport_search(message):
-
+def start_transport_search(message, show_description=True):
     global location_data
     user_id = str(message.from_user.id)
 
@@ -9745,7 +9747,7 @@ def start_transport_search(message):
         bot.send_message(message.chat.id, "Хотите продолжить с того места, где остановились?", reply_markup=markup)
         bot.register_next_step_handler(message, continue_or_restart)
     else:
-        start_new_transport_search(message)
+        start_new_transport_search(message, show_description=False)
 
 def start_new_transport_search(message):
     global location_data
@@ -9754,7 +9756,7 @@ def start_new_transport_search(message):
     save_location_data(location_data)
     request_transport_location(message)
 
-def request_transport_location(message):
+def request_transport_location(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
     item2 = types.KeyboardButton("В главное меню")
@@ -9769,7 +9771,9 @@ def request_transport_location(message):
         "Вывод *ссылки с маршрутом* от точки А до B"
     )
 
-    bot.send_message(message.chat.id, help_message, parse_mode="Markdown")
+    if show_description:
+        bot.send_message(message.chat.id, help_message, parse_mode="Markdown")
+
     bot.send_message(message.chat.id, "Отправьте геопозицию транспорта:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_car_location)
 
@@ -9895,9 +9899,8 @@ if regions_file_path:
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def handle_start4(message):
+def handle_start4(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по поиску кода региона и госномера авто*\n\n\n"
         "📌 *Код региона:*\n"
@@ -9909,17 +9912,11 @@ def handle_start4(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
     markup.add(item1)
-    bot.send_message(
-        message.chat.id,
-        description,
-        reply_markup=markup,
-        parse_mode="Markdown"
-    )
-    bot.send_message(
-        message.chat.id,
-        "Введите коды регионов или госномера автомобилей через запятую:",
-        reply_markup=markup
-    )
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
+
+    bot.send_message(message.chat.id, "Введите коды регионов или госномера автомобилей через запятую:", reply_markup=markup)
     bot.register_next_step_handler(message, process_input)
 
 def process_input(message):
@@ -10021,7 +10018,7 @@ def translate_weather_description(english_description):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
-def handle_start_5(message):
+def handle_start_5(message, show_description=True):
     try:
         help_message = (
             "ℹ️ *Краткая справка по отображению погоды*\n\n"
@@ -10037,7 +10034,9 @@ def handle_start_5(message):
         markup.row(telebot.types.KeyboardButton("Отправить геопозицию", request_location=True))
         markup.row(telebot.types.KeyboardButton("В главное меню"))
 
-        bot.send_message(message.chat.id, help_message, parse_mode="Markdown")
+        if show_description:
+            bot.send_message(message.chat.id, help_message, parse_mode="Markdown")
+
         bot.send_message(message.chat.id, "Отправьте геопозицию или введите название города:", reply_markup=markup)
         bot.register_next_step_handler(message, handle_input_5)
 
@@ -10119,13 +10118,13 @@ def handle_period_5(message):
 
     if not coords and not city_data:
         bot.send_message(chat_id, "Не удалось получить данные о местоположении или городе! Пожалуйста, начните сначала...")
-        handle_start_5(message)
+        handle_start_5(message, show_description=False)
         return
 
     if period == 'другое место':
         user_data.pop(chat_id, None)
         user_locations.pop(str(chat_id), None)
-        handle_start_5(message)
+        handle_start_5(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -10858,9 +10857,8 @@ def get_city_code(city_name):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def fuel_prices_command(message):
+def fuel_prices_command(message, show_description=True):
     chat_id = message.chat.id
     load_citys_users_data()
     user_state[chat_id] = "choosing_city"
@@ -10887,7 +10885,9 @@ def fuel_prices_command(message):
         "то следует обратиться к администратору (разработчику) для устранения вашей проблемы!_"
     )
 
-    bot.send_message(chat_id, reference_info, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(chat_id, reference_info, parse_mode='Markdown')
+
     bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
     bot.register_next_step_handler(message, process_city_selection)
 
@@ -10900,7 +10900,7 @@ def process_city_selection(message):
         return
 
     if user_state.get(chat_id) != "choosing_city":
-        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации")
         return
 
     city_name = message.text.strip().lower()
@@ -10928,9 +10928,9 @@ def process_city_selection(message):
         save_citys_users_data()
 
         site_type = "default_site_type"
-        show_fuel_price_menu(chat_id, city_code, site_type)
+        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
     else:
-        bot.send_message(chat_id, f"Город '{city_name}' не найден. Пожалуйста, проверьте правильность написания и попробуйте еще раз!")
+        bot.send_message(chat_id, f"Город {city_name} не найден! Пожалуйста, проверьте правильность написания и попробуйте еще раз")
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
 
@@ -11010,7 +11010,7 @@ def process_fuel_price_selection(message, city_code, site_type):
     }
 
     if selected_fuel_type not in fuel_type_mapping:
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов.")
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов")
         bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
         return
 
@@ -11034,7 +11034,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         if saved_data:
             file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
             if file_modification_time >= today:
-                print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем парсинг.")
+                print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем парсинг...")
                 fuel_prices = [
                     item for item in saved_data
                     if item[1].lower() in [ft.lower() for ft in actual_fuel_types]
@@ -11152,7 +11152,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         print(f"Ошибка: {e}")
 
         bot.send_message(chat_id, "Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива:")
-        show_fuel_price_menu(chat_id, city_code, site_type)
+        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
         return 
     
 def process_next_action(message):
@@ -11178,13 +11178,13 @@ def process_next_action(message):
     elif text == "посмотреть цены на другое топливо":
         city_code = user_data[str(chat_id)]['city_code']
         site_type = "default_site_type"
-        show_fuel_price_menu(chat_id, city_code, site_type)
+        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
 
     elif text == "в главное меню":
         return_to_menu(message)
 
     else:
-        bot.send_message(chat_id, "Пожалуйста, выберите одно из предложенных действий.")
+        bot.send_message(chat_id, "Пожалуйста, выберите одно из предложенных действий")
         bot.register_next_step_handler(message, process_next_action)
 
 def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel_types):
@@ -11451,9 +11451,8 @@ def get_notification_status(chat_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def toggle_notifications_handler(message):
+def toggle_notifications_handler(message, show_description=True):
     chat_id = message.chat.id
     notification_status = get_notification_status(chat_id)
 
@@ -11475,7 +11474,9 @@ def toggle_notifications_handler(message):
         "Вы получаете *актуальную информацию* в установленное время _(7:30, 13:00, 17:00, 20:00)_\n"
     )
 
-    bot.send_message(chat_id, info_message, parse_mode="Markdown")
+    if show_description:
+        bot.send_message(chat_id, info_message, parse_mode="Markdown")
+
     bot.send_message(chat_id, "Выберите, какие уведомления включить или выключить:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
@@ -11504,7 +11505,7 @@ def handle_notification_toggle(message):
         toggle_notification(chat_id, "weather")
         toggle_notification(chat_id, "fuel_prices")
 
-    toggle_notifications_handler(message)
+    toggle_notifications_handler(message, show_description=False)
 
 def get_city_name(latitude, longitude):
     try:
@@ -12414,7 +12415,7 @@ def save_data(data):
 @log_user_actions
 @check_subscription_chanal
 def return_to_reminders_menu(message):
-    reminders_menu(message)
+    reminders_menu(message, show_description=False)
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
@@ -12490,9 +12491,8 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def reminders_menu(message):
+def reminders_menu(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка для напоминаний*\n\n\n"
         "📌 *Добавление напоминаний:*\n"
@@ -12505,7 +12505,9 @@ def reminders_menu(message):
     markup.add('Добавить напоминание', 'Посмотреть напоминания', 'Удалить напоминание')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode="Markdown")
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
+
     bot.send_message(message.chat.id, "Выберите действие для напоминаний:", reply_markup=markup)
 
 # ---------- 19.1 НАПОМИНАНИЯ (ДОБАВИТЬ НАПОМИНАНИЕ) ----------
@@ -12542,7 +12544,7 @@ def process_title_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     if user_id not in data["users"]:
@@ -12575,14 +12577,14 @@ def process_type_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     reminder_type = message.text.lower()
     if reminder_type in ["ежедневно", "еженедельно", "ежемесячно", "один раз"]:
         reminder["type"] = reminder_type
     else:
-        msg = bot.send_message(message.chat.id, "Неверный тип напоминания. Пожалуйста, выберите из предложенных вариантов.")
+        msg = bot.send_message(message.chat.id, "Неверный тип напоминания. Пожалуйста, выберите из предложенных вариантов")
         bot.register_next_step_handler(msg, process_type_step)
         return
 
@@ -12609,7 +12611,7 @@ def process_date_step_for_repairs(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     date_input = message.text
@@ -12658,7 +12660,7 @@ def process_time_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     time_input = message.text
@@ -12693,7 +12695,7 @@ def process_time_step(message):
     save_data(data)
 
     bot.send_message(message.chat.id, "Напоминание добавлено!")
-    reminders_menu(message)
+    reminders_menu(message, show_description=False)
 
 # ---------- 19.2 НАПОМИНАНИЯ (ПОСМОТРЕТЬ НАПОМИНАНИЯ) ----------
 
@@ -12980,7 +12982,6 @@ def delete_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal 
 def delete_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
@@ -13040,7 +13041,7 @@ def confirm_delete_active_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     try:
@@ -13050,7 +13051,7 @@ def confirm_delete_active_step(message):
             user_reminders.remove(reminders[reminder_index])
             save_data(data)
             bot.send_message(message.chat.id, f"Напоминание *№{reminder_index + 1}* удалено!", parse_mode="Markdown")
-            reminders_menu(message)
+            reminders_menu(message, show_description=False)
         else:
             raise IndexError
     except (ValueError, IndexError):
@@ -13073,7 +13074,7 @@ def confirm_delete_expired_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     try:
@@ -13083,7 +13084,7 @@ def confirm_delete_expired_step(message):
             user_reminders.remove(reminders[reminder_index])
             save_data(data)
             bot.send_message(message.chat.id, f"Напоминание *№{reminder_index + 1}* удалено!", parse_mode="Markdown")
-            reminders_menu(message)
+            reminders_menu(message, show_description=False)
         else:
             raise IndexError
     except (ValueError, IndexError):
@@ -13124,25 +13125,25 @@ def confirm_delete_all_step(message):
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
         return
 
     user_reminders = data["users"].get(user_id, {}).get("reminders", [])
 
     if message.text.strip().upper() == "ДА":
         if not user_reminders:
-            bot.send_message(message.chat.id, "У вас нет напоминаний!", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "❌ У вас нет напоминаний!", parse_mode="Markdown")
         else:
             data["users"][user_id]["reminders"] = []
             data["users"][user_id]["current_reminder_type"] = None
             data["users"][user_id]["current_reminders"] = []
             save_data(data)
-            bot.send_message(message.chat.id, "Все напоминания удалены!", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "✅ Все напоминания удалены!", parse_mode="Markdown")
 
-        reminders_menu(message)
+        reminders_menu(message, show_description=False)
     elif message.text.strip().upper() == "НЕТ":
-        bot.send_message(message.chat.id, "Удаление всех напоминаний отменено!", parse_mode="Markdown")
-        reminders_menu(message)
+        bot.send_message(message.chat.id, "❌ Удаление всех напоминаний отменено!", parse_mode="Markdown")
+        reminders_menu(message, show_description=False)
     else:
         bot.send_message(message.chat.id, "Пожалуйста, напишите *ДА* или *НЕТ*", parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_delete_all_step)
@@ -13173,9 +13174,8 @@ error_codes = load_error_codes()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def obd2_request(message):
+def obd2_request(message, show_description=True):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
         msg = bot.send_message(message.chat.id, "Введите коды ошибок OBD2 через запятую:")
@@ -13208,7 +13208,8 @@ def obd2_request(message):
         "📌 *Четвертая и пятая позиции* - порядковый *номер* ошибки\n\n"
     )
 
-    bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
+    if show_description:
+        bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
 
     msg = bot.send_message(message.chat.id, "Введите коды ошибок OBD2 через запятую:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_error_codes)
@@ -13265,7 +13266,6 @@ def process_error_codes(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -13321,9 +13321,8 @@ def return_to_calculators(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_alc_calc(message):
+def view_alc_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
@@ -13344,7 +13343,9 @@ def view_alc_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
     bot.send_message(message.chat.id, "Выберите действия из алкоголя:", reply_markup=markup)
 
 # ---------- n.n АЛКОГОЛЬ (РАСЧЕТ) ----------
@@ -13416,7 +13417,6 @@ load_user_history_alko()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
@@ -13439,7 +13439,7 @@ def process_gender(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13471,7 +13471,7 @@ def process_weight(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13527,7 +13527,7 @@ def process_drinks_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     if message.text == "Готово":
@@ -13609,7 +13609,7 @@ def process_volume_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13661,7 +13661,7 @@ def process_drinking_speed(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13694,7 +13694,7 @@ def process_time_since_last_drink(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13750,7 +13750,7 @@ def process_time_since_value(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -13788,7 +13788,7 @@ def process_food(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -14011,7 +14011,7 @@ def handle_view_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message)  
+        view_alc_calc(message, show_description=False)  
         return
     view_calculations(message.chat.id)
 
@@ -14043,7 +14043,7 @@ def process_view_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -14052,7 +14052,7 @@ def process_view_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -14102,7 +14102,7 @@ def process_view_selection(message):
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
         # Возвращаемся в меню только после успешного просмотра
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
 
     except ValueError:
         # Если ввод не является числом, запрашиваем снова
@@ -14133,7 +14133,7 @@ def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message) 
+        view_alc_calc(message, show_description=False) 
         return
     delete_calculations(message.chat.id)
 
@@ -14165,7 +14165,7 @@ def process_delete_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -14174,7 +14174,7 @@ def process_delete_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
         return
 
     try:
@@ -14215,7 +14215,7 @@ def process_delete_selection(message):
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
 
         # Возвращаемся в меню только после успешного удаления
-        view_alc_calc(message)
+        view_alc_calc(message, show_description=False)
 
     except ValueError:
         # Если ввод не является числом, запрашиваем снова
@@ -14240,9 +14240,8 @@ def process_delete_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_rastamozka_calc(message):
+def view_rastamozka_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
@@ -14262,7 +14261,9 @@ def view_rastamozka_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Пути к файлам
@@ -14356,7 +14357,6 @@ load_user_history_rastamozka()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_customs_calculation(message):
     if not rastamozka_data:
@@ -14382,7 +14382,7 @@ def process_car_importer_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14413,7 +14413,7 @@ def process_car_age_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14444,7 +14444,7 @@ def process_engine_type_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14474,7 +14474,7 @@ def process_engine_type_rastamozka_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14510,7 +14510,7 @@ def process_engine_power_value_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14541,7 +14541,7 @@ def process_engine_volume_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14571,7 +14571,7 @@ def process_car_cost_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -14612,7 +14612,7 @@ def process_car_cost_value_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     if message.text.lower() == "в главное меню":
@@ -14668,12 +14668,12 @@ def calculate_customs(message):
 
         bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
         save_rastamozka_calculation_to_history(user_id, total_cost)
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
 
     except Exception as e:
         print(f"Ошибка в calculate_customs: {e}")
         bot.send_message(message.chat.id, "Произошла ошибка при расчете. Пожалуйста, попробуйте снова.")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
 
 def calculate_customs_fee(car_cost_rub):
     if car_cost_rub <= 200000:
@@ -14995,7 +14995,7 @@ def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
     view_rastamozka_calculations(message.chat.id)
 
@@ -15027,7 +15027,7 @@ def process_view_rastamozka_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -15036,7 +15036,7 @@ def process_view_rastamozka_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (растаможки, просмотр): {message.text}")  # Логирование
@@ -15102,7 +15102,7 @@ def process_view_rastamozka_selection(message):
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
         # Возвращаемся в меню после успешной обработки
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -15133,7 +15133,7 @@ def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
     delete_rastamozka_calculations(message.chat.id)
 
@@ -15165,7 +15165,7 @@ def process_delete_rastamozka_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в растаможку":
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -15174,7 +15174,7 @@ def process_delete_rastamozka_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (растаможки, удаление): {message.text}")  # Логирование
@@ -15214,7 +15214,7 @@ def process_delete_rastamozka_selection(message):
 
         save_user_history_rastamozka()
         bot.send_message(chat_id, "✅ Выбранные расчеты растаможки успешно удалены!")
-        view_rastamozka_calc(message)
+        view_rastamozka_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -15239,9 +15239,8 @@ def process_delete_rastamozka_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_osago_calc(message):
+def view_osago_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
@@ -15261,7 +15260,9 @@ def view_osago_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Paths to files
@@ -15323,7 +15324,6 @@ load_user_history_osago()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_osago_calculation(message):
     if not osago_data:
@@ -15350,7 +15350,7 @@ def process_owner_type_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15382,7 +15382,7 @@ def process_vehicle_type_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15416,7 +15416,7 @@ def process_osago_region_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15453,7 +15453,7 @@ def process_city_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15490,7 +15490,7 @@ def process_engine_power_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15527,7 +15527,7 @@ def process_usage_period_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15556,7 +15556,7 @@ def process_driver_restriction_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15590,7 +15590,7 @@ def process_unrestricted_age_experience_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15625,7 +15625,7 @@ def process_unrestricted_accidents_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15654,7 +15654,7 @@ def process_unrestricted_accident_count_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15675,7 +15675,7 @@ def process_restricted_driver_count_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15708,7 +15708,7 @@ def process_driver_age_experience_step(message, driver_num):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15742,7 +15742,7 @@ def process_driver_accidents_step(message, driver_num):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15769,7 +15769,7 @@ def process_driver_accident_count_step(message, driver_num):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -15977,7 +15977,7 @@ def calculate_osago(message):
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
     save_osago_calculation_to_history(user_id, min_cost, max_cost)
-    view_osago_calc(message)
+    view_osago_calc(message, show_description=False)
 
 def save_osago_calculation_to_history(user_id, min_cost, max_cost):
     username = user_data[user_id].get('username', 'unknown')
@@ -16038,7 +16038,7 @@ def handle_view_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
     view_osago_calculations(message.chat.id)
 
@@ -16070,7 +16070,7 @@ def process_view_osago_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -16079,7 +16079,7 @@ def process_view_osago_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (ОСАГО, просмотр): {message.text}")  # Логирование
@@ -16192,7 +16192,7 @@ def process_view_osago_selection(message):
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
         # Возвращаемся в меню после успешной обработки
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -16223,7 +16223,7 @@ def handle_delete_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
     delete_osago_calculations(message.chat.id)
 
@@ -16255,7 +16255,7 @@ def process_delete_osago_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в ОСАГО":
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -16264,7 +16264,7 @@ def process_delete_osago_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (ОСАГО, удаление): {message.text}")  # Логирование
@@ -16304,7 +16304,7 @@ def process_delete_osago_selection(message):
 
         save_user_history_osago()
         bot.send_message(chat_id, "✅ Выбранные расчеты ОСАГО успешно удалены!")
-        view_osago_calc(message)
+        view_osago_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -16329,9 +16329,8 @@ def process_delete_osago_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_autokredit_calc(message):
+def view_autokredit_calc(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по расчету автокредита*\n\n"
         "📌 *Расчет автокредита:*\n"
@@ -16348,7 +16347,9 @@ def view_autokredit_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Пути для сохранения данных
@@ -16404,14 +16405,13 @@ load_user_history_kredit()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_car_loan_calculation(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16428,7 +16428,7 @@ def process_loan_date_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16456,7 +16456,7 @@ def process_car_price_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16484,7 +16484,7 @@ def process_down_payment_type_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16510,7 +16510,7 @@ def process_down_payment_amount_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16551,7 +16551,7 @@ def process_loan_term_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16576,7 +16576,7 @@ def process_interest_rate_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16604,7 +16604,7 @@ def process_payment_scheme_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16630,7 +16630,7 @@ def process_extra_payments_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16658,7 +16658,7 @@ def process_extra_payments_count_step(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16681,7 +16681,7 @@ def process_extra_payment_info(message, payment_num):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16700,7 +16700,7 @@ def process_extra_payment_date_step(message, payment_num):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16728,7 +16728,7 @@ def process_extra_payment_frequency_step(message, payment_num):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16754,7 +16754,7 @@ def process_extra_payment_target_step(message, payment_num):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16779,7 +16779,7 @@ def process_extra_payment_amount_step(message, payment_num):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
         
     user_id = message.from_user.id
@@ -16973,7 +16973,7 @@ def calculate_loan(message):
         bot.send_document(message.chat.id, file, caption="📅 Календарь выплат по кредиту")
     
     del user_data[user_id]
-    view_autokredit_calc(message)
+    view_autokredit_calc(message, show_description=False)
 
 def save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display):
     workbook = openpyxl.Workbook()
@@ -17108,7 +17108,7 @@ def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
     view_autokredit_calculations(message.chat.id)
 
@@ -17140,7 +17140,7 @@ def process_view_autokredit_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -17149,7 +17149,7 @@ def process_view_autokredit_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (автокредиты, просмотр): {message.text}")  # Логирование
@@ -17227,7 +17227,7 @@ def process_view_autokredit_selection(message):
                 bot.send_message(chat_id, "❌ Excel-файл для этого расчета не найден!")
 
         # Возвращаемся в меню после успешной обработки
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -17258,7 +17258,7 @@ def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
     delete_autokredit_calculations(message.chat.id)
 
@@ -17290,7 +17290,7 @@ def process_delete_autokredit_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -17299,7 +17299,7 @@ def process_delete_autokredit_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (автокредиты, удаление): {message.text}")  # Логирование
@@ -17344,7 +17344,7 @@ def process_delete_autokredit_selection(message):
 
         save_user_history_kredit()
         bot.send_message(chat_id, "✅ Выбранные расчеты автокредитов успешно удалены!")
-        view_autokredit_calc(message)
+        view_autokredit_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -17369,9 +17369,8 @@ def process_delete_autokredit_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_tire_calc(message):
+def view_tire_calc(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
         "📌 *Расчет шин и дисков:*\n"
@@ -17388,7 +17387,9 @@ def view_tire_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Пути к файлам для хранения истории
@@ -17438,7 +17439,6 @@ load_user_history_tires()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_tire_calculation(message):
     user_id = message.from_user.id
@@ -17455,7 +17455,7 @@ def process_current_width_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
     
     if message.text == "В главное меню":
@@ -17481,7 +17481,7 @@ def process_current_profile_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
     
     if message.text == "В главное меню":
@@ -17507,7 +17507,7 @@ def process_current_diameter_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17533,7 +17533,7 @@ def process_current_rim_width_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17559,7 +17559,7 @@ def process_current_et_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17585,7 +17585,7 @@ def process_new_width_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17611,7 +17611,7 @@ def process_new_profile_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17637,7 +17637,7 @@ def process_new_diameter_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17663,7 +17663,7 @@ def process_new_rim_width_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17689,7 +17689,7 @@ def process_new_et_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -17812,7 +17812,7 @@ def calculate_tire(message):
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
     save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)  # Изменённый вызов
-    view_tire_calc(message)
+    view_tire_calc(message, show_description=False)
 
 # Сохранение в историю
 def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
@@ -17881,7 +17881,7 @@ def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
     view_tire_calculations(message.chat.id)
 
@@ -17913,7 +17913,7 @@ def process_view_tire_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -17922,7 +17922,7 @@ def process_view_tire_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (шины, просмотр): {message.text}")  # Логирование
@@ -17965,7 +17965,7 @@ def process_view_tire_selection(message):
             for key in required_keys:
                 if key not in calc:
                     bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены. Выполните новый расчет.")
-                    view_tire_calc(message)
+                    view_tire_calc(message, show_description=False)
                     return
 
             width_effects = ""
@@ -18051,7 +18051,7 @@ def process_view_tire_selection(message):
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
         # Возвращаемся в меню после успешной обработки
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -18082,7 +18082,7 @@ def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
     delete_tire_calculations(message.chat.id)
 
@@ -18114,7 +18114,7 @@ def process_delete_tire_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в шины":
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -18123,7 +18123,7 @@ def process_delete_tire_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (шины, удаление): {message.text}")  # Логирование
@@ -18163,7 +18163,7 @@ def process_delete_tire_selection(message):
 
         save_user_history_tires()
         bot.send_message(chat_id, "✅ Выбранные расчеты шин успешно удалены!")
-        view_tire_calc(message)
+        view_tire_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -18284,9 +18284,8 @@ load_tax_rates(2025)  # Загружаем данные за 2025 год по у
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_nalog_calc(message):
+def view_nalog_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
@@ -18307,9 +18306,11 @@ def view_nalog_calc(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
 
-    bot.send_message(message.chat.id, description, parse_mode='Markdown')
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
 
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    
 # Start tax calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
 @check_function_state_decorator('Рассчитать налог')
@@ -18320,7 +18321,6 @@ def view_nalog_calc(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def start_tax_calculation(message):
     if not nalog_data:
@@ -18347,7 +18347,7 @@ def process_nalog_region_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18379,7 +18379,7 @@ def process_year_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18394,7 +18394,7 @@ def process_year_step(message):
         load_tax_rates(year)
         if not tax_rates:
             bot.send_message(message.chat.id, f"❌ Данные за `{year}` год отсутствуют!", parse_mode='Markdown')
-            view_nalog_calc(message)
+            view_nalog_calc(message, show_description=False)
             return
     except ValueError:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный год")
@@ -18418,7 +18418,7 @@ def process_ownership_months_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18452,7 +18452,7 @@ def process_vehicle_type_nalog_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18479,7 +18479,7 @@ def process_metric_value_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18509,7 +18509,7 @@ def process_expensive_car_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18541,7 +18541,7 @@ def process_brand_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18574,7 +18574,7 @@ def process_model_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18629,7 +18629,7 @@ def process_year_of_manufacture_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18663,7 +18663,7 @@ def process_benefits_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -18782,7 +18782,7 @@ def calculate_tax(message):
     save_user_history_nalog()
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
-    view_nalog_calc(message)
+    view_nalog_calc(message, show_description=False)
 
 # Просмотр расчетов
 
@@ -18801,7 +18801,7 @@ def handle_view_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
     view_nalog_calculations(message.chat.id)
 
@@ -18833,7 +18833,7 @@ def process_view_nalog_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -18842,7 +18842,7 @@ def process_view_nalog_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (налоги, просмотр): {message.text}")  # Логирование
@@ -18911,7 +18911,7 @@ def process_view_nalog_selection(message):
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
         # Возвращаемся в меню после успешной обработки
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -18941,7 +18941,7 @@ def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
     delete_nalog_calculations(message.chat.id)
 
@@ -18973,7 +18973,7 @@ def process_delete_nalog_selection(message):
         return_to_menu(message)
         return
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     chat_id = message.chat.id
@@ -18982,7 +18982,7 @@ def process_delete_nalog_selection(message):
     calculations = user_history.get(user_id, {}).get('calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
         return
 
     print(f"Ввод пользователя {user_id} (налоги, удаление): {message.text}")  # Логирование
@@ -19022,7 +19022,7 @@ def process_delete_nalog_selection(message):
 
         save_user_history_nalog()
         bot.send_message(chat_id, "✅ Выбранные расчеты налога успешно удалены!")
-        view_nalog_calc(message)
+        view_nalog_calc(message, show_description=False)
 
     except ValueError:
         # Некорректный формат ввода, запрашиваем повторный ввод
@@ -24190,7 +24190,6 @@ blocked_users = load_blocked_users()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -24203,7 +24202,7 @@ def set_advertisement_theme(message):
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24224,7 +24223,7 @@ def set_advertisement_date(message, advertisement_theme):
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24255,7 +24254,7 @@ def set_advertisement_time(message, advertisement_theme, expected_date):
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24289,7 +24288,7 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
         return
 
     if message.text == 'Вернуться в меню для рекламы':
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.content_type != 'text':
@@ -24315,7 +24314,7 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24341,7 +24340,7 @@ def collect_advertisement_text(message, advertisement_theme, expected_date, expe
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24367,7 +24366,7 @@ def collect_advertisement_media(message, advertisement_theme, expected_date, exp
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -24427,7 +24426,7 @@ def handle_advertisement_media_options(message, advertisement_theme, expected_da
 
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == 'В главное меню':
@@ -25097,7 +25096,7 @@ def show_user_advertisement_request_details(message):
         return
 
     if message.text == "Вернуться в меню для рекламы":
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -25179,7 +25178,7 @@ def handle_user_advertisement_request_action(message, index):
         return
 
     if message.text == "Вернуться в меню для рекламы":
-        view_add_menu(message)
+        view_add_menu(message, show_description=False)
         return
 
     if message.text == "В главное меню":
@@ -25217,24 +25216,24 @@ def handle_user_advertisement_request_action(message, index):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def view_add_menu(message):
+def view_add_menu(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Заявка на рекламу', 'Ваши заявки')
     markup.add('В главное меню')
 
-    bot.send_message(
-        message.chat.id,
+    description = (
         "ℹ️ *Краткая справка по рекламе*\n\n\n"
         "📌 *Заявка:*\n"
         "Вы можете отправить заявку на рекламу в боте по кнопке, где нужно заполнить определенные поля\n\n"
         "📌 *Ваши заявки:*\n"
         "Вы можете посмотреть свои заявки на рекламу, а если нужно, то и отозвать\n\n"
         "📌 *Оплата и вопросы:*\n"
-        "Заявки на рекламу и оплату принимает *администратор (разработчик)* - [@x_evgenyalex_x](https://t.me/x_evgenyalex_x). Если что-то не понятно, то вы можете обратиться к нему!\n\n",
-        parse_mode="Markdown"
+        "Заявки на рекламу и оплату принимает *администратор (разработчик)* - [@x_evgenyalex_x](https://t.me/x_evgenyalex_x). Если что-то не понятно, то вы можете обратиться к нему!\n\n"
     )
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
 
     bot.send_message(message.chat.id, "Выберите действие с рекламой:", reply_markup=markup)
 
@@ -25299,24 +25298,24 @@ def check_admin_access(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def show_news_menu(message):
+def show_news_menu(message, show_description=True):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('3 новости', '5 новостей', '7 новостей')
     markup.add('10 новостей', '15 новостей')
     markup.add('В главное меню')
 
-    bot.send_message(
-        message.chat.id, 
+    description = (
         "ℹ️ *Краткая справка по отображению новостей*\n\n\n"
         "📌 *Новости:*\n"
         "Вы можете выбрать *количество новостей* для показа *(3, 5, 7, 10, 15)*\n"
         "Они сортируются от новых к старым\n"
         "Если новости закончились, то вы вернетесь в меню прочее\n\n"
-        "_P.S. Новости публикует редактор или администратор (разработчик). По техническим причинам новости могут не публиковаться!_", 
-        parse_mode="Markdown"
+        "_P.S. Новости публикует редактор или администратор (разработчик). По техническим причинам новости могут не публиковаться!_"
     )
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode="Markdown")
 
     bot.send_message(message.chat.id, "Выберите количество новостей:", reply_markup=markup)
 
@@ -28689,9 +28688,8 @@ def return_admin_to_menu(admin_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
-def request_chat_with_admin(message):
+def request_chat_with_admin(message, show_description=True):
     global active_chats
     if active_chats is None:
         active_chats = {}
@@ -28711,8 +28709,7 @@ def request_chat_with_admin(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(types.KeyboardButton('В главное меню'))
 
-    bot.send_message(
-        user_id,
+    description = (
         "ℹ️ *Краткая справка по чату*\n\n\n"
         "📌 *Чат:*\n"
         "Вы можете отправить запрос на чат с администратором (разработчиком), чтобы лично обсудить *вопросы, которые касаются бота* "
@@ -28722,9 +28719,11 @@ def request_chat_with_admin(message):
         "Учитывайте, что администратор (разработчик) может *запретить вам общение навсегда*, если оно будет *не по теме*!\n\n"
         "📌 *Чат от администратора (разработчика):*\n"
         "Администратор (разработчик) может кинуть вам *запрос на чат неограниченное количество раз.* "
-        "Вы в праве *принять* запрос или *отклонить*!",  
-        parse_mode="Markdown"
+        "Вы в праве *принять* запрос или *отклонить*!",
     )
+
+    if show_description:
+        bot.send_message(user_id, description, parse_mode="Markdown")
 
     bot.send_message(user_id, "Пожалуйста, укажите тему для общения с администратором:", reply_markup=markup)
     active_chats[user_id] = {"user_id": user_id, "status": "waiting_for_topic", "awaiting_response": False}
