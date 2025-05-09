@@ -6415,7 +6415,7 @@ def process_delete_trip_selection(message):
         msg = bot.send_message(user_id, "Некорректный ввод!\nПожалуйста, введите номера поездок", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_trip_selection)
 
-# --------------------------------------------------- КАЛЬКУЛЯТОРЫ_АЛКОГОЛЬ --------------------------------------------------
+# ----------------------------------------------- КАЛЬКУЛЯТОРЫ_АЛКОГОЛЬ --------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Алкоголь")
 @check_function_state_decorator('Алкоголь')
@@ -6457,8 +6457,10 @@ def view_alc_calc(message, show_description=True):
 
 ALKO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_alko', 'alko.json')
 USER_HISTORY_PATH_ALKO = os.path.join('data', 'user', 'calculators', 'alcohol', 'alko_users.json')
+ALKO_EXCEL_DIR = os.path.join('data', 'user', 'calculators', 'alcohol', 'excel')
 os.makedirs(os.path.dirname(ALKO_JSON_PATH), exist_ok=True)
 os.makedirs(os.path.dirname(USER_HISTORY_PATH_ALKO), exist_ok=True)
+os.makedirs(ALKO_EXCEL_DIR, exist_ok=True)
 
 if not os.path.exists(ALKO_JSON_PATH):
     with open(ALKO_JSON_PATH, 'w', encoding='utf-8') as f:
@@ -7157,6 +7159,125 @@ def save_alcohol_calculation_to_history(message, promille):
         raise ValueError("Попытка сохранить данные алкоголя в неверный файл!")
     
     save_user_history_alko()
+    save_alcohol_to_excel(user_id, calculation_data)
+
+def save_alcohol_to_excel(user_id, calculation):
+    file_path = os.path.join(ALKO_EXCEL_DIR, f"{user_id}_alcohol.xlsx")
+    
+    calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
+    max_drinks = max(len(calc['drinks']) for calc in calculations) if calculations else len(calculation['drinks'])
+    
+    columns = ["Дата расчета", "Пол", "Вес (кг)", "Уровень алкоголя (%)", "Время вытрезвления"]
+    drink_columns = [f"Напиток {i+1}" for i in range(max_drinks)]
+    volume_columns = [f"Объем {i+1} (л)" for i in range(max_drinks)]
+    strength_columns = [f"Крепость {i+1} (%)" for i in range(max_drinks)]
+    columns.extend(drink_columns + volume_columns + strength_columns)
+    
+    new_calc_data = {
+        "Дата расчета": calculation['timestamp'],
+        "Пол": calculation['gender'].capitalize(),
+        "Вес (кг)": calculation['weight'],
+        "Уровень алкоголя (%)": calculation['promille'],
+        "Время вытрезвления": calculation['sober_time']
+    }
+    
+    for i in range(max_drinks):
+        drink_key = f"Напиток {i+1}"
+        volume_key = f"Объем {i+1} (л)"
+        strength_key = f"Крепость {i+1} (%)"
+        if i < len(calculation['drinks']):
+            new_calc_data[drink_key] = calculation['drinks'][i]['name']
+            new_calc_data[volume_key] = calculation['drinks'][i]['volume']
+            new_calc_data[strength_key] = calculation['drinks'][i]['strength']
+        else:
+            new_calc_data[drink_key] = None
+            new_calc_data[volume_key] = None
+            new_calc_data[strength_key] = None
+
+    new_calc_df = pd.DataFrame([new_calc_data], columns=columns)
+    
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        existing_data = existing_data.reindex(columns=columns, fill_value=None)
+        updated_data = pd.concat([existing_data, new_calc_df], ignore_index=True)
+    else:
+        updated_data = new_calc_df
+    
+    updated_data.to_excel(file_path, index=False)
+    
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-3*max_drinks+1, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
+
+def update_alcohol_excel_file(user_id):
+    file_path = os.path.join(ALKO_EXCEL_DIR, f"{user_id}_alcohol.xlsx")
+    calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
+
+    if not calculations:
+        columns = ["Дата расчета", "Пол", "Вес (кг)", "Уровень алкоголя (%)", "Время вытрезвления"]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        return
+
+    max_drinks = max(len(calc['drinks']) for calc in calculations)
+
+    columns = ["Дата расчета", "Пол", "Вес (кг)", "Уровень алкоголя (%)", "Время вытрезвления"]
+    drink_columns = [f"Напиток {i+1}" for i in range(max_drinks)]
+    volume_columns = [f"Объем {i+1} (л)" for i in range(max_drinks)]
+    strength_columns = [f"Крепость {i+1} (%)" for i in range(max_drinks)]
+    columns.extend(drink_columns + volume_columns + strength_columns)
+
+    calc_records = []
+    for calc in calculations:
+        calc_data = {
+            "Дата расчета": calc['timestamp'],
+            "Пол": calc['gender'].capitalize(),
+            "Вес (кг)": calc['weight'],
+            "Уровень алкоголя (%)": calc['promille'],
+            "Время вытрезвления": calc['sober_time']
+        }
+        for i in range(max_drinks):
+            drink_key = f"Напиток {i+1}"
+            volume_key = f"Объем {i+1} (л)"
+            strength_key = f"Крепость {i+1} (%)"
+            if i < len(calc['drinks']):
+                calc_data[drink_key] = calc['drinks'][i]['name']
+                calc_data[volume_key] = calc['drinks'][i]['volume']
+                calc_data[strength_key] = calc['drinks'][i]['strength']
+            else:
+                calc_data[drink_key] = None
+                calc_data[volume_key] = None
+                calc_data[strength_key] = None
+        calc_records.append(calc_data)
+
+    df = pd.DataFrame(calc_records, columns=columns)
+    df.to_excel(file_path, index=False)
+
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_row=2, min_col=len(columns)-3*max_drinks+1, max_col=len(columns)):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
 # ----------------------------------------------- КАЛЬКУЛЯТОРЫ_АЛКОГОЛЬ (просмотр алкоголя) --------------------------------------------------
 
@@ -7197,14 +7318,14 @@ def view_alcohol_calculations(message):
         timestamp = calc['timestamp']
         message_text += f"🕒 №{i}. {timestamp}\n"
 
-    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_alcohol_selection)
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Алкоголь в EXCEL")
     markup.add('Вернуться в алкоголь')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_view_alcohol_selection)
 
 @text_only_handler
 def process_view_alcohol_selection(message):
@@ -7216,6 +7337,9 @@ def process_view_alcohol_selection(message):
         return
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
+        return
+    if message.text == "Алкоголь в EXCEL":
+        send_alcohol_excel_file(message)
         return
 
     chat_id = message.chat.id
@@ -7240,6 +7364,7 @@ def process_view_alcohol_selection(message):
 
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add("Алкоголь в EXCEL")
             markup.add('Вернуться в алкоголь')
             markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
@@ -7271,11 +7396,35 @@ def process_view_alcohol_selection(message):
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Алкоголь в EXCEL")
         markup.add('Вернуться в алкоголь')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, введите номера расчетов", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_alcohol_selection)
+
+@bot.message_handler(func=lambda message: message.text == "Алкоголь в EXCEL")
+@check_function_state_decorator('Алкоголь в EXCEL')
+@track_usage('Алкоголь в EXCEL')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_alcohol_excel_file(message):
+    user_id = str(message.from_user.id)
+    excel_file_path = os.path.join(ALKO_EXCEL_DIR, f"{user_id}_alcohol.xlsx")
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(message.chat.id, excel_file)
+    else:
+        bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты алкоголя")
+    view_alc_calc(message, show_description=False)
 
 # ----------------------------------------------- КАЛЬКУЛЯТОРЫ_АЛКОГОЛЬ (удаление алкоголя) --------------------------------------------------
 
@@ -7375,6 +7524,7 @@ def process_delete_alcohol_selection(message):
             del calculations[index]
 
         save_user_history_alko()
+        update_alcohol_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
 
         view_alc_calc(message, show_description=False)
@@ -7428,18 +7578,10 @@ def view_rastamozka_calc(message, show_description=True):
 
 RASTAMOZKA_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_rastamozka', 'rastamozka.json')
 USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data', 'user', 'calculators', 'rastamozka', 'rastamozka_users.json')
-os.makedirs(os.path.dirname(RASTAMOZKA_JSON_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(USER_HISTORY_PATH_RASTAMOZKA), exist_ok=True)
-
-if not os.path.exists(RASTAMOZKA_JSON_PATH):
-    with open(RASTAMOZKA_JSON_PATH, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
-if not os.path.exists(USER_HISTORY_PATH_RASTAMOZKA):
-    with open(USER_HISTORY_PATH_RASTAMOZKA, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
+RASTAMOZKA_EXCEL_DIR = os.path.join('data', 'user', 'calculators', 'rastamozka', 'excel')
 
 rastamozka_data = {}
-user_history_raztamozka = {}
+user_history_rastamozka = {}
 user_data = {}
 
 def fetch_exchange_rates_cbr():
@@ -7488,25 +7630,26 @@ def load_rastamozka_data():
         pass
 
 def load_user_history_rastamozka():
-    global user_history_raztamozka
+    global user_history_rastamozka
     try:
         if os.path.exists(USER_HISTORY_PATH_RASTAMOZKA):
             with open(USER_HISTORY_PATH_RASTAMOZKA, 'r', encoding='utf-8') as db_file:
-                user_history_raztamozka = json.load(db_file)
+                user_history_rastamozka = json.load(db_file)
         else:
-            user_history_raztamozka = {}
+            user_history_rastamozka = {}
     except Exception as e:
-        user_history_raztamozka = {}
+        user_history_rastamozka = {}
 
 def save_user_history_rastamozka():
     try:
         with open(USER_HISTORY_PATH_RASTAMOZKA, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history_raztamozka, db_file, ensure_ascii=False, indent=2)
+            json.dump(user_history_rastamozka, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         pass
 
 ensure_path_and_file(RASTAMOZKA_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH_RASTAMOZKA)
+os.makedirs(RASTAMOZKA_EXCEL_DIR, exist_ok=True)
 load_rastamozka_data()
 load_user_history_rastamozka()
 
@@ -7530,7 +7673,7 @@ def start_customs_calculation(message):
         return
 
     user_id = message.from_user.id
-    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
 
     global EXCHANGE_RATES
     EXCHANGE_RATES = fetch_exchange_rates_cbr()
@@ -7575,7 +7718,13 @@ def process_car_importer_step(message):
         bot.register_next_step_handler(msg, process_car_age_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Физическое лицо (для себя)", "Физическое лицо (для перепродажи)")
+        markup.add("Юридическое лицо")
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_importer_step)
 
 @text_only_handler
@@ -7609,7 +7758,13 @@ def process_car_age_step(message):
         bot.register_next_step_handler(msg, process_engine_type_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("До 3 лет", "От 3 до 5 лет")
+        markup.add("От 5 до 7 лет", "Более 7 лет")
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_age_step)
 
 @text_only_handler
@@ -7642,7 +7797,13 @@ def process_engine_type_step(message):
         bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Бензиновый", "Дизельный")
+        markup.add("Гибридный", "Электрический")
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_type_step)
 
 @text_only_handler
@@ -7681,7 +7842,12 @@ def process_engine_type_rastamozka_step(message):
         bot.register_next_step_handler(msg, process_engine_power_value_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("ЛС", "кВТ")
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)  
 
 @text_only_handler
@@ -7715,7 +7881,11 @@ def process_engine_power_value_step(message):
         bot.register_next_step_handler(msg, process_engine_volume_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_power_value_step)
 
 @text_only_handler
@@ -7748,7 +7918,11 @@ def process_engine_volume_step(message):
         bot.register_next_step_handler(msg, process_car_cost_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_volume_step)
 
 @text_only_handler
@@ -7792,7 +7966,15 @@ def process_car_cost_step(message):
         bot.register_next_step_handler(msg, process_car_cost_value_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Российский рубль", "Белорусский рубль")
+        markup.add("Доллар США", "Евро")
+        markup.add("Китайский юань", "Японская йена")
+        markup.add("Корейская вона")
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_cost_step)
 
 @text_only_handler
@@ -7801,7 +7983,7 @@ def process_car_cost_value_step(message):
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-    if message.text.lower() == "в главное меню":
+    if message.text == "В главное меню":
         return_to_menu(message)
         return
     if message.text == "Вернуться в калькуляторы":
@@ -7814,7 +7996,11 @@ def process_car_cost_value_step(message):
         calculate_customs(message)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_cost_value_step)
 
 @text_only_handler
@@ -7861,36 +8047,38 @@ def calculate_customs(message):
             'car_age': data['car_age'],
             'engine_type': data['engine_type'],
             'engine_power': data['engine_power'],
-            'engine_power_value': data['engine_power_value'],
-            'engine_volume': data['engine_volume'],
+            'engine_power_value': round(data['engine_power_value'], 1),
+            'engine_volume': round(data['engine_volume'], 1),
             'car_cost_currency': data['car_cost_currency'],
-            'car_cost_value': data['car_cost_value'],
-            'customs_fee': customs_fee,
-            'customs_duty': customs_duty,
-            'utilization_fee': utilization_fee,
-            'excise': excise,
-            'nds': nds,
-            'total_customs': total_customs,
-            'total_cost': total_cost,
+            'car_cost_value': round(data['car_cost_value'], 2),
+            'car_cost_rub': round(car_cost_rub, 2),
+            'customs_fee': round(customs_fee, 2),
+            'customs_duty': round(customs_duty, 2),
+            'utilization_fee': round(utilization_fee, 2),
+            'excise': round(excise, 2),
+            'nds': round(nds, 2),
+            'total_customs': round(total_customs, 2),
+            'total_cost': round(total_cost, 2),
             'timestamp': timestamp
         }
 
-        if user_id_str not in user_history_raztamozka:
-            user_history_raztamozka[user_id_str] = {
+        if user_id_str not in user_history_rastamozka:
+            user_history_rastamozka[user_id_str] = {
                 'username': username,
                 'rastamozka_calculations': []
             }
-        elif 'rastamozka_calculations' not in user_history_raztamozka[user_id_str]:
-            user_history_raztamozka[user_id_str]['rastamozka_calculations'] = []
+        elif 'rastamozka_calculations' not in user_history_rastamozka[user_id_str]:
+            user_history_rastamozka[user_id_str]['rastamozka_calculations'] = []
 
-        user_history_raztamozka[user_id_str]['rastamozka_calculations'].append(calculation_data)
+        user_history_rastamozka[user_id_str]['rastamozka_calculations'].append(calculation_data)
 
         if not USER_HISTORY_PATH_RASTAMOZKA.endswith('rastamozka_users.json'):
             raise ValueError("Попытка сохранить данные растаможки в неверный файл!")
 
         save_user_history_rastamozka()
+        save_rastamozka_to_excel(user_id_str, calculation_data)
 
-        bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=types.ReplyKeyboardRemove())
         del user_data[user_id_int]  
         view_rastamozka_calc(message, show_description=False)
 
@@ -8167,39 +8355,165 @@ def calculate_nds(car_cost_rub, customs_duty, excise, car_importer):
         return 0
     return (car_cost_rub + customs_duty + excise) * 0.2
 
-def save_rastamozka_calculation_to_history(user_id, total_cost):
-    user_id = str(user_id) 
-    username = user_data[user_id].get('username', 'unknown')
-    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
-
-    calculation_data = {
-        'car_importer': user_data[user_id]['car_importer'],
-        'car_age': user_data[user_id]['car_age'],
-        'engine_type': user_data[user_id]['engine_type'],
-        'engine_power': user_data[user_id]['engine_power'],
-        'engine_power_value': user_data[user_id]['engine_power_value'],
-        'engine_volume': user_data[user_id]['engine_volume'],
-        'car_cost_currency': user_data[user_id]['car_cost_currency'],
-        'car_cost_value': user_data[user_id]['car_cost_value'],
-        'total_cost': total_cost,
-        'timestamp': timestamp
+def save_rastamozka_to_excel(user_id, calculation):
+    file_path = os.path.join(RASTAMOZKA_EXCEL_DIR, f"{user_id}_rastamozka.xlsx")
+    
+    calculations = user_history_rastamozka.get(user_id, {}).get('rastamozka_calculations', [])
+    
+    columns = [
+        "Дата расчета",
+        "Импортер",
+        "Возраст авто",
+        "Тип двигателя",
+        "Мощность (ЛС)",
+        "Объем двигателя (см³)",
+        "Стоимость автомобиля",
+        "Валюта",
+        "Стоимость в рублях",
+        "Таможенный сбор (₽)",
+        "Таможенная пошлина (₽)",
+        "Утилизационный сбор (₽)",
+        "Акциз (₽)",
+        "НДС (₽)",
+        "Итого растаможка (₽)",
+        "Итоговая стоимость (₽)"
+    ]
+    
+    new_calc_data = {
+        "Дата расчета": calculation['timestamp'],
+        "Импортер": calculation['car_importer'],
+        "Возраст авто": calculation['car_age'],
+        "Тип двигателя": calculation['engine_type'],
+        "Мощность (ЛС)": calculation['engine_power_value'],
+        "Объем двигателя (см³)": calculation['engine_volume'],
+        "Стоимость автомобиля": calculation['car_cost_value'],
+        "Валюта": calculation['car_cost_currency'],
+        "Стоимость в рублях": calculation['car_cost_rub'],
+        "Таможенный сбор (₽)": calculation['customs_fee'],
+        "Таможенная пошлина (₽)": calculation['customs_duty'],
+        "Утилизационный сбор (₽)": calculation['utilization_fee'],
+        "Акциз (₽)": calculation['excise'],
+        "НДС (₽)": calculation['nds'],
+        "Итого растаможка (₽)": calculation['total_customs'],
+        "Итоговая стоимость (₽)": calculation['total_cost']
     }
 
-    if user_id not in user_history_raztamozka:
-        user_history_raztamozka[user_id] = {
-            'username': username,
-            'rastamozka_calculations': []
-        }
-    elif 'rastamozka_calculations' not in user_history_raztamozka[user_id]:
-        user_history_raztamozka[user_id]['rastamozka_calculations'] = []
+    new_calc_df = pd.DataFrame([new_calc_data], columns=columns)
+    
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        existing_data = existing_data.reindex(columns=columns, fill_value=None)
+        updated_data = pd.concat([existing_data, new_calc_df], ignore_index=True)
+    else:
+        updated_data = new_calc_df
+    
+    updated_data.to_excel(file_path, index=False)
+    
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-4, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
-    user_history_raztamozka[user_id]['rastamozka_calculations'].append(calculation_data)
-    save_user_history_rastamozka()
+def update_rastamozka_excel_file(user_id):
+    file_path = os.path.join(RASTAMOZKA_EXCEL_DIR, f"{user_id}_rastamozka.xlsx")
+    calculations = user_history_rastamozka.get(user_id, {}).get('rastamozka_calculations', [])
+
+    if not calculations:
+        columns = [
+            "Дата расчета",
+            "Импортер",
+            "Возраст авто",
+            "Тип двигателя",
+            "Мощность (ЛС)",
+            "Объем двигателя (см³)",
+            "Стоимость автомобиля",
+            "Валюта",
+            "Стоимость в рублях",
+            "Таможенный сбор (₽)",
+            "Таможенная пошлина (₽)",
+            "Утилизационный сбор (₽)",
+            "Акциз (₽)",
+            "НДС (₽)",
+            "Итого растаможка (₽)",
+            "Итоговая стоимость (₽)"
+        ]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        return
+
+    columns = [
+        "Дата расчета",
+        "Импортер",
+        "Возраст авто",
+        "Тип двигателя",
+        "Мощность (ЛС)",
+        "Объем двигателя (см³)",
+        "Стоимость автомобиля",
+        "Валюта",
+        "Стоимость в рублях",
+        "Таможенный сбор (₽)",
+        "Таможенная пошлина (₽)",
+        "Утилизационный сбор (₽)",
+        "Акциз (₽)",
+        "НДС (₽)",
+        "Итого растаможка (₽)",
+        "Итоговая стоимость (₽)"
+    ]
+
+    calc_records = []
+    for calc in calculations:
+        calc_data = {
+            "Дата расчета": calc['timestamp'],
+            "Импортер": calc['car_importer'],
+            "Возраст авто": calc['car_age'],
+            "Тип двигателя": calc['engine_type'],
+            "Мощность (ЛС)": calc['engine_power_value'],
+            "Объем двигателя (см³)": calc['engine_volume'],
+            "Стоимость автомобиля": calc['car_cost_value'],
+            "Валюта": calc['car_cost_currency'],
+            "Стоимость в рублях": calc['car_cost_rub'],
+            "Таможенный сбор (₽)": calc['customs_fee'],
+            "Таможенная пошлина (₽)": calc['customs_duty'],
+            "Утилизационный сбор (₽)": calc['utilization_fee'],
+            "Акциз (₽)": calc['excise'],
+            "НДС (₽)": calc['nds'],
+            "Итого растаможка (₽)": calc['total_customs'],
+            "Итоговая стоимость (₽)": calc['total_cost']
+        }
+        calc_records.append(calc_data)
+
+    df = pd.DataFrame(calc_records, columns=columns)
+    df.to_excel(file_path, index=False)
+
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_row=2, min_col=len(columns)-4, max_col=len(columns)):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_РАСТАМОЖКА (просмотр растаможек) --------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр растаможек")
-@check_function_state_decorator('Просмотр растамозек')
+@check_function_state_decorator('Просмотр растаможек')
 @track_usage('Просмотр растаможек')
 @restricted
 @track_user_activity
@@ -8212,7 +8526,7 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @rate_limit_with_captcha
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
+    if user_id not in user_history_rastamozka or 'rastamozka_calculations' not in user_history_rastamozka[user_id] or not user_history_rastamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
@@ -8223,26 +8537,26 @@ def view_rastamozka_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
+    if user_id not in user_history_rastamozka or 'rastamozka_calculations' not in user_history_rastamozka[user_id] or not user_history_rastamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
 
-    calculations = user_history_raztamozka[user_id]['rastamozka_calculations']
+    calculations = user_history_rastamozka[user_id]['rastamozka_calculations']
     message_text = "*Список ваших расчетов растаможки:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
         timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
-    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_rastamozka_selection)
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Растаможка в EXCEL')
     markup.add('Вернуться в растаможку')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_view_rastamozka_selection)
 
 @text_only_handler
 def process_view_rastamozka_selection(message):
@@ -8255,11 +8569,14 @@ def process_view_rastamozka_selection(message):
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
         return
+    if message.text == "Растаможка в EXCEL":
+        send_rastamozka_excel_file(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history_raztamozka.get(user_id, {}).get('rastamozka_calculations', [])
+    calculations = user_history_rastamozka.get(user_id, {}).get('rastamozka_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -8278,6 +8595,7 @@ def process_view_rastamozka_selection(message):
 
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Растаможка в EXCEL')
             markup.add('Вернуться в растаможку')
             markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
@@ -8293,15 +8611,26 @@ def process_view_rastamozka_selection(message):
 
         for index in valid_indices:
             calc = calculations[index]
+            required_keys = [
+                'car_importer', 'car_age', 'engine_type', 'engine_power_value',
+                'engine_volume', 'car_cost_value', 'car_cost_currency', 'customs_fee',
+                'customs_duty', 'utilization_fee', 'excise', 'nds', 'total_customs', 'total_cost'
+            ]
+            for key in required_keys:
+                if key not in calc:
+                    bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены! Выполните новый расчет!")
+                    view_rastamozka_calc(message, show_description=False)
+                    return
+
             result = (
                 f"📊 *Расчет растаможки №{index + 1}. {calc['timestamp']}*\n\n"
                 f"*Ваши данные:*\n\n"
                 f"🚗 Импортер: {calc['car_importer']}\n"
                 f"📅 Возраст авто: {calc['car_age']}\n"
                 f"🔧 Тип двигателя: {calc['engine_type']}\n"
-                f"💪 Мощность: {calc['engine_power_value']} {calc['engine_power']}\n"
-                f"📏 Объем двигателя: {calc['engine_volume']} см³\n"
-                f"💰 Стоимость: {calc['car_cost_value']} {calc['car_cost_currency']}\n\n"
+                f"💪 Мощность: {calc['engine_power_value']:.1f} ЛС\n"
+                f"📏 Объем двигателя: {calc['engine_volume']:.1f} см³\n"
+                f"💰 Стоимость: {calc['car_cost_value']:,.2f} {calc['car_cost_currency']}\n\n"
                 f"*Расчет:*\n\n"
                 f"🛃 Таможенный сбор: {calc['customs_fee']:,.2f} ₽\n"
                 f"🏦 Таможенная пошлина: {calc['customs_duty']:,.2f} ₽\n"
@@ -8317,17 +8646,41 @@ def process_view_rastamozka_selection(message):
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Растаможка в EXCEL')
         markup.add('Вернуться в растаможку')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_rastamozka_selection)
 
+@bot.message_handler(func=lambda message: message.text == "Растаможка в EXCEL")
+@check_function_state_decorator('Растаможка в EXCEL')
+@track_usage('Растаможка в EXCEL')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_rastamozka_excel_file(message):
+    user_id = str(message.from_user.id)
+    excel_file_path = os.path.join(RASTAMOZKA_EXCEL_DIR, f"{user_id}_rastamozka.xlsx")
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(message.chat.id, excel_file)
+    else:
+        bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты растаможки")
+    view_rastamozka_calc(message, show_description=False)
+
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_РАСТАМОЖКА (удаление растаможек) --------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление растаможек")
 @check_function_state_decorator('Удаление растаможек')
-@track_usage('Удаление растамозек')
+@track_usage('Удаление растаможек')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -8339,7 +8692,7 @@ def process_view_rastamozka_selection(message):
 @rate_limit_with_captcha
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
+    if user_id not in user_history_rastamozka or 'rastamozka_calculations' not in user_history_rastamozka[user_id] or not user_history_rastamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
@@ -8350,12 +8703,12 @@ def delete_rastamozka_calculations(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
+    if user_id not in user_history_rastamozka or 'rastamozka_calculations' not in user_history_rastamozka[user_id] or not user_history_rastamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
 
-    calculations = user_history_raztamozka[user_id]['rastamozka_calculations']
+    calculations = user_history_rastamozka[user_id]['rastamozka_calculations']
     message_text = "*Список ваших расчетов растаможки:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
@@ -8386,7 +8739,7 @@ def process_delete_rastamozka_selection(message):
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history_raztamozka.get(user_id, {}).get('rastamozka_calculations', [])
+    calculations = user_history_rastamozka.get(user_id, {}).get('rastamozka_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -8421,6 +8774,7 @@ def process_delete_rastamozka_selection(message):
             del calculations[index]
 
         save_user_history_rastamozka()
+        update_rastamozka_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты растаможки успешно удалены!")
         view_rastamozka_calc(message, show_description=False)
 
@@ -8473,15 +8827,7 @@ def view_osago_calc(message, show_description=True):
 
 OSAGO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_osago', 'osago.json')
 USER_HISTORY_PATH_OSAGO = os.path.join('data', 'user', 'calculators', 'osago', 'osago_users.json')
-os.makedirs(os.path.dirname(OSAGO_JSON_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(USER_HISTORY_PATH_OSAGO), exist_ok=True)
-
-if not os.path.exists(OSAGO_JSON_PATH):
-    with open(OSAGO_JSON_PATH, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
-if not os.path.exists(USER_HISTORY_PATH_OSAGO):
-    with open(USER_HISTORY_PATH_OSAGO, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
+OSAGO_EXCEL_DIR = os.path.join('data', 'user', 'calculators', 'osago', 'excel')
 
 osago_data = {}
 user_history_osago = {}
@@ -8521,6 +8867,7 @@ def save_user_history_osago():
 
 ensure_path_and_file(OSAGO_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH_OSAGO)
+os.makedirs(OSAGO_EXCEL_DIR, exist_ok=True)
 load_osago_data()
 load_user_history_osago()
 
@@ -8544,7 +8891,7 @@ def start_osago_calculation(message):
         return
 
     user_id = message.from_user.id
-    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
 
     markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     owner_types = [owner['name'] for owner in osago_data['owner_types']]
@@ -9230,8 +9577,8 @@ def calculate_osago(message):
         'km': km,
         'ks': ks,
         'ko': ko,
-        'min_cost': min_cost,
-        'max_cost': max_cost,
+        'min_cost': round(min_cost, 0),
+        'max_cost': round(max_cost, 0),
         'timestamp': timestamp
     }
 
@@ -9261,55 +9608,176 @@ def calculate_osago(message):
         raise ValueError("Попытка сохранить данные ОСАГО в неверный файл!")
 
     save_user_history_osago()
+    save_osago_to_excel(user_id_str, calculation_data)
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     del user_data[user_id_int]  
     view_osago_calc(message, show_description=False)
 
-def save_osago_calculation_to_history(user_id, min_cost, max_cost):
-    user_id = str(user_id)  
-    username = user_data[user_id].get('username', 'unknown')
-    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+def save_osago_to_excel(user_id, calculation):
+    file_path = os.path.join(OSAGO_EXCEL_DIR, f"{user_id}_osago.xlsx")
     
-    calculation_data = {
-        'owner_type': user_data[user_id]['owner_type'],
-        'vehicle_type': user_data[user_id]['vehicle_type'],
-        'region': user_data[user_id]['region'],
-        'city': user_data[user_id]['city'],
-        'engine_power': user_data[user_id].get('engine_power', 'не требуется'),
-        'usage_period': user_data[user_id]['usage_period'],
-        'driver_restriction': user_data[user_id]['driver_restriction'],
-        'kt': user_data[user_id]['kt'],
-        'km': user_data[user_id]['km'],
-        'ks': user_data[user_id]['ks'],
-        'ko': user_data[user_id]['ko'],
-        'min_cost': min_cost,
-        'max_cost': max_cost,
-        'timestamp': timestamp
+    calculations = user_history_osago.get(user_id, {}).get('osago_calculations', [])
+    
+    columns = [
+        "Дата расчета",
+        "Владелец ТС",
+        "Тип ТС",
+        "Регион",
+        "Город",
+        "Мощность двигателя (л.с.)",
+        "Период использования",
+        "Лица, допущенные к управлению",
+        "Возраст страхователя",
+        "Стаж страхователя",
+        "КТ",
+        "КМ",
+        "КВС",
+        "КО",
+        "КС",
+        "КБМ",
+        "Минимальная стоимость (руб.)",
+        "Максимальная стоимость (руб.)"
+    ]
+    
+    new_calc_data = {
+        "Дата расчета": calculation['timestamp'],
+        "Владелец ТС": calculation['owner_type'],
+        "Тип ТС": calculation['vehicle_type'],
+        "Регион": calculation['region'],
+        "Город": calculation['city'],
+        "Мощность двигателя (л.с.)": calculation['engine_power'],
+        "Период использования": calculation['usage_period'],
+        "Лица, допущенные к управлению": calculation['driver_restriction'],
+        "Возраст страхователя": calculation.get('insurer_age', ''),
+        "Стаж страхователя": calculation.get('insurer_experience', ''),
+        "КТ": calculation['kt'],
+        "КМ": calculation['km'],
+        "КВС": calculation.get('kvs', ''),
+        "КО": calculation['ko'],
+        "КС": calculation['ks'],
+        "КБМ": calculation.get('kbm', ''),
+        "Минимальная стоимость (руб.)": calculation['min_cost'],
+        "Максимальная стоимость (руб.)": calculation['max_cost']
     }
 
-    if 'insurer_age' in user_data[user_id]:
-        calculation_data['insurer_age'] = user_data[user_id]['insurer_age']
-        calculation_data['insurer_experience'] = user_data[user_id]['insurer_experience']
-        calculation_data['kvs'] = calculate_kvs(user_data[user_id]['insurer_age'], user_data[user_id]['insurer_experience'])
-        calculation_data['kbm'] = user_data[user_id]['kbm']
+    new_calc_df = pd.DataFrame([new_calc_data], columns=columns)
+    
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        existing_data = existing_data.reindex(columns=columns, fill_value=None)
+        updated_data = pd.concat([existing_data, new_calc_df], ignore_index=True)
+    else:
+        updated_data = new_calc_df
+    
+    updated_data.to_excel(file_path, index=False)
+    
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-1, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
-    if 'drivers' in user_data[user_id]:
-        calculation_data['drivers'] = user_data[user_id]['drivers']
-        calculation_data['driver_results'] = user_data[user_id]['driver_results']
-        calculation_data['kvs'] = user_data[user_id]['kvs']
-        calculation_data['kbm'] = user_data[user_id]['kbm']
+def update_osago_excel_file(user_id):
+    file_path = os.path.join(OSAGO_EXCEL_DIR, f"{user_id}_osago.xlsx")
+    calculations = user_history_osago.get(user_id, {}).get('osago_calculations', [])
 
-    if user_id not in user_history_osago:
-        user_history_osago[user_id] = {
-            'username': username,
-            'osago_calculations': []
+    if not calculations:
+        columns = [
+            "Дата расчета",
+            "Владелец ТС",
+            "Тип ТС",
+            "Регион",
+            "Город",
+            "Мощность двигателя (л.с.)",
+            "Период использования",
+            "Лица, допущенные к управлению",
+            "Возраст страхователя",
+            "Стаж страхователя",
+            "КТ",
+            "КМ",
+            "КВС",
+            "КО",
+            "КС",
+            "КБМ",
+            "Минимальная стоимость (руб.)",
+            "Максимальная стоимость (руб.)"
+        ]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        return
+
+    columns = [
+        "Дата расчета",
+        "Владелец ТС",
+        "Тип ТС",
+        "Регион",
+        "Город",
+        "Мощность двигателя (л.с.)",
+        "Период использования",
+        "Лица, допущенные к управлению",
+        "Возраст страхователя",
+        "Стаж страхователя",
+        "КТ",
+        "КМ",
+        "КВС",
+        "КО",
+        "КС",
+        "КБМ",
+        "Минимальная стоимость (руб.)",
+        "Максимальная стоимость (руб.)"
+    ]
+
+    calc_records = []
+    for calc in calculations:
+        calc_data = {
+            "Дата расчета": calc['timestamp'],
+            "Владелец ТС": calc['owner_type'],
+            "Тип ТС": calc['vehicle_type'],
+            "Регион": calc['region'],
+            "Город": calc['city'],
+            "Мощность двигателя (л.с.)": calc['engine_power'],
+            "Период использования": calc['usage_period'],
+            "Лица, допущенные к управлению": calc['driver_restriction'],
+            "Возраст страхователя": calc.get('insurer_age', ''),
+            "Стаж страхователя": calc.get('insurer_experience', ''),
+            "КТ": calc['kt'],
+            "КМ": calc['km'],
+            "КВС": calc.get('kvs', ''),
+            "КО": calc['ko'],
+            "КС": calc['ks'],
+            "КБМ": calc.get('kbm', ''),
+            "Минимальная стоимость (руб.)": calc['min_cost'],
+            "Максимальная стоимость (руб.)": calc['max_cost']
         }
-    elif 'osago_calculations' not in user_history_osago[user_id]:
-        user_history_osago[user_id]['osago_calculations'] = []
+        calc_records.append(calc_data)
 
-    user_history_osago[user_id]['osago_calculations'].append(calculation_data)
-    save_user_history_osago()
+    df = pd.DataFrame(calc_records, columns=columns)
+    df.to_excel(file_path, index=False)
+
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_row=2, min_col=len(columns)-1, max_col=len(columns)):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_ОСАГО (просмотр осаго) --------------------------------------------------
 
@@ -9350,14 +9818,14 @@ def view_osago_calculations(message):
         timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
-    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_osago_selection)
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('ОСАГО в EXCEL')
     markup.add('Вернуться в ОСАГО')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_view_osago_selection)
 
 @text_only_handler
 def process_view_osago_selection(message):
@@ -9369,6 +9837,9 @@ def process_view_osago_selection(message):
         return
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
+        return
+    if message.text == "ОСАГО в EXCEL":
+        send_osago_excel_file(message)
         return
 
     chat_id = message.chat.id
@@ -9393,10 +9864,13 @@ def process_view_osago_selection(message):
 
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('ОСАГО в EXCEL')
             markup.add('Вернуться в ОСАГО')
             markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
+            msg = bot.send_message(
+                chat_id,
+                "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_osago_selection)
             return
 
@@ -9410,6 +9884,16 @@ def process_view_osago_selection(message):
             vehicle_id = vehicle['id'] if vehicle else 2
             base_tariff_min, base_tariff_max = get_base_tariff(vehicle_id)
 
+            required_keys = [
+                'owner_type', 'vehicle_type', 'region', 'city', 'engine_power',
+                'usage_period', 'driver_restriction', 'kt', 'km', 'ks', 'ko', 'min_cost', 'max_cost'
+            ]
+            for key in required_keys:
+                if key not in calc:
+                    bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены! Выполните новый расчет!")
+                    view_osago_calc(message, show_description=False)
+                    return
+
             if calc['driver_restriction'] == "Без ограничений по водителям":
                 result_message = (
                     f"*📊 Итоговый расчет по ОСАГО №{index + 1} (без ограничений):*\n\n"
@@ -9421,18 +9905,18 @@ def process_view_osago_selection(message):
                     f"💪 *Мощность двигателя:* {calc['engine_power']}\n"
                     f"📅 *Период использования:* {calc['usage_period']}\n"
                     f"🚗 *Лица, допущенные к управлению:* {calc['driver_restriction']}\n"
-                    f"🎂 *Возраст страхователя:* {calc['insurer_age']}\n"
-                    f"⏳ *Стаж страхователя:* {calc['insurer_experience']}\n"
+                    f"🎂 *Возраст страхователя:* {calc.get('insurer_age', 'Не указан')}\n"
+                    f"⏳ *Стаж страхователя:* {calc.get('insurer_experience', 'Не указан')}\n"
                     f"\n*Итоговый расчет:*\n\n"
                     f"💰 *Диапазон цены:* {calc['min_cost']:,.0f} … {calc['max_cost']:,.0f} руб.\n"
                     f"\n*Тариф и коэффициенты:*\n\n"
                     f"💵 *Базовый тариф* – от {base_tariff_min} до {base_tariff_max} руб.\n"
                     f"⭐ *КТ (коэффициент территории):* {calc['kt']}\n"
                     f"⭐ *КМ (коэффициент мощности):* {calc['km']}\n"
-                    f"⭐ *КВС (коэффициент возраст-стаж):* {calc['kvs']}\n"
+                    f"⭐ *КВС (коэффициент возраст-стаж):* {calc.get('kvs', 'Не указан')}\n"
                     f"⭐ *КО (коэффициент ограничения):* {calc['ko']}\n"
                     f"⭐ *КС (коэффициент сезонности):* {calc['ks']}\n"
-                    f"⭐ *КБМ (коэффициент бонус-малус):* {calc['kbm']}\n"
+                    f"⭐ *КБМ (коэффициент бонус-малус):* {calc.get('kbm', 'Не указан')}\n"
                     f"\n🕒 *Дата расчета:* {calc['timestamp']}"
                 )
             else:
@@ -9449,7 +9933,7 @@ def process_view_osago_selection(message):
                     "\n*Данные водителей:*\n"
                 )
 
-                for i, driver in enumerate(calc['drivers'], 1):
+                for i, driver in enumerate(calc.get('drivers', []), 1):
                     result_message += (
                         f"\n👤 *Водитель №{i}:*\n"
                         f"🎂 *Возраст:* {driver['age']}\n"
@@ -9458,7 +9942,7 @@ def process_view_osago_selection(message):
                     )
 
                 result_message += "\n*Индивидуальные расчеты по водителям:*\n"
-                for result in calc['driver_results']:
+                for result in calc.get('driver_results', []):
                     result_message += (
                         f"\n👤 *Водитель №{result['driver_num']}:*\n"
                         f"💰 *Диапазон цены:* {result['min_cost']:,.0f} … {result['max_cost']:,.0f} руб.\n"
@@ -9473,10 +9957,10 @@ def process_view_osago_selection(message):
                     f"💵 *Базовый тариф* – от {base_tariff_min} до {base_tariff_max} руб.\n"
                     f"⭐ *КТ (коэффициент территории):* {calc['kt']}\n"
                     f"⭐ *КМ (коэффициент мощности):* {calc['km']}\n"
-                    f"⭐ *КВС (коэффициент возраст-стаж):* {calc['kvs']}\n"
+                    f"⭐ *КВС (коэффициент возраст-стаж):* {calc.get('kvs', 'Не указан')}\n"
                     f"⭐ *КО (коэффициент ограничения):* {calc['ko']}\n"
                     f"⭐ *КС (коэффициент сезонности):* {calc['ks']}\n"
-                    f"⭐ *КБМ (коэффициент бонус-малус):* {calc['kbm']}\n"
+                    f"⭐ *КБМ (коэффициент бонус-малус):* {calc.get('kbm', 'Не указан')}\n"
                     f"\n🕒 *Дата расчета:* {calc['timestamp']}"
                 )
 
@@ -9486,17 +9970,16 @@ def process_view_osago_selection(message):
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('ОСАГО в EXCEL')
         markup.add('Вернуться в ОСАГО')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_osago_selection)
 
-# ------------------------------------------- КАЛЬКУЛЯТОРЫ_ОСАГО (удаление осаго) --------------------------------------------------
-
-@bot.message_handler(func=lambda message: message.text == "Удаление ОСАГО")
-@check_function_state_decorator('Удаление ОСАГО')
-@track_usage('Удаление ОСАГО')
+@bot.message_handler(func=lambda message: message.text == "ОСАГО в EXCEL")
+@check_function_state_decorator('ОСАГО в EXCEL')
+@track_usage('ОСАГО в EXCEL')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -9506,13 +9989,18 @@ def process_view_osago_selection(message):
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
-def handle_delete_osago(message):
+def send_osago_excel_file(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
-        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(message, show_description=False)
-        return
-    delete_osago_calculations(message)
+    excel_file_path = os.path.join(OSAGO_EXCEL_DIR, f"{user_id}_osago.xlsx")
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(message.chat.id, excel_file)
+    else:
+        bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты ОСАГО")
+    view_osago_calc(message, show_description=False)
+
+# ------------------------------------------- КАЛЬКУЛЯТОРЫ_ОСАГО (удаление осаго) --------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление ОСАГО")
 @check_function_state_decorator('Удаление ОСАГО')
@@ -9610,6 +10098,7 @@ def process_delete_osago_selection(message):
             del calculations[index]
 
         save_user_history_osago()
+        update_osago_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты ОСАГО успешно удалены!")
         view_osago_calc(message, show_description=False)
 
@@ -10773,6 +11262,7 @@ def view_tire_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 TIRE_HISTORY_PATH = os.path.join('data', 'user', 'calculators', 'tires', 'tire_users.json')
+TIRE_EXCEL_DIR = os.path.join('data', 'user', 'calculators', 'tires', 'excel')
 
 user_data = {}
 user_history_tire = {}
@@ -10802,6 +11292,7 @@ def save_user_history_tires():
         pass
 
 ensure_path_and_file(TIRE_HISTORY_PATH)
+os.makedirs(TIRE_EXCEL_DIR, exist_ok=True)
 load_user_history_tires()
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_ШИНЫ (рассчитать шины) --------------------------------------------------
@@ -10858,7 +11349,7 @@ def process_current_width_step(message):
         markup.add('Вернуться в шины')
         markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 400 с шагом 10", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 405 с шагом 10", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_width_step)
 
 @text_only_handler
@@ -11018,7 +11509,7 @@ def process_new_width_step(message):
         markup.add('Вернуться в шины')
         markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 400 с шагом 10", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 405 с шагом 10", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_width_step)
 
 @text_only_handler
@@ -11257,12 +11748,12 @@ def calculate_tire(message):
     
     save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)
     
-    del user_data[user_id] 
+    del user_data[user_id]
     view_tire_calc(message, show_description=False)
 
 def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
-    user_id_int = int(user_id)  
-    user_id_str = str(user_id)  
+    user_id_int = int(user_id)
+    user_id_str = str(user_id)
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
     current_profile_height = data['current_width'] * (data['current_profile'] / 100)
@@ -11283,21 +11774,21 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
         'new_rim': f"{data['new_rim_width']}x{data['new_diameter']} ET {data['new_et']}",
         'current_width': data['current_width'],
         'current_profile': data['current_profile'],
-        'current_profile_height': current_profile_height,
-        'current_diameter': current_diameter,
-        'current_rim_width_mm': current_rim_width_mm,
+        'current_profile_height': round(current_profile_height, 1),
+        'current_diameter': round(current_diameter, 1),
+        'current_rim_width_mm': round(current_rim_width_mm, 1),
         'current_et': data['current_et'],
         'new_width': data['new_width'],
         'new_profile': data['new_profile'],
-        'new_profile_height': new_profile_height,
-        'new_diameter': new_diameter,
-        'new_rim_width_mm': new_rim_width_mm,
+        'new_profile_height': round(new_profile_height, 1),
+        'new_diameter': round(new_diameter, 1),
+        'new_rim_width_mm': round(new_rim_width_mm, 1),
         'new_et': data['new_et'],
-        'diameter_diff_mm': diameter_diff_mm,
-        'diameter_diff_percent': diameter_diff_percent,
-        'clearance_diff': clearance_diff,
-        'speed_diff_percent': speed_diff_percent,
-        'rim_width_diff_mm': rim_width_diff_mm,
+        'diameter_diff_mm': round(diameter_diff_mm, 1),
+        'diameter_diff_percent': round(diameter_diff_percent, 1),
+        'clearance_diff': round(clearance_diff, 1),
+        'speed_diff_percent': round(speed_diff_percent, 1),
+        'rim_width_diff_mm': round(rim_width_diff_mm, 1),
         'recommendation': recommendation,
         'timestamp': timestamp
     }
@@ -11316,6 +11807,149 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
         raise ValueError("Попытка сохранить данные шин в неверный файл!")
     
     save_user_history_tires()
+    save_tire_to_excel(user_id_str, calculation_data)
+
+def save_tire_to_excel(user_id, calculation):
+    file_path = os.path.join(TIRE_EXCEL_DIR, f"{user_id}_tires.xlsx")
+    
+    calculations = user_history_tire.get(user_id, {}).get('tire_calculations', [])
+    
+    columns = [
+        "Дата расчета",
+        "Текущие шины", "Текущие диски", "Ширина текущих шин (мм)", "Профиль текущих шин (%)",
+        "Высота профиля текущих шин (мм)", "Диаметр текущих шин (мм)", "Ширина обода текущих дисков (мм)", "Вылет текущих дисков (ET, мм)",
+        "Новые шины", "Новые диски", "Ширина новых шин (мм)", "Профиль новых шин (%)",
+        "Высота профиля новых шин (мм)", "Диаметр новых шин (мм)", "Ширина обода новых дисков (мм)", "Вылет новых дисков (ET, мм)",
+        "Разница в диаметре (мм)", "Разница в диаметре (%)", "Изменение клиренса (мм)", "Отклонение спидометра (%)", "Разница в ширине обода (мм)",
+        "Рекомендация"
+    ]
+    
+    new_calc_data = {
+        "Дата расчета": calculation['timestamp'],
+        "Текущие шины": calculation['current_tire'],
+        "Текущие диски": calculation['current_rim'],
+        "Ширина текущих шин (мм)": calculation['current_width'],
+        "Профиль текущих шин (%)": calculation['current_profile'],
+        "Высота профиля текущих шин (мм)": calculation['current_profile_height'],
+        "Диаметр текущих шин (мм)": calculation['current_diameter'],
+        "Ширина обода текущих дисков (мм)": calculation['current_rim_width_mm'],
+        "Вылет текущих дисков (ET, мм)": calculation['current_et'],
+        "Новые шины": calculation['new_tire'],
+        "Новые диски": calculation['new_rim'],
+        "Ширина новых шин (мм)": calculation['new_width'],
+        "Профиль новых шин (%)": calculation['new_profile'],
+        "Высота профиля новых шин (мм)": calculation['new_profile_height'],
+        "Диаметр новых шин (мм)": calculation['new_diameter'],
+        "Ширина обода новых дисков (мм)": calculation['new_rim_width_mm'],
+        "Вылет новых дисков (ET, мм)": calculation['new_et'],
+        "Разница в диаметре (мм)": calculation['diameter_diff_mm'],
+        "Разница в диаметре (%)": calculation['diameter_diff_percent'],
+        "Изменение клиренса (мм)": calculation['clearance_diff'],
+        "Отклонение спидометра (%)": calculation['speed_diff_percent'],
+        "Разница в ширине обода (мм)": calculation['rim_width_diff_mm'],
+        "Рекомендация": calculation['recommendation']
+    }
+
+    new_calc_df = pd.DataFrame([new_calc_data], columns=columns)
+    
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        existing_data = existing_data.reindex(columns=columns, fill_value=None)
+        updated_data = pd.concat([existing_data, new_calc_df], ignore_index=True)
+    else:
+        updated_data = new_calc_df
+    
+    updated_data.to_excel(file_path, index=False)
+    
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-4, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
+
+def update_tire_excel_file(user_id):
+    file_path = os.path.join(TIRE_EXCEL_DIR, f"{user_id}_tires.xlsx")
+    calculations = user_history_tire.get(user_id, {}).get('tire_calculations', [])
+
+    if not calculations:
+        columns = [
+            "Дата расчета",
+            "Текущие шины", "Текущие диски", "Ширина текущих шин (мм)", "Профиль текущих шин (%)",
+            "Высота профиля текущих шин (мм)", "Диаметр текущих шин (мм)", "Ширина обода текущих дисков (мм)", "Вылет текущих дисков (ET, мм)",
+            "Новые шины", "Новые диски", "Ширина новых шин (мм)", "Профиль новых шин (%)",
+            "Высота профиля новых шин (мм)", "Диаметр новых шин (мм)", "Ширина обода новых дисков (мм)", "Вылет новых дисков (ET, мм)",
+            "Разница в диаметре (мм)", "Разница в диаметре (%)", "Изменение клиренса (мм)", "Отклонение спидометра (%)", "Разница в ширине обода (мм)",
+            "Рекомендация"
+        ]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        return
+
+    columns = [
+        "Дата расчета",
+        "Текущие шины", "Текущие диски", "Ширина текущих шин (мм)", "Профиль текущих шин (%)",
+        "Высота профиля текущих шин (мм)", "Диаметр текущих шин (мм)", "Ширина обода текущих дисков (мм)", "Вылет текущих дисков (ET, мм)",
+        "Новые шины", "Новые диски", "Ширина новых шин (мм)", "Профиль новых шин (%)",
+        "Высота профиля новых шин (мм)", "Диаметр новых шин (мм)", "Ширина обода новых дисков (мм)", "Вылет новых дисков (ET, мм)",
+        "Разница в диаметре (мм)", "Разница в диаметре (%)", "Изменение клиренса (мм)", "Отклонение спидометра (%)", "Разница в ширине обода (мм)",
+        "Рекомендация"
+    ]
+
+    calc_records = []
+    for calc in calculations:
+        calc_data = {
+            "Дата расчета": calc['timestamp'],
+            "Текущие шины": calc['current_tire'],
+            "Текущие диски": calc['current_rim'],
+            "Ширина текущих шин (мм)": calc['current_width'],
+            "Профиль текущих шин (%)": calc['current_profile'],
+            "Высота профиля текущих шин (мм)": calc['current_profile_height'],
+            "Диаметр текущих шин (мм)": calc['current_diameter'],
+            "Ширина обода текущих дисков (мм)": calc['current_rim_width_mm'],
+            "Вылет текущих дисков (ET, мм)": calc['current_et'],
+            "Новые шины": calc['new_tire'],
+            "Новые диски": calc['new_rim'],
+            "Ширина новых шин (мм)": calc['new_width'],
+            "Профиль новых шин (%)": calc['new_profile'],
+            "Высота профиля новых шин (мм)": calc['new_profile_height'],
+            "Диаметр новых шин (мм)": calc['new_diameter'],
+            "Ширина обода новых дисков (мм)": calc['new_rim_width_mm'],
+            "Вылет новых дисков (ET, мм)": calc['new_et'],
+            "Разница в диаметре (мм)": calc['diameter_diff_mm'],
+            "Разница в диаметре (%)": calc['diameter_diff_percent'],
+            "Изменение клиренса (мм)": calc['clearance_diff'],
+            "Отклонение спидометра (%)": calc['speed_diff_percent'],
+            "Разница в ширине обода (мм)": calc['rim_width_diff_mm'],
+            "Рекомендация": calc['recommendation']
+        }
+        calc_records.append(calc_data)
+
+    df = pd.DataFrame(calc_records, columns=columns)
+    df.to_excel(file_path, index=False)
+
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_row=2, min_col=len(columns)-4, max_col=len(columns)):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_ШИНЫ (просмотр шин) --------------------------------------------------
 
@@ -11356,14 +11990,14 @@ def view_tire_calculations(message):
         timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
-    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_tire_selection)
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Шины в EXCEL')
     markup.add('Вернуться в шины')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_view_tire_selection)
 
 @text_only_handler
 def process_view_tire_selection(message):
@@ -11375,6 +12009,9 @@ def process_view_tire_selection(message):
         return
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
+        return
+    if message.text == "Шины в EXCEL":
+        send_tire_excel_file(message)
         return
 
     chat_id = message.chat.id
@@ -11399,6 +12036,7 @@ def process_view_tire_selection(message):
 
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Шины в EXCEL')
             markup.add('Вернуться в шины')
             markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
@@ -11510,11 +12148,35 @@ def process_view_tire_selection(message):
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Шины в EXCEL')
         markup.add('Вернуться в шины')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_tire_selection)
+
+@bot.message_handler(func=lambda message: message.text == "Шины в EXCEL")
+@check_function_state_decorator('Шины в EXCEL')
+@track_usage('Шины в EXCEL')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_tire_excel_file(message):
+    user_id = str(message.from_user.id)
+    excel_file_path = os.path.join(TIRE_EXCEL_DIR, f"{user_id}_tires.xlsx")
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(message.chat.id, excel_file)
+    else:
+        bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты шин")
+    view_tire_calc(message, show_description=False)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_ШИНЫ (удаление шин) --------------------------------------------------
 
@@ -11614,6 +12276,7 @@ def process_delete_tire_selection(message):
             del calculations[index]
 
         save_user_history_tires()
+        update_tire_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты шин успешно удалены!")
         view_tire_calc(message, show_description=False)
 
@@ -11669,36 +12332,26 @@ NALOG_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'na
 USER_HISTORY_PATH_NALOG = os.path.join('data', 'user', 'calculators', 'nalog', 'nalog_users.json')
 PERECHEN_AUTO_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'auto_10mln_rub_2025.json')
 TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'transport_tax_{year}.json')
-os.makedirs(os.path.dirname(NALOG_JSON_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(USER_HISTORY_PATH_NALOG), exist_ok=True)
-os.makedirs(os.path.dirname(PERECHEN_AUTO_PATH), exist_ok=True)
-os.makedirs(os.path.dirname(TRANSPORT_TAX_BASE_PATH.format(year=2025)), exist_ok=True)
-
-if not os.path.exists(NALOG_JSON_PATH):
-    with open(NALOG_JSON_PATH, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
-if not os.path.exists(USER_HISTORY_PATH_NALOG):
-    with open(USER_HISTORY_PATH_NALOG, 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
-if not os.path.exists(PERECHEN_AUTO_PATH):
-    with open(PERECHEN_AUTO_PATH, 'w', encoding='utf-8') as f:
-        json.dump([], f, ensure_ascii=False, indent=2)
-if not os.path.exists(TRANSPORT_TAX_BASE_PATH.format(year=2025)):
-    with open(TRANSPORT_TAX_BASE_PATH.format(year=2025), 'w', encoding='utf-8') as f:
-        json.dump({}, f, ensure_ascii=False, indent=2)
-
-nalog_data = {}
-user_history_nalog = {}
-user_data = {}
-expensive_cars = []
-tax_rates = {}
-available_years = [2021, 2022, 2023, 2024, 2025] 
+NALOG_EXCEL_DIR = os.path.join('data', 'user', 'calculators', 'nalog', 'excel')
 
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     if not os.path.exists(file_path):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump({}, f, ensure_ascii=False, indent=2)
+
+ensure_path_and_file(NALOG_JSON_PATH)
+ensure_path_and_file(USER_HISTORY_PATH_NALOG)
+ensure_path_and_file(PERECHEN_AUTO_PATH)
+ensure_path_and_file(TRANSPORT_TAX_BASE_PATH.format(year=2025))
+os.makedirs(NALOG_EXCEL_DIR, exist_ok=True)
+
+nalog_data = {}
+user_history_nalog = {}
+user_data = {}
+expensive_cars = []
+tax_rates = {}
+available_years = [2021, 2022, 2023, 2024, 2025]
 
 def load_nalog_data():
     global nalog_data
@@ -11761,8 +12414,6 @@ def load_tax_rates(year):
     except Exception as e:
         tax_rates = {}
 
-ensure_path_and_file(NALOG_JSON_PATH)
-ensure_path_and_file(USER_HISTORY_PATH_NALOG)
 load_nalog_data()
 load_user_history_nalog()
 load_expensive_cars()
@@ -12321,11 +12972,187 @@ def calculate_tax(message):
         raise ValueError("Попытка сохранить данные налога в неверный файл!")
     
     save_user_history_nalog()
+    save_nalog_to_excel(user_id_str, calculation_data)
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     
     del user_data[user_id_int]  
     view_nalog_calc(message, show_description=False)
+
+def save_nalog_to_excel(user_id, calculation):
+    file_path = os.path.join(NALOG_EXCEL_DIR, f"{user_id}_nalog.xlsx")
+    
+    calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
+    
+    columns = [
+        "Дата расчета",
+        "Регион",
+        "Год",
+        "Тип ТС",
+        "Мощность двигателя (л.с.)",
+        "Месяцев владения",
+        "ТС дороже 10 млн руб.",
+        "Марка ТС",
+        "Модель ТС",
+        "Год выпуска",
+        "Льготы",
+        "Сумма налога (руб.)",
+        "Ставка (руб./л.с.)",
+        "Коэффициент владения",
+        "Повышающий коэффициент",
+        "Льготный коэффициент"
+    ]
+    
+    expensive_details = "Нет"
+    if calculation['is_expensive']:
+        years_passed = calculation['year'] - calculation['year_of_manufacture']
+        if years_passed <= 3:
+            expensive_details = f"Да (коэффициент 3.0, до 3 лет с выпуска: {calculation['year_of_manufacture']})"
+        elif years_passed <= 5:
+            expensive_details = f"Да (коэффициент 2.0, 3-5 лет с выпуска: {calculation['year_of_manufacture']})"
+        elif years_passed <= 10:
+            expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {calculation['year_of_manufacture']})"
+
+    new_calc_data = {
+        "Дата расчета": calculation['timestamp'],
+        "Регион": calculation['region'],
+        "Год": calculation['year'],
+        "Тип ТС": calculation['vehicle_type'],
+        "Мощность двигателя (л.с.)": calculation['engine_power'],
+        "Месяцев владения": calculation['ownership_months'],
+        "ТС дороже 10 млн руб.": expensive_details,
+        "Марка ТС": calculation.get('selected_brand', ''),
+        "Модель ТС": calculation.get('selected_model', ''),
+        "Год выпуска": calculation.get('year_of_manufacture', ''),
+        "Льготы": calculation['benefit'],
+        "Сумма налога (руб.)": calculation['tax'],
+        "Ставка (руб./л.с.)": calculation['rate'],
+        "Коэффициент владения": calculation['months_coefficient'],
+        "Повышающий коэффициент": calculation['increasing_coefficient'],
+        "Льготный коэффициент": calculation['benefit_coefficient']
+    }
+
+    new_calc_df = pd.DataFrame([new_calc_data], columns=columns)
+    
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path).dropna(axis=1, how='all')
+        existing_data = existing_data.reindex(columns=columns, fill_value=None)
+        updated_data = pd.concat([existing_data, new_calc_df], ignore_index=True)
+    else:
+        updated_data = new_calc_df
+    
+    updated_data.to_excel(file_path, index=False)
+    
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-1, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
+
+def update_nalog_excel_file(user_id):
+    file_path = os.path.join(NALOG_EXCEL_DIR, f"{user_id}_nalog.xlsx")
+    calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
+
+    if not calculations:
+        columns = [
+            "Дата расчета",
+            "Регион",
+            "Год",
+            "Тип ТС",
+            "Мощность двигателя (л.с.)",
+            "Месяцев владения",
+            "ТС дороже 10 млн руб.",
+            "Марка ТС",
+            "Модель ТС",
+            "Год выпуска",
+            "Льготы",
+            "Сумма налога (руб.)",
+            "Ставка (руб./л.с.)",
+            "Коэффициент владения",
+            "Повышающий коэффициент",
+            "Льготный коэффициент"
+        ]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        return
+
+    columns = [
+        "Дата расчета",
+        "Регион",
+        "Год",
+        "Тип ТС",
+        "Мощность двигателя (л.с.)",
+        "Месяцев владения",
+        "ТС дороже 10 млн руб.",
+        "Марка ТС",
+        "Модель ТС",
+        "Год выпуска",
+        "Льготы",
+        "Сумма налога (руб.)",
+        "Ставка (руб./л.с.)",
+        "Коэффициент владения",
+        "Повышающий коэффициент",
+        "Льготный коэффициент"
+    ]
+
+    calc_records = []
+    for calc in calculations:
+        expensive_details = "Нет"
+        if calc['is_expensive']:
+            years_passed = calc['year'] - calc['year_of_manufacture']
+            if years_passed <= 3:
+                expensive_details = f"Да (коэффициент 3.0, до 3 лет с выпуска: {calc['year_of_manufacture']})"
+            elif years_passed <= 5:
+                expensive_details = f"Да (коэффициент 2.0, 3-5 лет с выпуска: {calc['year_of_manufacture']})"
+            elif years_passed <= 10:
+                expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {calc['year_of_manufacture']})"
+
+        calc_data = {
+            "Дата расчета": calc['timestamp'],
+            "Регион": calc['region'],
+            "Год": calc['year'],
+            "Тип ТС": calc['vehicle_type'],
+            "Мощность двигателя (л.с.)": calc['engine_power'],
+            "Месяцев владения": calc['ownership_months'],
+            "ТС дороже 10 млн руб.": expensive_details,
+            "Марка ТС": calc.get('selected_brand', ''),
+            "Модель ТС": calc.get('selected_model', ''),
+            "Год выпуска": calc.get('year_of_manufacture', ''),
+            "Льготы": calc['benefit'],
+            "Сумма налога (руб.)": calc['tax'],
+            "Ставка (руб./л.с.)": calc['rate'],
+            "Коэффициент владения": calc['months_coefficient'],
+            "Повышающий коэффициент": calc['increasing_coefficient'],
+            "Льготный коэффициент": calc['benefit_coefficient']
+        }
+        calc_records.append(calc_data)
+
+    df = pd.DataFrame(calc_records, columns=columns)
+    df.to_excel(file_path, index=False)
+
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+    for column in worksheet.columns:
+        max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+        worksheet.column_dimensions[column[0].column_letter].width = max_length
+    for row in worksheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    for row in worksheet.iter_rows(min_row=2, min_col=len(columns)-1, max_col=len(columns)):
+        for cell in row:
+            cell.border = thick_border
+    workbook.save(file_path)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_НАЛОГ (просмотр налогов) --------------------------------------------------
 
@@ -12366,14 +13193,14 @@ def view_nalog_calculations(message):
         timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
-    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_nalog_selection)
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Налог в EXCEL')
     markup.add('Вернуться в налог')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_view_nalog_selection)
 
 @text_only_handler
 def process_view_nalog_selection(message):
@@ -12385,6 +13212,9 @@ def process_view_nalog_selection(message):
         return
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
+        return
+    if message.text == "Налог в EXCEL":
+        send_nalog_excel_file(message)
         return
 
     chat_id = message.chat.id
@@ -12409,6 +13239,7 @@ def process_view_nalog_selection(message):
 
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Налог в EXCEL')
             markup.add('Вернуться в налог')
             markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
@@ -12458,11 +13289,35 @@ def process_view_nalog_selection(message):
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Налог в EXCEL')
         markup.add('Вернуться в налог')
         markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_nalog_selection)
+
+@bot.message_handler(func=lambda message: message.text == "Налог в EXCEL")
+@check_function_state_decorator('Налог в EXCEL')
+@track_usage('Налог в EXCEL')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_nalog_excel_file(message):
+    user_id = str(message.from_user.id)
+    excel_file_path = os.path.join(NALOG_EXCEL_DIR, f"{user_id}_nalog.xlsx")
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(message.chat.id, excel_file)
+    else:
+        bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты налога")
+    view_nalog_calc(message, show_description=False)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_НАЛОГ (удаление налогов) --------------------------------------------------
 
@@ -12562,6 +13417,7 @@ def process_delete_nalog_selection(message):
             del calculations[index]
 
         save_user_history_nalog()
+        update_nalog_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты налога успешно удалены!")
         view_nalog_calc(message, show_description=False)
 
@@ -29309,12 +30165,13 @@ new_functions = {
     ],
     "Калькуляторы": [
         "Расход топлива", "Рассчитать расход", "Посмотреть поездки", "Поездки в EXCEL", "Посмотреть другие поездки", "Удалить поездки",
-        "Вернуться в калькуляторы", "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя",
-        "Растаможка", "Рассчитать растаможку", "Просмотр растаможек", "Удаление растаможек",
-        "ОСАГО", "Рассчитать ОСАГО", "Просмотр ОСАГО", "Удаление ОСАГО",
+        "Вернуться в калькуляторы", 
+        "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Алкоголь в EXCEL", "Удаление алкоголя",
+        "Растаможка", "Рассчитать растаможку", "Просмотр растаможек", "Растаможка в EXCEL", "Удаление растаможек",
+        "ОСАГО", "Рассчитать ОСАГО", "Просмотр ОСАГО", "ОСАГО в EXCEL", "Удаление ОСАГО",
         "Автокредит", "Рассчитать автокредит", "Просмотр автокредитов", "Удаление автокредитов",
-        "Шины", "Рассчитать шины", "Просмотр шин", "Удаление шин",
-        "Налог", "Рассчитать налог", "Просмотр налогов", "Удаление налогов"
+        "Шины", "Рассчитать шины", "Просмотр шин", "Шины в EXCEL", "Удаление шин",
+        "Налог", "Рассчитать налог", "Просмотр налогов", "Налог в EXCEL", "Удаление налогов"
     ]
 }
 
