@@ -37,6 +37,17 @@ from datetime import timedelta
 
 bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
 
+
+import pytz
+
+# Создаем объект часового пояса для GMT+3
+moscow_tz = pytz.timezone('Europe/Moscow')
+
+# Пример использования часового пояса
+current_time = datetime.now(moscow_tz)
+formatted_time = current_time.strftime('%d.%m.%Y в %H:%M:%S')
+
+
 # (4) --------------- ЗАГРУЗКА ТЕКСТОВОГО ФАЙЛА С РЕГИОНАМИ ---------------
 
 regions = {}
@@ -48,7 +59,7 @@ try:
                 code, name = parts
                 regions[code.strip()] = name.strip()
 except FileNotFoundError:
-    print("Файл 'regions.txt' не найден.")
+    pass
 
 # (5) --------------- ОБРАБОТЧИК КОМАНДЫ /START ---------------
 
@@ -173,7 +184,7 @@ def log_to_json(user_id, log_entry):
             with open(log_file, 'r', encoding='utf-8') as file:
                 logs = json.load(file)
         except json.decoder.JSONDecodeError:  # Если файл поврежден
-            print(f"Ошибка при чтении файла {log_file}, файл поврежден. Создаем новый файл.")
+            print(f"Ошибка при чтении файла {log_file}, файл поврежден! Создаем новый файл...")
             logs = []  # Создаем новый список
     else:
         logs = []  # Если файл не существует, создаем новый список
@@ -396,6 +407,96 @@ def check_user_blocked(func):
     return wrapper
 
 
+# -------- Уведомление о неактивности ---------
+
+# Путь к файлу базы данных
+DB_PATH = 'data base/admin/users.json'
+
+# Интервал в секундах для проверки неактивности (3 дня)
+INACTIVITY_THRESHOLD = 3 * 24 * 60 * 60
+
+# Интервал в секундах для проверки (12 часов)
+CHECK_INTERVAL = 12 * 60 * 60
+
+def load_users():
+    with open(DB_PATH, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+def save_users(users):
+    with open(DB_PATH, 'w', encoding='utf-8') as file:
+        json.dump(users, file, ensure_ascii=False, indent=4)
+
+def check_inactivity():
+    while True:
+        users = load_users()
+        current_time = datetime.now()
+
+        for user_id, user_data in users.items():
+            last_active_str = user_data.get('last_active')
+            if last_active_str:
+                last_active = datetime.strptime(last_active_str, '%d.%m.%Y в %H:%M:%S')
+                if current_time - last_active > timedelta(seconds=INACTIVITY_THRESHOLD):
+                    username = user_data.get('username', 'Неизвестный пользователь')
+                    message = f"Уважаемый пользователь, @{escape_markdown(username)}, от вас давно не было активности! Используйте бота или ваши данные будут удалены!"
+                    bot.send_message(user_id, message, parse_mode="Markdown")
+
+        # Ждем 12 часов перед следующей проверкой
+        time.sleep(CHECK_INTERVAL)
+
+# Запуск потока для проверки неактивности
+inactivity_thread = threading.Thread(target=check_inactivity)
+inactivity_thread.daemon = True
+inactivity_thread.start()
+
+
+# -------- Экстренная остановка ---------
+
+import signal
+
+def emergency_stop(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Экстренная остановка'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Подтвердить остановку", "Отмена остановки")
+    markup.add("В меню админ-панели")
+    bot.send_message(message.chat.id, "Вы уверены, что хотите остановить бота?", reply_markup=markup)
+    bot.register_next_step_handler(message, confirm_emergency_stop)
+
+# Обработчик команды для экстренной остановки бота
+@bot.message_handler(func=lambda message: message.text == 'Экстренная остановка' and check_admin_access(message))
+def handle_emergency_stop(message):
+    emergency_stop(message)
+
+# Функция для остановки бота через 5 секунд
+def stop_bot_after_delay():
+    threading.Timer(5.0, stop_bot).start()
+
+# Функция для остановки бота
+def stop_bot():
+    bot.stop_polling()
+    os.kill(os.getpid(), signal.SIGINT)
+
+# Обработчик подтверждения остановки бота
+def confirm_emergency_stop(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    if message.text == "Подтвердить остановку":
+        bot.send_message(message.chat.id, "🛑 Бот будет остановлен через 5 секунд...")
+        stop_bot_after_delay()
+        show_admin_panel(message)
+    elif message.text == "Отмена остановки":
+        bot.send_message(message.chat.id, "Остановка бота отменена!")
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Неверная команда! Пожалуйста, выберите действие")
+        bot.register_next_step_handler(message, confirm_emergency_stop)
+
+
 # (3) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ ---------------
 
 # (3.1) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ПОЕЗДКИ) ---------------
@@ -483,7 +584,6 @@ load_all_user_data()
 
 
 # Старт
-
 @bot.message_handler(commands=['start'])
 @restricted
 @track_user_activity
@@ -518,7 +618,8 @@ def start(message):
     markup.add(item9, item10)
     markup.add(item11)
 
-    bot.send_message(chat_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
+    welcome_message = f"Добро пожаловать, @{escape_markdown(username)}!\nВыберите действие из меню:"
+    bot.send_message(chat_id, welcome_message, parse_mode="Markdown", reply_markup=markup)
 
 # (6) --------------- ОБРАБОТЧИК КОМАНДЫ /MAINMENU ---------------
 @restricted
@@ -725,7 +826,7 @@ def process_start_location_step(message):
             }
             bot.send_message(chat_id, f"Ваше начальное местоположение:\n\n{start_location}")
         else:
-            sent = bot.send_message(chat_id, "Не удалось найти местоположение. Пожалуйста, введите корректный адрес.")
+            sent = bot.send_message(chat_id, "Не удалось найти местоположение! Пожалуйста, введите корректный адрес")
             bot.register_next_step_handler(sent, process_start_location_step)
             return
     
@@ -787,7 +888,7 @@ def process_start_location_step(message):
             }
             bot.send_message(chat_id, f"Ваше начальное местоположение:\n\n{start_location}")
         else:
-            sent = bot.send_message(chat_id, "Не удалось найти местоположение. Пожалуйста, введите корректный адрес.")
+            sent = bot.send_message(chat_id, "Не удалось найти местоположение! Пожалуйста, введите корректный адрес")
             bot.register_next_step_handler(sent, process_start_location_step)
             return
     
@@ -843,7 +944,7 @@ def process_end_location_step(message):
             }
             bot.send_message(chat_id, f"Ваше конечное местоположение:\n\n{end_location}")
         else:
-            sent = bot.send_message(chat_id, "Не удалось найти местоположение. Пожалуйста, введите корректный адрес.")
+            sent = bot.send_message(chat_id, "Не удалось найти местоположение! Пожалуйста, введите корректный адрес")
             bot.register_next_step_handler(sent, process_end_location_step)
             return
 
@@ -1722,13 +1823,13 @@ def save_data_handler(message):
 
 # (9.15) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "В ГЛАВНОЕ МЕНЮ  ВРЕМЕННЫХ ДАННЫХ") ---------------
 
-@bot.message_handler(func=lambda message: message.text == "В главное меню")
-@bot.message_handler(commands=['mainmenu'])
 @restricted
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
 #@log_user_actions
+@bot.message_handler(func=lambda message: message.text == "В главное меню")
+@bot.message_handler(commands=['mainmenu'])
 def return_to_menu(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data:
@@ -1869,16 +1970,15 @@ def show_trip_details(message):
                 markup.add("Вернуться в меню расчета топлива")
                 markup.add("В главное меню")
 
-                bot.send_message(user_id, "Вы можете посмотреть другие поездки или вернуться в меню", reply_markup=markup)
+                bot.send_message(user_id, "Вы можете посмотреть другие поездки", reply_markup=markup)
 
             else:
-                bot.send_message(user_id, "Поездка с таким номером не найдена. Попробуйте снова.")
+                bot.send_message(user_id, "Поездка с таким номером не найдена! Попробуйте снова")
         else:
-            bot.send_message(user_id, "Ошибка при выборе поездки. Попробуйте снова.")
+            bot.send_message(user_id, "Ошибка при выборе поездки! Попробуйте снова")
 
     except (IndexError, ValueError) as e:
-        print(f"Error while processing trip data: {e}")
-        bot.send_message(user_id, "Ошибка при обработке данных. Попробуйте снова.")
+        bot.send_message(user_id, "Ошибка при обработке данных! Попробуйте снова")
 
 # Обработчик для кнопки "Посмотреть другие поездки"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть другие поездки")
@@ -1903,17 +2003,6 @@ def view_other_trips(message):
 #     chat_id = message.chat.id
 #     reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
 #     bot.send_message(chat_id, "Вы вернулись в меню расчета топлива", reply_markup=types.ReplyKeyboardRemove())
-
-@bot.message_handler(func=lambda message: message.text == "В главное меню")
-@restricted
-@track_user_activity
-@check_chat_state
-@check_function_state_decorator('В главное меню')
-#@log_user_actions
-def return_to_main_menu(message):
-    chat_id = message.chat.id
-    return_to_menu(message)  # Ваша функция для возврата в главное меню
-    bot.send_message(chat_id, "Вы вернулись в главное меню.", reply_markup=types.ReplyKeyboardRemove())
 
 # (9.18) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "УДАЛИТЬ ПОЕЗДКУ") ---------------
 
@@ -2163,7 +2252,6 @@ def load_expense_data(user_id):
         with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
     except (FileNotFoundError, ValueError) as e:
-        print("Ошибка загрузки данных:", e)
         data = {"user_categories": [], "selected_transport": "", "expenses": []}
     
     return data
@@ -2635,7 +2723,7 @@ def save_expense_to_excel(user_id, expense_data):
         # Сохраняем рабочую книгу
         workbook.save(excel_path)
     except Exception as e:
-        print(f"Ошибка при сохранении данных в Excel: {e}")
+        pass
 
 # Удаление категории
 @bot.message_handler(func=lambda message: message.text == "Удалить категорию")
@@ -3280,7 +3368,6 @@ def save_selected_transport(user_id, selected_transport):
     # Изменяем только выбранный транспорт, не трогая остальные данные
     user_data["selected_transport"] = selected_transport
     save_expense_data(user_id, user_data)  # Сохраняем только изменения
-    print(f"Транспорт сохранён: {selected_transport}")  # Для отладки
 
 @bot.message_handler(func=lambda message: message.text == "Удалить траты")
 @restricted
@@ -3339,7 +3426,6 @@ def handle_transport_selection_for_deletion(message):
     # Сохраняем выбранный транспорт в глобальном словаре
     selected_transports[user_id] = selected_transport
     save_selected_transport(user_id, selected_transport)  # Сохраняем в БД
-    print(f"Сохранён транспорт для удаления: {selected_transports[user_id]}")  # Для отладки
 
     if selected_transport == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
@@ -4206,25 +4292,19 @@ def save_repair_data(user_id, user_data, selected_transport=None):
         json.dump(user_data, file, ensure_ascii=False, indent=4)
 
 def load_repair_data(user_id):
-    # Путь к файлу в новой папке
     folder_path = os.path.join("data base", "repairs")
     file_path = os.path.join(folder_path, f"{user_id}_repairs.json")
-    
-    # Проверка, существует ли файл, перед его открытием
+
     if not os.path.exists(file_path):
-        return {"user_categories": [], "selected_transport": ""}  # Если файла нет, возвращаем пустой словарь с пустым списком категорий
+        return {"user_categories": [], "selected_transport": ""}
 
     try:
         with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
-            if not isinstance(data, dict):
-                raise ValueError("Данные не являются словарем.")
-            if "selected_transport" not in data:
-                data["selected_transport"] = ""  # Добавляем поле, если его нет
-    except (FileNotFoundError, ValueError) as e:
-        print("Ошибка аагрузки данных:", e)
-        data = {"user_categories": [], "selected_transport": ""}  # Обеспечиваем наличие пустого списка категорий
-    return data
+            data.setdefault("selected_transport", "")
+            return data
+    except:
+        return {"user_categories": [], "selected_transport": ""}
 
 #@log_user_actions
 def get_user_repair_categories(user_id):
@@ -4883,7 +4963,7 @@ def save_repair_to_excel(user_id, repair_data):
         # Сохраняем рабочую книгу
         workbook.save(excel_path)
     except Exception as e:
-        print(f"Ошибка при сохранении данных в Excel: {e}")
+        pass
 
         
 # (11.5) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ РЕМОНТЫ") ---------------
@@ -6155,7 +6235,6 @@ def update_repairs_excel_file(user_id):
     try:
         workbook = load_workbook(excel_file_path)
     except Exception as e:
-        print(f"Ошибка при загрузке файла Excel: {e}")
         workbook = Workbook()
         workbook.save(excel_file_path)
         workbook = load_workbook(excel_file_path)
@@ -7064,8 +7143,6 @@ def handle_start_5(message):
         bot.register_next_step_handler(message, handle_location_5)
     
     except Exception as e:
-        print(f"Ошибка в обработчике 'Погода': {e}")
-        traceback.print_exc()
         bot.send_message(message.chat.id, "Произошла ошибка при обработке вашего запроса. Попробуйте позже")
 
 @bot.message_handler(content_types=['location'])
@@ -7097,8 +7174,6 @@ def handle_location_5(message):
             bot.send_message(message.chat.id, "Не удалось получить данные о местоположении. Пожалуйста, отправьте местоположение еще раз")
             bot.register_next_step_handler(message, handle_location_5)
     except Exception as e:
-        print(f"Ошибка в обработчике 'Геолокация': {e}")
-        traceback.print_exc()
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже")
 
 
@@ -7149,7 +7224,6 @@ def load_user_locations():
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        print(f"Ошибка загрузки файла с координатами: {e}")
         return {}
 
 import traceback
@@ -7170,20 +7244,15 @@ def get_city_name(latitude, longitude):
 
         if response.status_code == 200:
             city = data.get("address", {}).get("city", None)
-            return city if city else f"неизвестное место ({latitude}, {longitude})"
-        else:
-            print(f"Ошибка геокодирования: {data.get('error', 'Нет описания ошибки')}")
-            return None
-    except Exception as e:
-        print(f"Произошла ошибка при запросе названия города: {e}")
+            return city or f"неизвестное место ({latitude}, {longitude})"
+        return None
+    except:
         return None
 
 #@log_user_actions
 def get_current_weather(coords):
     try:
-        # Получаем название города
         city_name = get_city_name(coords['latitude'], coords['longitude'])
-
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
@@ -7192,9 +7261,8 @@ def get_current_weather(coords):
             'lang': 'ru'
         }
         response = requests.get(WEATHER_URL, params=params, timeout=30)
-        
         data = response.json()
-        
+
         if response.status_code == 200:
             temperature = round(data['main']['temp'])
             feels_like = round(data['main']['feels_like'])
@@ -7205,8 +7273,7 @@ def get_current_weather(coords):
 
             current_time = datetime.now().strftime("%H:%M")
             current_date = datetime.now().strftime("%d.%m.%Y")
-            
-            # Формируем сообщение
+
             return (
                 f"*Вам пришло новое уведомление!*🔔\n\n\n"
                 f"*Погода на {current_date} в {current_time}*:\n"
@@ -7219,16 +7286,9 @@ def get_current_weather(coords):
                 f"☁️ *Описание:* {description}\n\n"
             )
         else:
-            print(f"Ошибка запроса погоды: код {response.status_code}, сообщение: {data.get('message', 'Нет описания ошибки')}")
             return None
-    except requests.exceptions.Timeout:
-        print("Ошибка: Время ожидания ответа от сервера истекло")
-    except requests.exceptions.ConnectionError as e:
-        print(f"Ошибка подключения: {e}")
-    except Exception as e:
-        print(f"Произошла ошибка: {e}")
-        traceback.print_exc()
-    return None
+    except:
+        return None
 
 #@log_user_actions
 def get_average_fuel_prices(city_code):
@@ -7246,7 +7306,6 @@ def get_average_fuel_prices(city_code):
                 try:
                     price = float(price)  # Преобразуем цену в число (если это возможно)
                 except ValueError:
-                    print(f"Ошибка преобразования цены для {fuel_type}: {price}")
                     continue  # Пропускаем этот элемент, если цена не может быть преобразована
 
                 if fuel_type not in fuel_prices:
@@ -7255,10 +7314,10 @@ def get_average_fuel_prices(city_code):
                 fuel_prices[fuel_type].append(price)
 
     except FileNotFoundError:
-        print(f"Файл с ценами на топливо для города '{city_code}' не найден")
+        pass
         return None
     except json.JSONDecodeError:
-        print("Ошибка при декодировании JSON")
+        pass
         return None
 
     # Вычисление средних цен
@@ -7277,9 +7336,9 @@ def load_city_names(file_path):
                     city_name, city_code = city_data
                     city_names[city_code] = city_name  # Добавляем в словарь
     except FileNotFoundError:
-        print(f"Файл с названиями городов '{file_path}' не найден")
+        pass
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        pass
     
     return city_names
 
@@ -7308,8 +7367,7 @@ def send_weather_notifications():
             try:
                 bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
             except Exception as e:
-                print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
-                traceback.print_exc()
+                pass
 
 # Настройка расписания для отправки уведомлений
 schedule.every().day.at("07:30").do(send_weather_notifications)
@@ -7399,8 +7457,6 @@ def send_weather(chat_id, coords, url):
         else:
             bot.send_message(chat_id, "Не удалось получить текущую погоду. Проверьте, правильно ли указаны координаты")
     except Exception as e:
-        print(f"Ошибка при отправке текущей погоды: {e}")
-        traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды. Попробуйте позже")
 
 #@log_user_actions
@@ -7452,8 +7508,6 @@ def send_forecast_remaining_day(chat_id, coords, url):
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз на оставшуюся часть дня")
     except Exception as e:
-        print(f"Ошибка при отправке прогноза на оставшуюся часть дня: {e}")
-        traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшуюся часть дня. Попробуйте позже")
 
 
@@ -7524,8 +7578,6 @@ def send_forecast(chat_id, coords, url, days=1):
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз погоды на завтра")
     except Exception as e:
-        print(f"Ошибка при отправке прогноза на завтра: {e}")
-        traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже")
 
 # (15.8) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА ЗАВТРА) ---------------
@@ -7569,8 +7621,6 @@ def send_forecast_daily(chat_id, coords, url, days_ahead):
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз на завтра")
     except Exception as e:
-        print(f"Ошибка при отправке прогноза на завтра: {e}")
-        traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже")
 
 # Функция для отправки почасового прогноза на завтра
@@ -7624,9 +7674,7 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url):
         else:
             bot.send_message(chat_id, "Не удалось получить почасовой прогноз на завтра")
     except Exception as e:
-        print(f"Ошибка при отправке почасового прогноза на завтра: {e}")
-        traceback.print_exc()
-        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра. Попробуйте позже")
+        bot.send_message(chat_id, "Произошла ошибка при запросе почасового прогноза на завтра! Попробуйте позже")
         
 # (15.9) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА НЕДЕЛЮ) ---------------
 
@@ -7705,11 +7753,9 @@ def send_forecast_weekly(chat_id, coords, url, retries=3):
                     bot.send_message(chat_id, "Не удалось получить прогноз на неделю")
                     break
             except Exception as e:
-                print(f"Ошибка в попытке запроса: {e}")
                 if attempt == retries - 1:
                     bot.send_message(chat_id, "Не удалось получить прогноз на неделю после нескольких попыток")
     except Exception as e:
-        print(f"Ошибка в send_forecast_weekly: {e}")
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на неделю. Попробуйте позже")
 
 # ---------- ПРОГНОЗ НА МЕСЯЦ -----------
@@ -7735,11 +7781,10 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
             forecasts = data['list']
             message = "*Прогноз на месяц:*\n\n\n"
 
-            # Получаем данные на месяц
             daily_forecasts = {}
             for forecast in forecasts:
                 date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
-                date_str = date_time.strftime('%d.%m.%Y')  # Изменен формат даты на DD.MM.YYYY
+                date_str = date_time.strftime('%d.%m.%Y')
 
                 if date_str not in daily_forecasts:
                     daily_forecasts[date_str] = {
@@ -7747,7 +7792,6 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
                         'feels_like': round(forecast['main']['feels_like'])
                     }
 
-            # Формируем сообщение
             for date, values in daily_forecasts.items():
                 message += (
                     f"*{date}:*\n\n"
@@ -7755,17 +7799,18 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
                     f"🌬️ *Ощущается как:* {values['feels_like']}°C\n\n"
                 )
 
-            # Проверка на отсутствие данных и формирование диапазона
-            unavailable_dates = []
-            for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y'):
-                if date not in daily_forecasts:
-                    unavailable_dates.append(date)
+            unavailable_dates = [
+                date for date in pd.date_range(start=datetime.now(), periods=days).strftime('%d.%m.%Y')
+                if date not in daily_forecasts
+            ]
 
             if unavailable_dates:
                 start_date = unavailable_dates[0]
                 end_date = unavailable_dates[-1]
-                message += (f"*С {start_date} по {end_date}:*\n\n_" 
-                             f"Данные недоступны из-за ограничений_\n\n")  # Курсив
+                message += (
+                    f"*С {start_date} по {end_date}:*\n\n_"
+                    f"Данные недоступны из-за ограничений_\n\n"
+                )
 
             if message == "*Прогноз на месяц:*\n\n":
                 message = "Нет доступного прогноза на месяц"
@@ -7773,9 +7818,7 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
             bot.send_message(chat_id, message, parse_mode="Markdown")
         else:
             bot.send_message(chat_id, "Не удалось получить прогноз на месяц")
-    except Exception as e:
-        print(f"Ошибка при отправке прогноза на месяц: {e}")
-        traceback.print_exc()
+    except:
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже")
 
 # ЦЕНЫ НА ТОПЛИВО
@@ -9727,7 +9770,7 @@ try:
             })
             coordinates.append((latitude, longitude))
 except Exception as e:
-    print(f"Ошибка при загрузке данных о камерах: {e}")
+    pass
 
 # 🌳 Создание KD-дерева для поиска ближайших камер
 camera_tree = cKDTree(coordinates)
@@ -9798,7 +9841,6 @@ def handle_antiradar_location(message):
 @check_chat_state
 @check_function_state_decorator('Выключить анти-радар')
 @track_usage('Выключить анти-радар')  # Добавление отслеживания статистики
-#@log_user_actions
 def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
@@ -9811,44 +9853,41 @@ def stop_antiradar(message):
             bot.delete_message(user_id, user_tracking[user_id]['last_camera_message'])  # Удаляем сообщение
 
         # Возврат в главное меню
-        return_to_main_menu(message)
+        return_to_menu(message)
 
     else:
         bot.send_message(user_id, "Анти-радар не был запущен")
+
 
 def delete_messages(user_id, message_id):
     time.sleep(6)
     try:
         bot.delete_message(chat_id=user_id, message_id=message_id)
-    except Exception as e:
-        print(f"Ошибка при удалении сообщения: {e}")
+    except:
+        pass
+
 
 MAX_CAMERAS_IN_MESSAGE = 5  # Максимальное количество камер в одном сообщении
 ALERT_DISTANCE = 150  # Расстояние для уведомления о приближении к камере
 EXIT_DISTANCE = 50  # Расстояние для уведомления о выходе из зоны камеры
 IN_ZONE_DISTANCE = 15  # Расстояние, при котором показывается сообщение "в зоне камеры"
 
+
 def track_user_location(user_id, initial_location):
-    #@log_user_actions
     def monitor():
         while user_tracking.get(user_id, {}).get('tracking', False):
             user_location = user_tracking[user_id]['location']
             user_position = (user_location.latitude, user_location.longitude)
-            
-            # Обновляем last_position каждый раз, чтобы отслеживать изменения
-            last_position = user_position
-
             distances, indices = camera_tree.query(user_position, k=len(camera_data))
             nearest_cameras = []
             unique_addresses = set()
 
             for i, distance in enumerate(distances[:MAX_CAMERAS_IN_MESSAGE]):
-                if distance <= 1000:  # Ограничиваем радиус поиска
+                if distance <= 1000:
                     camera = camera_data[indices[i]]
                     actual_distance = int(geodesic(user_position, (camera['latitude'], camera['longitude'])).meters)
                     camera_address = camera['description']
 
-                    # Проверяем, нужно ли отправить уведомление
                     if camera_address not in user_tracking[user_id]['last_notified_camera']:
                         nearest_cameras.append((actual_distance, camera))
                         unique_addresses.add(camera_address)
@@ -9868,8 +9907,8 @@ def track_user_location(user_id, initial_location):
                             sent_message = bot.send_message(user_id, notification_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(sent_message.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['entered'] = True
-                        except Exception as e:
-                            print(f"Ошибка при отправке уведомления о приближении: {e}")
+                        except:
+                            pass
 
                     if actual_distance <= IN_ZONE_DISTANCE and not user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone']:
                         in_zone_message = (
@@ -9880,8 +9919,8 @@ def track_user_location(user_id, initial_location):
                             in_zone_sent = bot.send_message(user_id, in_zone_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(in_zone_sent.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone'] = True
-                        except Exception as e:
-                            print(f"Ошибка при отправке уведомления о зоне действия: {e}")
+                        except:
+                            pass
 
                     if actual_distance > EXIT_DISTANCE and user_tracking[user_id]['last_notified_camera'][camera_address]['entered']:
                         exit_message = (
@@ -9892,15 +9931,13 @@ def track_user_location(user_id, initial_location):
                             exit_sent_message = bot.send_message(user_id, exit_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(exit_sent_message.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['exited'] = True
-                        except Exception as e:
-                            print(f"Ошибка при отправке уведомления о выходе из зоны: {e}")
+                        except:
+                            pass
 
-            # Формируем текст сообщения о ближайших камерах
             message_text = "⚠️ Внимание! Камеры впереди:\n\n"
             for distance, camera in nearest_cameras:
                 message_text += f"📷 Камера через *{distance} м.*\n🗺️ Адрес: *{camera['description']}*\n\n"
 
-            # Обновляем сообщение с камерами
             if nearest_cameras:
                 try:
                     if user_tracking[user_id].get('last_camera_message'):
@@ -9908,12 +9945,11 @@ def track_user_location(user_id, initial_location):
                     else:
                         sent_message = bot.send_message(user_id, message_text, parse_mode="Markdown")
                         user_tracking[user_id]['last_camera_message'] = sent_message.message_id
-                except Exception as e:
-                    print(f"Ошибка при обновлении сообщения: {e}")
+                except:
+                    pass
 
             time.sleep(3)
 
-    # Запуск потока для мониторинга
     threading.Thread(target=monitor, daemon=True).start()
 
 
@@ -9957,13 +9993,14 @@ def return_to_reminders_menu(message):
     reminders_menu(message)
 
 # Функция для возврата в главное меню
-@bot.message_handler(func=lambda message: message.text == "В главное меню")
 @restricted
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
 #@log_user_actions
-def return_to_main_menu(message):
+@bot.message_handler(func=lambda message: message.text == "В главное меню")
+@bot.message_handler(commands=['mainmenu'])
+def return_to_menu(message):
     start(message)
 
 def send_reminders():
@@ -10867,12 +10904,8 @@ def verify_login_password_hash():
 
     # Сравниваем с сохранённым хешем
     if current_hash != login_password_hash:
-        print("Ошибка: Хеш не совпадает! Данные устарели.")
-        # Обновляем сохранённый хеш
         login_password_hash = current_hash
         save_admin_data(admin_sessions, admins_data, login_password_hash)
-    else:
-        pass
 
 verify_login_password_hash()
 
@@ -10967,7 +11000,7 @@ def update_admin_data(user_data):
     
     # Проверяем, не находится ли администратор в списке удалённых
     if admin_id in removed_admins:
-        print(f"Пользователь с ID {admin_id} был ранее удалён и не может быть добавлен обратно.")
+        print(f"Пользователь с ID {admin_id} был ранее удалён и не может быть добавлен обратно!")
         return
     
     if admin_id in admins_data:
@@ -11173,6 +11206,7 @@ def show_admin_panel(message):
         markup.add('Админ', 'Бан', 'Функции')
         markup.add('Общение', 'Реклама', 'Статистика')
         markup.add('Файлы', 'Резервная копия', 'Редакция')
+        markup.add('Экстренная остановка')
         markup.add('Выход')
         bot.send_message(message.chat.id, "Выберите действие из админ-панели:", reply_markup=markup)
 
@@ -11849,7 +11883,7 @@ def process_admin_selection(message):
 #@log_user_actions
 def get_available_permissions(admin_id):
     all_permissions = [
-        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция",
+        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция", "Экстренная остановка",
         "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль", "Админ: Добавить админа", "Админ: Удалить админа", "Админ: Права доступа", "Админ: Добавить права", "Админ: Удалить права",
         "Бан: Заблокировать", "Бан: Разблокировать", "Бан: Удалить данные", "Бан: Удалить пользователя",
 		"Функции: Включение", "Функции: Выключение",
@@ -11863,6 +11897,7 @@ def get_available_permissions(admin_id):
 		"Файлы: Просмотр файлов", "Файлы: Поиск файлов по ID", "Файлы: Добавить файлы", "Файлы: Замена файлов", "Файлы: Удалить файлы",
 		"Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
 		"Редакция: Опубликовать новость", "Редакция: Отредактировать новость", "Редакция: Посмотреть новость", "Редакция: Удалить новость"
+		"Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Отмена остановки"
     ]
 
     # Получаем текущие права администратора
@@ -13141,7 +13176,7 @@ def escape_markdown(text):
 def list_active_users():
     users_data = load_user_data()
     active_users = [
-        f"{index + 1}) {user_id}: {escape_markdown(user.get('username', 'Неизвестный'))}"
+        f"{index + 1}) `{user_id}`: {escape_markdown(user.get('username', 'Неизвестный'))}"
         for index, (user_id, user) in enumerate(users_data.items())
         if is_user_active(user["last_active"]) and not user['blocked']
     ]
@@ -13208,6 +13243,17 @@ def get_error_list():
         error_list.append(f"🛑 *ОШИБКА №{index}* 🛑\n\n{error_details}\n\n{error_details_more}")
     return error_list
 
+# Получить список пользователей и время их последней активности
+#@log_user_actions
+def get_user_last_active():
+    users_data = load_user_data()
+    user_last_active = [
+        f"📌 {index + 1}) `{user_id}`: {escape_markdown(user.get('username', 'Неизвестный'))} - {user['last_active'][:-3]}"
+        for index, (user_id, user) in enumerate(users_data.items())
+        if not user['blocked']
+    ]
+    return "\n".join(user_last_active) if user_last_active else None
+
 # Создание кнопок для подменю
 #@log_user_actions
 def create_submenu_buttons():
@@ -13260,20 +13306,28 @@ def handle_submenu_buttons(message):
 
         online_count, total_count, users_today, users_week, users_month, users_year = get_statistics()
         active_user_list = list_active_users()
+        user_last_active_list = get_user_last_active()
         response_message = (
-            f"**🌐 Пользователи онлайн:** {online_count}\n"
-            f"**👥 Всего пользователей:** {total_count}\n\n"
-            f"**📅 Пользователи за день:** {users_today}\n"
-            f"**📅 Пользователи за неделю:** {users_week}\n"
-            f"**📅 Пользователи за месяц:** {users_month}\n"
-            f"**📅 Пользователи за год:** {users_year}\n\n"
+            f"*🌐 Пользователи онлайн:* {online_count}\n"
+            f"*👥 Всего пользователей:* {total_count}\n\n"
+            f"*📅 Пользователи за день:* {users_today}\n"
+            f"*📅 Пользователи за неделю:* {users_week}\n"
+            f"*📅 Пользователи за месяц:* {users_month}\n"
+            f"*📅 Пользователи за год:* {users_year}\n\n"
         )
         if active_user_list:
-            response_message += "**🌐 Пользователи онлайн:**\n\n"
+            response_message += "*🌐 Пользователи онлайн:*\n\n"
             for user in active_user_list.split('\n'):
                 response_message += f"👤 {user}\n"
         else:
-            response_message += "**🌐 Нет активных пользователей**"
+            response_message += "*🌐 Нет активных пользователей*\n\n"
+
+        if user_last_active_list:
+            response_message += "*\n🕒 Последняя активность пользователей:*\n\n"
+            response_message += user_last_active_list
+        else:
+            response_message += "*\n🕒 Нет данных о последней активности пользователей*"
+
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
     elif message.text == "Версия и аптайм":
 
@@ -13393,7 +13447,10 @@ def handle_create_backup(message):
         return
 
     backup_path = create_backup()
-    backup_message = f"Резервная копия создана!\n\nПуть к резервной копии:\n{backup_path}"
+    if backup_path:
+        backup_message = f"Резервная копия создана!\n\nПуть к резервной копии:\n{backup_path}"
+    else:
+        backup_message = "Ошибка при создании резервной копии."
     bot.send_message(message.chat.id, backup_message)
     show_admin_panel(message)
 
@@ -13433,30 +13490,23 @@ def create_backup():
                     arcname = os.path.relpath(file_path, SOURCE_DIR)
 
                     if EXECUTABLE_FILE in file:
-                        print(f"Пропускается файл (исполняемый): {file_path}")
                         continue
 
                     if len(file_path) > 260:
-                        print(f"Пропущен файл с длинным путем: {file_path}")
                         continue
 
                     try:
                         zipf.write(file_path, arcname)
-                        print(f"Добавлен в архив: {file_path}")
-                    except Exception as e:
-                        print(f"Ошибка при добавлении файла {file_path}: {e}")
+                    except Exception:
+                        pass
 
         # Проверяем целостность архива
         with zipfile.ZipFile(backup_file, 'r') as zipf:
             if zipf.testzip() is not None:
-                print("Архив содержит поврежденные файлы.")
-            else:
-                print("Архив успешно проверен.")
+                return None
 
-        print(f"Резервная копия успешно создана: {backup_file}")
         return backup_file
-    except Exception as e:
-        print(f"Ошибка при создании архива: {e}")
+    except Exception:
         return None
 
 # Функция для восстановления из последнего бэкапа
@@ -13464,19 +13514,16 @@ def create_backup():
 def restore_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     if not backups:
-        print("Нет бэкапов для восстановления")
         return False
 
     latest_backup = os.path.join(BACKUP_DIR, backups[0])
 
     if not os.path.exists(latest_backup):
-        print(f"Ошибка: Бэкап {latest_backup} не найден")
         return False
 
     with zipfile.ZipFile(latest_backup, 'r') as zipf:
         zipf.extractall(SOURCE_DIR)
 
-    print("Восстановление завершено")
     return True
 
 # Функция для отправки уведомления администратору
@@ -13952,7 +13999,7 @@ def save_database():
         with open(DATABASE_PATH, 'w', encoding='utf-8') as file:
             json.dump(alerts, file, ensure_ascii=False, indent=4)
     except Exception as e:
-        print(f"Ошибка при сохранении базы данных: {e}")
+        pass  # Игнорировать ошибки
 
     # Обратное преобразование строк в datetime
     for key, value in alerts['notifications'].items():
@@ -13989,8 +14036,8 @@ def load_database():
                         value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
             return data
-        except Exception as e:
-            print(f"Ошибка при загрузке базы данных: {e}")
+        except Exception:
+            pass  # Игнорировать ошибки
 
     return {"sent_messages": {}, "notifications": {}}
 
@@ -15699,7 +15746,6 @@ temp_advertisement = {
 def save_advertisements():
     with open(ADVERTISEMENT_PATH, 'w', encoding='utf-8') as file:
         json.dump(advertisements, file, ensure_ascii=False, indent=4)
-    print(f"Advertisements saved: {advertisements}")  # Отладочное сообщение
 
 def load_advertisements():
     if os.path.exists(ADVERTISEMENT_PATH):
@@ -16009,7 +16055,7 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
         'user_ids': [],
         'message_ids': []
     }
-    print(f"Advertisement request saved: {advertisements['advertisements'][advertisement_id]}")  # Отладочное сообщение
+
     save_advertisements()
     bot.send_message(message.chat.id, "Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
 
@@ -16024,10 +16070,10 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
     temp_advertisement.clear()  # Очистка временных данных после сохранения
     return_to_menu(message)
 
+#@log_user_actions
 def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
     end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
     delay = (end_datetime - datetime.now()).total_seconds()
-    print(f"Scheduling deletion for advertisement ID: {advertisement_id} in {delay} seconds")  # Отладочное сообщение
     threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
 
 #@log_user_actions
@@ -16036,19 +16082,14 @@ def delete_advertisement_messages(advertisement_id):
     user_ids = advertisement['user_ids']
     message_ids = advertisement['message_ids']
 
-    print(f"Deleting messages for advertisement ID: {advertisement_id}")  # Отладочное сообщение
-    print(f"User IDs: {user_ids}")  # Отладочное сообщение
-    print(f"Message IDs: {message_ids}")  # Отладочное сообщение
-
     for user_id, message_id in zip(user_ids, message_ids):
         try:
             bot.delete_message(user_id, message_id)
-            print(f"Deleted message {message_id} for user {user_id}")  # Отладочное сообщение
         except ApiTelegramException as e:
             if e.result.status_code == 400 and 'message to delete not found' in str(e.result):
-                print(f"Message {message_id} for user {user_id} not found, skipping.")
+                pass  # Пропустить, если сообщение не найдено
             else:
-                print(f"Ошибка при удалении сообщения для пользователя {user_id}: {e}")
+                pass  # Игнорировать остальные ошибки
 
     del advertisements['advertisements'][advertisement_id]
     save_advertisements()
@@ -16449,18 +16490,15 @@ def send_advertisement_to_all(message, advertisement_id):
                 for sent_message in sent_messages:
                     message_ids.append(sent_message.message_id)
                     user_ids.append(user_id)
-            except Exception as e:
-                print(f"Ошибка при отправке медиафайлов пользователю {user_id}: {e}")
+            except Exception:
+                pass  # Игнорировать ошибки отправки медиа
         else:
             try:
                 sent_message = bot.send_message(user_id, advertisement['text'])
                 message_ids.append(sent_message.message_id)
                 user_ids.append(user_id)
-            except Exception as e:
-                print(f"Ошибка при отправке текста пользователю {user_id}: {e}")
-
-    print(f"User IDs: {user_ids}")  # Отладочное сообщение
-    print(f"Message IDs: {message_ids}")  # Отладочное сообщение
+            except Exception:
+                pass  # Игнорировать ошибки отправки текста
 
     advertisement['user_ids'] = user_ids
     advertisement['message_ids'] = message_ids
@@ -18097,6 +18135,7 @@ def return_admin_to_menu(admin_id):
     markup.add('Админ', 'Бан', 'Функции')
     markup.add('Общение', 'Реклама', 'Статистика')
     markup.add('Файлы', 'Резервная копия', 'Редакция')
+    markup.add('Экстренная остановка')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие из админ-панели:", reply_markup=markup)
 
@@ -18137,19 +18176,28 @@ def handle_chat_response(message):
         return
         
 # Обработчик для возврата в главное меню
-
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('В главное меню')
 #@log_user_actions
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
 def return_to_menu(message):
     user_id = message.from_user.id
+    chat_id = message.chat.id
 
     # Проверяем, есть ли у пользователя активный запрос на чат
     if user_id in active_chats and active_chats[user_id].get("status") == "waiting_for_topic":
         del active_chats[user_id]  # Сбрасываем статус пользователя
         save_active_chats()
 
-    start_menu(user_id)  # Перенаправляем пользователя в главное меню
+    # Проверяем, есть ли временные данные о поездке
+    if user_id in temporary_trip_data:
+        temporary_trip_data[user_id] = []
+
+    # Выполняем основную функцию старта
+    start(message)
 
 # Функция для отправки сообщения пользователю по его user_id
 #@log_user_actions
@@ -18220,6 +18268,10 @@ def stop_chat(message):
 # Функция для отображения главного меню
 #@log_user_actions
 def start_menu(user_id):
+    # Получаем информацию о пользователе
+    user_data = load_user_data()
+    username = user_data.get(user_id, {}).get('username', 'Неизвестный пользователь')
+
     # Создание кнопок меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Расход топлива")
@@ -18241,7 +18293,8 @@ def start_menu(user_id):
     markup.add(item9, item10)
     markup.add(item11)
 
-    send_message_to_user(user_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
+    welcome_message = f"Добро пожаловать, @{escape_markdown(username)}!\nВыберите действие из меню:"
+    send_message_to_user(user_id, welcome_message, parse_mode="Markdown", reply_markup=markup)
 
 #@log_user_actions
 def check_admin_access(message):
@@ -18594,7 +18647,7 @@ def process_file_search(message, user_id):
                                 if search_id_in_json(content, user_id):
                                     matched_files.append(file_path)
                         except (json.JSONDecodeError, UnicodeDecodeError):
-                            print(f"Не удалось прочитать файл {file_path}, пропуск...")
+                            pass  # Игнорировать ошибки чтения
                     elif file_name.endswith(('.txt', '.log', '.csv')):
                         try:
                             with open(file_path, 'r', encoding='utf-8') as f:
@@ -18602,7 +18655,7 @@ def process_file_search(message, user_id):
                                 if re.search(rf'\b{user_id}\b', content):
                                     matched_files.append(file_path)
                         except UnicodeDecodeError:
-                            print(f"Не удалось прочитать файл {file_path}, пропуск...")
+                            pass  # Игнорировать ошибки чтения
 
     if matched_files:
         response = "\n".join([f"📄 {i + 1}. {os.path.basename(path)}" for i, path in enumerate(matched_files)])
@@ -19370,7 +19423,6 @@ def handle_confirm_delete_all_dialogs(message):
 
     return show_communication_menu(message)
 
-
 # Изменения в функции handle_chat_messages для сохранения сообщений в историю
 
 #@log_user_actions
@@ -19431,7 +19483,6 @@ def handle_chat_messages(message):
         elif message.content_type == 'gif':
             bot.send_document(target_user_id, message.document.file_id, caption=message.caption)
             save_message_to_history(user_id, target_user_id, f"gif: {message.document.file_id}", 'admin', caption=message.caption)  # Сохранение сообщения
-        print(f"Сообщение от админа {user_id} переслано пользователю {target_user_id}: {message.content_type}")
 
     # Если сообщение от пользователя
     elif user_id in active_user_chats:
@@ -19476,7 +19527,6 @@ def handle_chat_messages(message):
         elif message.content_type == 'gif':
             bot.send_document(target_admin_id, message.document.file_id, caption=message.caption)
             save_message_to_history(target_admin_id, user_id, f"gif: {message.document.file_id}", 'user', caption=message.caption)  # Сохранение сообщения
-        print(f"Сообщение от пользователя {user_id} переслано администратору {target_admin_id}: {message.content_type}")
 
 
 def check_chat_activity():
@@ -19517,6 +19567,7 @@ threading.Thread(target=check_chat_activity, daemon=True).start()
 
 
 
+
 # (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 # Функция выхода из админ-панели
@@ -19528,40 +19579,9 @@ def admin_logout(message):
         return_to_menu(message)
     except telebot.apihelper.ApiTelegramException as e:
         if e.result_json['description'] == 'Bad Request: chat not found':
-            print(f"Chat not found for user_id: {message.chat.id}")
+            print(f"Чат не найден по запросу user_id: {message.chat.id}")
         else:
-            print(f"An error occurred: {e}")
-
-#@log_user_actions
-def return_to_menu(message):
-    user_id = message.chat.id
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Расход топлива")
-    item2 = types.KeyboardButton("Траты и ремонты")
-    item3 = types.KeyboardButton("Найти транспорт")
-    item4 = types.KeyboardButton("Поиск мест")
-    item5 = types.KeyboardButton("Погода")
-    item6 = types.KeyboardButton("Код региона")
-    item7 = types.KeyboardButton("Цены на топливо")
-    item8 = types.KeyboardButton("Анти-радар")
-    item9 = types.KeyboardButton("Напоминания")
-    item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Прочее")
-
-    markup.add(item1, item2)
-    markup.add(item3, item4)
-    markup.add(item5, item7)
-    markup.add(item6, item8)
-    markup.add(item9, item10)
-    markup.add(item11)
-
-    try:
-        bot.send_message(user_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
-    except telebot.apihelper.ApiTelegramException as e:
-        if e.result_json['description'] == 'Bad Request: chat not found':
-            print(f"Chat not found for user_id: {user_id}")
-        else:
-            print(f"An error occurred: {e}")
+            print(f"Произошла ошибка: {e}")
             
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
@@ -19579,7 +19599,7 @@ def start_bot_with_retries(retries=10000000, delay=5):
                 print(f"Повторная попытка через {delay} секунд...")
                 time.sleep(delay)  # Ожидание перед повторной попыткой
             else:
-                print("Превышено количество попыток. Бот не смог запуститься.")
+                print("Превышено количество попыток! Бот не смог запуститься!")
         except Exception as e:
             print(f"Неожиданная ошибка: {e}")
             break
