@@ -7500,21 +7500,16 @@ DATA_FILE_PATH = os.path.join('data base', 'cityforprice', 'city_for_the_price.j
 # Функция для загрузки данных пользователей
 def load_citys_users_data():
     global user_data
-    print("Загрузка данных пользователей...")
     if os.path.exists(DATA_FILE_PATH):
         with open(DATA_FILE_PATH, 'r', encoding='utf-8') as f:
             user_data = json.load(f)
-            print(f"Данные пользователей загружены: {user_data}")
     else:
         user_data = {}
-        print("Файл данных пользователей не найден, создаем новый.")
 
 # Функция для сохранения данных пользователей
 def save_citys_users_data():
-    print("Сохранение данных пользователей...")
     with open(DATA_FILE_PATH, 'w', encoding='utf-8') as f:
         json.dump(user_data, f, ensure_ascii=False, indent=4)
-        print("Данные пользователей сохранены.")
 
 # Загружаем данные пользователей при запуске
 load_citys_users_data()
@@ -7522,123 +7517,52 @@ load_citys_users_data()
 # Функция для создания имени файла на основе города и даты
 def create_filename(city_code, date):
     date_str = date.strftime('%d_%m_%Y')
-    city_info = cities_dict.get(city_code.lower())
-    if city_info:
-        city_name_en = city_info[1]  # Получаем английское название региона
-        return f"{city_name_en}_table_azs_data_{date_str}.json"
-    return None
+    return f"{city_code}_table_azs_data_{date_str}.json"
 
+# Функция для сохранения данных в JSON
+def save_fuel_data(city_code, fuel_prices):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
+
+    # Сохраняем данные в файл, заменяя содержимое
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
+    print(f"Данные успешно сохранены для города {city_code} в файл {filepath}")
+
+# Функция для загрузки сохранённых данных из JSON
+def load_saved_data(city_code):
+    filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
+    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            print(f"Данные успешно загружены для города {city_code} из файла {filepath}")
+            return data
+    except FileNotFoundError:
+        print(f"Файл данных для города {city_code} не найден: {filepath}")
+        return None
 
 # Функция для чтения городов и создания словаря для их URL
-def load_cities_from_file(file_path, site_type):
+def load_cities():
     cities = {}
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open('files/combined_cities.txt', 'r', encoding='utf-8') as file:
             for line in file:
-                if '-' in line:
-                    parts = line.strip().split(' - ')
-                    if len(parts) != 3:
-                        print(f"Ошибка формата строки: {line.strip()}")
-                        continue
-                    city_code = parts[0]
-                    region_name_ru = parts[1]
-                    region_name_en = parts[2]
-                    cities[region_name_ru.lower()] = (city_code, region_name_en, site_type)
-                    print(f"Добавлен город: {region_name_ru} с кодом {city_code} и типом {site_type}")
+                if '-' in line:  # Проверяем, что в строке есть дефис
+                    city, city_code = line.strip().split(' - ')
+                    cities[city.lower()] = city_code  # Приводим название города к нижнему регистру
     except FileNotFoundError:
-        print(f"Файл {file_path} не найден.")
+        pass  # Если файл не найден, просто продолжаем
     return cities
-
-# Функция для загрузки городов из всех файлов
-def load_cities():
-    cities_dict_2 = load_cities_from_file('files/combined_cities_2.txt', 'region')
-    cities_dict_3 = load_cities_from_file('files/combined_cities_3.txt', 'raion')
-    cities_dict_4 = load_cities_from_file('files/combined_cities_4.txt', 'city')
-
-    # Объединяем все словари в один
-    combined_cities_dict = {**cities_dict_2, **cities_dict_3, **cities_dict_4}
-    print(f"Загружены города: {combined_cities_dict}")
-    return combined_cities_dict
 
 # Загружаем города при запуске бота
 cities_dict = load_cities()
-print(f"Загружены города: {cities_dict}")
-
-# Функция для чтения городов из файла combined_cities_4.txt
-def load_cities_4():
-    cities = {}
-    try:
-        with open('files/combined_cities_4.txt', 'r', encoding='utf-8') as file:
-            for line in file:
-                if '-' in line:
-                    parts = line.strip().split(' - ')
-                    if len(parts) != 3:
-                        print(f"Ошибка формата строки: {line.strip()}")
-                        continue
-                    city_code = parts[0]
-                    region_name_ru = parts[1]
-                    region_name_en = parts[2]
-                    cities[region_name_ru.lower()] = (city_code, region_name_en)
-                    print(f"Добавлен город: {region_name_ru} с кодом {city_code}")
-    except FileNotFoundError:
-        print("Файл с городами не найден.")
-    return cities
-
-# Функция для чтения городов из файла combined_cities_3.txt
-def load_cities_3():
-    cities = {}
-    try:
-        with open('files/combined_cities_3.txt', 'r', encoding='utf-8') as file:
-            for line in file:
-                if '-' in line:
-                    parts = line.strip().split(' - ')
-                    if len(parts) != 3:
-                        print(f"Ошибка формата строки: {line.strip()}")
-                        continue
-                    city_code = parts[0]
-                    region_name_ru = parts[1]
-                    region_name_en = parts[2]
-                    cities[region_name_ru.lower()] = (city_code, region_name_en)
-                    print(f"Добавлен город: {region_name_ru} с кодом {city_code}")
-    except FileNotFoundError:
-        print("Файл с городами не найден.")
-    return cities
-
-# Загружаем города из новых файлов при запуске бота
-cities_dict_4 = load_cities_4()
-cities_dict_3 = load_cities_3()
-print(f"Загружены города из combined_cities_4.txt: {cities_dict_4}")
-print(f"Загружены города из combined_cities_3.txt: {cities_dict_3}")
-
 
 # Функция для получения кода города на английском по его названию на русском
-def get_city_code(region_name):
-    region_name_lower = region_name.lower()  # Приводим ввод пользователя к нижнему регистру
-    city_info = cities_dict.get(region_name_lower)
-    print(f"Получен код города для региона {region_name}: {city_info}")
-    if city_info:
-        return str(city_info[0]), city_info[1], city_info[2]  # Возвращаем city_code как строку, английское название и тип ссылки
-    return None, None, None
-
-
-# Функция для сохранения данных в JSON
-def save_fuel_data(city_name, fuel_prices):
-    filename = f'{city_name}_table_azs_data.json'  # Уникальный файл для каждого города
-    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
-    print(f"Сохранение данных о ценах на топливо для города {city_name} в файл {filepath}")
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
-
-def load_saved_data(city_identifier):
-    filename = f'{city_identifier}_table_azs_data.json'  # Уникальный файл для каждого города
-    filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
-    print(f"Загрузка сохраненных данных для города {city_identifier} из файла {filepath}")
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"Файл данных для города {city_identifier} не найден.")
-        return None
+def get_city_code(city_name):
+    # Здесь не нужно дополнительно приводить к нижнему регистру, так как он уже приведен в load_cities
+    return cities_dict.get(city_name.lower())  # Приводим введённое название города к нижнему регистру
 
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
@@ -7666,7 +7590,7 @@ def fuel_prices_command(message):
     markup.add(types.KeyboardButton("В главное меню"))
 
     # Отправляем сообщение с просьбой ввести город
-    bot.send_message(chat_id, "Введите регион или выберите из последних:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
     # Регистрируем следующий шаг для обработки ввода города
     bot.register_next_step_handler(message, process_city_selection)
 
@@ -7683,19 +7607,15 @@ def process_city_selection(message):
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
         return
 
-    region_name = message.text.strip()  # Приводим ввод пользователя к нижнему регистру
-    city_code, city_name_en, site_type = get_city_code(region_name)
-    print(f"Получен city_code для региона {region_name}: {city_code}")
+    city_name = message.text.strip().lower()
+    city_code = get_city_code(city_name)
 
     if city_code:
         if str_chat_id not in user_data:
-            user_data[str_chat_id] = {'recent_cities': [], 'city_code': None, 'site_type': None}
+            user_data[str_chat_id] = {'recent_cities': [], 'city_code': None}
 
-        update_recent_cities(str_chat_id, region_name)
-        user_data[str_chat_id]['city_code'] = city_code  # Сохраняем city_code как строку
-        user_data[str_chat_id]['site_type'] = site_type  # Сохраняем site_type
-        print(f"Сохранен city_code для пользователя {str_chat_id}: {user_data[str_chat_id]['city_code']}")
-        print(f"Сохранен site_type для пользователя {str_chat_id}: {user_data[str_chat_id]['site_type']}")
+        update_recent_cities(str_chat_id, city_name)
+        user_data[str_chat_id]['city_code'] = city_code  # Сохраняем код города
 
         # Получаем координаты пользователя
         notifications = load_user_locations()  # Функция для загрузки notifications.json
@@ -7715,45 +7635,45 @@ def process_city_selection(message):
         save_citys_users_data()
 
         # Показываем меню с ценами на топливо
+        site_type = "petrolplus"  # Предположим, что site_type всегда "petrolplus"
         show_fuel_price_menu(chat_id, city_code, site_type)
     else:
-        bot.send_message(chat_id, "Регион не найден. Пожалуйста, попробуйте еще раз.")
+        bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
 
         # Создаем клавиатуру
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)  # row_width=3 — регионы в строку
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)  # row_width=3 — города в строку
 
-        # Добавляем кнопки с последними регионами, если они есть
+        # Добавляем кнопки с последними городами, если они есть
         recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
         if recent_cities:
-            markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])  # Добавляем регионы в одну строку
+            markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])  # Добавляем города в одну строку
 
         # Добавляем кнопку "В главное меню" в конце
         markup.add(types.KeyboardButton("В главное меню"))
 
-        bot.send_message(chat_id, "Введите регион или выберите из последних:", reply_markup=markup)
+        bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
 
-        # Повторный вызов обработчика для ввода региона
+        # Повторный вызов обработчика для ввода города
         bot.register_next_step_handler(message, process_city_selection)
 
-
 # Функция для обновления списка последних городов
-def update_recent_cities(chat_id, region_name):
+def update_recent_cities(chat_id, city_name):
     # Убедитесь, что данные о пользователе существуют
     if chat_id not in user_data:
         user_data[chat_id] = {'recent_cities': [], 'city_code': None}
 
-    # Извлекаем список последних регионов
+    # Извлекаем список последних городов
     recent_cities = user_data[chat_id].get('recent_cities', [])
 
-    # Удаляем регион, если он уже есть, и добавляем в конец
-    if region_name in recent_cities:
-        recent_cities.remove(region_name)
+    # Удаляем город, если он уже есть, и добавляем в конец
+    if city_name in recent_cities:
+        recent_cities.remove(city_name)
     elif len(recent_cities) >= 3:
-        # Удаляем первый регион, если уже 3 региона
+        # Удаляем первый город, если уже 3 города
         recent_cities.pop(0)
 
-    # Добавляем новый регион в конец списка
-    recent_cities.append(region_name)
+    # Добавляем новый город в конец списка
+    recent_cities.append(city_name)
 
     # Сохраняем обновлённые данные пользователей
     user_data[chat_id]['recent_cities'] = recent_cities
@@ -7789,12 +7709,12 @@ def process_fuel_price_selection(message, city_code, site_type):
     selected_fuel_type = message.text.strip().lower()
 
     fuel_type_mapping = {
-        "аи-92": ["ai92", "ai92plus"],
-        "аи-95": ["ai95", "ai95plus"],
-        "аи-98": ["ai98", "ai98plus"],
-        "аи-100": ["ai100", "ai100plus"],
-        "дт": ["dt", "dtplus"],
-        "газ": ["gas"],
+        "аи-92": ["АИ-92", "Премиум 92"],
+        "аи-95": ["АИ-95", "Премиум 95"],
+        "аи-98": ["АИ-98", "Премиум 98"],
+        "аи-100": ["АИ-100", "Премиум 100"],
+        "дт": ["ДТ", "Премиум ДТ"],
+        "газ": ["Газ"],
     }
 
     if selected_fuel_type not in fuel_type_mapping:
@@ -7822,33 +7742,33 @@ def process_fuel_price_selection(message, city_code, site_type):
                 brand_prices[brand_name] = []
             brand_prices[brand_name].append((fuel_type, price))
 
-        # Разделяем данные на обычные и "плюс"
-        normal_prices = {brand: [price for fuel_type, price in prices if 'plus' not in fuel_type] for brand, prices in brand_prices.items()}
-        plus_prices = {brand: [price for fuel_type, price in prices if 'plus' in fuel_type] for brand, prices in brand_prices.items()}
+        # Разделяем данные на обычные и "премиум"
+        normal_prices = {brand: [price for fuel_type, price in prices if 'Премиум' not in fuel_type] for brand, prices in brand_prices.items()}
+        premium_prices = {brand: [price for fuel_type, price in prices if 'Премиум' in fuel_type] for brand, prices in brand_prices.items()}
 
         # Удаляем пустые списки
         normal_prices = {brand: prices for brand, prices in normal_prices.items() if prices}
-        plus_prices = {brand: prices for brand, prices in plus_prices.items() if prices}
+        premium_prices = {brand: prices for brand, prices in premium_prices.items() if prices}
 
         # Вычисляем средние цены
         averaged_normal_prices = {brand: sum(prices) / len(prices) for brand, prices in normal_prices.items()}
-        averaged_plus_prices = {brand: sum(prices) / len(prices) for brand, prices in plus_prices.items()}
+        averaged_premium_prices = {brand: sum(prices) / len(prices) for brand, prices in premium_prices.items()}
 
         # Сортируем цены
         sorted_normal_prices = sorted(averaged_normal_prices.items(), key=lambda x: x[1])
-        sorted_plus_prices = sorted(averaged_plus_prices.items(), key=lambda x: x[1])
+        sorted_premium_prices = sorted(averaged_premium_prices.items(), key=lambda x: x[1])
 
         # Преобразуем actual_fuel_type обратно в читаемый формат
         readable_fuel_type = selected_fuel_type.upper()
 
         # Формируем сообщения
         normal_prices_message = "\n\n".join([f"⛽ {i + 1}. {brand} - {avg_price:.2f} руб./л." for i, (brand, avg_price) in enumerate(sorted_normal_prices)])
-        plus_prices_message = "\n\n".join([f"⛽ {i + 1}. {brand} - {avg_price:.2f} руб./л." for i, (brand, avg_price) in enumerate(sorted_plus_prices)])
+        premium_prices_message = "\n\n".join([f"⛽ {i + 1}. {brand} - {avg_price:.2f} руб./л." for i, (brand, avg_price) in enumerate(sorted_premium_prices)])
 
         # Разбиваем сообщения на части, если они слишком длинные
-        max_length = 4000
+        max_length = 3000
         normal_parts = [normal_prices_message[i:i + max_length] for i in range(0, len(normal_prices_message), max_length)]
-        plus_parts = [plus_prices_message[i:i + max_length] for i in range(0, len(plus_prices_message), max_length)]
+        premium_parts = [premium_prices_message[i:i + max_length] for i in range(0, len(premium_prices_message), max_length)]
 
         # Отправляем сообщения
         if normal_parts:
@@ -7858,10 +7778,10 @@ def process_fuel_price_selection(message, city_code, site_type):
                 else:
                     bot.send_message(chat_id, part, parse_mode='Markdown')
 
-        if plus_parts:
-            for i, part in enumerate(plus_parts):
+        if premium_parts:
+            for i, part in enumerate(premium_parts):
                 if i == 0:
-                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type}+:*\n\n\n{part}", parse_mode='Markdown')
+                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type} Премиум:*\n\n\n{part}", parse_mode='Markdown')
                 else:
                     bot.send_message(chat_id, part, parse_mode='Markdown')
 
@@ -7887,7 +7807,11 @@ def process_next_action(message):
     chat_id = message.chat.id
     text = message.text.strip().lower()
 
-    if text == "выбрать другой город":
+    if text == "посмотреть цены на другое топливо":
+        city_code = user_data[str(chat_id)]['city_code']
+        site_type = "petrolplus"  # Предположим, что site_type всегда "petrolplus"
+        show_fuel_price_menu(chat_id, city_code, site_type)
+    elif text == "выбрать другой город":
         user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -7907,91 +7831,67 @@ def process_next_action(message):
         bot.register_next_step_handler(message, process_city_selection)
     elif text == "в главное меню":
         return_to_menu(message)
-    elif text == "посмотреть цены на другое топливо":
-        city_code = user_data[str(chat_id)]['city_code']
-        site_type = user_data[str(chat_id)]['site_type']
-        show_fuel_price_menu(chat_id, city_code, site_type)
     else:
         bot.send_message(chat_id, "Пожалуйста, выберите одно из предложенных действий.")
         bot.register_next_step_handler(message, process_next_action)
 
 # Функция для обработки данных по всем видам топлива и их сохранения
 def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel_types):
-    print(f"Обработка данных для city_code: {city_code}")
-    city_info = None
-    for region_name, info in cities_dict.items():
-        if info[0] == city_code:
-            city_info = info
-            break
-    print(f"city_info для city_code {city_code}: {city_info}")
-    if not city_info:
-        raise ValueError(f"Не найден город для кода {city_code}")
-
-    city_name = city_info[1]  # Используем название региона
-    print(f"Найден город: {city_name}")
     today = datetime.now().date()
-    saved_data = load_saved_data(city_name)
+    saved_data = load_saved_data(city_code)
 
     # Проверяем дату файла
-    filepath = os.path.join('data base', 'azs', f"{city_name}_table_azs_data.json")
+    filepath = os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json")
     if saved_data:
         file_modification_time = datetime.fromtimestamp(os.path.getmtime(filepath)).date()
         if file_modification_time < today:  # Если файл устарел
             # Получаем новые данные
             all_fuel_prices = []
-            try:
-                fuel_prices = get_fuel_prices_from_site(city_code, site_type)
-                print(f"Получены новые данные для города {city_name}: {fuel_prices}")
-            except ValueError as e:
-                print(f"Ошибка получения данных: {e}")
-                # Если таблица не найдена, возвращаем последние сохраненные данные
-                if saved_data:
-                    return [
-                        item for item in saved_data
-                        if any(ft.lower() == item[1].lower() for ft in actual_fuel_types)
-                    ]
-                # Если данных нет, вызываем ту же ошибку
-                raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+            for fuel_type in actual_fuel_types:
+                try:
+                    fuel_prices = get_fuel_prices_from_site(city_code, site_type)
+                except ValueError:
+                    # Если таблица не найдена, возвращаем последние сохраненные данные
+                    if saved_data:
+                        return [
+                            item for item in saved_data
+                            if item[1].lower() == selected_fuel_type.lower() or
+                            (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
+                        ]
+                    # Если данных нет, вызываем ту же ошибку
+                    raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
-            fuel_prices = remove_duplicate_prices(fuel_prices)
-            all_fuel_prices.extend(fuel_prices)
+                fuel_prices = remove_duplicate_prices(fuel_prices)
+                all_fuel_prices.extend(fuel_prices)
 
             # Сохраняем новые данные
-            save_fuel_data(city_name, all_fuel_prices)
+            save_fuel_data(city_code, all_fuel_prices)
             saved_data = all_fuel_prices  # Обновляем saved_data
 
     # Если данных нет, пытаемся их получить
     if not saved_data:
         all_fuel_prices = []
-        try:
-            fuel_prices = get_fuel_prices_from_site(city_code, site_type)
-            print(f"Получены данные для города {city_name}: {fuel_prices}")
-        except ValueError as e:
-            print(f"Ошибка получения данных: {e}")
-            # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
-            raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
+        for fuel_type in actual_fuel_types:
+            try:
+                fuel_prices = get_fuel_prices_from_site(city_code, site_type)
+            except ValueError:
+                # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
+                raise ValueError("Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива")
 
-        fuel_prices = remove_duplicate_prices(fuel_prices)
-        all_fuel_prices.extend(fuel_prices)
+            fuel_prices = remove_duplicate_prices(fuel_prices)
+            all_fuel_prices.extend(fuel_prices)
 
-        save_fuel_data(city_name, all_fuel_prices)
+        save_fuel_data(city_code, all_fuel_prices)
         saved_data = all_fuel_prices  # Возвращаем полученные данные
 
     # Фильтруем и возвращаем данные по выбранному типу топлива
     filtered_prices = [
         item for item in saved_data
-        if any(ft.lower() == item[1].lower() for ft in actual_fuel_types)
+        if item[1].lower() == selected_fuel_type.lower() or
+        (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
     ]
-    print(f"Отфильтрованные данные для {selected_fuel_type}: {filtered_prices}")
-
-    # Проверяем, что данные не пустые
-    if not filtered_prices:
-        raise ValueError("Нет данных по ценам.")
-
+    print(f"Отфильтрованные данные для города {city_code} и типа топлива {selected_fuel_type}: {filtered_prices}")
     return remove_duplicate_prices(filtered_prices)
-
-
-
 
 # Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
 def remove_duplicate_prices(fuel_prices):
@@ -8005,74 +7905,52 @@ def remove_duplicate_prices(fuel_prices):
 
 # Функция для парсинга данных с сайта
 def get_fuel_prices_from_site(city_code, site_type):
-    if site_type == 'region':
-        base_url = f'https://russiabase.ru/prices?region={city_code}&page='
-    elif site_type == 'city':
-        base_url = f'https://russiabase.ru/prices?city={city_code}&page='
-    elif site_type == 'raion':
-        base_url = f'https://russiabase.ru/prices?raion={city_code}&page='
-    else:
-        raise ValueError("Неверный тип сайта")
-
+    base_url = f'https://www.{site_type}.ru/fuelstations/{city_code}/?PAGEN_='
     page = 1
     all_fuel_prices = []
 
     while True:
         url = f'{base_url}{page}'
-        print(f"Отправляем запрос на URL: {url}")
-
         response = requests.get(url)
-        print(f"Статус ответа: {response.status_code}")
 
+        # Проверка успешности запроса
         if response.status_code != 200:
-            print(f"Ошибка при получении данных: {response.status_code}")
+            print(f"Ошибка получения данных с сайта: {response.status_code}")
             break
 
-        # Извлекаем JSON-данные из HTML
-        data_start = response.text.find('{"props":')
-        data_end = response.text.find('</script>', data_start)
-        if data_start == -1 or data_end == -1:
-            print("Не удалось найти JSON-данные в HTML")
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Находим таблицу с данными
+        table = soup.find('table')
+        if not table:
+            print(f"Не найдена таблица с ценами для города {city_code} на странице {page}")
             break
 
-        json_data = response.text[data_start:data_end].strip()
-        print(f"Извлеченные JSON-данные: {json_data[:500]}...")  # Выводим первые 500 символов для отладки
+        # Парсим строки таблицы
+        for row in table.find_all('tr')[1:]:  # Пропускаем заголовок таблицы
+            cols = row.find_all('td')
+            if len(cols) >= 3:
+                address = cols[0].text.strip()
+                brand = cols[1].text.strip()
+                fuel_types = [ft.strip() for ft in cols[2].stripped_strings]
+                prices = [p.strip().replace(',', '.') for p in cols[3].stripped_strings]
 
-        try:
-            data = json.loads(json_data)
-        except json.JSONDecodeError as e:
-            print(f"Ошибка при парсинге JSON: {e}")
-            break
+                for fuel_type, price in zip(fuel_types, prices):
+                    all_fuel_prices.append((brand, fuel_type, clean_price(price)))
 
-        fuel_prices = []
-
-        print("Начинаем парсинг данных о ценах на топливо...")
-        for station in data['props']['pageProps']['listing']['listing']:
-            prices = station['prices']
-            for fuel_type, price_info in prices.items():
-                price = price_info['value']
-                if price:  # Проверяем, что цена не пустая
-                    fuel_prices.append((station['name'], fuel_type, price))
-                    print(f"Добавлена цена: {station['name']} - {fuel_type}: {price}")
-
-        if not fuel_prices:
-            print("Нет данных на этой странице")
-            break
-
-        all_fuel_prices.extend(fuel_prices)
         page += 1
 
-    print(f"Всего найдено {len(all_fuel_prices)} цен на топливо")
+    print(f"Данные успешно получены для города {city_code}: {all_fuel_prices}")
     return all_fuel_prices
 
-# # Пример вызова функции для отладки
-# city_code = 11  # Пример кода города
+# # Пример использования функции
 # try:
+#     city_code = 'cheboksary'  # Пример кода города
 #     fuel_prices = get_fuel_prices_from_site(city_code)
-#     print(f"Итоговые данные о ценах на топливо: {fuel_prices}")
-# except Exception as e:
-#     print(f"Ошибка: {e}")
-
+#     for brand, fuel_type, price in fuel_prices:
+#         print(f"Бренд: {brand}, Тип топлива: {fuel_type}, Цена: {price}")
+# except ValueError as e:
+#     print(e)
 
 
 # Функция для очистки цены
