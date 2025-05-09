@@ -905,21 +905,30 @@ def create_main_menu():
 def set_free_trial_period(user_id, days, source="default"):
     data = load_payment_data()
     user_id_str = str(user_id)
-    
-    latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in data['subscriptions']['users'].get(user_id_str, {}).get('plans', [])] or [datetime.now()])
+
+    # Инициализация данных пользователя, если они отсутствуют
+    if user_id_str not in data['subscriptions']['users']:
+        data['subscriptions']['users'][user_id_str] = {
+            "plans": [],
+            "total_amount": 0,
+            "username": "неизвестный",
+            "referral_points": 0,
+            "free_feature_trials": {},
+            "promo_usage_history": [],
+            "referral_milestones": {},
+            "points_history": [],
+            "ad_bonus_received": False  # Добавляем поле по умолчанию
+        }
+
+    user_data = data['subscriptions']['users'][user_id_str]
+
+    # Убедитесь, что ключ 'plans' существует
+    if 'plans' not in user_data:
+        user_data['plans'] = []
+
+    latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
     new_end = latest_end + timedelta(days=days)
-    
-    user_data = data['subscriptions']['users'].setdefault(user_id_str, {
-        "plans": [],
-        "total_amount": 0,
-        "username": "неизвестный",
-        "referral_points": 0,
-        "free_feature_trials": {},
-        "promo_usage_history": [],
-        "referral_milestones": {},
-        "points_history": [],
-        "ad_bonus_received": False  # Добавляем поле по умолчанию
-    })
+
     user_data['plans'].append({
         "plan_name": "free",
         "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
@@ -927,7 +936,7 @@ def set_free_trial_period(user_id, days, source="default"):
         "price": 0,
         "source": source
     })
-    
+
     save_payments_data(data)
     return new_end
 
@@ -1374,7 +1383,30 @@ def send_subscription_invoice(call):
     markup.add(item_main)
     bot.send_message(user_id, "Выберите период подписки для оплаты:", reply_markup=markup)
 
+def check_subscription_chanal(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if not is_user_subscribed(user_id, CHANNEL_CHAT_ID):
+            # Удаляем все активные клавиатуры
+            bot.send_message(message.chat.id, "⚠️ Пожалуйста, подпишитесь на канал, чтобы продолжить...", reply_markup=types.ReplyKeyboardRemove())
+
+            markup = InlineKeyboardMarkup()
+            subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
+            confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
+            markup.add(subscribe_button)
+            markup.add(confirm_button)
+            bot.send_message(message.chat.id, (
+                "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
+                "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашением! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
+                "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
+            ), reply_markup=markup, parse_mode="HTML")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
 @bot.message_handler(commands=['start'])
+@check_subscription_chanal
 def start(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -1383,30 +1415,17 @@ def start(message):
     last_name = message.from_user.last_name or ""
     now = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
-    if not is_user_subscribed(user_id):
-        markup = InlineKeyboardMarkup()
-        subscribe_button = types.InlineKeyboardButton("Подписаться на канал", url="https://t.me/carmngbotchanal1")
-        confirm_button = types.InlineKeyboardButton("Я подписался", callback_data="confirm_subscription")
-        markup.add(subscribe_button)
-        markup.add(confirm_button)
-        bot.send_message(chat_id, (
-            "👋 Добро пожаловать в бот @CarMngrBot!\n\n"
-            "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашение! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
-            "🚀 Если вы новый пользователь или еще не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:"
-        ), reply_markup=markup, parse_mode="HTML")
-        return
-
     update_user_activity(user_id, username, first_name, last_name)
-    
+
     referral_code = None
     if hasattr(message, 'text') and message.text is not None:
         text_parts = message.text.split()
         if len(text_parts) > 1:
             referral_code = text_parts[-1]
-    
+
     data = load_payment_data()
     users_data = load_users_data()
-    
+
     if str(user_id) not in data['subscriptions']['users']:
         data['subscriptions']['users'][str(user_id)] = {
             "username": username,
@@ -1418,7 +1437,7 @@ def start(message):
             "referral_milestones": {},
             "points_history": []
         }
-    
+
     referral_bonus_applied = False
     if referral_code:
         referrer_id = track_referral_activity(referral_code, user_id)
@@ -1431,24 +1450,21 @@ def start(message):
                 f"✨ Вам начислен *+1 день подписки*!\n"
                 f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*"
             ), parse_mode="Markdown")
-    
+
     has_trial = any(plan['plan_name'] == "free" for plan in data['subscriptions']['users'].get(str(user_id), {}).get('plans', []))
-    if not data['subscriptions']['users'][str(user_id)].get('plans'):
-        if not has_trial:
-            new_end_trial = set_free_trial_period(user_id, 3)
-            referral_link = create_referral_link(user_id)
-            combined_message = (
-                "🎉 <b>Поздравляем!</b>\n\n"
-                "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
-                f"⏳ Активно до: <b>{new_end_trial.strftime('%d.%m.%Y в %H:%M')}</b>\n\n"
-                "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
-                f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
-                "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
-                "😊 Спасибо, что выбираете нас!"
-            )
-            bot.send_message(chat_id, combined_message, parse_mode="HTML", reply_markup=types.ReplyKeyboardRemove())
-        else:
-            bot.send_message(chat_id, "⚠️ У вас уже был пробный период. Пожалуйста, оформите подписку для продолжения использования!", parse_mode="Markdown")
+    if not data['subscriptions']['users'][str(user_id)].get('plans') and not has_trial and not referral_bonus_applied:
+        new_end_trial = set_free_trial_period(user_id, 3)
+        referral_link = create_referral_link(user_id)
+        combined_message = (
+            "🎉 <b>Поздравляем!</b>\n\n"
+            "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
+            f"⏳ Активно до: <b>{new_end_trial.strftime('%d.%m.%Y в %H:%M')}</b>\n\n"
+            "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
+            f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
+            "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
+            "😊 Спасибо, что выбираете нас!"
+        )
+        bot.send_message(chat_id, combined_message, parse_mode="HTML", reply_markup=types.ReplyKeyboardRemove())
     else:
         markup = create_main_menu()
         bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
@@ -1461,18 +1477,35 @@ def start(message):
 def handle_subscription_confirmation(call):
     user_id = call.from_user.id
     chat_id = call.message.chat.id
+    username = call.from_user.username or 'неизвестный'
+
     if is_user_subscribed(user_id):
-        set_free_trial_period(user_id, 3)
-        bot.answer_callback_query(call.id, text="Спасибо за подписку!")
-        markup = create_main_menu()
-        # Убираем escape_markdown, чтобы не было лишних '\'
-        username = call.from_user.username or 'неизвестный'
-        bot.send_message(chat_id, (
-            f"✨ *Спасибо за подписку, @{username}*!\n\n"
-            "🚀 *У вас активирован пробный период на 3 дня! Теперь вы можете использовать все функции бота*!\n\n"
-            "📅 *Чтобы пользоваться ботом дальше, оформите подписку на неделю/месяц/год и наслаждайтесь всеми функциями*!\n\n"
-            "👀 Если у вас есть вопросы, обратитесь в нашу поддержку! Приятного использования!"
-        ), reply_markup=markup, parse_mode="Markdown")
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].get(str(user_id), {})
+
+        # Проверяем, есть ли у пользователя активная подписка или пробный период
+        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()
+                             for plan in user_data.get('plans', []))
+
+        if not has_active_plan:
+            new_end_trial = set_free_trial_period(user_id, 3)
+            referral_link = create_referral_link(user_id)
+            bot.answer_callback_query(call.id, text="Спасибо за подписку!")
+            markup = create_main_menu()
+            combined_message = (
+                "🎉 <b>Поздравляем!</b>\n\n"
+                "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
+                f"⏳ Активно до: <b>{new_end_trial.strftime('%d.%m.%Y в %H:%M')}</b>\n\n"
+                "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
+                f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
+                "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
+                "😊 Спасибо, что выбираете нас!"
+            )
+            bot.send_message(chat_id, combined_message, parse_mode="HTML", reply_markup=markup)
+            bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
+        else:
+            markup = create_main_menu()
+            bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
     else:
         bot.answer_callback_query(call.id, text="Вы еще не подписаны! Пожалуйста, подпишитесь!")
 
@@ -3791,6 +3824,7 @@ load_all_user_data()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_fuel_expense(message):
     description = (
         "ℹ️ *Краткая справка по расчету топлива*\n\n\n"
@@ -3838,6 +3872,7 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -3879,6 +3914,7 @@ def reset_user_data(user_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
 
@@ -4799,6 +4835,7 @@ def save_trip_to_excel(user_id, trip):
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def save_data_handler(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
@@ -4847,6 +4884,7 @@ def return_to_menu(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def restart_handler(message):
     user_id = message.chat.id
     if user_id in user_trip_data:
@@ -4870,6 +4908,7 @@ def restart_handler(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_trips(message):
     user_id = message.chat.id
     trips = load_trip_data(user_id)
@@ -4907,6 +4946,7 @@ def view_trips(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def send_excel_file(message):
     user_id = message.chat.id
     excel_file_path = f"data base/trip/excel/{user_id}_trips.xlsx"
@@ -4981,6 +5021,7 @@ def show_trip_details(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_other_trips(message):
     view_trips(message)
 
@@ -4996,6 +5037,7 @@ def view_other_trips(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
@@ -5124,6 +5166,7 @@ def confirm_delete_all(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_expenses_and_repairs(message):
 
     user_id = message.from_user.id
@@ -5214,6 +5257,7 @@ user_transport = {}
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def return_to_menu_2(message):
     user_id = message.from_user.id
     send_menu(user_id)
@@ -5298,6 +5342,7 @@ def get_user_transport_keyboard(user_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def record_expense(message):
     user_id = message.from_user.id
 
@@ -5674,6 +5719,7 @@ def save_expense_to_excel(user_id, expense_data):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_category_removal(message, brand=None, model=None, license_plate=None):
     user_id = message.from_user.id
     categories = get_user_categories(user_id)
@@ -5829,6 +5875,7 @@ def send_menu1(user_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expenses(message):
     user_id = message.from_user.id
 
@@ -5885,6 +5932,7 @@ def handle_transport_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def send_expenses_excel(message):
     user_id = message.from_user.id
 
@@ -5906,6 +5954,7 @@ def send_expenses_excel(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expenses_by_category(message):
     user_id = message.from_user.id
     user_data = load_expense_data(user_id)
@@ -6005,6 +6054,7 @@ def handle_category_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expenses_by_month(message):
     user_id = message.from_user.id
 
@@ -6113,6 +6163,7 @@ def get_expenses_by_month(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expenses_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -6214,6 +6265,7 @@ def get_expenses_by_license_plate(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_all_expenses(message):
     user_id = message.from_user.id
 
@@ -6271,6 +6323,7 @@ def save_selected_transport(user_id, selected_transport):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_expenses_menu(message):
     user_id = message.from_user.id
 
@@ -6357,6 +6410,7 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
 
@@ -6535,6 +6589,7 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_expense_by_month(message):
     user_id = message.from_user.id
 
@@ -6708,6 +6763,7 @@ def send_long_message(user_id, text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_expense_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -6864,6 +6920,7 @@ def confirm_delete_expense_license_plate(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -7122,6 +7179,7 @@ def remove_repair_category(user_id, category_to_remove):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def record_repair(message):
     user_id = message.from_user.id
     if contains_media(message):
@@ -7726,6 +7784,7 @@ def send_repair_menu(user_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_repairs(message):
     user_id = message.from_user.id
 
@@ -7785,6 +7844,7 @@ def handle_transport_selection_for_repairs(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
@@ -7820,6 +7880,7 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_repairs_by_category(message):
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
@@ -7928,6 +7989,7 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -8049,6 +8111,7 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -8163,6 +8226,7 @@ def send_message_with_split(user_id, message_text):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_all_repairs(message):
     user_id = message.from_user.id
 
@@ -8220,6 +8284,7 @@ def save_selected_repair_transport(user_id, selected_transport):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_repairs_menu(message):
     user_id = message.from_user.id
 
@@ -8292,6 +8357,7 @@ user_repairs_to_delete = {}
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_repair_transports.get(user_id)
@@ -8431,6 +8497,7 @@ def delete_repair_confirmation(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_repair_by_month(message):
     user_id = message.from_user.id
 
@@ -8596,6 +8663,7 @@ def send_long_message(user_id, message_text, parse_mode='Markdown'):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -8746,6 +8814,7 @@ def confirm_delete_repair(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_all_repairs_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -8962,6 +9031,7 @@ def shorten_url(original_url):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def send_welcome(message):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -9003,6 +9073,7 @@ def send_welcome(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_reset_category(message):
     global selected_category
     selected_category = None
@@ -9034,6 +9105,7 @@ selected_category = None
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_menu_buttons(message):
     global selected_category
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:
@@ -9058,6 +9130,7 @@ def handle_menu_buttons(message):
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_location(message):
     global selected_category
     user_id = message.chat.id
@@ -9324,6 +9397,7 @@ def handle_location(message):
 #
 # @check_subscription
 # @restrict_free_users
+# @check_subscription_chanal
 #
 # def send_welcome(message):
 #     user_id = message.chat.id
@@ -9355,6 +9429,7 @@ def handle_location(message):
 #
 # @check_subscription
 # @restrict_free_users
+# @check_subscription_chanal
 #
 # def handle_reset_category(message):
 #     global selected_category
@@ -9370,6 +9445,7 @@ def handle_location(message):
 #
 # @check_subscription
 # @restrict_free_users
+# @check_subscription_chanal
 #
 # def handle_menu_buttons(message):
 #     global selected_category
@@ -9396,6 +9472,7 @@ def handle_location(message):
 #
 # @check_subscription
 # @restrict_free_users
+# @check_subscription_chanal
 #
 # def handle_location(message):
 #     global selected_category, selected_location, user_locations
@@ -9504,6 +9581,7 @@ location_data = load_location_data()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_transport_search(message):
 
     global location_data
@@ -9573,6 +9651,7 @@ def request_user_location(message):
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -9669,6 +9748,7 @@ if regions_file_path:
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_start4(message):
     description = (
         "ℹ️ *Краткая справка по поиску кода региона и госномера авто*\n\n\n"
@@ -9765,6 +9845,7 @@ user_data = {}
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_start_5(message):
     try:
         help_message = (
@@ -9796,6 +9877,7 @@ def handle_start_5(message):
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_location_5(message):
     try:
         if message.location:
@@ -9837,6 +9919,7 @@ def handle_location_5(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
@@ -10340,6 +10423,7 @@ def get_city_code(city_name):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def fuel_prices_command(message):
     chat_id = message.chat.id
     load_citys_users_data()
@@ -10932,6 +11016,7 @@ def get_notification_status(chat_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def toggle_notifications_handler(message):
     chat_id = message.chat.id
     notification_status = get_notification_status(chat_id)
@@ -11216,6 +11301,7 @@ load_all_transport()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def manage_transport(message):
     user_id = str(message.chat.id)
 
@@ -11256,6 +11342,7 @@ def create_transport_keyboard():
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def add_transport(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id): return
@@ -11397,6 +11484,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -11538,6 +11626,7 @@ def get_return_menu_keyboard():
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -11598,6 +11687,7 @@ def process_delete_all_confirmation(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -11625,6 +11715,7 @@ def view_transport(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def return_to_transport_menu(message):
     manage_transport(message)
 
@@ -11672,6 +11763,7 @@ user_tracking = {}
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_antiradar(message):
     user_id = message.chat.id
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False, 'database_missing_notified': False}
@@ -11702,6 +11794,7 @@ def start_antiradar(message):
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_antiradar_location(message):
     user_id = message.chat.id
 
@@ -11731,6 +11824,7 @@ def handle_antiradar_location(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
@@ -11878,6 +11972,7 @@ def save_data(data):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def return_to_reminders_menu(message):
     reminders_menu(message)
 
@@ -11956,6 +12051,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def reminders_menu(message):
     description = (
         "ℹ️ *Краткая справка для напоминаний*\n\n\n"
@@ -11984,6 +12080,7 @@ def reminders_menu(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def add_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -12170,6 +12267,7 @@ def process_time_step(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Активные', 'Истекшие')
@@ -12187,6 +12285,7 @@ def view_reminders(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (активные)', 'Ежедневно (активные)')
@@ -12205,6 +12304,7 @@ def view_active_reminders(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (истекшие)', 'Ежедневно (истекшие)')
@@ -12229,6 +12329,7 @@ def view_expired_reminders(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -12284,6 +12385,7 @@ def view_active_reminders_by_type(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -12325,6 +12427,7 @@ def view_expired_reminders_by_type(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Del Активные', 'Del Истекшие')
@@ -12343,6 +12446,7 @@ def delete_reminder(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (активные)', 'Del Ежедневно (активные)')
@@ -12361,6 +12465,7 @@ def delete_active_reminders(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (истекшие)', 'Del Ежедневно (истекшие)')
@@ -12381,6 +12486,7 @@ def delete_expired_reminders(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -12434,7 +12540,8 @@ def delete_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@restrict_free_users 
+@restrict_free_users
+@check_subscription_chanal 
 def delete_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -12553,6 +12660,7 @@ def confirm_delete_expired_step(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def delete_all_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -12626,6 +12734,7 @@ error_codes = load_error_codes()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def obd2_request(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -12717,6 +12826,7 @@ def process_error_codes(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Новости', 'Для рекламы') 
@@ -12737,6 +12847,7 @@ def view_others(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_calculators(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Алкоголь', 'Автокредит', 'Налог') 
@@ -12754,6 +12865,7 @@ def view_calculators(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def return_to_calculators(message):
     view_calculators(message)
 
@@ -12772,6 +12884,7 @@ def return_to_calculators(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_alc_calc(message):
     global stored_message
     stored_message = message
@@ -12866,6 +12979,7 @@ load_user_history_alko()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -13454,6 +13568,7 @@ def save_alcohol_calculation_to_history(chat_id, promille):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -13575,6 +13690,7 @@ def process_view_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -13687,6 +13803,7 @@ def process_delete_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_rastamozka_calc(message):
     global stored_message
     stored_message = message
@@ -13802,6 +13919,7 @@ load_user_history_rastamozka()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_customs_calculation(message):
     if not rastamozka_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -14434,6 +14552,7 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14571,6 +14690,7 @@ def process_view_rastamozka_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14682,6 +14802,7 @@ def process_delete_rastamozka_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_osago_calc(message):
     global stored_message
     stored_message = message
@@ -14765,6 +14886,7 @@ load_user_history_osago()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_osago_calculation(message):
     if not osago_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -15473,6 +15595,7 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15657,6 +15780,7 @@ def process_view_osago_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15768,6 +15892,7 @@ def process_delete_osago_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_autokredit_calc(message):
     description = (
         "ℹ️ *Краткая справка по расчету автокредита*\n\n"
@@ -15842,6 +15967,7 @@ load_user_history_kredit()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_car_loan_calculation(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -16539,6 +16665,7 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -16688,6 +16815,7 @@ def process_view_autokredit_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -16804,6 +16932,7 @@ def process_delete_autokredit_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_tire_calc(message):
     description = (
         "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
@@ -16872,6 +17001,7 @@ load_user_history_tires()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_tire_calculation(message):
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
@@ -17308,6 +17438,7 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -17508,6 +17639,7 @@ def process_view_tire_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -17715,6 +17847,7 @@ load_tax_rates(2025)  # Загружаем данные за 2025 год по у
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_nalog_calc(message):
     global stored_message
     stored_message = message
@@ -17750,6 +17883,7 @@ def view_nalog_calc(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def start_tax_calculation(message):
     if not nalog_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -18224,6 +18358,7 @@ def calculate_tax(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -18363,6 +18498,7 @@ def process_view_nalog_selection(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -23610,6 +23746,7 @@ blocked_users = load_blocked_users()
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('Вернуться в меню для рекламы')
@@ -24472,6 +24609,7 @@ def show_advertisement_menu(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def show_user_advertisement_requests(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -24635,6 +24773,7 @@ def handle_user_advertisement_request_action(message, index):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def view_add_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Заявка на рекламу', 'Ваши заявки')
@@ -24716,6 +24855,7 @@ def check_admin_access(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def show_news_menu(message):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('3 новости', '5 новостей', '7 новостей')
@@ -24753,6 +24893,7 @@ def show_news_menu(message):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def handle_news_selection(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -28104,6 +28245,7 @@ def return_admin_to_menu(admin_id):
 @log_user_actions
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 def request_chat_with_admin(message):
     global active_chats
     if active_chats is None:
@@ -28356,6 +28498,7 @@ start_bot_with_retries()
 @check_chat_state
 @check_subscription
 @restrict_free_users
+@check_subscription_chanal
 
 def echo_all(message):
     bot.reply_to(message, message.text)
