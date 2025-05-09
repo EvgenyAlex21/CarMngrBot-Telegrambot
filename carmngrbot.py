@@ -504,7 +504,7 @@ def start(message):
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
     item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Чат с админом")
+    item11 = types.KeyboardButton("Прочее")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -10905,8 +10905,8 @@ def show_admin_panel(message):
     else:
         markup = types.ReplyKeyboardMarkup(row_width=3)
         markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Общение', 'Статистика')
-        markup.add('Файлы', 'Резервная копия')
+        markup.add('Общение', 'Реклама', 'Статистика')
+        markup.add('Файлы', 'Резервная копия', 'Редакция')
         markup.add('Выход')
         bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
@@ -13056,7 +13056,7 @@ def save_database():
     for key, value in alerts['sent_messages'].items():
         if 'time' in value and isinstance(value['time'], datetime):
             value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
-    with open(DATABASE_PATH, 'w') as file:
+    with open(DATABASE_PATH, 'w', encoding='utf-8') as file:
         json.dump(alerts, file, ensure_ascii=False, indent=4)
     for key, value in alerts['notifications'].items():
         if 'time' in value and isinstance(value['time'], str):
@@ -13065,9 +13065,10 @@ def save_database():
         if 'time' in value and isinstance(value['time'], str):
             value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
+
 def load_database():
     if os.path.exists(DATABASE_PATH):
-        with open(DATABASE_PATH, 'r') as file:
+        with open(DATABASE_PATH, 'r', encoding='utf-8') as file:
             data = json.load(file)
             for key, value in data['notifications'].items():
                 if 'time' in value and value['time']:
@@ -14188,8 +14189,1030 @@ def process_time_notification_time(message, user_id, individual_theme, notificat
     bot.send_message(message.chat.id, f"Уведомление *{theme}* запланировано на {formatted_time} для пользователя {username} - {user_id}", parse_mode='Markdown')
     show_admin_panel(message)
 
+# Путь к файлу
+ADVERTISEMENT_PATH = 'data base/admin/chats/advertisement.json'
+
+# Глобальные переменные
+advertisements = {}
+
+# Сохранение данных рекламы
+def save_advertisements():
+    with open(ADVERTISEMENT_PATH, 'w', encoding='utf-8') as file:
+        json.dump(advertisements, file, ensure_ascii=False, indent=4)
+    print(f"Advertisements saved: {advertisements}")  # Отладочное сообщение
+
+def load_advertisements():
+    if os.path.exists(ADVERTISEMENT_PATH):
+        with open(ADVERTISEMENT_PATH, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            for adv in data['advertisements'].values():
+                if 'expected_date' in adv and 'expected_time' in adv:
+                    adv['expected_date'] = datetime.strptime(adv['expected_date'], "%d.%m.%Y").strftime("%d.%m.%Y")
+                    adv['expected_time'] = datetime.strptime(adv['expected_time'], "%H:%M").strftime("%H:%M")
+                if 'end_date' in adv and 'end_time' in adv:
+                    adv['end_date'] = datetime.strptime(adv['end_date'], "%d.%m.%Y").strftime("%d.%m.%Y")
+                    adv['end_time'] = datetime.strptime(adv['end_time'], "%H:%M").strftime("%H:%M")
+            print(f"Advertisements loaded: {data}")  # Отладочное сообщение
+            return data
+    return {"advertisements": {}}
 
 
+
+# Инициализация данных рекламы при запуске
+advertisements = load_advertisements()
+
+# Обработчик для пользователя "Заявка на рекламу"
+@bot.message_handler(func=lambda message: message.text == 'Заявка на рекламу')
+def handle_advertisement_request(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_advertisement_theme)
+
+def set_advertisement_theme(message):
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_advertisement_theme)
+        return
+
+    advertisement_theme = message.text
+    bot.send_message(message.chat.id, "Введите дату, на которую вы хотите разместить рекламу:")
+    bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+
+def set_advertisement_date(message, advertisement_theme):
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+        return
+
+    expected_date = message.text
+    if expected_date is None or not validate_date_format(expected_date):
+        bot.send_message(message.chat.id, "Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+        return
+
+    if not validate_future_date(expected_date):
+        bot.send_message(message.chat.id, "Дата не может быть раньше текущей даты. Пожалуйста, введите корректную дату:")
+        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
+        return
+
+    bot.send_message(message.chat.id, "Введите время, на которое вы хотите разместить рекламу:")
+    bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+
+def set_advertisement_time(message, advertisement_theme, expected_date):
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+        return
+
+    expected_time = message.text
+    if not validate_time_format(expected_time):
+        bot.send_message(message.chat.id, "Неверный формат времени. Пожалуйста, введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+        return
+
+    if not validate_future_time(expected_date, expected_time):
+        bot.send_message(message.chat.id, "Время не может быть раньше текущего времени. Пожалуйста, введите корректное время:")
+        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
+        return
+
+    bot.send_message(message.chat.id, "Введите дату окончания действия рекламы (ДД.ММ.ГГГГ):")
+    bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+
+def set_advertisement_end_date(message, advertisement_theme, expected_date, expected_time):
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    end_date = message.text
+    if not validate_date_format(end_date):
+        bot.send_message(message.chat.id, "Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    if not validate_future_date(end_date):
+        bot.send_message(message.chat.id, "Дата окончания не может быть раньше текущей даты. Пожалуйста, введите корректную дату:")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
+    bot.send_message(message.chat.id, "Введите время окончания действия рекламы (ЧЧ:ММ):")
+    bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+
+def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+        return
+
+    end_time = message.text
+    if not validate_time_format(end_time):
+        bot.send_message(message.chat.id, "Неверный формат времени. Пожалуйста, введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+        return
+
+    bot.send_message(message.chat.id, "Отправьте текст и мультимедиа (если есть) для рекламы:")
+    bot.register_next_step_handler(message, save_advertisement_request, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+def save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+    user_id = message.chat.id
+    username = message.from_user.username
+    advertisement_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    advertisement_id = str(len(advertisements['advertisements']) + 1)
+    advertisements['advertisements'][advertisement_id] = {
+        'user_id': user_id,
+        'username': username,
+        'theme': advertisement_theme,
+        'expected_date': expected_date,
+        'expected_time': expected_time,
+        'end_date': end_date,
+        'end_time': end_time,
+        'text': advertisement_text if content_type == 'text' else None,
+        'files': [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ],
+        'status': 'pending',
+        'user_ids': [],
+        'message_ids': []
+    }
+    print(f"Advertisement request saved: {advertisements['advertisements'][advertisement_id]}")  # Отладочное сообщение
+    save_advertisements()
+    bot.send_message(message.chat.id, "Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
+    return_to_menu(message)
+
+
+
+def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
+    end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
+    delay = (end_datetime - datetime.now()).total_seconds()
+    print(f"Scheduling deletion for advertisement ID: {advertisement_id} in {delay} seconds")  # Отладочное сообщение
+    threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
+
+
+def delete_advertisement_messages(advertisement_id):
+    advertisement = advertisements['advertisements'][advertisement_id]
+    user_ids = advertisement['user_ids']
+    message_ids = advertisement['message_ids']
+
+    print(f"Deleting messages for advertisement ID: {advertisement_id}")  # Отладочное сообщение
+    print(f"User IDs: {user_ids}")  # Отладочное сообщение
+    print(f"Message IDs: {message_ids}")  # Отладочное сообщение
+
+    for user_id, message_id in zip(user_ids, message_ids):
+        try:
+            bot.delete_message(user_id, message_id)
+            print(f"Deleted message {message_id} for user {user_id}")  # Отладочное сообщение
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения для пользователя {user_id}: {e}")
+
+    del advertisements['advertisements'][advertisement_id]
+    save_advertisements()
+
+
+
+
+# Функция для проверки формата даты
+def validate_date_format(date_str):
+    if date_str is None:
+        return False
+    try:
+        datetime.strptime(date_str, "%d.%m.%Y")
+        return True
+    except ValueError:
+        return False
+
+# Функция для проверки будущей даты
+def validate_future_date(date_str):
+    today = datetime.now().date()
+    input_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+    return input_date >= today
+
+# Функция для проверки формата времени
+def validate_time_format(time_str):
+    try:
+        datetime.strptime(time_str, "%H:%M")
+        return True
+    except ValueError:
+        return False
+
+# Функция для проверки будущего времени
+def validate_future_time(date_str, time_str):
+    now = datetime.now()
+    input_datetime = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+    return input_datetime >= now
+
+# Функция для проверки срока
+def validate_duration(duration_str):
+    try:
+        duration = int(duration_str)
+        return 1 <= duration <= 7
+    except ValueError:
+        return False
+
+# Функция для обработки запросов на рекламу от администратора
+def handle_admin_advertisement_requests(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Запросы на рекламу', 'Удалить рекламу')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == 'Запросы на рекламу' and check_admin_access(message))
+def show_advertisement_requests(message):
+    pending_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['status'] == 'pending']
+    if pending_advertisements:
+        advertisement_list = [
+            f"№{i + 1}. {adv['user_id']} - {adv['theme']} - {adv['expected_date']} - {adv['expected_time']} - {adv.get('end_date', 'N/A')} - {adv.get('end_time', 'N/A')}"
+            for i, adv in enumerate(pending_advertisements)
+        ]
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Список запросов на рекламу:\n\n" + "\n\n".join(advertisement_list), reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номер запроса для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, show_advertisement_request_details)
+    else:
+        bot.send_message(message.chat.id, "Активных запросов на рекламу нет!")
+
+
+def show_advertisement_request_details(message):
+    try:
+        index = int(message.text) - 1
+        advertisement_list = list(advertisements['advertisements'].values())
+        if 0 <= index < len(advertisement_list):
+            advertisement = advertisement_list[index]
+            text = advertisement['text']
+            if not advertisement['files']:
+                text = advertisement['caption']
+
+            # Основная информация о рекламе
+            info_message = (
+                f"Основная информация о рекламе:\n\n"
+                f"Тема: {advertisement['theme']}\n"
+                f"Дата: {advertisement['expected_date']}\n"
+                f"Время: {advertisement['expected_time']}\n"
+                f"Дата окончания: {advertisement.get('end_date', 'N/A')}\n"
+                f"Время окончания: {advertisement.get('end_time', 'N/A')}\n"
+            )
+
+            bot.send_message(message.chat.id, info_message)
+
+            # Отправка текста и медиафайлов рекламы
+            if text and text != 'None':
+                bot.send_message(message.chat.id, f"Текст: {text}")
+            for file in advertisement.get('files', []):
+                if file['type'] == 'photo':
+                    bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video':
+                    bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'document':
+                    bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'animation':
+                    bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'voice':
+                    bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+
+            markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+            markup.add('Принять рекламу', 'Отклонить рекламу', 'В меню админ-панели')
+            bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_advertisement_request_action, index)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер запроса. Попробуйте снова.")
+            bot.register_next_step_handler(message, show_advertisement_request_details)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер запроса.")
+        bot.register_next_step_handler(message, show_advertisement_request_details)
+
+
+def handle_advertisement_request_action(message, index):
+    if message.text == 'Принять рекламу':
+        advertisement_id = list(advertisements['advertisements'].keys())[index]
+        advertisements['advertisements'][advertisement_id]['status'] = 'accepted'
+        save_advertisements()
+        bot.send_message(message.chat.id, "Реклама была принята! Выберите действия для отправки:")
+        choose_send_advertisement_action(message, advertisement_id)
+    elif message.text == 'Отклонить рекламу':
+        advertisement_id = list(advertisements['advertisements'].keys())[index]
+        advertisement = advertisements['advertisements'][advertisement_id]
+        user_id = advertisement['user_id']
+        theme = advertisement['theme']
+        del advertisements['advertisements'][advertisement_id]
+        save_advertisements()
+        bot.send_message(message.chat.id, "Реклама была отклонена.")
+        bot.send_message(user_id, f"Ваша заявка по теме '{theme}' была отклонена администратором!")
+        show_admin_panel(message)
+    elif message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Неверное действие. Попробуйте снова.")
+        show_advertisement_request_details(message)
+
+def schedule_advertisement(message, advertisement_id):
+    advertisement = advertisements['advertisements'][advertisement_id]
+    bot.send_message(message.chat.id, f"Тема: {advertisement['theme']}\nТекст: {advertisement['text']}")
+    for file in advertisement.get('files', []):
+        if file['type'] == 'photo':
+            bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'video':
+            bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'document':
+            bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'animation':
+            bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'sticker':
+            bot.send_sticker(message.chat.id, file['file_id'])
+        elif file['type'] == 'audio':
+            bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'voice':
+            bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
+        elif file['type'] == 'video_note':
+            bot.send_video_note(message.chat.id, file['file_id'])
+
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Отправить по времени', 'Отправить всем')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, choose_send_advertisement_action, advertisement_id)
+
+def choose_send_advertisement_action(message, advertisement_id):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Отправить по времени', 'Отправить всем')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_send_advertisement_action, advertisement_id)
+
+def handle_send_advertisement_action(message, advertisement_id):
+    if message.text == 'Отправить по времени':
+        schedule_notification(message, advertisement_id)
+    elif message.text == 'Отправить всем':
+        send_advertisement_to_all(message, advertisement_id)
+    elif message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Неверное действие. Попробуйте снова.")
+        choose_send_advertisement_action(message, advertisement_id)
+
+def schedule_notification(message, advertisement_id):
+    advertisement = advertisements['advertisements'][advertisement_id]
+    notification_id = str(len(alerts['notifications']) + 1)
+    alerts['notifications'][notification_id] = {
+        'theme': advertisement['theme'],
+        'text': advertisement['text'],
+        'time': datetime.strptime(f"{advertisement['expected_date']} {advertisement['expected_time']}", "%d.%m.%Y %H:%M"),
+        'status': 'active',
+        'category': 'time',
+        'user_id': None,
+        'files': advertisement['files'],
+        'content_type': advertisement['files'][0]['type'] if advertisement['files'] else 'text'
+    }
+    save_database()
+    bot.send_message(message.chat.id, f"Реклама '{advertisement['theme']}' запланирована на {advertisement['expected_date']} в {advertisement['expected_time']}.")
+    show_admin_panel(message)
+
+def send_advertisement_to_all(message, advertisement_id):
+    advertisement = advertisements['advertisements'][advertisement_id]
+    users = load_users()
+    user_ids = []
+    message_ids = []
+
+    for user_id in users.keys():
+        if advertisement['files']:
+            file = advertisement['files'][0]
+            if file['type'] == 'photo':
+                sent_message = bot.send_photo(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'video':
+                sent_message = bot.send_video(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'document':
+                sent_message = bot.send_document(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'animation':
+                sent_message = bot.send_animation(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'sticker':
+                sent_message = bot.send_sticker(user_id, file['file_id'])
+            elif file['type'] == 'audio':
+                sent_message = bot.send_audio(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'voice':
+                sent_message = bot.send_voice(user_id, file['file_id'], caption=file.get('caption'))
+            elif file['type'] == 'video_note':
+                sent_message = bot.send_video_note(user_id, file['file_id'])
+        else:
+            sent_message = bot.send_message(user_id, advertisement['text'])
+
+        user_ids.append(user_id)
+        message_ids.append(sent_message.message_id)
+
+    print(f"User IDs: {user_ids}")  # Отладочное сообщение
+    print(f"Message IDs: {message_ids}")  # Отладочное сообщение
+
+    advertisement['user_ids'] = user_ids
+    advertisement['message_ids'] = message_ids
+    advertisement['status'] = 'accepted'  # Обновляем статус на 'accepted'
+    save_advertisements()
+
+    bot.send_message(message.chat.id, "Реклама отправлена всем пользователям.")
+    show_admin_panel(message)
+
+def check_advertisement_expiration():
+    while True:
+        now = datetime.now()
+        for adv_id, adv in list(advertisements['advertisements'].items()):
+            if adv['status'] == 'accepted':
+                end_datetime = datetime.strptime(f"{adv['end_date']} {adv['end_time']}", "%d.%m.%Y %H:%M")
+                if now >= end_datetime:
+                    delete_advertisement_messages(adv_id)
+        time.sleep(60)  # Проверяем каждую минуту
+threading.Thread(target=check_advertisement_expiration, daemon=True).start()
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить рекламу' and check_admin_access(message))
+def delete_advertisement(message):
+    if advertisements['advertisements']:
+        advertisement_list = [
+            f"№{i + 1}. {adv['user_id']} - {adv['theme']} - {adv['expected_date']} - {adv['expected_time']} - {adv.get('end_date', 'N/A')} - {adv.get('end_time', 'N/A')}"
+            for i, adv in enumerate(advertisements['advertisements'].values()) if adv['status'] == 'accepted'
+        ]
+        if advertisement_list:
+            bot.send_message(message.chat.id, "Список опубликованных реклам:\n\n" + "\n\n".join(advertisement_list))
+            bot.send_message(message.chat.id, "Введите номер рекламы для удаления:")
+            bot.register_next_step_handler(message, process_delete_advertisement)
+        else:
+            bot.send_message(message.chat.id, "У вас нет опубликованных реклам!")
+    else:
+        bot.send_message(message.chat.id, "Нет опубликованных реклам!")
+
+
+def process_delete_advertisement(message):
+    try:
+        index = int(message.text) - 1
+        advertisement_list = list(advertisements['advertisements'].values())
+        if 0 <= index < len(advertisement_list):
+            advertisement_id = list(advertisements['advertisements'].keys())[index]
+            deleted_advertisement = advertisements['advertisements'].pop(advertisement_id)
+            save_advertisements()
+            bot.send_message(message.chat.id, f"Реклама '{deleted_advertisement['theme']}' удалена.")
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер рекламы. Попробуйте снова.")
+            delete_advertisement(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер рекламы.")
+        delete_advertisement(message)
+
+
+# Обработчик для кнопки "РЕКЛАМА"
+@bot.message_handler(func=lambda message: message.text == 'Реклама' and check_admin_access(message))
+def show_advertisement_menu(message):
+    handle_admin_advertisement_requests(message)
+
+@bot.message_handler(func=lambda message: message.text == "Прочее")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Посмотреть')
+def view_reminders(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Чат с админом', 'Заявка на рекламу', 'Новости')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+
+
+
+
+
+
+# Путь к файлу
+NEWS_DATABASE_PATH = 'data base/admin/chats/news.json'
+ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+USER_DATA_PATH = 'data base/admin/users.json'  # Путь к файлу с данными пользователей
+
+# Глобальные переменные
+news = {}  # Словарь для хранения новостей
+admin_sessions = []
+
+# Загрузка пользователей
+def load_users():
+    if os.path.exists(USER_DATA_PATH):
+        with open(USER_DATA_PATH, 'r') as file:
+            return json.load(file)
+    return {}
+
+# Загрузка базы данных новостей
+def save_news_database():
+    for key, value in news.items():
+        if 'time' in value and isinstance(value['time'], datetime):
+            value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
+    with open(NEWS_DATABASE_PATH, 'w', encoding='utf-8') as file:
+        json.dump(news, file, ensure_ascii=False, indent=4)
+    for key, value in news.items():
+        if 'time' in value and isinstance(value['time'], str):
+            value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
+
+def load_news_database():
+    if os.path.exists(NEWS_DATABASE_PATH):
+        with open(NEWS_DATABASE_PATH, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            for key, value in data.items():
+                if 'time' in value and value['time']:
+                    value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
+            return data
+    return {}
+
+# Инициализация базы данных при запуске
+news = load_news_database()
+
+# Загрузка админских сессий из JSON файла
+def load_admin_sessions():
+    if os.path.exists(ADMIN_SESSIONS_FILE):
+        with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data.get('admin_sessions', [])
+    return []
+
+admin_sessions = load_admin_sessions()
+
+def check_admin_access(message):
+    if str(message.chat.id) in admin_sessions:
+        return True
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        return False
+
+# Показ меню новостей для пользователя
+@bot.message_handler(func=lambda message: message.text == 'Новости')
+def show_news_menu(message):
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    markup.add('3 новости', '5 новостей', '7 новостей')
+    markup.add('10 новостей', '15 новостей')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите количество новостей:", reply_markup=markup)
+
+# Обработчик для выбора количества новостей
+@bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
+def handle_news_selection(message):
+    count = int(message.text.split()[0])
+    news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+    if news_list:
+        for i in range(min(count, len(news_list))):
+            news_item = news_list[i]
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+            if news_item['text']:
+                bot.send_message(message.chat.id, news_item['text'])
+        if len(news_list) > count:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Ещё новости')
+            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        bot.send_message(message.chat.id, "Новостей нет.")
+
+def handle_more_news(message, start_index):
+    if message.text == 'Ещё новости':
+        count = start_index + 3
+        news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+        for i in range(start_index, min(count, len(news_list))):
+            news_item = news_list[i]
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+            if news_item['text']:
+                bot.send_message(message.chat.id, news_item['text'])
+        if len(news_list) > count:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Ещё новости')
+            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        show_news_menu(message)
+        
+# Показ меню редакции для админа
+@bot.message_handler(func=lambda message: message.text == 'Редакция' and check_admin_access(message))
+def show_editorial_menu(message):
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Опубликовать новость', 'Отредактировать новость', 'Посмотреть новость', 'Удалить новость')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+# Обработчик для "Опубликовать новость"
+@bot.message_handler(func=lambda message: message.text == 'Опубликовать новость' and check_admin_access(message))
+def publish_news(message):
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите заголовок новости:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_news_title)
+
+def set_news_title(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    news_title = message.text
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите текст новости или отправьте мультимедийный файл:", reply_markup=markup)
+    bot.register_next_step_handler(message, set_news_text, news_title)
+
+def set_news_text(message, news_title):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    news_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    news_id = str(len(news) + 1)
+    news[news_id] = {
+        'title': news_title,
+        'text': news_text if content_type == 'text' else None,
+        'time': datetime.now(),
+        'files': [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ]
+    }
+    save_news_database()
+    bot.send_message(message.chat.id, "Новость опубликована.")
+    show_admin_panel(message)
+
+# Обработчик для "Отредактировать новость"
+@bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
+def handle_news_selection(message):
+    count = int(message.text.split()[0])
+    news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+    if news_list:
+        for i in range(min(count, len(news_list))):
+            news_item = news_list[i]
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+            else:
+                bot.send_message(message.chat.id, news_item['text'])
+        if len(news_list) > count:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Ещё новости')
+            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        bot.send_message(message.chat.id, "Новостей нет.")
+
+def handle_more_news(message, start_index):
+    if message.text == 'Ещё новости':
+        count = start_index + 3
+        news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+        for i in range(start_index, min(count, len(news_list))):
+            news_item = news_list[i]
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+            else:
+                bot.send_message(message.chat.id, news_item['text'])
+        if len(news_list) > count:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Ещё новости')
+            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        show_news_menu(message)
+
+# Обработчик для "Отредактировать новость"
+@bot.message_handler(func=lambda message: message.text == 'Отредактировать новость' and check_admin_access(message))
+def edit_news(message):
+    news_list = [
+        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        for i, n in enumerate(news.values())
+    ]
+    if news_list:
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode='Markdown', reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номер новости для редактирования:", reply_markup=markup)
+        bot.register_next_step_handler(message, choose_news_to_edit)
+    else:
+        bot.send_message(message.chat.id, "Нет новостей для редактирования.")
+
+def choose_news_to_edit(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        news_list = list(news.values())
+        if 0 <= index < len(news_list):
+            news_id = list(news.keys())[index]
+            news_item = news[news_id]
+            bot.send_message(message.chat.id, f"*{news_item['title']}*\n\n{news_item['text']}", parse_mode='Markdown')
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "Введите новый заголовок новости:", reply_markup=markup)
+            bot.register_next_step_handler(message, edit_news_title, news_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
+            bot.register_next_step_handler(message, choose_news_to_edit)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
+        bot.register_next_step_handler(message, choose_news_to_edit)
+
+def edit_news_title(message, news_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    news_title = message.text
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите новый текст новости или отправьте новый мультимедийный файл:", reply_markup=markup)
+    bot.register_next_step_handler(message, update_news_text_and_media, news_id, news_title)
+
+def update_news_text_and_media(message, news_id, news_title):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    news_text = message.text or message.caption
+    content_type = message.content_type
+    file_id = None
+    caption = message.caption
+
+    if content_type == 'photo':
+        file_id = message.photo[-1].file_id
+    elif content_type == 'video':
+        file_id = message.video.file_id
+    elif content_type == 'document':
+        file_id = message.document.file_id
+    elif content_type == 'animation':
+        file_id = message.animation.file_id
+    elif content_type == 'sticker':
+        file_id = message.sticker.file_id
+    elif content_type == 'audio':
+        file_id = message.audio.file_id
+    elif content_type == 'voice':
+        file_id = message.voice.file_id
+    elif content_type == 'video_note':
+        file_id = message.video_note.file_id
+
+    # Обновляем заголовок и текст новости
+    news[news_id]['title'] = news_title
+    news[news_id]['time'] = datetime.now()
+
+    # Обновляем мультимедийные файлы, если они были отправлены
+    if file_id:
+        news[news_id]['files'] = [
+            {
+                'type': content_type,
+                'file_id': file_id,
+                'caption': caption if content_type != 'text' else None
+            }
+        ]
+    else:
+        news[news_id]['text'] = news_text
+
+    save_news_database()
+    bot.send_message(message.chat.id, "Новость отредактирована.")
+    show_admin_panel(message)
+
+# Обработчик для "Посмотреть новость"
+@bot.message_handler(func=lambda message: message.text == 'Посмотреть новость' and check_admin_access(message))
+def view_news(message):
+    news_list = [
+        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        for i, n in enumerate(news.values())
+    ]
+    if news_list:
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode='Markdown', reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номер новости для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, choose_news_to_view)
+    else:
+        bot.send_message(message.chat.id, "Нет новостей для просмотра.")
+
+def choose_news_to_view(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        news_list = list(news.values())
+        if 0 <= index < len(news_list):
+            news_item = news_list[index]
+            if 'files' in news_item and news_item['files']:
+                for file in news_item['files']:
+                    if file['type'] == 'photo':
+                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video':
+                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'document':
+                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'animation':
+                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'voice':
+                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+            # Проверка на наличие текста
+            if news_item['text']:
+                bot.send_message(message.chat.id, news_item['text'])
+            show_admin_panel(message)  # Автоматически перенаправляем в меню админ-панели
+        else:
+            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
+            bot.register_next_step_handler(message, choose_news_to_view)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
+        bot.register_next_step_handler(message, choose_news_to_view)
+
+
+# Обработчик для "Удалить новость"
+@bot.message_handler(func=lambda message: message.text == 'Удалить новость' and check_admin_access(message))
+def delete_news(message):
+    news_list = [
+        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        for i, n in enumerate(news.values())
+    ]
+    if news_list:
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode='Markdown', reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номер новости для удаления:", reply_markup=markup)
+        bot.register_next_step_handler(message, choose_news_to_delete)
+    else:
+        bot.send_message(message.chat.id, "Нет новостей для удаления.")
+
+def choose_news_to_delete(message):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        news_list = list(news.values())
+        if 0 <= index < len(news_list):
+            news_id = list(news.keys())[index]
+            deleted_news = news.pop(news_id)
+            save_news_database()
+            bot.send_message(message.chat.id, f"Новость '{deleted_news['title']}' удалена.")
+            show_admin_panel(message)  # Автоматически перенаправляем в меню админ-панели
+        else:
+            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
+            bot.register_next_step_handler(message, choose_news_to_delete)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
+        bot.register_next_step_handler(message, choose_news_to_delete)
 
 # (ADMIN n) ------------------------------------------ "ЧАТ АДМИНА И ПОЛЬЗОВАТЕЛЯ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -14610,7 +15633,7 @@ def return_admin_to_menu(admin_id):
     bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Админ', 'Бан', 'Функции')
-    markup.add('Общение', 'Статистика')
+    markup.add('Общение', 'Статистика', 'Редакция')
     markup.add('Файлы', 'Резервная копия')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
@@ -14691,8 +15714,8 @@ def stop_chat(message):
         bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Общение', 'Статистика')
-        markup.add('Файлы', 'Резервная копия')
+        markup.add('Общение', 'Реклама', 'Статистика')
+        markup.add('Файлы', 'Резервная копия', 'Редакция')
         markup.add('Выход')
         bot.send_message(admin_id, "Выберите действие:", reply_markup=markup)
 
@@ -14710,8 +15733,8 @@ def stop_chat(message):
         bot.send_message(user_id, "Чат с пользователем был *завершен*!", parse_mode='Markdown')
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Админ', 'Бан', 'Функции')
-        markup.add('Общение', 'Статистика')
-        markup.add('Файлы', 'Резервная копия')
+        markup.add('Общение', 'Реклама', 'Статистика')
+        markup.add('Файлы', 'Резервная копия', 'Редакция')
         markup.add('Выход')
         bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
 
@@ -14732,7 +15755,7 @@ def start_menu(user_id):
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
     item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Чат с админом")
+    item11 = types.KeyboardButton("Прочее")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -15846,7 +16869,7 @@ def return_to_menu(message):
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
     item10 = types.KeyboardButton("Коды OBD2")
-    item11 = types.KeyboardButton("Чат с админом")
+    item11 = types.KeyboardButton("Прочее")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -15862,226 +16885,6 @@ def return_to_menu(message):
             print(f"Chat not found for user_id: {user_id}")
         else:
             print(f"An error occurred: {e}")
-
-
-# (FEEDBACK) ------------------------------------------ "ОТЗЫВЫ" ---------------------------------------------------
-
-FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
-ADMIN_FILE_PATH = 'data base/admin/admin_sessions.json'
-
-# Функции для загрузки и сохранения данных
-def load_feedback():
-    if os.path.exists(FEEDBACK_FILE_PATH):
-        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return {}
-
-def save_feedback_data(feedback_data):
-    try:
-        with open(FEEDBACK_FILE_PATH, 'w', encoding='utf-8') as file:
-            json.dump(feedback_data, file, ensure_ascii=False, indent=4)
-    except Exception as e:
-        print(f"Ошибка при сохранении данных: {e}")
-
-def load_admins():
-    if os.path.exists(ADMIN_FILE_PATH):
-        with open(ADMIN_FILE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    return []
-
-def notify_admins(feedback_entry):
-    admins = load_admins()
-    feedback_message = f"Новый отзыв:\nТекст: {feedback_entry['text']}\nОценка: {feedback_entry['rating']}\nКатегория: {feedback_entry['category']}\nДата: {feedback_entry['date']}"
-    for admin_id in admins:
-        bot.send_message(admin_id, feedback_message)
-
-@bot.message_handler(commands=['feedback'])
-@restricted
-@track_user_activity
-@check_chat_state
-def get_feedback(message):
-    update_user_activity(message.from_user.id)  # Обновляем активность пользователя
-    bot.send_message(message.chat.id, "Напишите ваш отзыв (или введите /cancel для отмены):")
-    bot.register_next_step_handler(message, ask_category)
-
-def ask_category(message):
-    if message.text == '/cancel':
-        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
-        return
-
-    feedback_text = message.text
-    bot.send_message(message.chat.id, "Укажите категорию отзыва (например, 'Поддержка', 'Продукт', 'Общий'):")
-    bot.register_next_step_handler(message, lambda m: ask_rating(m, feedback_text))
-
-def ask_rating(message, feedback_text):
-    if message.text == '/cancel':
-        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
-        return
-
-    category = message.text
-    bot.send_message(message.chat.id, "Поставьте оценку от 1 до 5:")
-    bot.register_next_step_handler(message, lambda m: confirm_feedback(m, feedback_text, category))
-
-def confirm_feedback(message, feedback_text, category):
-    if message.text == '/cancel':
-        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
-        return
-
-    try:
-        rating = int(message.text)
-        if rating < 1 or rating > 5:
-            raise ValueError("Оценка должна быть от 1 до 5.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректную оценку от 1 до 5:")
-        bot.register_next_step_handler(message, lambda m: confirm_feedback(m, feedback_text, category))
-        return
-
-    # Подтверждение отправки
-    bot.send_message(message.chat.id, f"Вы оставили отзыв: \"{feedback_text}\" с оценкой {rating} в категории \"{category}\". Подтвердите отправку? (да/нет)")
-    bot.register_next_step_handler(message, lambda m: save_feedback(m, feedback_text, rating, category))
-
-def save_feedback(message, feedback_text, rating, category):
-    if message.text.lower() == 'нет':
-        bot.send_message(message.chat.id, "Вы отменили отправку отзыва.")
-        return
-
-    if message.text.lower() != 'да':
-        bot.send_message(message.chat.id, "Пожалуйста, ответьте 'да' или 'нет'.")
-        bot.register_next_step_handler(message, lambda m: save_feedback(m, feedback_text, rating, category))
-        return
-
-    feedback_data = load_feedback()
-    user_id = str(message.from_user.id)
-
-    # Проверка на существование пользователя и инициализация, если необходимо
-    if user_id not in feedback_data:
-        feedback_data[user_id] = []
-
-    # Создание нового отзыва с необходимыми полями
-    feedback_entry = {
-        'text': feedback_text,
-        'rating': rating,
-        'category': category,
-        'responses': [],
-        'helpfulness': 0,
-        'date': datetime.now().isoformat(),  # Сохраняем дату отправки отзыва
-        'status': 'на рассмотрении'  # Статус отзыва
-    }
-    feedback_data[user_id].append(feedback_entry)
-
-    save_feedback_data(feedback_data)
-    notify_admins(feedback_entry)  # Уведомляем администраторов о новом отзыве
-    bot.send_message(message.chat.id, "Спасибо за ваш отзыв!")
-
-@bot.message_handler(commands=['my_feedback'])
-@restricted
-@track_user_activity
-@check_chat_state
-def show_my_feedback(message):
-    feedback_data = load_feedback()
-    user_id = str(message.from_user.id)
-
-    if user_id not in feedback_data or not feedback_data[user_id]:
-        bot.send_message(message.chat.id, "У вас нет оставленных отзывов.")
-        return
-
-    user_feedback = feedback_data[user_id]
-    feedback_messages = [
-        f"Отзыв: {entry['text']}, Оценка: {entry['rating']}, Категория: {entry['category']}, Полезность: {entry['helpfulness']}, Дата: {entry['date']}, Статус: {entry['status']}" 
-        for entry in user_feedback
-    ]
-    bot.send_message(message.chat.id, "\n".join(feedback_messages))
-
-@bot.message_handler(commands=['edit_feedback'])
-@restricted
-@track_user_activity
-@check_chat_state
-def edit_feedback(message):
-    feedback_data = load_feedback()
-    user_id = str(message.from_user.id)
-
-    if user_id not in feedback_data or not feedback_data[user_id]:
-        bot.send_message(message.chat.id, "У вас нет оставленных отзывов для редактирования.")
-        return
-
-    feedback_messages = [f"{i+1}. {entry['text']} (Оценка: {entry['rating']})" for i, entry in enumerate(feedback_data[user_id])]
-    bot.send_message(message.chat.id, "Выберите номер отзыва для редактирования:\n" + "\n".join(feedback_messages))
-    bot.register_next_step_handler(message, lambda m: confirm_edit_feedback(m, feedback_data))
-
-def confirm_edit_feedback(message, feedback_data):
-    try:
-        feedback_index = int(message.text) - 1
-        user_id = str(message.from_user.id)
-
-        if user_id in feedback_data and 0 <= feedback_index < len(feedback_data[user_id]):
-            entry = feedback_data[user_id][feedback_index]
-            bot.send_message(message.chat.id, f"Текущий текст отзыва: \"{entry['text']}\". Введите новый текст отзыва:")
-            bot.register_next_step_handler(message, lambda m: save_edited_feedback(m, entry, feedback_index, feedback_data))
-        else:
-            bot.send_message(message.chat.id, "Неправильный номер отзыва.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер отзыва.")
-
-def save_edited_feedback(message, entry, feedback_index, feedback_data):
-    new_text = message.text
-    user_id = str(message.from_user.id)
-    feedback_data[user_id][feedback_index]['text'] = new_text  # Обновляем текст отзыва
-    save_feedback_data(feedback_data)
-    bot.send_message(message.chat.id, "Ваш отзыв успешно обновлен!")
-
-@bot.message_handler(commands=['view_feedback'])
-@restricted
-@track_user_activity
-@check_chat_state
-def view_all_feedback(message):
-    admins = load_admins()
-    if message.from_user.id not in admins:
-        bot.send_message(message.chat.id, "У вас нет доступа к этой команде.")
-        return
-
-    feedback_data = load_feedback()
-    if not feedback_data:
-        bot.send_message(message.chat.id, "Отзывов еще нет.")
-        return
-
-    all_feedback = []
-    for user_id, user_feedback in feedback_data.items():
-        for entry in user_feedback:
-            all_feedback.append(f"Пользователь {user_id}: Отзыв: \"{entry['text']}\", Оценка: {entry['rating']}, Категория: {entry['category']}, Дата: {entry['date']}, Статус: {entry['status']}")
-
-    bot.send_message(message.chat.id, "\n".join(all_feedback))
-
-@bot.message_handler(commands=['delete_feedback'])
-@restricted
-@track_user_activity
-@check_chat_state
-def delete_feedback(message):
-    feedback_data = load_feedback()
-    user_id = str(message.from_user.id)
-
-    if user_id not in feedback_data or not feedback_data[user_id]:
-        bot.send_message(message.chat.id, "У вас нет оставленных отзывов для удаления.")
-        return
-
-    feedback_messages = [f"{i+1}. {entry['text']}" for i, entry in enumerate(feedback_data[user_id])]
-    bot.send_message(message.chat.id, "Выберите номер отзыва для удаления:\n" + "\n".join(feedback_messages))
-    bot.register_next_step_handler(message, lambda m: confirm_delete_feedback(m, feedback_data))
-
-def confirm_delete_feedback(message, feedback_data):
-    try:
-        feedback_index = int(message.text) - 1
-        user_id = str(message.from_user.id)
-
-        if user_id in feedback_data and 0 <= feedback_index < len(feedback_data[user_id]):
-            del feedback_data[user_id][feedback_index]  # Удаляем отзыв
-            save_feedback_data(feedback_data)
-            bot.send_message(message.chat.id, "Ваш отзыв успешно удален!")
-        else:
-            bot.send_message(message.chat.id, "Неправильный номер отзыва.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер отзыва.")
-
-
             
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
