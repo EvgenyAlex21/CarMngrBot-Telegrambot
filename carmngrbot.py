@@ -1452,22 +1452,22 @@ def get_expense_name(message, brand, model, year):
     bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
 
 # Функция получения даты траты
-def get_expense_date(message, expense_name, brand, model, year):
+def get_expense_date(message, expense_name, brand, model, transport_year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
         return
-    
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
+
     expense_date = message.text
 
     if expense_date is None:
         sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, get_expense_name, brand, model, year)
+        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
         return
 
     date_parts = expense_date.split(".")
@@ -1477,23 +1477,23 @@ def get_expense_date(message, expense_name, brand, model, year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
-    day, month, year = date_parts
+    day, month, expense_year = date_parts  # Переименовываем year в expense_year
 
-    if not day.isdigit() or not month.isdigit() or not year.isdigit():
+    if not day.isdigit() or not month.isdigit() or not expense_year.isdigit():
         bot.send_message(user_id, "Пожалуйста, введите дату в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
     day = int(day)
     month = int(month)
-    year = int(year)
+    expense_year = int(expense_year)
 
-    if len(str(year)) != 4:
+    if len(str(expense_year)) != 4:
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.")
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
     if day < 1 or day > 31 or month < 1 or month > 12:
@@ -1502,11 +1502,11 @@ def get_expense_date(message, expense_name, brand, model, year):
         item_main_menu = types.KeyboardButton("В главное меню")
         markup.add(item_return, item_main_menu)
         bot.send_message(user_id, "Пожалуйста, введите корректную дату.", reply_markup=markup)
-        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_date, expense_name, brand, model, transport_year)
         return
 
     bot.send_message(user_id, "Введите сумму траты:")
-    bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, year)
+    bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)  # Измените year на transport_year
 
 # Функция для проверки является ли строка числом
 def is_numeric(s):
@@ -1519,7 +1519,7 @@ def is_numeric(s):
     return False
 
 # Функция получения суммы траты
-def get_expense_amount(message, expense_name, expense_date, brand, model, year):
+def get_expense_amount(message, expense_name, expense_date, brand, model, transport_year):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
@@ -1537,12 +1537,12 @@ def get_expense_amount(message, expense_name, expense_date, brand, model, year):
 
     if expense_date is None:
         sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, get_expense_name, brand, model, year)
+        bot.register_next_step_handler(sent, get_expense_name, brand, model, transport_year)
         return
 
     if not is_numeric(expense_amount):
         bot.send_message(user_id, "Пожалуйста, введите сумму траты в числовом формате.")
-        bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, year)
+        bot.register_next_step_handler(message, get_expense_amount, expense_name, expense_date, brand, model, transport_year)
         return
 
     data = load_expense_data(user_id)
@@ -1556,7 +1556,7 @@ def get_expense_amount(message, expense_name, expense_date, brand, model, year):
         "name": expense_name,
         "date": expense_date,
         "amount": expense_amount,
-        "transport": {"brand": brand, "model": model, "year": year}  # Добавляем информацию о транспорте
+        "transport": {"brand": brand, "model": model, "year": transport_year}  # Добавляем информацию о транспорте
     })
 
     data[str(user_id)]["expenses"] = expenses
@@ -2151,21 +2151,39 @@ def confirm_delete_expense(message):
     send_menu(user_id)
 
 # (10.25) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "DEL ТРАТЫ (ВСЕ ВРЕМЯ)") ---------------
-
 @bot.message_handler(func=lambda message: message.text == "Del траты (всё время)")
 def delete_all_expenses(message):
     user_id = message.from_user.id
 
+    # Загружаем данные пользователя
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    expenses = user_data.get("expenses", [])
+
+    if not expenses:
+        bot.send_message(user_id, "У вас нет сохраненных трат для удаления.")
+        return
+
+    # Запрос выбора транспорта
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return)
     markup.add(item_main_menu)
-    bot.send_message(user_id, "Вы уверены, что хотите удалить все траты? (да/нет)", reply_markup=markup)
+
+    transport_buttons = []
+    for expense in expenses:
+        transport = expense.get("transport", {})
+        if transport:
+            transport_info = f"{transport.get('brand', 'Без бренда')} {transport.get('model', 'Без модели')} {transport.get('year', 'Без года')}"
+            transport_buttons.append(types.KeyboardButton(transport_info))
+
+    if transport_buttons:
+        markup.add(*transport_buttons)
+
+    bot.send_message(user_id, "Выберите транспорт, для которого хотите удалить все траты:", reply_markup=markup)
     bot.register_next_step_handler(message, confirm_delete_all_expenses)
 
 # (10.26) --------------- КОД ДЛЯ "ТРАТ" (ФУНКЦИЯ ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ ТРАТ ЗА ВСЕ ВРЕМЯ) ---------------
-
 def confirm_delete_all_expenses(message):
     user_id = message.from_user.id
 
@@ -2182,17 +2200,34 @@ def confirm_delete_all_expenses(message):
         return_to_menu(message)
         return
 
-    response = message.text.lower()
+    # Получаем выбранный транспорт
+    selected_transport = message.text.split()
+    
+    # Проверяем, есть ли такой транспорт в данных
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    expenses = user_data.get("expenses", [])
 
-    if response == "да":
-        user_data = load_expense_data(user_id).get(str(user_id), {})
-        user_data["expenses"] = [] 
-        save_expense_data(user_id, user_data)
-        bot.send_message(user_id, "Все траты удалены.")
-    elif response == "нет":
-        bot.send_message(user_id, "Удаление всех трат отменено.")
-    else:
-        bot.send_message(user_id, "Пожалуйста, введите 'да' или 'нет.")
+    transport_to_delete = None
+    for expense in expenses:
+        transport = expense.get("transport", {})
+        transport_info = f"{transport.get('brand', 'Без бренда')} {transport.get('model', 'Без модели')} {transport.get('year', 'Без года')}"
+        if transport_info == message.text:
+            transport_to_delete = transport.get("license_plate")
+            break
+
+    if not transport_to_delete:
+        bot.send_message(user_id, "Выбранный транспорт не найден.")
+        send_menu(user_id)
+        return
+
+    # Удаляем траты для выбранного транспорта
+    expenses_to_delete = [expense for expense in expenses if expense.get("transport", {}).get("license_plate") == transport_to_delete]
+    for expense in expenses_to_delete:
+        expenses.remove(expense)
+
+    user_data["expenses"] = expenses
+    save_expense_data(user_id, {str(user_id): user_data})
+    bot.send_message(user_id, f"Все траты для транспорта '{message.text}' удалены.")
 
     send_menu(user_id)
 
@@ -4205,6 +4240,21 @@ def process_license_plate(message, brand, model, year):
     # Переход в меню "Ваш транспорт"
     manage_transport(message)
 
+def delete_expenses_related_to_transport(user_id, transport):
+    expenses_data = load_expense_data(user_id)  # Загрузите текущие расходы
+    if user_id in expenses_data:
+        updated_expenses = []
+        for expense in expenses_data[user_id]['expenses']:
+            # Проверка на совпадение транспорта
+            if expense['transport']['brand'] != transport['brand'] or \
+               expense['transport']['model'] != transport['model'] or \
+               expense['transport']['year'] != transport['year']:
+                updated_expenses.append(expense)
+
+        # Обновляем данные о расходах
+        expenses_data[user_id]['expenses'] = updated_expenses
+        save_expense_data(user_id, expenses_data)  # Сохраняем обновленные данные
+
 @bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
 def delete_transport(message):
     user_id = str(message.chat.id)
@@ -4273,28 +4323,19 @@ def process_transport_selection(message):
 
 def process_confirmation(message, transport_to_delete):
     user_id = str(message.chat.id)
-    confirmation = message.text.strip().upper()  # Приводим к верхнему регистру для удобства проверки
+    confirmation = message.text.strip().upper()
 
-    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
-    if confirmation == "В ГЛАВНОЕ МЕНЮ":
-        return_to_menu(message)  # Возвращаем в главное меню
-        return
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-    
-    # Проверка на текстовое подтверждение "ДА" или "НЕТ"
     if confirmation == "ДА":
         if user_id in user_transport:
             user_transport[user_id].remove(transport_to_delete)  # Удаление элемента
+            delete_expenses_related_to_transport(user_id, transport_to_delete)  # Удаление расходов, связанных с транспортом
             save_transport_data(user_id, user_transport[user_id])  # Сохранение после удаления
-            bot.send_message(user_id, "Транспорт успешно удалён.")
+            bot.send_message(user_id, "Транспорт и связанные с ним траты успешно удалены.")
         else:
             bot.send_message(user_id, "Неверный выбор.")
     elif confirmation == "НЕТ":
         bot.send_message(user_id, "Удаление отменено.")
     else:
-        # Если введено что-то другое, ожидаем повторного ввода
         bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
         bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))  # Ожидание повторного ввода
 
@@ -4323,26 +4364,23 @@ def process_delete_all_confirmation(message):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
 
-    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
-    if confirmation == "В ГЛАВНОЕ МЕНЮ":
-        return_to_menu(message)  # Возвращаем в главное меню
-        return
-    if message.text == "Вернуться в ваш транспорт":
-        manage_transport(message)
-        return
-
-    # Проверка на текстовое подтверждение "ДА" или "НЕТ"
     if confirmation == "ДА":
         if user_id in user_transport:
-            user_transport[user_id] = []  # Удаляем все транспорты
+            # Удаляем все транспорты
+            transports = user_transport[user_id]
+            user_transport[user_id] = []  # Очищаем список
             save_transport_data(user_id, user_transport[user_id])  # Обновляем сохраненные данные
-            bot.send_message(user_id, "Весь транспорт успешно удален.")
+
+            # Удаляем все расходы, связанные с удаляемым транспортом
+            for transport in transports:
+                delete_expenses_related_to_transport(user_id, transport)
+
+            bot.send_message(user_id, "Весь транспорт и связанные с ним траты успешно удалены.")
         else:
             bot.send_message(user_id, "У вас нет добавленного транспорта.")
     elif confirmation == "НЕТ":
         bot.send_message(user_id, "Удаление отменено.")
     else:
-        # Если введено что-то другое, повторяем ввод
         bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
         bot.register_next_step_handler(message, process_delete_all_confirmation)  # Ожидание повторного ввода
 
