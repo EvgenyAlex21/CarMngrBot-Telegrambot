@@ -9013,212 +9013,277 @@ def another_error_request(message):
 
 # (ADMIN 1) -------------------------------------------------"ВХОД ДЛЯ АДМИНА" --------------------------------------------------------
 
-# (ADMIN 1.1) --------------------------------- "ОБЪЯВЛЕНИЕ ЛОГИНА И ПАРОЛЯ АДМИН-ПАНЕЛИ" --------------------------------------------- 
 ADMIN_USERNAME = "Alex"
 ADMIN_PASSWORD = "lox"
 
 admin_sessions = set()
-active_users = {}
-total_users = set()
 
 ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
-ADMINS_DATA_PATH = 'data base/admin/admins.json'
-USER_DATA_PATH = 'data base/admin/users.json'
-INACTIVE_TIME = timedelta(minutes=5)
 
-# Функция загрузки и сохранения сессий администраторов
-def load_admin_sessions():
+# Функции для работы с единой базой данных
+# В функции load_admin_data добавляем загрузку удалённых админов
+def load_admin_data():
     if os.path.exists(ADMIN_SESSIONS_PATH):
-        with open(ADMIN_SESSIONS_PATH, 'r') as file:
-            return set(json.load(file))
-    return set()
+        with open(ADMIN_SESSIONS_PATH, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            return {
+                "admin_sessions": set(data.get("admin_sessions", [])),
+                "admins_data": data.get("admins_data", {}),
+                "removed_admins": set(data.get("removed_admins", [])),
+                "login_password_hash": data.get("login_password_hash", "")
+            }
+    return {
+        "admin_sessions": set(),
+        "admins_data": {},
+        "removed_admins": set(),
+        "login_password_hash": ""
+    }
 
-def save_admin_sessions():
-    with open(ADMIN_SESSIONS_PATH, 'w') as file:
-        json.dump(list(admin_sessions), file)
+def save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins=None):
+    with open(ADMIN_SESSIONS_PATH, 'w', encoding='utf-8') as file:
+        json.dump({
+            "admin_sessions": list(admin_sessions),
+            "admins_data": admins_data,
+            "removed_admins": list(removed_admins or set()),
+            "login_password_hash": login_password_hash
+        }, file, ensure_ascii=False, indent=4)
 
-admin_sessions = load_admin_sessions()
+# Загрузка данных из единой базы
+data = load_admin_data()
+admin_sessions = data["admin_sessions"]
+admins_data = data["admins_data"]
+login_password_hash = data["login_password_hash"]
 
-# Функции для хеша логина и пароля
+login_password_hash = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
+
+# Функция для получения хеша
 def get_login_password_hash():
     return hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
 
-def save_login_password_hash():
-    path = 'data base/admin/login_password_hash.json'
-    with open(path, 'w') as file:
-        json.dump({"hash": get_login_password_hash()}, file)
+# Функция для обновления данных входа
+def update_login_password(new_username=None, new_password=None):
+    global ADMIN_USERNAME, ADMIN_PASSWORD, login_password_hash
+    
+    # Обновляем логин, если он изменился
+    if new_username:
+        ADMIN_USERNAME = new_username
+    
+    # Обновляем пароль, если он изменился
+    if new_password:
+        ADMIN_PASSWORD = new_password
+    
+    # Пересчитываем хеш с актуальными данными
+    login_password_hash = get_login_password_hash()
 
-def load_saved_login_password_hash():
-    path = 'data base/admin/login_password_hash.json'
-    if os.path.exists(path):
-        with open(path, 'r') as file:
-            return json.load(file).get("hash")
-    return None
+    # Выводим обновлённые данные (для проверки)
+    print(f"Новый логин: {ADMIN_USERNAME}, Новый пароль: {ADMIN_PASSWORD}, Новый хеш: {login_password_hash}")
 
-# Проверка хеша при старте
-saved_hash = load_saved_login_password_hash()
-current_hash = get_login_password_hash()
-if saved_hash != current_hash:
-    admin_sessions.clear()
-    save_admin_sessions()
-    save_login_password_hash()
+def verify_login_password_hash():
+    global admin_sessions, login_password_hash
+    current_hash = get_login_password_hash()
+    if current_hash != login_password_hash:
+        admin_sessions.clear()
+        save_admin_data(admin_sessions, admins_data, current_hash)
+    else:
+        login_password_hash = current_hash
+
+verify_login_password_hash()
 
 # Функция изменения логина и пароля
-def change_admin_credentials(new_username, new_password):
-    global ADMIN_USERNAME, ADMIN_PASSWORD
-    ADMIN_USERNAME = new_username
-    ADMIN_PASSWORD = new_password
-    save_login_password_hash()  # Перезаписываем хеш
+def change_admin_credentials(new_username=None, new_password=None):
+    global ADMIN_USERNAME, ADMIN_PASSWORD, login_password_hash
+    
+    # Меняем логин, если это требуется
+    if new_username:
+        ADMIN_USERNAME = new_username
+    
+    # Меняем пароль, если это требуется
+    if new_password:
+        ADMIN_PASSWORD = new_password
+    
+    # Генерация хеша с актуальными данными логина и пароля
+    login_password_hash = get_login_password_hash()
+    
+    # Обновляем данные в базе
+    save_admin_data(admin_sessions, admins_data, login_password_hash)
 
-# Функции для управления администраторами
-def load_admins():
-    if os.path.exists(ADMINS_DATA_PATH):
-        with open(ADMINS_DATA_PATH, 'r', encoding='utf-8') as file:
-            # Предполагаем, что ID администраторов хранятся как строки
-            return {str(k): v for k, v in json.load(file).items()}
-    return {}
-
-def save_admins(admins_data):
-    with open(ADMINS_DATA_PATH, 'w', encoding='utf-8') as file:
-        # Сохраняем ID как строки
-        json.dump({str(k): v for k, v in admins_data.items()}, file, ensure_ascii=False, indent=4)
-
+# Функции управления администраторами. Добавление администратора
 def add_admin(admin_id, username, permissions):
-    admins = load_admins()
-    if admin_id not in admins:
-        admins[admin_id] = {"username": username, "permissions": permissions}
-        admin_sessions.add(admin_id)  # Добавляем ID нового админа в сессии
-        save_admin_sessions()           # Сохраняем сессии администраторов
-        save_admins(admins)
-        bot.send_message(admin_id, "Вы стали администратором!")
-    else:
-        bot.send_message(admin_id, "Вы уже являетесь администратором.")
+    admin_id = str(admin_id)
+    user_data = {
+        "user_id": admin_id,
+        "first_name": " ",
+        "last_name": " ",
+        "username": username,
+        "phone": " ",
+        "permissions": permissions
+    }
+    admins_data[admin_id] = user_data
+    admin_sessions.add(admin_id)  # Добавляем в текущие сессии
+    save_admin_data(admin_sessions, admins_data, login_password_hash)
+    bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
 
+# Удаление администратора
 def remove_admin(admin_id):
-    admins = load_admins()
-    if admin_id in admins:
-        del admins[admin_id]
-        save_admins(admins)
-
-        # Удаляем admin_id из admin_sessions
-        if admin_id in admin_sessions:
-            admin_sessions.remove(admin_id)  # Удаляем ID из сессий
-            save_admin_sessions()              # Сохраняем изменения в файле
+    admin_id = str(admin_id)
+    if admin_id in admins_data:
+        # Добавляем в список удалённых администраторов
+        removed_admins.add(admin_id)
+        
+        # Удаляем данные администратора
+        del admins_data[admin_id]
+        admin_sessions.discard(admin_id)
+        
+        # Сохраняем изменения
+        save_admin_data(admin_sessions, admins_data, login_password_hash)
         bot.send_message(admin_id, "Вас удалили из администраторов.")
     else:
         bot.send_message(admin_id, "Администратор с таким ID не найден.")
 
 def check_permission(admin_id, permission):
-    admins = load_admins()
-    return permission in admins.get(admin_id, {}).get("permissions", [])
+    return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
+
+# Функция для получения данных о пользователе Telegram
+def get_user_data(message):
+    user = message.from_user
+    return {
+        "user_id": user.id,
+        "first_name": user.first_name if user.first_name else " ",
+        "last_name": user.last_name if user.last_name else " ",
+        "username": f"@{user.username}" if user.username else " ",
+        "phone": user.phone_number if hasattr(user, 'phone_number') else " "
+    }
+
+# Функция обновления данных администратора в базе
+def update_admin_data(user_data):
+    admin_id = str(user_data["user_id"])
+    
+    # Проверяем, не находится ли администратор в списке удалённых
+    if admin_id in removed_admins:
+        print(f"Пользователь с ID {admin_id} был ранее удалён и не может быть добавлен обратно.")
+        return
+    
+    if admin_id in admins_data:
+        existing_data = admins_data[admin_id]
+        # Обновляем только если данные изменились
+        if (existing_data.get("first_name") != user_data["first_name"] or
+            existing_data.get("last_name") != user_data["last_name"] or
+            existing_data.get("username") != user_data["username"] or
+            existing_data.get("phone") != user_data["phone"]):
+            admins_data[admin_id].update(user_data)
+            save_admin_data(admin_sessions, admins_data, login_password_hash)
+    else:
+        # Если пользователя нет в базе и он не удалён, добавляем его
+        admins_data[admin_id] = user_data
+        save_admin_data(admin_sessions, admins_data, login_password_hash)
 
 # Обработчик входа в админ-панель
 @bot.message_handler(commands=['admin'])
 def handle_admin_login(message):
-    if message.chat.id in admin_sessions:  # Проверка наличия в сессиях
+    user_data = get_user_data(message)
+    
+    # Проверяем, есть ли пользователь в сессиях
+    if str(user_data["user_id"]) in admin_sessions:  # Если сессия активна
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add('Быстрый вход', 'Ввести логин и пароль заново')
-        bot.send_message(message.chat.id, "Выберите способ входа:", reply_markup=markup)
+        markup.add('Быстрый вход')
+        markup.add('Ввести логин и пароль заново')
+        markup.add('В главное меню')
+        bot.send_message(
+            user_data["user_id"], 
+            "Выберите способ входа:", 
+            reply_markup=markup
+        )
         bot.register_next_step_handler(message, process_login_choice)
     else:
-        bot.send_message(message.chat.id, "Введите логин:")
+        # Предлагаем авторизоваться заново
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_main = types.KeyboardButton("В главное меню")
+        markup.add(item_main)
+        bot.send_message(message.chat.id, "Введите логин:", reply_markup=markup)
         bot.register_next_step_handler(message, verify_username)
 
 def process_login_choice(message):
-    if message.text == 'Быстрый вход' and message.chat.id in admin_sessions:
-        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
-        show_admin_panel(message)
-    else:
+    user_id = str(message.chat.id)
+    
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    if message.text == "Быстрый вход":
+        if user_id in admin_sessions:
+            session_data = admins_data.get(user_id, {})
+            bot.send_message(message.chat.id, f"Добро пожаловать в админ-панель, {session_data.get('username', 'Админ')}!")
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Сессия недействительна. Пожалуйста, авторизуйтесь заново.")
+            handle_admin_login(message)
+    elif message.text == "Ввести логин и пароль заново":
         bot.send_message(message.chat.id, "Введите логин:")
         bot.register_next_step_handler(message, verify_username)
+    else:
+        bot.send_message(message.chat.id, "Неверный выбор. Попробуйте снова.")
+        handle_admin_login(message)
 
 def verify_username(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
     username = message.text
-    bot.send_message(message.chat.id, "Введите пароль:")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_main = types.KeyboardButton("В главное меню")
+    markup.add(item_main)
+    bot.send_message(message.chat.id, "Введите пароль:", reply_markup=markup)
     bot.register_next_step_handler(message, verify_password, username)
 
 def verify_password(message, username):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
     password = message.text
+    admin_id = str(message.chat.id)
+    
+    # Проверяем, удалён ли администратор
+    if admin_id in removed_admins:
+        bot.send_message(message.chat.id, "Ваш доступ был отключён. Обратитесь к корневому администратору.")
+        return
+
+    # Проверяем общий логин/пароль
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        admin_sessions.add(message.chat.id)
-        save_admin_sessions()
+        # Добавляем админа в активные сессии
+        admin_sessions.add(admin_id)
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+        
+        # Обновляем данные администратора в базе
+        user_data = get_user_data(message)
+        update_admin_data(user_data)
+        
+        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
+        show_admin_panel(message)
+        return
+    
+    # Проверяем индивидуальный хеш
+    admin_hash = admins_data.get(admin_id, {}).get("login_password_hash_for_user_id", "")
+    if generate_login_password_hash(username, password) == admin_hash:
+        # Добавляем админа в активные сессии
+        admin_sessions.add(admin_id)
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+        
+        # Обновляем данные администратора в базе
+        user_data = get_user_data(message)
+        update_admin_data(user_data)
+        
         bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
         show_admin_panel(message)
     else:
         bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
         handle_admin_login(message)
 
-# Обработчик для кнопки "Настройка"
-@bot.message_handler(func=lambda message: message.text == 'Админ')
-def show_settings_menu(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add(
-        'Смена данных входа',
-        'Добавить админа',
-        'Удалить админа',
-        'В меню админ-панели'
-    )
-    bot.send_message(message.chat.id, "Выберите настройку:", reply_markup=markup)
-
-
-# Обработчики смены логина и пароля
-@bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and message.chat.id in admin_sessions)
-def change_credentials(message):
-    if message.chat.id in admin_sessions:
-        bot.send_message(message.chat.id, "Введите новый логин:")
-        bot.register_next_step_handler(message, process_new_username)
-    else:
-        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
-
-def process_new_username(message):
-    new_username = message.text
-    bot.send_message(message.chat.id, "Введите новый пароль:")
-    bot.register_next_step_handler(message, process_new_password, new_username)
-
-def process_new_password(message, new_username):
-    new_password = message.text
-    change_admin_credentials(new_username, new_password)
-    bot.send_message(message.chat.id, "Логин и пароль успешно обновлены.")  # Теперь message.chat.id доступно здесь
-
-# Добавление и удаление администраторов
-@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and message.chat.id in admin_sessions)
-def handle_add_admin(message):
-    if message.chat.id in admin_sessions:
-        bot.send_message(message.chat.id, "Введите ID нового администратора:")
-        bot.register_next_step_handler(message, process_new_admin_id)
-    else:
-        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
-
-def process_new_admin_id(message):
-    admin_id = message.text
-    bot.send_message(message.chat.id, "Введите username нового администратора:")
-    bot.register_next_step_handler(message, process_new_admin_username, admin_id)
-
-def process_new_admin_username(message, admin_id):
-    username = message.text
-    add_admin(admin_id, username, permissions=["view_stats", "manage_users"])
-    bot.send_message(message.chat.id, f"Администратор {username} добавлен.")
-
-@bot.message_handler(func=lambda message: message.text == 'Удалить админа' and message.chat.id in admin_sessions)
-def handle_remove_admin(message):
-    if message.chat.id in admin_sessions:
-        bot.send_message(message.chat.id, "Введите ID администратора для удаления:")
-        bot.register_next_step_handler(message, process_remove_admin_id)
-    else:
-        bot.send_message(message.chat.id, "Недостаточно прав для выполнения команды.")
-
-def process_remove_admin_id(message):
-    admin_id = int(message.text)  # Преобразуйте текст в целое число
-    remove_admin(admin_id)
-
-
-# Пример использования прав
-@bot.message_handler(commands=['some_command'])
-def some_command(message):
-    if check_permission(message.chat.id, "some_permission"):
-        bot.send_message(message.chat.id, "Команда выполнена.")
-    else:
-        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
+# Функция выхода из админ-панели
+@bot.message_handler(func=lambda message: message.text == 'Выход' and str(message.chat.id) in admin_sessions)
+def admin_logout(message):
+    # Админ-сессия сохраняется, просто информируем о выходе
+    bot.send_message(message.chat.id, "Вы вышли из админ-панели. Быстрый вход сохранен.")
+    return_to_menu(message)
 
 # (ADMIN 2) ---------------------------------------------- "МЕНЮ ДЛЯ АДМИН-ПАНЕЛИ" ------------------------------------------------
 
@@ -9243,6 +9308,189 @@ def show_admin_panel(message):
 @bot.message_handler(func=lambda message: message.text == 'В меню админ-панели')
 def handle_return_to_admin_panel(message):
     show_admin_panel(message)
+
+
+# (ADMIN 3) --------------------------------- " ФУНКЦИЯ "АДМИН" " --------------------------------------------- 
+
+# Обработчик для кнопки "Настройка"
+@bot.message_handler(func=lambda message: message.text == 'Админ')
+def show_settings_menu(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(
+        'Смена данных входа',
+        'Добавить админа',
+        'Удалить админа',
+        'В меню админ-панели'
+    )
+    bot.send_message(message.chat.id, "Выберите настройку:", reply_markup=markup)
+
+
+# Функция для генерации хеша логина и пароля
+def generate_login_password_hash(username, password):
+    return hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
+
+# Функция для изменения данных входа для конкретного admin_id
+def update_admin_login_credentials(admin_id, new_username=None, new_password=None):
+    admin_id = str(admin_id)
+    if admin_id not in admins_data:
+        bot.send_message(admin_id, "Администратор не найден.")
+        return
+    
+    # Получаем текущие данные
+    current_username = ADMIN_USERNAME if new_username is None else new_username
+    current_password = ADMIN_PASSWORD if new_password is None else new_password
+
+    # Генерируем новый хеш
+    new_hash = generate_login_password_hash(current_username, current_password)
+
+    # Обновляем данные в базе
+    admins_data[admin_id]["login_password_hash_for_user_id"] = new_hash
+    save_admin_data(admin_sessions, admins_data, login_password_hash)
+    bot.send_message(admin_id, "Данные входа обновлены.")
+
+# Обработчики смены логина и пароля
+@bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and str(message.chat.id) in admin_sessions)
+def handle_change_credentials(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(
+        'Сменить логин',
+        'Сменить пароль',
+        'Сменить логин и пароль',
+        'Назад'
+    )
+    bot.send_message(message.chat.id, "Выберите, что хотите изменить:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == 'Сменить логин')
+def handle_change_login(message):
+    bot.send_message(message.chat.id, "Введите новый логин:")
+    bot.register_next_step_handler(message, process_new_login)
+
+def process_new_login(message):
+    new_login = message.text
+    update_admin_login_credentials(message.chat.id, new_username=new_login)
+
+@bot.message_handler(func=lambda message: message.text == 'Сменить пароль')
+def handle_change_password(message):
+    bot.send_message(message.chat.id, "Введите новый пароль:")
+    bot.register_next_step_handler(message, process_new_password)
+
+def process_new_password(message):
+    new_password = message.text
+    update_admin_login_credentials(message.chat.id, new_password=new_password)
+
+@bot.message_handler(func=lambda message: message.text == 'Сменить логин и пароль')
+def handle_change_login_and_password(message):
+    bot.send_message(message.chat.id, "Введите новый логин:")
+    bot.register_next_step_handler(message, process_new_login_and_password_step1)
+
+def process_new_login_and_password_step1(message):
+    new_login = message.text
+    bot.send_message(message.chat.id, "Введите новый пароль:")
+    bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
+
+def process_new_login_and_password_step2(message, new_login):
+    new_password = message.text
+    update_admin_login_credentials(message.chat.id, new_username=new_login, new_password=new_password)
+
+
+# Добавление и удаление администраторов
+@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and str(message.chat.id) in admin_sessions)
+def handle_add_admin(message):
+    # Проверяем, является ли текущий пользователь корневым администратором
+    root_admin_id = list(admins_data.keys())[0]  # Первый ID в списке `admins_data`
+    if str(message.chat.id) != root_admin_id:
+        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может добавлять администраторов.")
+        return
+
+    bot.send_message(message.chat.id, "Введите ID нового администратора:")
+    bot.register_next_step_handler(message, process_new_admin_id, root_admin_id)
+
+def process_new_admin_id(message, root_admin_id):
+    admin_id = message.text.strip()
+    if not admin_id.isdigit():
+        bot.send_message(message.chat.id, "ID администратора должен быть числом. Попробуйте снова.")
+        return
+    
+    admin_id = int(admin_id)
+    bot.send_message(message.chat.id, "Введите username нового администратора:")
+    bot.register_next_step_handler(message, process_new_admin_username, admin_id, root_admin_id)
+
+def process_new_admin_username(message, admin_id, root_admin_id):
+    username = message.text.strip()
+
+    # Проверяем, существует ли администратор с таким ID
+    if str(admin_id) in admins_data:
+        bot.send_message(message.chat.id, "Администратор с таким ID уже существует. Добавление отменено.")
+        return
+
+    # Добавляем администратора
+    add_admin(admin_id, username, permissions=["view_stats", "manage_users"])
+    bot.send_message(message.chat.id, f"Администратор {username} с ID {admin_id} успешно добавлен.")
+
+# Добавляем список для хранения удалённых администраторов
+removed_admins = set()
+
+data = load_admin_data()
+admin_sessions = data["admin_sessions"]
+admins_data = data["admins_data"]
+removed_admins = data["removed_admins"]  # Загружаем список удалённых админов
+login_password_hash = data["login_password_hash"]
+
+@bot.message_handler(func=lambda message: message.text == 'Удалить админа' and str(message.chat.id) in admin_sessions)
+def handle_remove_admin(message):
+    # Проверяем, является ли текущий пользователь корневым администратором
+    root_admin_id = list(admins_data.keys())[0]  # Первый ID в списке `admins_data`
+    if str(message.chat.id) != root_admin_id:
+        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может удалять администраторов.")
+        return
+
+    bot.send_message(message.chat.id, "Введите ID или username администратора для удаления:")
+    bot.register_next_step_handler(message, process_remove_admin, root_admin_id)
+
+def process_remove_admin(message, root_admin_id):
+    input_data = message.text.strip()
+
+    # Проверяем, вводится ли ID
+    if input_data.isdigit():
+        admin_id = input_data
+    else:
+        # Проверяем, вводится ли username
+        admin_id = next(
+            (admin_id for admin_id, data in admins_data.items() if data.get("username") == input_data),
+            None
+        )
+        if not admin_id:
+            bot.send_message(message.chat.id, "Администратор с таким username не найден. Попробуйте снова.")
+            return
+    
+    # Проверка: нельзя удалить самого себя
+    if str(message.chat.id) == admin_id:
+        bot.send_message(message.chat.id, "Невозможно удалить самого себя!")
+        return
+
+    # Проверка: нельзя удалить корневого администратора
+    if admin_id == root_admin_id:
+        bot.send_message(message.chat.id, "Невозможно удалить корневого администратора!")
+        return
+
+    if admin_id in admins_data:
+        # Удаляем администратора из базы данных
+        del admins_data[admin_id]
+        admin_sessions.discard(admin_id)
+        removed_admins.add(admin_id)  # Добавляем в список удалённых
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+        bot.send_message(message.chat.id, f"Администратор {input_data} успешно удалён.")
+    else:
+        bot.send_message(message.chat.id, "Администратор с таким ID или username не найден.")
+
+# Пример использования прав
+@bot.message_handler(commands=['some_command'])
+def some_command(message):
+    if check_permission(message.chat.id, "some_permission"):
+        bot.send_message(message.chat.id, "Команда выполнена.")
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
+
 
 # (ADMIN 3) ------------------------------------------ "БАН ПОЛЬЗОВАТЕЛЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -9405,6 +9653,13 @@ def unblock_user_by_username(message):
     show_admin_panel(message)
 
 # (ADMIN 4) ------------------------------------------ "СТАТИСТИКА ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
+
+active_users = {}
+total_users = set()
+
+USER_DATA_PATH = 'data base/admin/users.json'
+INACTIVE_TIME = timedelta(minutes=5)
+
 
 USER_DATA_PATH = 'data base/admin/users.json'
 function_usage = {'Статистика': 0, 'Отзывы': 0, 'Просмотр файлов БД': 0, 'Просмотр всех файлов': 0}
