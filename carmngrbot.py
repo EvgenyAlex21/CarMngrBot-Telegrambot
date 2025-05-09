@@ -2434,7 +2434,7 @@ def delete_expenses_menu(message):
         item_cancel = types.KeyboardButton("Отмена")
         markup.add(item_add_transport, item_cancel)
         bot.send_message(user_id, "У вас нет зарегистрированного транспорта. Хотите добавить транспорт?", reply_markup=markup)
-        bot.register_next_step_handler(message, add_transport)
+        bot.register_next_step_handler(message, handle_add_transport_response)
         return
 
     # Отображение транспорта для удаления
@@ -3056,10 +3056,94 @@ def update_excel_file(user_id):
     workbook.save(excel_file_path)
     workbook.close()
 
+# def update_excel_after_deletion(user_id):
+#     # Путь к файлу Excel пользователя
+#     file_path = f"data base/expense/excel/{user_id}_expenses.xlsx"
+    
+#     # Проверяем, существует ли файл
+#     if not os.path.exists(file_path):
+#         return
+
+#     # Открываем файл Excel
+#     workbook = openpyxl.load_workbook(file_path)
+
+#     # Обновляем общий лист
+#     summary_sheet = workbook["Expenses"]
+    
+#     # Получаем текущие данные о тратах из базы
+#     user_data = load_expense_data(user_id).get(str(user_id), {})
+#     expenses = user_data.get("expenses", [])
+    
+#     # Очищаем общий лист
+#     for row in summary_sheet.iter_rows(min_row=2, max_row=summary_sheet.max_row):
+#         for cell in row:
+#             cell.value = None
+
+#     # Заполняем общий лист оставшимися расходами
+#     for expense in expenses:
+#         transport = expense.get("transport", {})
+#         row = [
+#             f"{transport.get('brand', 'Без названия')} {transport.get('model', 'Без названия')} {transport.get('year', 'Неизвестно')}",
+#             expense.get("category"),
+#             expense.get("name"),
+#             expense.get("date"),
+#             expense.get("amount"),
+#             expense.get("description"),
+#         ]
+#         summary_sheet.append(row)
+
+#     # Проверяем и обновляем индивидуальные листы для каждого уникального транспорта
+#     # Собираем расходы для каждого транспорта в отдельные списки
+#     transport_expenses = {}
+#     for expense in expenses:
+#         transport = expense.get("transport", {})
+#         brand = transport.get('brand', 'Без названия')
+#         model = transport.get('model', 'Без названия')
+#         year = transport.get('year', 'Неизвестно')
+#         sheet_name = f"{brand}_{model}_{year}"
+        
+#         # Добавляем расход в соответствующий список транспорта
+#         if sheet_name not in transport_expenses:
+#             transport_expenses[sheet_name] = []
+#         transport_expenses[sheet_name].append(expense)
+
+#     # Очищаем и перезаписываем листы для каждого транспорта
+#     for sheet_name, expenses_list in transport_expenses.items():
+#         # Если лист для транспорта существует, очищаем его
+#         if sheet_name in workbook.sheetnames:
+#             transport_sheet = workbook[sheet_name]
+#             for row in transport_sheet.iter_rows(min_row=2, max_row=transport_sheet.max_row):
+#                 for cell in row:
+#                     cell.value = None
+#         else:
+#             # Если листа нет, создаем его и добавляем заголовки
+#             transport_sheet = workbook.create_sheet(title=sheet_name)
+#             headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+#             transport_sheet.append(headers)
+        
+#         # Заполняем лист траты для текущего транспорта
+#         for expense in expenses_list:
+#             transport = expense.get("transport", {})
+#             row = [
+#                 f"{transport.get('brand', 'Без названия')} {transport.get('model', 'Без названия')} {transport.get('year', 'Неизвестно')}",
+#                 expense.get("category"),
+#                 expense.get("name"),
+#                 expense.get("date"),
+#                 expense.get("amount"),
+#                 expense.get("description"),
+#             ]
+#             transport_sheet.append(row)
+
+#     workbook.save(file_path)
+#     workbook.close()
 
 # (11) --------------- КОД ДЛЯ "РЕМОНТОВ" ---------------
 
 # (11.1) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "ЗАПИСАТЬ РЕМОНТ") ---------------
+# Системные категории ремонта
+
+valid_months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+
 # Системные категории ремонта
 system_categories = [
     "Без категории", "ТО", "Ремонт", "Запчасть",
@@ -3069,7 +3153,10 @@ system_categories = [
 user_transport = {}  # Это должно быть вашим хранилищем данных о транспорте
 
 # Обработка данных о ремонтах
-def save_repair_data(user_id, user_data):
+def save_repair_data(user_id, user_data, selected_transport=None):
+    # Ваш код сохранения
+    if selected_transport:
+        user_data["selected_transport"] = selected_transport
     # Задаем новый путь к папке и файлу
     folder_path = os.path.join("data base", "repairs")
     if not os.path.exists(folder_path):
@@ -3085,6 +3172,9 @@ def save_repair_data(user_id, user_data):
     if "user_categories" in current_data:
         user_data["user_categories"] = current_data["user_categories"]
 
+    # Добавляем поле selected_transport для данного пользователя
+    user_data["selected_transport"] = selected_transport
+
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(user_data, file, ensure_ascii=False, indent=4)
 
@@ -3095,16 +3185,18 @@ def load_repair_data(user_id):
     
     # Проверка, существует ли файл, перед его открытием
     if not os.path.exists(file_path):
-        return {"user_categories": []}  # Если файла нет, возвращаем пустой словарь с пустым списком категорий
+        return {"user_categories": [], "selected_transport": ""}  # Если файла нет, возвращаем пустой словарь с пустым списком категорий
 
     try:
         with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
             if not isinstance(data, dict):
                 raise ValueError("Данные не являются словарем.")
+            if "selected_transport" not in data:
+                data["selected_transport"] = ""  # Добавляем поле, если его нет
     except (FileNotFoundError, ValueError) as e:
         print("Ошибка загрузки данных:", e)
-        data = {"user_categories": []}  # Обеспечиваем наличие пустого списка категорий
+        data = {"user_categories": [], "selected_transport": ""}  # Обеспечиваем наличие пустого списка категорий
     return data
 
 @bot.message_handler(func=lambda message: message.text == "Записать ремонт")
@@ -3308,9 +3400,20 @@ def get_repair_date(message, selected_category, repair_name, repair_description,
     markup.add(item_main_menu)
 
     bot.send_message(user_id, "Введите сумму ремонта:", reply_markup=markup)
-    bot.register_next_step_handler(message, save_repair_data_final, selected_category, repair_name, repair_description, repair_date, brand, model, year)
+    bot.register_next_step_handler(
+        message, 
+        save_repair_data_final, 
+        selected_category, 
+        repair_name, 
+        repair_description, 
+        repair_date, 
+        brand, 
+        model, 
+        year, 
+        f"{brand} {model} {year}"  # Здесь передаем selected_transport
+    )
 
-def save_repair_data_final(message, selected_category, repair_name, repair_description, repair_date, brand, model, year):
+def save_repair_data_final(message, selected_category, repair_name, repair_description, repair_date, brand, model, year, selected_transport):
     user_id = message.from_user.id
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
@@ -3321,7 +3424,10 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
         return
 
     try:
+        # Преобразуем введённую сумму в число с плавающей точкой
         repair_amount = float(message.text)
+
+        # Получаем данные о ремонте
         repair_data = {
             "category": selected_category,
             "name": repair_name,
@@ -3335,21 +3441,41 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
             }
         }
 
-        save_repair_data(user_id, repair_data)
-        
-        # Сохраняем данные ремонта в Excel
-        save_repair_to_excel(user_id, repair_data)
+        # Загружаем данные о ремонтах пользователя
+        data = load_repair_data(user_id)
+        if str(user_id) not in data:
+            data[str(user_id)] = {"repairs": []}
 
+        # Добавляем новый ремонт
+        selected_transport = f"{brand} {model} {year}"
+        repairs = data[str(user_id)].get("repairs", [])
+        repairs.append(repair_data)
+        data[str(user_id)]["repairs"] = repairs
+
+        # Сохраняем данные о ремонте в базу и в Excel
+        save_repair_data(user_id, data, selected_transport)  # Передаем selected_transport
+        save_repair_to_excel(user_id, repair_data)  # Сохранение в Excel
         bot.send_message(user_id, "Ремонт успешно записан.")
         send_menu(user_id)
 
     except ValueError:
         bot.send_message(user_id, "Пожалуйста, введите корректную сумму.")
-        bot.register_next_step_handler(message, save_repair_data_final, selected_category, repair_name, repair_description, repair_date, brand, model, year)
+        bot.register_next_step_handler(
+            message,
+            save_repair_data_final,
+            selected_category,
+            repair_name,
+            repair_description,
+            repair_date,
+            brand,
+            model,
+            year,
+            selected_transport   # Убрали selected_transport здесь
+        )
 
 
 def save_repair_to_excel(user_id, repair_data):
-    # Путь к Excel-файлу пользователя для ремонтов
+    # Путь к Excel-файлу пользователя для ремонта
     excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
 
     # Проверяем, существует ли директория
@@ -3408,7 +3534,8 @@ def save_repair_to_excel(user_id, repair_data):
         # Сохраняем рабочую книгу
         workbook.save(excel_path)
     except Exception as e:
-        print(f"Ошибка при сохранении данных ремонта в Excel: {e}")
+        print(f"Ошибка при сохранении данных в Excel: {e}")
+
 
 def add_new_repair_category(message, brand, model, year):
     user_id = message.from_user.id
@@ -3577,11 +3704,12 @@ def handle_transport_selection_for_repairs(message):
     bot.send_message(user_id, f"Показываю ремонты для транспорта: {selected_transport}")
     send_repair_menu(user_id)
 
+
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты в EXCEL")
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
-    # Путь к Excel файлу для ремонтов
+    # Путь к Excel файлу
     excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
 
     # Проверяем наличие файла
@@ -3592,7 +3720,6 @@ def send_repairs_excel(message):
     # Отправка файла пользователю
     with open(excel_path, 'rb') as excel_file:
         bot.send_document(user_id, excel_file)
-
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
 def view_repairs_by_category(message):
@@ -3865,12 +3992,14 @@ def view_all_repairs(message):
 
 valid_months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
 
-def save_selected_transport(user_id, selected_transport):
+selected_repair_transports = {}
+
+def save_selected_repair_transport(user_id, selected_transport):
     user_data = load_repair_data(user_id).get(str(user_id), {})
     user_data["selected_transport"] = selected_transport
     save_repair_data(user_id, {str(user_id): user_data})
 
-# Удаление ремонтов
+
 @bot.message_handler(func=lambda message: message.text == "Удалить ремонты")
 def delete_repairs_menu(message):
     user_id = message.from_user.id
@@ -3882,10 +4011,10 @@ def delete_repairs_menu(message):
         item_cancel = types.KeyboardButton("Отмена")
         markup.add(item_add_transport, item_cancel)
         bot.send_message(user_id, "У вас нет зарегистрированного транспорта. Хотите добавить транспорт?", reply_markup=markup)
-        bot.register_next_step_handler(message, add_transport)
+        bot.register_next_step_handler(message, handle_add_transport_response)
         return
 
-    # Отображение транспорта для удаления
+    # Отображение доступного транспорта для удаления ремонтов
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for transport in transport_data:
         brand = transport.get("brand", "Без названия")
@@ -3898,28 +4027,24 @@ def delete_repairs_menu(message):
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
     bot.send_message(user_id, "Выберите транспорт для удаления ремонтов:", reply_markup=markup)
-    bot.register_next_step_handler(message, handle_transport_selection_for_deletion_repairs)
+    bot.register_next_step_handler(message, handle_repair_transport_selection_for_deletion)
 
-def handle_transport_selection_for_deletion_repairs(message):
+def handle_repair_transport_selection_for_deletion(message):
     user_id = message.from_user.id
-    selected_transport = message.text
+    selected_transport = message.text.strip()
 
-    # Сохраняем выбранный транспорт
-    save_selected_transport(user_id, selected_transport)
-
-    if selected_transport == "Del ремонты (категория)":
-        delete_repairs_by_category(message)
-        return
+    # Сохранение выбранного транспорта
+    selected_repair_transports[user_id] = selected_transport
+    save_selected_repair_transport(user_id, selected_transport)
 
     if selected_transport == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
         return
-
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
 
-    # Запрос на удаление ремонтов
+    # Запрос на удаление ремонтных записей
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_month = types.KeyboardButton("Del ремонты (месяц)")
     item_year = types.KeyboardButton("Del ремонты (год)")
@@ -3927,33 +4052,34 @@ def handle_transport_selection_for_deletion_repairs(message):
     item_del_category_rep = types.KeyboardButton("Del ремонты (категория)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-
+    
     markup.add(item_month, item_year, item_all_time, item_del_category_rep)
     markup.add(item_return, item_main_menu)
     bot.send_message(user_id, "Выберите вариант удаления ремонтов:", reply_markup=markup)
 
-# Новый обработчик для удаления по категории
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (категория)")
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
+    selected_transport = selected_repair_transports.get(user_id)
 
-    user_data = load_repair_data(user_id).get(str(user_id), {})
-    selected_transport = user_data.get("selected_transport")
-
-    if not selected_transport:
+    if selected_transport is None:
         bot.send_message(user_id, "Не выбран транспорт. Вернитесь в меню.")
         send_menu(user_id)
         return
 
-    # Получаем марку, модель и год из выбранного транспорта
     transport_info = selected_transport.split(" ")
-    selected_brand = transport_info[0]  # Марка
-    selected_model = transport_info[1]  # Модель
-    selected_year = transport_info[2]    # Год
+    if len(transport_info) < 3:
+        bot.send_message(user_id, "Ошибка с данными транспорта. Попробуйте снова.")
+        send_menu(user_id)
+        return
 
-    repairs = user_data.get("repairs", [])
+    selected_brand = transport_info[0]
+    selected_model = transport_info[1]
+    selected_year = transport_info[2]
+
+    repairs = load_repair_data(user_id).get(str(user_id), {}).get("repairs", [])
     
-    # Фильтруем ремонты по выбранному транспорту
+    # Получаем уникальные категории для удаления
     categories = list(set(repair.get("category") for repair in repairs 
                           if (repair.get("transport", {}).get("brand") == selected_brand and
                               repair.get("transport", {}).get("model") == selected_model and
@@ -3973,11 +4099,11 @@ def delete_repairs_by_category(message):
     markup.add(item_return, item_main_menu)
     
     bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
-    bot.register_next_step_handler(message, handle_category_selection_repairs)
+    bot.register_next_step_handler(message, handle_repair_category_selection)
 
-def handle_category_selection_repairs(message):
+def handle_repair_category_selection(message):
     user_id = message.from_user.id
-    selected_category = message.text
+    selected_category = message.text.strip()
 
     if selected_category == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
@@ -3985,10 +4111,19 @@ def handle_category_selection_repairs(message):
 
     user_data = load_repair_data(user_id).get(str(user_id), {})
     repairs = user_data.get("repairs", [])
-    
-    # Получаем выбранный транспорт
-    selected_transport = user_data.get("selected_transport")
+    selected_transport = selected_repair_transports.get(user_id)
+
+    if selected_transport is None:
+        bot.send_message(user_id, "Не выбран транспорт. Вернитесь в меню.")
+        send_menu(user_id)
+        return
+
     transport_info = selected_transport.split(" ")
+    if len(transport_info) < 3:
+        bot.send_message(user_id, "Ошибка с данными транспорта. Попробуйте снова.")
+        send_menu(user_id)
+        return
+
     selected_brand = transport_info[0]
     selected_model = transport_info[1]
     selected_year = transport_info[2]
@@ -4004,7 +4139,7 @@ def handle_category_selection_repairs(message):
         send_menu(user_id)
         return
 
-    # Отображение ремонтов для удаления в более удобном формате
+    # Отображение ремонтов для удаления
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
     keyboard.add(types.KeyboardButton("В главное меню"))
@@ -4018,16 +4153,8 @@ def handle_category_selection_repairs(message):
 
 def confirm_delete_repair_by_category(message, repairs_to_delete):
     user_id = message.from_user.id
-    selected_option = message.text
-
+    selected_option = message.text.strip()
     user_data = load_repair_data(user_id).get(str(user_id), {})
-    selected_transport = user_data.get("selected_transport")
-
-    # Получаем марку, модель и год из выбранного транспорта
-    transport_info = selected_transport.split(" ")
-    selected_brand = transport_info[0]  # Марка
-    selected_model = transport_info[1]  # Модель
-    selected_year = transport_info[2]    # Год
 
     if selected_option.startswith("Удалить ремонт #"):
         try:
@@ -4036,12 +4163,9 @@ def confirm_delete_repair_by_category(message, repairs_to_delete):
 
             if 0 <= repair_index < len(repairs_to_delete):
                 deleted_repair = repairs_to_delete[repair_index]
-                repairs.remove(deleted_repair)  # Удаляем только ремонт
-                user_data["repairs"] = repairs  # Обновляем список ремонтов
-                save_repair_data(user_id, {str(user_id): user_data})  # Сохраняем изменения
-
-                update_repairs_excel_file(user_id)
-
+                repairs.remove(deleted_repair)  # Удаляем выбранный ремонт
+                user_data["repairs"] = repairs
+                save_repair_data(user_id, {str(user_id): user_data})
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
@@ -4134,9 +4258,6 @@ def confirm_delete_repair_month(message, repairs_to_delete):
                 deleted_repair = repairs.pop(repair_index)
                 user_data["repairs"] = repairs 
                 save_repair_data(user_id, {str(user_id): user_data}) 
-
-                update_repairs_excel_file(user_id)
-
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
@@ -4220,9 +4341,6 @@ def confirm_delete_repair_year(message, repairs_to_delete):
                 deleted_repair = repairs.pop(repair_index)
                 user_data["repairs"] = repairs 
                 save_repair_data(user_id, {str(user_id): user_data}) 
-
-                update_repairs_excel_file(user_id)
-
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
@@ -4288,9 +4406,6 @@ def confirm_delete_all_repairs(message):
             # Сохраняем оставшиеся ремонты
             user_data["repairs"] = repairs_to_keep
             save_repair_data(user_id, {str(user_id): user_data})
-
-            update_repairs_excel_file(user_id)
-
             bot.send_message(user_id, f"Все ремонты для транспорта '{selected_brand} {selected_model} {selected_year}' успешно удалены.")
         else:
             bot.send_message(user_id, "Не удалось найти выбранный транспорт.")
@@ -4299,8 +4414,8 @@ def confirm_delete_all_repairs(message):
 
     send_menu(user_id)
 
-def delete_repair(user_id, deleted_repair):
-    # Загружаем данные о ремонтах пользователя
+def delete_repairs(user_id, deleted_repair):
+    # Удаляем ремонт из базы данных
     user_data = load_repair_data(user_id).get(str(user_id), {})
     repairs = user_data.get("repairs", [])
 
@@ -4327,7 +4442,7 @@ def update_repairs_excel_file(user_id):
     user_data = load_repair_data(user_id).get(str(user_id), {})
     repairs = user_data.get("repairs", [])
 
-    # Путь к Excel файлу пользователя для ремонтов
+    # Путь к Excel файлу пользователя
     excel_file_path = f"data base/repairs/excel/{user_id}_repairs.xlsx"
 
     # Проверяем, существует ли файл
@@ -4348,7 +4463,7 @@ def update_repairs_excel_file(user_id):
         summary_sheet.delete_rows(2, summary_sheet.max_row)
 
     # Добавляем заголовки, если они еще не добавлены
-    if summary_sheet.max_row == 0:
+    if summary_sheet.max_row == 0:  # Если лист пустой
         summary_sheet.append(headers)
         for cell in summary_sheet[1]:
             cell.font = Font(bold=True)
@@ -4537,6 +4652,121 @@ def handle_location(message):
 
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
+
+def delete_repairs(user_id, deleted_repair):
+    # Удаляем ремонт из базы данных
+    user_data = load_repair_data(user_id).get(str(user_id), {})
+    repairs = user_data.get("repairs", [])
+
+    # Удаляем ремонт из списка ремонтов
+    repairs = [repair for repair in repairs if not (
+        repair["transport"]["brand"] == deleted_repair["transport"]["brand"] and
+        repair["transport"]["model"] == deleted_repair["transport"]["model"] and
+        repair["transport"]["year"] == deleted_repair["transport"]["year"] and
+        repair["category"] == deleted_repair["category"] and
+        repair["name"] == deleted_repair["name"] and
+        repair["date"] == deleted_repair["date"] and
+        repair["amount"] == deleted_repair["amount"] and
+        repair["description"] == deleted_repair["description"]
+    )]
+
+    # Обновляем данные пользователя
+    user_data["repairs"] = repairs
+    save_repair_data(user_id, user_data)
+
+    # Обновляем Excel файл
+    update_repairs_excel_file(user_id)
+
+def update_repairs_excel_file(user_id):
+    user_data = load_repair_data(user_id).get(str(user_id), {})
+    repairs = user_data.get("repairs", [])
+
+    # Путь к Excel файлу пользователя
+    excel_file_path = f"data base/repairs/excel/{user_id}_repairs.xlsx"
+
+    # Проверяем, существует ли файл
+    if not os.path.exists(excel_file_path):
+        workbook = openpyxl.Workbook()
+        workbook.remove(workbook.active)
+        workbook.save(excel_file_path)
+
+    # Открываем существующий файл
+    workbook = load_workbook(excel_file_path)
+
+    # Обновление общего листа (Summary)
+    summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
+    headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+
+    # Очистка всех данных на листе Summary (кроме заголовков)
+    if summary_sheet.max_row > 1:
+        summary_sheet.delete_rows(2, summary_sheet.max_row)
+
+    # Добавляем заголовки, если они еще не добавлены
+    if summary_sheet.max_row == 0:  # Если лист пустой
+        summary_sheet.append(headers)
+        for cell in summary_sheet[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+    # Заполняем общий лист новыми данными
+    for repair in repairs:
+        transport = repair["transport"]
+        row_data = [
+            f"{transport['brand']} {transport['model']} {transport['year']}",
+            repair["category"],
+            repair["name"],
+            repair["date"],
+            repair["amount"],
+            repair["description"],
+        ]
+        summary_sheet.append(row_data)
+
+    # Обновление индивидуальных листов для каждого транспорта
+    unique_transports = set((rep["transport"]["brand"], rep["transport"]["model"], rep["transport"]["year"]) for rep in repairs)
+
+    # Удаляем старые листы для уникальных транспортов
+    for sheet_name in workbook.sheetnames:
+        if sheet_name != "Summary" and (sheet_name.split('_')[0], sheet_name.split('_')[1], sheet_name.split('_')[2]) not in unique_transports:
+            del workbook[sheet_name]
+
+    for brand, model, year in unique_transports:
+        sheet_name = f"{brand}_{model}_{year}"
+        if sheet_name not in workbook.sheetnames:
+            transport_sheet = workbook.create_sheet(sheet_name)
+            transport_sheet.append(headers)
+            for cell in transport_sheet[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+        else:
+            transport_sheet = workbook[sheet_name]
+            # Очистка всех данных на листе транспорта, кроме заголовков
+            if transport_sheet.max_row > 1:
+                transport_sheet.delete_rows(2, transport_sheet.max_row)
+
+        # Заполняем ремонты для этого транспорта
+        for repair in repairs:
+            if (repair["transport"]["brand"], repair["transport"]["model"], repair["transport"]["year"]) == (brand, model, year):
+                row_data = [
+                    f"{brand} {model} {year}",
+                    repair["category"],
+                    repair["name"],
+                    repair["date"],
+                    repair["amount"],
+                    repair["description"],
+                ]
+                transport_sheet.append(row_data)
+
+    # Автоподгонка столбцов
+    for sheet in workbook.sheetnames:
+        current_sheet = workbook[sheet]
+        for col in current_sheet.columns:
+            max_length = max(len(str(cell.value)) for cell in col)
+            current_sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+    # Сохраняем изменения
+    workbook.save(excel_file_path)
+    workbook.close()
+
 
 # (13) --------------- КОД ДЛЯ "ПОИСКА ТРАНСПОРТА" ---------------
 
