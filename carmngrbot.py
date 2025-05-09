@@ -12344,7 +12344,7 @@ def toggle_notifications_handler(message, show_description=True):
         "📌 *Переключение уведомлений:*\n"
         "Вы можете *включать* или *отключать* уведомления\n\n"
         "📌 *Получение уведомлений:*\n"
-        "Вы получаете *актуальную информацию* в установленное время _(7:30, 13:00, 17:00, 20:00)_\n"
+        "Вы получаете *актуальную информацию* в установленное время _(7:30, 13:00, 17:00)_\n"
     )
 
     if show_description:
@@ -12818,7 +12818,6 @@ def send_weather_notifications():
 schedule.every().day.at("07:30").do(send_weather_notifications)
 schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
-schedule.every().day.at("20:00").do(send_weather_notifications)
 
 def schedule_tasks():
     while True:
@@ -14414,6 +14413,7 @@ def view_others(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_calculators(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -14431,6 +14431,7 @@ def view_calculators(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def return_to_calculators(message):
     view_calculators(message)
@@ -14450,16 +14451,17 @@ def return_to_calculators(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_alc_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
     description = (
-        "ℹ️ *Краткая справка по расчету алкоголя в крови*\n\n\n"
+        "ℹ️ *Краткая справка по расчету алкоголя в крови*\n\n"
         "📌 *Расчет алкоголя:*\n"
-        "Расчет ведется по следующим данным - *пол, вес, что пили, сколько, как быстро выпили, как давно закончили, еда*\n"
-        "_P.S. калькулятор не сможет дать 100% точный результат! Если вы выпили, то НИ в коем случае нельзя садиться за руль после алкоголя в течение суток!!!_"
+        "Расчет ведется по следующим данным - *пол, вес, что пили, сколько, как быстро выпили, как давно закончили, еда*\n\n"
+        "_P.S. калькулятор не сможет дать 100% точный результат! Если вы выпили, то НИ в коем случае нельзя садиться за руль после алкоголя как минимум в течение суток!!!_"
         "\n\n"
         "📌 *Просмотр алкоголя:*\n"
         "Вы можете посмотреть свои расчеты и вспомнить, что вы пили и сколько\n\n"
@@ -14477,13 +14479,11 @@ def view_alc_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действия из алкоголя:", reply_markup=markup)
 
-# ---------- n.n АЛКОГОЛЬ (РАСЧЕТ) ----------
-
 ALKO_JSON_PATH = os.path.join('files', 'alko.json')
-USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'alcohol', 'alko_users.json')
+USER_HISTORY_PATH_ALKO = os.path.join('data base', 'calculators', 'alcohol', 'alko_users.json')
 
 alko_data = {}
-user_history = {}
+user_history_alko = {}
 user_data = {}
 
 def ensure_path_and_file(file_path):
@@ -14513,29 +14513,32 @@ def load_alko_data():
         alko_data = {}
 
 def load_user_history_alko():
-    global user_history
+    global user_history_alko
     try:
-        if os.path.exists(USER_HISTORY_PATH):
-            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+        if os.path.exists(USER_HISTORY_PATH_ALKO):
+            with open(USER_HISTORY_PATH_ALKO, 'r', encoding='utf-8') as db_file:
+                user_history_alko = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH} не найден! Создание новго...")
-            user_history = {}
+            print(f"Файл {USER_HISTORY_PATH_ALKO} не найден! Создание нового...")
+            user_history_alko = {}
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_alko = {}
 
 def save_user_history_alko():
     try:
-        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+        print(f"Сохранение истории в файл: {USER_HISTORY_PATH_ALKO}")  # Отладка
+        with open(USER_HISTORY_PATH_ALKO, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history_alko, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка при сохранении истории: {e}")
+        print(f"Ошибка при сохранении истории в {USER_HISTORY_PATH_ALKO}: {e}")
 
 ensure_path_and_file(ALKO_JSON_PATH)
-ensure_path_and_file(USER_HISTORY_PATH)
+ensure_path_and_file(USER_HISTORY_PATH_ALKO)
 load_alko_data()
 load_user_history_alko()
+
+# ---------- n.n АЛКОГОЛЬ (РАСЧЕТ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать алкоголь")
 @check_function_state_decorator('Рассчитать алкоголь')
@@ -14547,6 +14550,7 @@ load_user_history_alko()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
@@ -14559,10 +14563,12 @@ def start_alcohol_calculation(message):
     markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
     markup.add("Мужской", "Женский")
     markup.add("Вернуться в алкоголь")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Укажите ваш пол:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_gender)
 
+@text_only_handler
 def process_gender(message):
     user_id = message.from_user.id
     if message.text == "В главное меню":
@@ -14570,6 +14576,9 @@ def process_gender(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14582,19 +14591,22 @@ def process_gender(message):
 
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=False, resize_keyboard=True)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
-        msg = bot.send_message(message.chat.id, "Укажите ваш вес в киллограммах:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Укажите ваш вес в килограммах:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_weight)
 
     except:
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         markup.add("Мужской", "Женский")
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите пол:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите пол", reply_markup=markup)
         bot.register_next_step_handler(msg, process_gender)
 
+@text_only_handler
 def process_weight(message):
     user_id = message.from_user.id
     if message.text == "В главное меню":
@@ -14602,6 +14614,9 @@ def process_weight(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14613,16 +14628,19 @@ def process_weight(message):
 
         user_data[user_id]['weight'] = weight
 
-        show_drinks_menu(message.chat.id)
+        show_drinks_menu(message)  
 
     except:
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=False, resize_keyboard=True)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, укажите ваш вес в килограммах:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, укажите ваш вес в килограммах", reply_markup=markup)
         bot.register_next_step_handler(msg, process_weight)
 
-def show_drinks_menu(chat_id):
+@text_only_handler
+def show_drinks_menu(message):
+    chat_id = message.chat.id  
     if not alko_data.get('drinks'):
         bot.send_message(chat_id, "❌ Данные для расчета не найдены!")
         return
@@ -14635,6 +14653,7 @@ def show_drinks_menu(chat_id):
         markup.row("Готово")
 
     markup.row("Вернуться в алкоголь")
+    markup.add('Вернуться в калькуляторы')
     markup.row("В главное меню")
 
     drinks_buttons = [drink['name'] for drink in alko_data['drinks']]
@@ -14650,6 +14669,7 @@ def show_drinks_menu(chat_id):
     msg = bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_drinks_selection)
 
+@text_only_handler
 def process_drinks_selection(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14659,28 +14679,31 @@ def process_drinks_selection(message):
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     if message.text == "Готово":
         if 'selected_drinks' not in user_data[user_id] or not user_data[user_id]['selected_drinks']:
-            bot.send_message(chat_id, "❌ Вы не выбрали ни одного напитка!\nПожалуйста, выберите хотя бы один:")
+            bot.send_message(chat_id, "❌ Вы не выбрали ни одного напитка!\nПожалуйста, выберите хотя бы один")
             bot.register_next_step_handler(message, process_drinks_selection)
             return
 
-        process_next_drink_volume(chat_id)
+        process_next_drink_volume(message) 
         return
 
     elif message.text == "Убрать последний":
         if 'selected_drinks' in user_data[user_id] and user_data[user_id]['selected_drinks']:
             removed_drink = user_data[user_id]['selected_drinks'].pop()
             bot.send_message(chat_id, f"✅ Удален напиток: *{removed_drink['name'].lower()}*!", parse_mode='Markdown')
-        show_drinks_menu(chat_id)
+        show_drinks_menu(message) 
         return
 
     elif message.text == "Убрать все":
         if 'selected_drinks' in user_data[user_id] and user_data[user_id]['selected_drinks']:
             user_data[user_id]['selected_drinks'] = []
             bot.send_message(chat_id, "✅ Все напитки удалены!")
-        show_drinks_menu(chat_id)
+        show_drinks_menu(message)  
         return
 
     try:
@@ -14697,13 +14720,15 @@ def process_drinks_selection(message):
             user_data[user_id]['selected_drinks'].append(selected_drink)
             bot.send_message(chat_id, f"✅ Добавлен напиток: *{selected_drink['name'].lower()}*!", parse_mode='Markdown')
 
-        show_drinks_menu(chat_id)
+        show_drinks_menu(message) 
 
     except ValueError:
-        bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выбирайте напитки из списка")
+        bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, выбирайте напитки из списка")
         bot.register_next_step_handler(message, process_drinks_selection)
 
-def process_next_drink_volume(chat_id):
+@text_only_handler
+def process_next_drink_volume(message):
+    chat_id = message.chat.id
     user_id = user_data[chat_id]['user_id']
     if 'current_drink_index' not in user_data[user_id]:
         user_data[user_id]['current_drink_index'] = 0
@@ -14711,7 +14736,7 @@ def process_next_drink_volume(chat_id):
 
     current_index = user_data[user_id]['current_drink_index']
     if current_index >= len(user_data[user_id]['selected_drinks']):
-        show_drinking_speed_menu(chat_id)
+        show_drinking_speed_menu(message) 
         return
 
     current_drink = user_data[user_id]['selected_drinks'][current_index]
@@ -14726,12 +14751,14 @@ def process_next_drink_volume(chat_id):
         markup.add(f"{cont['name']} ({cont['volume']} мл)")
 
     markup.add("Вернуться в алкоголь")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
 
     msg = bot.send_message(chat_id, f"Выберите объем для *{current_drink['name'].lower()}*:",
                          reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_volume_selection)
 
+@text_only_handler
 def process_volume_selection(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14740,6 +14767,9 @@ def process_volume_selection(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14758,15 +14788,17 @@ def process_volume_selection(message):
         user_data[user_id]['drinks_volumes'][current_drink['id']] = volume_liters
 
         user_data[user_id]['current_drink_index'] += 1
-        process_next_drink_volume(chat_id)
+        process_next_drink_volume(message)  
 
     except ValueError:
         current_index = user_data[user_id]['current_drink_index']
         current_drink = user_data[user_id]['selected_drinks'][current_index]
-        bot.send_message(chat_id, f"Некорректный ввод! Пожалуйста, выберите объем для *{current_drink['name'].lower()}*:", parse_mode='Markdown')
+        bot.send_message(chat_id, f"Некорректный ввод!\nПожалуйста, выберите объем для *{current_drink['name'].lower()}*", parse_mode='Markdown')
         bot.register_next_step_handler(message, process_volume_selection)
 
-def show_drinking_speed_menu(chat_id):
+@text_only_handler
+def show_drinking_speed_menu(message):
+    chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
     markup.add(alko_data['drinking_speed'][0]['name'])
 
@@ -14775,15 +14807,13 @@ def show_drinking_speed_menu(chat_id):
         markup.row(*speed_buttons[i:i+3])
 
     markup.add("Вернуться в алкоголь")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
 
-    msg = bot.send_message(
-        chat_id,
-        "Как быстро выпили?",
-        reply_markup=markup
-    )
+    msg = bot.send_message(chat_id, "Как быстро выпили?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_drinking_speed)
 
+@text_only_handler
 def process_drinking_speed(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14792,6 +14822,9 @@ def process_drinking_speed(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14808,15 +14841,17 @@ def process_drinking_speed(message):
         time_buttons = [time['name'] for time in alko_data['time_since_last_drink'][1:]]
         markup.row(*time_buttons)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
         msg = bot.send_message(chat_id, "Как давно закончили пить?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_time_since_last_drink)
 
     except ValueError:
-        bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите за какое время выпили")
+        bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, выберите за какое время выпили")
         bot.register_next_step_handler(message, process_drinking_speed)
 
+@text_only_handler
 def process_time_since_last_drink(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14825,6 +14860,9 @@ def process_time_since_last_drink(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14843,6 +14881,7 @@ def process_time_since_last_drink(message):
             food_buttons = [food['name'] for food in alko_data['food']]
             markup.row(*food_buttons)
             markup.add("Вернуться в алкоголь")
+            markup.add('Вернуться в калькуляторы')
             markup.add("В главное меню")
 
             msg = bot.send_message(chat_id, "Что-нибудь ели?", reply_markup=markup)
@@ -14850,6 +14889,7 @@ def process_time_since_last_drink(message):
         else:
             markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
             markup.add("Вернуться в алкоголь")
+            markup.add('Вернуться в калькуляторы')
             markup.add("В главное меню")
 
             time_type = "мин." if time['id'] == 2 else "ч."
@@ -14868,11 +14908,13 @@ def process_time_since_last_drink(message):
         markup.row(*time_buttons)
 
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
-        msg = bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите вариант:", reply_markup=markup)
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, выберите вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_time_since_last_drink)
 
+@text_only_handler
 def process_time_since_value(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14881,6 +14923,9 @@ def process_time_since_value(message):
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -14891,6 +14936,7 @@ def process_time_since_value(message):
         food_buttons = [food['name'] for food in alko_data['food']]
         markup.row(*food_buttons)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
         msg = bot.send_message(chat_id, "Что-нибудь ели?", reply_markup=markup)
@@ -14902,15 +14948,13 @@ def process_time_since_value(message):
 
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
-        msg = bot.send_message(
-            chat_id,
-            f"Некорректный ввод! Укажите сколько {time_type} :",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, f"Некорректный ввод!\nУкажите сколько {time_type}", reply_markup=markup)
         bot.register_next_step_handler(msg, process_time_since_value)
 
+@text_only_handler
 def process_food(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -14920,43 +14964,58 @@ def process_food(message):
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     try:
         food_name = message.text.strip()
-        print(f"Введено: '{food_name}'")
-        print(f"Доступные варианты еды: {[f['name'] for f in alko_data['food']]}")
-        
-        food = next((f for f in alko_data['food'] if f['name'].lower().strip() == food_name.lower().strip()), None)
+        food_name_normalized = food_name.lower()
+
+        # Отладка: выводим входной текст и доступные варианты
+        available_foods = [f['name'].lower() for f in alko_data.get('food', [])]
+        print(f"Введено: '{food_name}' (нормализовано: '{food_name_normalized}')")
+        print(f"Доступные варианты еды: {available_foods}")
+
+        food = next((f for f in alko_data['food'] if f['name'].lower() == food_name_normalized), None)
 
         if not food:
-            raise ValueError(f"Еда '{food_name}' не найдена в списке")
+            raise ValueError(f"Еда '{food_name}' не найдена в списке. Доступные варианты: {available_foods}")
 
-        print(f"Выбрана еда: {food['name']} (ID: {food['id']})")
+        # Проверяем, существует ли user_data[user_id]
+        if user_id not in user_data:
+            raise ValueError(f"Данные пользователя {user_id} не найдены в user_data")
+
+        # Устанавливаем food в user_data
         user_data[user_id]['food'] = food['id']
 
-        calculate_and_show_result(chat_id)
+        # Отладка: выводим user_data перед вызовом calculate_and_show_result
+        print(f"user_data[{user_id}]: {user_data[user_id]}")
+
+        calculate_and_show_result(message)
 
     except Exception as e:
-        print(f"Ошибка в process_food: {e}")
+        # Логируем полную информацию об ошибке
+        import traceback
+        print(f"Ошибка в process_food для user_id {user_id}: {str(e)}")
+        print(traceback.format_exc())  # Выводим стек вызовов
         markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-        food_buttons = [food['name'] for food in alko_data['food']]
+        food_buttons = [food['name'] for food in alko_data.get('food', [])]
         markup.row(*food_buttons)
         markup.add("Вернуться в алкоголь")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-
-        msg = bot.send_message(chat_id, "Некорректный ввод! Пожалуйста, выберите вариант:", reply_markup=markup)
+        msg = bot.send_message(chat_id, f"Некорректный ввод или ошибка данных!\nПожалуйста, выберите вариант", reply_markup=markup)
         bot.register_next_step_handler(msg, process_food)
 
-def calculate_and_show_result(chat_id):
+@text_only_handler
+def calculate_and_show_result(message):
+    chat_id = message.chat.id
     user_id = user_data[chat_id]['user_id']
     data = user_data[user_id]
 
-    print(f"Данные для расчёта: {data}") 
-
     r = 0.70 if data['gender'] == 'мужской' else 0.60
-
     total_alcohol_grams = 0
-
     for drink in data['selected_drinks']:
         drink_id = drink['id']
         volume_liters = data['drinks_volumes'][drink_id]
@@ -15007,13 +15066,12 @@ def calculate_and_show_result(chat_id):
             f"📌 *Рекомендации:*\n{recommendations}"
         )
     else:
-        result = "📊 *Итоговый расчёт*\n\n✅ Вы уже трезвы или алкоголь еще не поступил в кровь!"
+        result = "📊 *Итоговый расчёт*\n\n✅ Вы уже трезвы или алкоголь ещё не поступил в кровь!"
 
-    print(f"Перед сохранением: chat_id={chat_id}, promille={c}")  
-    save_alcohol_calculation_to_history(chat_id, c)
+    save_alcohol_calculation_to_history(message, c)
     user_data[user_id] = data
     bot.send_message(chat_id, result, parse_mode='Markdown')
-    view_alc_calc(stored_message)
+    view_alc_calc(message, show_description=False)
 
 def get_recommendations(promille, gender):
     if promille <= 0:
@@ -15093,8 +15151,9 @@ def format_timestamp(timestamp):
     dt = datetime.strptime(timestamp, "%d.%m.%Y в %H:%M")
     return dt.strftime("%d.%m.%Y в %H:%M")
 
-def save_alcohol_calculation_to_history(chat_id, promille):
-    user_id = user_data[chat_id]['user_id']
+def save_alcohol_calculation_to_history(message, promille):
+    chat_id = message.chat.id
+    user_id = str(user_data[chat_id]['user_id'])  # Приводим к строке
     username = user_data[chat_id].get('username', 'unknown')
 
     sober_time = datetime.now() + timedelta(hours=promille / 0.15)
@@ -15107,24 +15166,32 @@ def save_alcohol_calculation_to_history(chat_id, promille):
         'drinks': [
             {
                 'name': drink['name'],
-                'volume': user_data[user_id]['drinks_volumes'][drink['id']],
+                'volume': user_data[int(user_id)]['drinks_volumes'][drink['id']],  # Приводим user_id к int для user_data
                 'strength': drink['strength']
-            } for drink in user_data[user_id]['selected_drinks']
+            } for drink in user_data[int(user_id)]['selected_drinks']
         ],
-        'weight': user_data[user_id]['weight'],
-        'gender': user_data[user_id]['gender']
+        'weight': user_data[int(user_id)]['weight'],
+        'gender': user_data[int(user_id)]['gender']
     }
 
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
+    if user_id not in user_history_alko:
+        user_history_alko[user_id] = {
             'username': username,
-            'calculations': []
+            'alcohol_calculations': []
         }
+    elif 'alcohol_calculations' not in user_history_alko[user_id]:
+        user_history_alko[user_id]['alcohol_calculations'] = []
 
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    user_history_alko[user_id]['alcohol_calculations'].append(calculation_data)
+    
+    # Проверка пути
+    if not USER_HISTORY_PATH_ALKO.endswith('alko_users.json'):
+        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_ALKO}")
+        raise ValueError("Попытка сохранить данные алкоголя в неверный файл!")
+    
     save_user_history_alko()
 
-# ---------- n.n АЛКОГОЛЬ (ПРОСМОТР АЛКОГОЛЯ) ----------
+# ---------- ПРОСМОТР АЛКОГОЛЯ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр алкоголя")
 @check_function_state_decorator('Просмотр алкоголя')
@@ -15136,52 +15203,61 @@ def save_alcohol_calculation_to_history(chat_id, promille):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_alcohol(message):
+    user_id = str(message.from_user.id)  # Оставляем строку, так как JSON использует строки
+    print(f"Проверка user_id {user_id} в user_history_alko: {user_id in user_history_alko}")  # Отладка
+    if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов алкоголя!")
+        view_alc_calc(message, show_description=False)
+        return
+    view_alcohol_calculations(message)
+
+@text_only_handler
+def view_alcohol_calculations(message):
+    chat_id = message.chat.id
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
-        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message, show_description=False)  
-        return
-    view_calculations(message.chat.id)
 
-def view_calculations(chat_id):
-    user_id = str(stored_message.from_user.id) if stored_message else str(bot.get_chat_member(chat_id, chat_id).user.id)
-
-    if user_id not in user_history or not user_history[user_id]['calculations']:
-        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(stored_message if stored_message else bot.get_chat(chat_id))
+    if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
+        view_alc_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
-    message_text = "*Список ваших расчетов:*\n\n"
+    calculations = user_history_alko[user_id]['alcohol_calculations']
+    message_text = "*Список ваших расчетов алкоголя:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
         timestamp = calc['timestamp']
         message_text += f"🕒 №{i}. {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_view_selection)
+    bot.register_next_step_handler(msg, process_view_alcohol_selection)
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в алкоголь')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
-def process_view_selection(message):
+@text_only_handler
+def process_view_alcohol_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
     if not calculations:
-        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
         view_alc_calc(message, show_description=False)
         return
 
@@ -15199,13 +15275,10 @@ def process_view_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в алкоголь')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
-            bot.register_next_step_handler(msg, process_view_selection)
+            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
+            bot.register_next_step_handler(msg, process_view_alcohol_selection)
             return
 
         if invalid_indices:
@@ -15233,15 +15306,12 @@ def process_view_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в алкоголь')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Пожалуйста, введите номера расчетов через запятую:",
-            reply_markup=markup
-        )
-        bot.register_next_step_handler(msg, process_view_selection)
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, введите номера расчетов", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_alcohol_selection)
 
-# ---------- n.n АЛКОГОЛЬ (УДАЛЕНИЕ АЛКОГОЛЯ) ----------
+# ---------- УДАЛЕНИЕ АЛКОГОЛЯ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление алкоголя")
 @check_function_state_decorator('Удаление алкоголя')
@@ -15253,52 +15323,61 @@ def process_view_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_alcohol(message):
+    user_id = str(message.from_user.id)  # Оставляем строку
+    print(f"Проверка user_id {user_id} в user_history_alko: {user_id in user_history_alko}")  # Отладка
+    if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов алкоголя!")
+        view_alc_calc(message, show_description=False)
+        return
+    delete_alcohol_calculations(message)
+
+@text_only_handler
+def delete_alcohol_calculations(message):
+    chat_id = message.chat.id
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
-        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(message, show_description=False) 
-        return
-    delete_calculations(message.chat.id)
 
-def delete_calculations(chat_id):
-    user_id = str(stored_message.from_user.id) if stored_message else str(bot.get_chat_member(chat_id, chat_id).user.id)
-
-    if user_id not in user_history or not user_history[user_id]['calculations']:
-        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
-        view_alc_calc(stored_message if stored_message else bot.get_chat(chat_id))
+    if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
+        view_alc_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
-    message_text = "*Список ваших расчетов:*\n\n"
+    calculations = user_history_alko[user_id]['alcohol_calculations']
+    message_text = "*Список ваших расчетов алкоголя:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
         timestamp = calc['timestamp']
         message_text += f"🕒 №{i}. {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.register_next_step_handler(msg, process_delete_selection)
+    bot.register_next_step_handler(msg, process_delete_alcohol_selection)
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в алкоголь')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
-def process_delete_selection(message):
+@text_only_handler
+def process_delete_alcohol_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
     if message.text == "Вернуться в алкоголь":
         view_alc_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
     if not calculations:
-        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов!")
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
         view_alc_calc(message, show_description=False)
         return
 
@@ -15316,20 +15395,17 @@ def process_delete_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в алкоголь')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
-            bot.register_next_step_handler(msg, process_delete_selection)
+            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
+            bot.register_next_step_handler(msg, process_delete_alcohol_selection)
             return
 
         if invalid_indices:
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
-        valid_indices.sort(reverse=True) 
+        valid_indices.sort(reverse=True)
         for index in valid_indices:
             del calculations[index]
 
@@ -15341,13 +15417,10 @@ def process_delete_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в алкоголь')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Пожалуйста, введите номера расчетов через запятую:",
-            reply_markup=markup
-        )
-        bot.register_next_step_handler(msg, process_delete_selection)
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nПожалуйста, введите номера расчетов через запятую:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_delete_alcohol_selection)
 
 # -------------------- РАСТАМОЖКА --------------
 
@@ -15361,15 +15434,16 @@ def process_delete_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_rastamozka_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
     description = (
-        "ℹ️ *Краткая справка по расчету таможенных платежей*\n\n\n"
+        "ℹ️ *Краткая справка по расчету таможенных платежей*\n\n"
         "📌 *Расчет растаможки:*\n"
-        "Расчет ведется по следующим данным - *кто ввозит, возраст авто, тип двигателя, мощность, объем двигателя, стоимость*\n"
+        "Расчет ведется по следующим данным - *кто ввозит, возраст авто, тип двигателя, мощность, объем двигателя, стоимость*\n\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе актуальных ставок. Точные суммы зависят от законодательства и могут отличаться!_\n\n"
         "📌 *Просмотр растаможек:*\n"
         "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
@@ -15388,13 +15462,12 @@ def view_rastamozka_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 RASTAMOZKA_JSON_PATH = os.path.join('files', 'rastamozka.json')
-USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'rastamozka', 'rastamozka_users.json')
+USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data base', 'calculators', 'rastamozka', 'rastamozka_users.json')
 
 rastamozka_data = {}
-user_history = {}
+user_history_raztamozka = {}
 user_data = {}
 
-# Функция для получения актуальных курсов валют из API Центробанка РФ
 def fetch_exchange_rates_cbr():
     url = 'https://www.cbr-xml-daily.ru/daily_json.js'
     try:
@@ -15402,19 +15475,18 @@ def fetch_exchange_rates_cbr():
         data = response.json()
         rates = data['Valute']
         return {
-            'USD': rates['USD']['Value'],  # 1 USD = X RUB
-            'EUR': rates['EUR']['Value'],  # 1 EUR = X RUB
-            'BYN': rates['BYN']['Value'],  # 1 BYN = X RUB
-            'CNY': rates['CNY']['Value'] / 10,  # API дает курс за 10 CNY, делим на 10
-            'JPY': rates['JPY']['Value'] / 100,  # API дает курс за 100 JPY, делим на 100
-            'KRW': rates['KRW']['Value'] / 1000,  # API дает курс за 1000 KRW, делим на 1000
-            'RUB': 1  # Рубль всегда 1
+            'USD': rates['USD']['Value'],  
+            'EUR': rates['EUR']['Value'],  
+            'BYN': rates['BYN']['Value'],  
+            'CNY': rates['CNY']['Value'] / 10,  
+            'JPY': rates['JPY']['Value'] / 100,  
+            'KRW': rates['KRW']['Value'] / 1000, 
+            'RUB': 1 
         }
     except Exception as e:
         print(f"Ошибка при запросе курсов валют ЦБ РФ: {e}")
         return get_default_rates()
 
-# Резервные курсы на случай сбоя API
 def get_default_rates():
     return {
         'USD': 83.6813,
@@ -15443,29 +15515,31 @@ def load_rastamozka_data():
         print(f"Ошибка при загрузке файла rastamozka.json: {e}")
 
 def load_user_history_rastamozka():
-    global user_history
+    global user_history_raztamozka
     try:
-        if os.path.exists(USER_HISTORY_PATH):
-            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+        if os.path.exists(USER_HISTORY_PATH_RASTAMOZKA):
+            with open(USER_HISTORY_PATH_RASTAMOZKA, 'r', encoding='utf-8') as db_file:
+                user_history_raztamozka = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH} не найден! Создание нового...")
-            user_history = {}
+            print(f"Файл {USER_HISTORY_PATH_RASTAMOZKA} не найден! Создание нового...")
+            user_history_raztamozka = {}
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_raztamozka = {}
 
 def save_user_history_rastamozka():
     try:
-        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+        with open(USER_HISTORY_PATH_RASTAMOZKA, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history_raztamozka, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
 ensure_path_and_file(RASTAMOZKA_JSON_PATH)
-ensure_path_and_file(USER_HISTORY_PATH)
+ensure_path_and_file(USER_HISTORY_PATH_RASTAMOZKA)
 load_rastamozka_data()
 load_user_history_rastamozka()
+
+# -------------------- РАСТАМОЖКА (РАСЧИТАТЬ РАСТАМОЖКУ) --------------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать растаможку")
 @check_function_state_decorator('Рассчитать растаможку')
@@ -15477,6 +15551,7 @@ load_user_history_rastamozka()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_customs_calculation(message):
     if not rastamozka_data:
@@ -15493,19 +15568,22 @@ def start_customs_calculation(message):
     markup.add("Физическое лицо (для себя)", "Физическое лицо (для перепродажи)")
     markup.add("Юридическое лицо")
     markup.add("Вернуться в растаможку")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Кто ввозит автомобиль?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_car_importer_step)
 
+@text_only_handler
 def process_car_importer_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15519,24 +15597,27 @@ def process_car_importer_step(message):
         markup.add("До 3 лет", "От 3 до 5 лет")
         markup.add("От 5 до 7 лет", "Более 7 лет")
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         
         msg = bot.send_message(message.chat.id, "Какой возраст у автомобиля?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_age_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
         bot.register_next_step_handler(msg, process_car_importer_step)
 
+@text_only_handler
 def process_car_age_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15550,26 +15631,29 @@ def process_car_age_step(message):
         markup.add("Бензиновый", "Дизельный")
         markup.add("Гибридный", "Электрический")
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
         msg = bot.send_message(message.chat.id, "Какой тип двигателя у автомобиля?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_type_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
         bot.register_next_step_handler(msg, process_car_age_step)
 
+@text_only_handler
 def process_engine_type_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+    
     try:
         engine_type = message.text.strip()
         if engine_type not in rastamozka_data['engine_type'].values():
@@ -15580,24 +15664,27 @@ def process_engine_type_step(message):
         markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("ЛС", "кВТ")
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
         msg = bot.send_message(message.chat.id, "Выберите измерения мощности двигателя:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
-        bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        bot.register_next_step_handler(msg, process_engine_type_step)
 
+@text_only_handler
 def process_engine_type_rastamozka_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15609,6 +15696,7 @@ def process_engine_type_rastamozka_step(message):
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         
         if engine_power == "кВТ":
@@ -15622,18 +15710,20 @@ def process_engine_type_rastamozka_step(message):
         bot.register_next_step_handler(msg, process_engine_power_value_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
-        bot.register_next_step_handler(msg, process_engine_power_step)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
+        bot.register_next_step_handler(msg, process_engine_type_rastamozka_step)  
 
+@text_only_handler
 def process_engine_power_value_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15645,6 +15735,7 @@ def process_engine_power_value_step(message):
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         
         msg = bot.send_message(message.chat.id, 
@@ -15653,18 +15744,20 @@ def process_engine_power_value_step(message):
         bot.register_next_step_handler(msg, process_engine_volume_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
         bot.register_next_step_handler(msg, process_engine_power_value_step)
 
+@text_only_handler
 def process_engine_volume_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15677,24 +15770,27 @@ def process_engine_volume_step(message):
         markup.add("Китайский юань", "Японская йена")
         markup.add("Корейская вона")
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
 
         msg = bot.send_message(message.chat.id, "Выберите валюту для покупки:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_cost_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
         bot.register_next_step_handler(msg, process_engine_volume_step)
 
+@text_only_handler
 def process_car_cost_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15716,6 +15812,7 @@ def process_car_cost_step(message):
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в растаможку")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         
         msg = bot.send_message(message.chat.id, 
@@ -15724,18 +15821,20 @@ def process_car_cost_step(message):
         bot.register_next_step_handler(msg, process_car_cost_value_step)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, выберите верный вариант")
         bot.register_next_step_handler(msg, process_car_cost_step)
 
+@text_only_handler
 def process_car_cost_value_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
-
     if message.text.lower() == "в главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -15744,13 +15843,15 @@ def process_car_cost_value_step(message):
         calculate_customs(message)
 
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nПожалуйста, введите число")
         bot.register_next_step_handler(msg, process_car_cost_value_step)
 
+@text_only_handler
 def calculate_customs(message):
     try:
-        user_id = message.from_user.id
-        data = user_data[user_id]
+        user_id_int = message.from_user.id  # Для user_data
+        user_id_str = str(user_id_int)  # Для user_history_raztamozka
+        data = user_data[user_id_int]
 
         car_cost_rub = data['car_cost_value'] * EXCHANGE_RATES.get(data['car_cost_currency'], 1)
 
@@ -15763,7 +15864,7 @@ def calculate_customs(message):
         total_cost = car_cost_rub + total_customs
 
         result_message = (
-            "*Итоговый расчет по растаможке:*\n\n\n"
+            "*Итоговый расчет по растаможке:*\n\n"
             "*Ваши данные:*\n\n"
             f"🚗 Импортер: {data['car_importer']}\n"
             f"📅 Возраст авто: {data['car_age']}\n"
@@ -15781,13 +15882,54 @@ def calculate_customs(message):
             f"💰 Стоимость автомобиля + растаможка: {total_cost:,.2f} ₽"
         )
 
-        bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-        save_rastamozka_calculation_to_history(user_id, total_cost)
+        # Сохранение расчета
+        username = data.get('username', 'unknown')
+        timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+
+        calculation_data = {
+            'car_importer': data['car_importer'],
+            'car_age': data['car_age'],
+            'engine_type': data['engine_type'],
+            'engine_power': data['engine_power'],
+            'engine_power_value': data['engine_power_value'],
+            'engine_volume': data['engine_volume'],
+            'car_cost_currency': data['car_cost_currency'],
+            'car_cost_value': data['car_cost_value'],
+            'customs_fee': customs_fee,
+            'customs_duty': customs_duty,
+            'utilization_fee': utilization_fee,
+            'excise': excise,
+            'nds': nds,
+            'total_customs': total_customs,
+            'total_cost': total_cost,
+            'timestamp': timestamp
+        }
+
+        if user_id_str not in user_history_raztamozka:
+            user_history_raztamozka[user_id_str] = {
+                'username': username,
+                'rastamozka_calculations': []
+            }
+        elif 'rastamozka_calculations' not in user_history_raztamozka[user_id_str]:
+            user_history_raztamozka[user_id_str]['rastamozka_calculations'] = []
+
+        user_history_raztamozka[user_id_str]['rastamozka_calculations'].append(calculation_data)
+
+        # Проверка пути
+        if not USER_HISTORY_PATH_RASTAMOZKA.endswith('rastamozka_users.json'):
+            print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_RASTAMOZKA}")
+            raise ValueError("Попытка сохранить данные растаможки в неверный файл!")
+
+        print(f"Сохранение расчета растаможки для user_id: {user_id_str}")  # Отладка
+        save_user_history_rastamozka()
+
+        bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+        del user_data[user_id_int]  # Очистка user_data
         view_rastamozka_calc(message, show_description=False)
 
     except Exception as e:
         print(f"Ошибка в calculate_customs: {e}")
-        bot.send_message(message.chat.id, "Произошла ошибка при расчете. Пожалуйста, попробуйте снова.")
+        bot.send_message(message.chat.id, "Произошла ошибка при расчете!\nПожалуйста, попробуйте снова")
         view_rastamozka_calc(message, show_description=False)
 
 def calculate_customs_fee(car_cost_rub):
@@ -15958,8 +16100,6 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
     else:
         raise ValueError("Некорректный формат возраста автомобиля!")
 
-    print(f"Возрастная категория автомобиля в get_utilization_coefficient: {age_category}")
-
     if engine_type == "Электрический":
         if car_importer == "Юридическое лицо":
             return 33.37 if age_category == "до 3 лет" else 58.7
@@ -16062,6 +16202,7 @@ def calculate_nds(car_cost_rub, customs_duty, excise, car_importer):
     return (car_cost_rub + customs_duty + excise) * 0.2
 
 def save_rastamozka_calculation_to_history(user_id, total_cost):
+    user_id = str(user_id) 
     username = user_data[user_id].get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
@@ -16078,19 +16219,21 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
         'timestamp': timestamp
     }
 
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
+    if user_id not in user_history_raztamozka:
+        user_history_raztamozka[user_id] = {
             'username': username,
-            'calculations': []
+            'rastamozka_calculations': []
         }
+    elif 'rastamozka_calculations' not in user_history_raztamozka[user_id]:
+        user_history_raztamozka[user_id]['rastamozka_calculations'] = []
 
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    user_history_raztamozka[user_id]['rastamozka_calculations'].append(calculation_data)
     save_user_history_rastamozka()
 
 # ---------- ПРОСМОТР РАСТАМОЖЕК ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр растаможек")
-@check_function_state_decorator('Просмотр растаможек')
+@check_function_state_decorator('Просмотр растамозек')
 @track_usage('Просмотр растаможек')
 @restricted
 @track_user_activity
@@ -16099,28 +16242,33 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_raztamozka: {user_id in user_history_raztamozka}")  # Отладка
+    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
-    view_rastamozka_calculations(message.chat.id)
+    view_rastamozka_calculations(message)
 
-def view_rastamozka_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def view_rastamozka_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Просмотр расчетов для user_id {user_id}, user_history_raztamozka: {user_history_raztamozka.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(bot.get_chat(chat_id))
+        view_rastamozka_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_raztamozka[user_id]['rastamozka_calculations']
     message_text = "*Список ваших расчетов растаможки:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -16128,9 +16276,11 @@ def view_rastamozka_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в растаможку')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
+@text_only_handler
 def process_view_rastamozka_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -16138,11 +16288,14 @@ def process_view_rastamozka_selection(message):
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_raztamozka.get(user_id, {}).get('rastamozka_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -16162,12 +16315,11 @@ def process_view_rastamozka_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в растаможку')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
             msg = bot.send_message(
                 chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+                "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_rastamozka_selection)
             return
 
@@ -16177,17 +16329,8 @@ def process_view_rastamozka_selection(message):
 
         for index in valid_indices:
             calc = calculations[index]
-            car_cost_rub = calc['car_cost_value'] * EXCHANGE_RATES.get(calc['car_cost_currency'], 1)
-            customs_fee = calculate_customs_fee(car_cost_rub)
-            customs_duty = calculate_customs_duty(car_cost_rub, calc['engine_volume'], calc['car_age'], 
-                                                calc['engine_type'], calc['car_importer'])
-            utilization_fee = calculate_utilization_fee(calc['engine_volume'], calc['engine_type'], 
-                                                      calc['car_age'], calc['car_importer'])
-            excise = calculate_excise(calc['engine_power_value'], calc['engine_type'], calc['car_importer'])
-            nds = calculate_nds(car_cost_rub, customs_duty, excise, calc['car_importer'])
-
             result = (
-                f"📊 *Расчет растаможки №{index + 1}. {calc['timestamp']}*\n\n\n"
+                f"📊 *Расчет растаможки №{index + 1}. {calc['timestamp']}*\n\n"
                 f"*Ваши данные:*\n\n"
                 f"🚗 Импортер: {calc['car_importer']}\n"
                 f"📅 Возраст авто: {calc['car_age']}\n"
@@ -16196,13 +16339,13 @@ def process_view_rastamozka_selection(message):
                 f"📏 Объем двигателя: {calc['engine_volume']} см³\n"
                 f"💰 Стоимость: {calc['car_cost_value']} {calc['car_cost_currency']}\n\n"
                 f"*Расчет:*\n\n"
-                f"🛃 Таможенный сбор: {customs_fee:.2f} ₽\n"
-                f"🏦 Таможенная пошлина: {customs_duty:.2f} ₽\n"
-                f"♻️ Утилизационный сбор: {utilization_fee:.2f} ₽\n"
-                f"📈 Акциз: {excise:.2f} ₽\n"
-                f"🫰 НДС: {nds:.2f} ₽\n"
-                f"💵 Итого: {(calc['total_cost'] - car_cost_rub):.2f} ₽\n"
-                f"💰 Стоимость автомобиля + растаможка: {calc['total_cost']:.2f} ₽"
+                f"🛃 Таможенный сбор: {calc['customs_fee']:,.2f} ₽\n"
+                f"🏦 Таможенная пошлина: {calc['customs_duty']:,.2f} ₽\n"
+                f"♻️ Утилизационный сбор: {calc['utilization_fee']:,.2f} ₽\n"
+                f"📈 Акциз: {calc['excise']:,.2f} ₽\n"
+                f"🫰 НДС: {calc['nds']:,.2f} ₽\n"
+                f"💵 Итого: {calc['total_customs']:,.2f} ₽\n"
+                f"💰 Стоимость автомобиля + растаможка: {calc['total_cost']:,.2f} ₽"
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
@@ -16211,19 +16354,16 @@ def process_view_rastamozka_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в растаможку')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_rastamozka_selection)
 
 # ---------- УДАЛЕНИЕ РАСТАМОЖЕК ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление растаможек")
 @check_function_state_decorator('Удаление растаможек')
-@track_usage('Удаление растаможек')
+@track_usage('Удаление растамозек')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -16231,28 +16371,33 @@ def process_view_rastamozka_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_raztamozka: {user_id in user_history_raztamozka}")  # Отладка
+    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
         return
-    delete_rastamozka_calculations(message.chat.id)
+    delete_rastamozka_calculations(message)
 
-def delete_rastamozka_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def delete_rastamozka_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Удаление расчетов для user_id {user_id}, user_history_raztamozka: {user_history_raztamozka.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_raztamozka or 'rastamozka_calculations' not in user_history_raztamozka[user_id] or not user_history_raztamozka[user_id]['rastamozka_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
-        view_rastamozka_calc(bot.get_chat(chat_id))
+        view_rastamozka_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_raztamozka[user_id]['rastamozka_calculations']
     message_text = "*Список ваших расчетов растаможки:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -16260,9 +16405,11 @@ def delete_rastamozka_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в растаможку')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
+@text_only_handler
 def process_delete_rastamozka_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -16270,11 +16417,14 @@ def process_delete_rastamozka_selection(message):
     if message.text == "Вернуться в растаможку":
         view_rastamozka_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_raztamozka.get(user_id, {}).get('rastamozka_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов растаможки!")
         view_rastamozka_calc(message, show_description=False)
@@ -16294,12 +16444,9 @@ def process_delete_rastamozka_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в растаможку')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_delete_rastamozka_selection)
             return
 
@@ -16318,15 +16465,12 @@ def process_delete_rastamozka_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в растаможку')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_rastamozka_selection)
 
-# ---------- РАСЕТ ОСАГО ----------
+# ---------- РАСЧЕТ ОСАГО ----------
 
 @bot.message_handler(func=lambda message: message.text == "ОСАГО")
 @check_function_state_decorator('ОСАГО')
@@ -16338,15 +16482,16 @@ def process_delete_rastamozka_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_osago_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
     description = (
-        "ℹ️ *Краткая справка по расчету ОСАГО*\n\n\n"
+        "ℹ️ *Краткая справка по расчету ОСАГО*\n\n"
         "📌 *Расчет ОСАГО:*\n"
-        "Расчет ведется по следующим данным - *регион, мощность авто, возраст и стаж водителей, количество аварий, тип полиса (ограниченный/неограниченный), период использования*\n"
+        "Расчет ведется по следующим данным - *регион, мощность авто, возраст и стаж водителей, количество аварий, тип полиса (ограниченный/неограниченный), период использования*\n\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе актуальных коэффициентов. Точные суммы зависят от страховой компании и могут отличаться!_\n\n"
         "📌 *Просмотр ОСАГО:*\n"
         "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
@@ -16365,10 +16510,10 @@ def view_osago_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 OSAGO_JSON_PATH = os.path.join('files', 'osago.json')
-USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'osago', 'osago_users.json')
+USER_HISTORY_PATH_OSAGO = os.path.join('data base', 'calculators', 'osago', 'osago_users.json')
 
 osago_data = {}
-user_history = {}
+user_history_osago = {}
 user_data = {}
 
 def ensure_path_and_file(file_path):
@@ -16386,29 +16531,31 @@ def load_osago_data():
         print(f"Ошибка при загрузке файла osago.json: {e}")
 
 def load_user_history_osago():
-    global user_history
+    global user_history_osago
     try:
-        if os.path.exists(USER_HISTORY_PATH):
-            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+        if os.path.exists(USER_HISTORY_PATH_OSAGO):
+            with open(USER_HISTORY_PATH_OSAGO, 'r', encoding='utf-8') as db_file:
+                user_history_osago = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH} не найден! Создание нового...")
-            user_history = {}
+            print(f"Файл {USER_HISTORY_PATH_OSAGO} не найден! Создание нового...")
+            user_history_osago = {}
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_osago = {}
 
 def save_user_history_osago():
     try:
-        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+        with open(USER_HISTORY_PATH_OSAGO, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history_osago, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
 ensure_path_and_file(OSAGO_JSON_PATH)
-ensure_path_and_file(USER_HISTORY_PATH)
+ensure_path_and_file(USER_HISTORY_PATH_OSAGO)
 load_osago_data()
 load_user_history_osago()
+
+# ---------- РАССЧИТАТЬ ОСАГО ----------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать ОСАГО")
 @check_function_state_decorator('Рассчитать ОСАГО')
@@ -16420,6 +16567,7 @@ load_user_history_osago()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_osago_calculation(message):
     if not osago_data:
@@ -16436,25 +16584,28 @@ def start_osago_calculation(message):
             markup.row(owner_types[i], owner_types[i + 1])
         else:
             markup.add(owner_types[i])
-    markup.add("Вернуться в ОСАГО")        
+    markup.add("Вернуться в ОСАГО")   
+    markup.add('Вернуться в калькуляторы')     
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Кто владелец ТС?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_owner_type_step)
 
+@text_only_handler
 def process_owner_type_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     owner_type = message.text.strip()
     if owner_type not in [owner['name'] for owner in osago_data['owner_types']]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_owner_type_step)
         return
 
@@ -16468,25 +16619,28 @@ def process_owner_type_step(message):
         else:
             markup.add(vehicle_types[i])
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите тип ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_vehicle_type_step)
 
+@text_only_handler
 def process_vehicle_type_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     vehicle_type = message.text.strip()
     vehicle = next((vt for vt in osago_data['vehicle_types'] if vt['name'] == vehicle_type), None)
     if not vehicle:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_vehicle_type_step)
         return
 
@@ -16501,25 +16655,28 @@ def process_vehicle_type_step(message):
         else:
             markup.add(regions[i])
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите регион:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_osago_region_step)
 
+@text_only_handler
 def process_osago_region_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     region_name = message.text.strip()
     region = next((r for r in osago_data['regions'] if r['name'] == region_name), None)
     if not region:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_osago_region_step)
         return
 
@@ -16537,25 +16694,28 @@ def process_osago_region_step(message):
     else:
         markup.add("Единственный регион")
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите город:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_city_step)
 
+@text_only_handler
 def process_city_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     city_name = message.text.strip()
     region = user_data[user_id]['region_data']
     if city_name != "Единственный регион" and ('cities' not in region or city_name not in region['cities']):
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_city_step)
         return
 
@@ -16572,19 +16732,22 @@ def process_city_step(message):
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "Введите мощность двигателя (л.с.):", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_power_step)
 
+@text_only_handler
 def process_engine_power_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -16594,9 +16757,10 @@ def process_engine_power_step(message):
         user_data[user_id]['km'] = km
         proceed_to_usage_period(message)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число")
         bot.register_next_step_handler(msg, process_engine_power_step)
 
+@text_only_handler
 def proceed_to_usage_period(message):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
@@ -16607,24 +16771,27 @@ def proceed_to_usage_period(message):
         else:
             markup.add(periods[i])
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите период использования ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_usage_period_step)
 
+@text_only_handler
 def process_usage_period_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     period_name = message.text.strip()
     if period_name not in [p['name'] for p in osago_data['usage_periods']]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_usage_period_step)
         return
 
@@ -16635,24 +16802,27 @@ def process_usage_period_step(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     markup.add("Без ограничений по водителям", "С ограничениями")
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Лица, допущенные к управлению:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_driver_restriction_step)
 
+@text_only_handler
 def process_driver_restriction_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     restriction = message.text.strip()
     if restriction not in ["Без ограничений по водителям", "С ограничениями"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите верный вариант")
         bot.register_next_step_handler(msg, process_driver_restriction_step)
         return
 
@@ -16662,35 +16832,39 @@ def process_driver_restriction_step(message):
     if restriction == "Без ограничений по водителям":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "Введите возраст и стаж страхователя (например: 18, 0):", reply_markup=markup)
         bot.register_next_step_handler(msg, process_unrestricted_age_experience_step)
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "Сколько человек допущено к управлению?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_restricted_driver_count_step)
 
+@text_only_handler
 def process_unrestricted_age_experience_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
         age, experience = map(int, message.text.split(','))
         if age < 18:
-            msg = bot.send_message(message.chat.id, "Некорректный ввод! Возраст водителя должен быть не менее 18 лет")
+            msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВозраст водителя должен быть не менее 18 лет")
             bot.register_next_step_handler(msg, process_unrestricted_age_experience_step)
             return
         if experience < 0:
-            msg = bot.send_message(message.chat.id, "Некорректный ввод! Стаж не может быть отрицательным")
+            msg = bot.send_message(message.chat.id, "Некорректный ввод!\nСтаж не может быть отрицательным")
             bot.register_next_step_handler(msg, process_unrestricted_age_experience_step)
             return
         user_data[user_id]['insurer_age'] = age
@@ -16699,27 +16873,30 @@ def process_unrestricted_age_experience_step(message):
         markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Да", "Нет")
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "Были ли аварии (по его вине)?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_unrestricted_accidents_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите возраст и стаж через запятую (например: 18, 0)")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите возраст и стаж через запятую (например: 18, 0)")
         bot.register_next_step_handler(msg, process_unrestricted_age_experience_step)
 
+@text_only_handler
 def process_unrestricted_accidents_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     accidents = message.text.strip()
     if accidents not in ["Да", "Нет"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите Да или Нет")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ")
         bot.register_next_step_handler(msg, process_unrestricted_accidents_step)
         return
 
@@ -16730,19 +16907,22 @@ def process_unrestricted_accidents_step(message):
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "Сколько было аварий (по его вине)?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_unrestricted_accident_count_step)
 
+@text_only_handler
 def process_unrestricted_accident_count_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -16751,18 +16931,20 @@ def process_unrestricted_accident_count_step(message):
         user_data[user_id]['kbm'] = kbm
         calculate_osago(message)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число")
         bot.register_next_step_handler(msg, process_unrestricted_accident_count_step)
 
+@text_only_handler
 def process_restricted_driver_count_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -16771,9 +16953,10 @@ def process_restricted_driver_count_step(message):
         user_data[user_id]['drivers'] = []
         process_driver_info(message, 1)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число")
         bot.register_next_step_handler(msg, process_restricted_driver_count_step)
 
+@text_only_handler
 def process_driver_info(message, driver_num):
     user_id = message.from_user.id
     if driver_num > user_data[user_id]['driver_count']:
@@ -16782,29 +16965,32 @@ def process_driver_info(message, driver_num):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add("Вернуться в ОСАГО")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, f"Введите возраст и стаж для *водителя №{driver_num}* (например: 18, 0):", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, lambda m: process_driver_age_experience_step(m, driver_num))
 
+@text_only_handler
 def process_driver_age_experience_step(message, driver_num):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
         age, experience = map(int, message.text.split(','))
         if age < 18:
-            msg = bot.send_message(message.chat.id, "Некорректный ввод! Возраст водителя должен быть не менее 18 лет")
+            msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВозраст водителя должен быть не менее 18 лет")
             bot.register_next_step_handler(msg, lambda m: process_driver_age_experience_step(m, driver_num))
             return
         if experience < 0:
-            msg = bot.send_message(message.chat.id, "Некорректный ввод! Стаж не может быть отрицательным")
+            msg = bot.send_message(message.chat.id, "Некорректный ввод!\nСтаж не может быть отрицательным")
             bot.register_next_step_handler(msg, lambda m: process_driver_age_experience_step(m, driver_num))
             return
         driver_data = {'age': age, 'experience': experience}
@@ -16813,27 +16999,30 @@ def process_driver_age_experience_step(message, driver_num):
         markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Да", "Нет")
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, f"Были ли аварии у *водителя №{driver_num}* (по его вине)?", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, lambda m: process_driver_accidents_step(m, driver_num))
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите возраст и стаж через запятую (например: 18, 0)")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите возраст и стаж (например: 18, 0)")
         bot.register_next_step_handler(msg, lambda m: process_driver_age_experience_step(m, driver_num))
 
+@text_only_handler
 def process_driver_accidents_step(message, driver_num):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     accidents = message.text.strip()
     if accidents not in ["Да", "Нет"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите Да или Нет")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ")
         bot.register_next_step_handler(msg, lambda m: process_driver_accidents_step(m, driver_num))
         return
 
@@ -16843,19 +17032,22 @@ def process_driver_accidents_step(message, driver_num):
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в ОСАГО")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, f"Сколько было аварий у *водителя №{driver_num}* (по его вине)?", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, lambda m: process_driver_accident_count_step(m, driver_num))
 
+@text_only_handler
 def process_driver_accident_count_step(message, driver_num):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -16863,7 +17055,7 @@ def process_driver_accident_count_step(message, driver_num):
         user_data[user_id]['drivers'][driver_num-1]['accidents'] = accident_count
         process_driver_info(message, driver_num + 1)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число")
         bot.register_next_step_handler(msg, lambda m: process_driver_accident_count_step(m, driver_num))
 
 def calculate_km(power):
@@ -16964,9 +17156,11 @@ def calculate_restricted_kbm(message):
     user_data[user_id]['driver_results'] = driver_results
     calculate_osago(message)
 
+@text_only_handler
 def calculate_osago(message):
-    user_id = message.from_user.id
-    data = user_data[user_id]
+    user_id_int = message.from_user.id  # Для user_data
+    user_id_str = str(user_id_int)  # Для user_history_osago
+    data = user_data[user_id_int]
 
     base_tariff_min, base_tariff_max = get_base_tariff(data['vehicle_id'])
     kt = data['kt']
@@ -16981,7 +17175,7 @@ def calculate_osago(message):
         max_cost = base_tariff_max * kt * km * kvs * ko * ks * kbm
         
         result_message = (
-            "*Итоговый расчет по ОСАГО (без ограничений):*\n\n\n"
+            "*Итоговый расчет по ОСАГО (без ограничений):*\n\n"
             "*Ваши данные:*\n\n"
             f"👤 *Владелец ТС:* {data['owner_type']}\n"
             f"🚗 *Тип ТС:* {data['vehicle_type']}\n"
@@ -17005,7 +17199,7 @@ def calculate_osago(message):
         )
     else:
         result_message = (
-            "*Итоговый расчет по ОСАГО (с ограничениями):*\n\n\n"
+            "*Итоговый расчет по ОСАГО (с ограничениями):*\n\n"
             "*Ваши данные:*\n\n"
             f"👤 *Владелец ТС:* {data['owner_type']}\n"
             f"🚗 *Тип ТС:* {data['vehicle_type']}\n"
@@ -17052,11 +17246,63 @@ def calculate_osago(message):
             f"⭐ *КБМ (коэффициент бонус-малус):* {kbm}\n"
         )
 
-    bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_osago_calculation_to_history(user_id, min_cost, max_cost)
+    # Сохранение расчета
+    username = data.get('username', 'unknown')
+    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+    
+    calculation_data = {
+        'owner_type': data['owner_type'],
+        'vehicle_type': data['vehicle_type'],
+        'region': data['region'],
+        'city': data['city'],
+        'engine_power': data.get('engine_power', 'не требуется'),
+        'usage_period': data['usage_period'],
+        'driver_restriction': data['driver_restriction'],
+        'kt': kt,
+        'km': km,
+        'ks': ks,
+        'ko': ko,
+        'min_cost': min_cost,
+        'max_cost': max_cost,
+        'timestamp': timestamp
+    }
+
+    if 'insurer_age' in data:
+        calculation_data['insurer_age'] = data['insurer_age']
+        calculation_data['insurer_experience'] = data['insurer_experience']
+        calculation_data['kvs'] = calculate_kvs(data['insurer_age'], data['insurer_experience'])
+        calculation_data['kbm'] = data['kbm']
+
+    if 'drivers' in data:
+        calculation_data['drivers'] = data['drivers']
+        calculation_data['driver_results'] = data['driver_results']
+        calculation_data['kvs'] = data['kvs']
+        calculation_data['kbm'] = data['kbm']
+
+    if user_id_str not in user_history_osago:
+        user_history_osago[user_id_str] = {
+            'username': username,
+            'osago_calculations': []
+        }
+    elif 'osago_calculations' not in user_history_osago[user_id_str]:
+        user_history_osago[user_id_str]['osago_calculations'] = []
+
+    user_history_osago[user_id_str]['osago_calculations'].append(calculation_data)
+
+    # Проверка пути
+    if not USER_HISTORY_PATH_OSAGO.endswith('osago_users.json'):
+        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_OSAGO}")
+        raise ValueError("Попытка сохранить данные ОСАГО в неверный файл!")
+
+    print(f"Сохранение расчета ОСАГО для user_id: {user_id_str}")  # Отладка
+    save_user_history_osago()
+
+    bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    del user_data[user_id_int]  # Очистка user_data
     view_osago_calc(message, show_description=False)
 
 def save_osago_calculation_to_history(user_id, min_cost, max_cost):
+    user_id = str(user_id)  
     username = user_data[user_id].get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
@@ -17065,7 +17311,7 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
         'vehicle_type': user_data[user_id]['vehicle_type'],
         'region': user_data[user_id]['region'],
         'city': user_data[user_id]['city'],
-        'engine_power': user_data[user_id].get('engine_power', 'Не требуется'),
+        'engine_power': user_data[user_id].get('engine_power', 'не требуется'),
         'usage_period': user_data[user_id]['usage_period'],
         'driver_restriction': user_data[user_id]['driver_restriction'],
         'kt': user_data[user_id]['kt'],
@@ -17089,13 +17335,15 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
         calculation_data['kvs'] = user_data[user_id]['kvs']
         calculation_data['kbm'] = user_data[user_id]['kbm']
 
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
+    if user_id not in user_history_osago:
+        user_history_osago[user_id] = {
             'username': username,
-            'calculations': []
+            'osago_calculations': []
         }
+    elif 'osago_calculations' not in user_history_osago[user_id]:
+        user_history_osago[user_id]['osago_calculations'] = []
 
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    user_history_osago[user_id]['osago_calculations'].append(calculation_data)
     save_user_history_osago()
 
 # ---------- ПРОСМОТР ОСАГО ----------
@@ -17110,28 +17358,33 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_osago: {user_id in user_history_osago}")  # Отладка
+    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
         return
-    view_osago_calculations(message.chat.id)
+    view_osago_calculations(message)
 
-def view_osago_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def view_osago_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Просмотр расчетов для user_id {user_id}, user_history_osago: {user_history_osago.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(bot.get_chat(chat_id))
+        view_osago_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_osago[user_id]['osago_calculations']
     message_text = "*Список ваших расчетов ОСАГО:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -17139,9 +17392,11 @@ def view_osago_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в ОСАГО')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
+@text_only_handler
 def process_view_osago_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17149,11 +17404,14 @@ def process_view_osago_selection(message):
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_osago.get(user_id, {}).get('osago_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -17173,12 +17431,9 @@ def process_view_osago_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в ОСАГО')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_osago_selection)
             return
 
@@ -17194,7 +17449,7 @@ def process_view_osago_selection(message):
 
             if calc['driver_restriction'] == "Без ограничений по водителям":
                 result_message = (
-                    f"*📊 Итоговый расчет по ОСАГО №{index + 1} (без ограничений):*\n\n\n"
+                    f"*📊 Итоговый расчет по ОСАГО №{index + 1} (без ограничений):*\n\n"
                     f"*Ваши данные:*\n\n"
                     f"👤 *Владелец ТС:* {calc['owner_type']}\n"
                     f"🚗 *Тип ТС:* {calc['vehicle_type']}\n"
@@ -17219,7 +17474,7 @@ def process_view_osago_selection(message):
                 )
             else:
                 result_message = (
-                    f"*📊 Итоговый расчет по ОСАГО №{index + 1} (с ограничениями):*\n\n\n"
+                    f"*📊 Итоговый расчет по ОСАГО №{index + 1} (с ограничениями):*\n\n"
                     f"*Ваши данные:*\n\n"
                     f"👤 *Владелец ТС:* {calc['owner_type']}\n"
                     f"🚗 *Тип ТС:* {calc['vehicle_type']}\n"
@@ -17230,7 +17485,7 @@ def process_view_osago_selection(message):
                     f"🚗 *Лица, допущенные к управлению:* {calc['driver_restriction']}\n"
                     "\n*Данные водителей:*\n"
                 )
-                
+
                 for i, driver in enumerate(calc['drivers'], 1):
                     result_message += (
                         f"\n👤 *Водитель №{i}:*\n"
@@ -17238,7 +17493,7 @@ def process_view_osago_selection(message):
                         f"⏳ *Стаж:* {driver['experience']}\n"
                         f"💥 *Аварии:* {driver.get('accidents', 0)}\n"
                     )
-                
+
                 result_message += "\n*Индивидуальные расчеты по водителям:*\n"
                 for result in calc['driver_results']:
                     result_message += (
@@ -17247,7 +17502,7 @@ def process_view_osago_selection(message):
                         f"⭐ *КВС:* {result['kvs']}\n"
                         f"⭐ *КБМ:* {result['kbm']}\n"
                     )
-                
+
                 result_message += (
                     f"\n*Итоговый расчет (с учетом всех водителей):*\n\n"
                     f"💰 *Диапазон цены:* {calc['min_cost']:,.0f} … {calc['max_cost']:,.0f} руб.\n"
@@ -17269,12 +17524,9 @@ def process_view_osago_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в ОСАГО')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_osago_selection)
 
 # ---------- УДАЛЕНИЕ ОСАГО ----------
@@ -17289,28 +17541,53 @@ def process_view_osago_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
         return
-    delete_osago_calculations(message.chat.id)
+    delete_osago_calculations(message)
 
-def delete_osago_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@bot.message_handler(func=lambda message: message.text == "Удаление ОСАГО")
+@check_function_state_decorator('Удаление ОСАГО')
+@track_usage('Удаление ОСАГО')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def handle_delete_osago(message):
+    user_id = str(message.from_user.id)
+    print(f"Проверка user_id {user_id} в user_history_osago: {user_id in user_history_osago}")  # Отладка
+    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов ОСАГО!")
+        view_osago_calc(message, show_description=False)
+        return
+    delete_osago_calculations(message)
+
+@text_only_handler
+def delete_osago_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Удаление расчетов для user_id {user_id}, user_history_osago: {user_history_osago.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_osago or 'osago_calculations' not in user_history_osago[user_id] or not user_history_osago[user_id]['osago_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
-        view_osago_calc(bot.get_chat(chat_id))
+        view_osago_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_osago[user_id]['osago_calculations']
     message_text = "*Список ваших расчетов ОСАГО:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -17318,9 +17595,11 @@ def delete_osago_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в ОСАГО')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
+@text_only_handler
 def process_delete_osago_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17328,11 +17607,14 @@ def process_delete_osago_selection(message):
     if message.text == "Вернуться в ОСАГО":
         view_osago_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_osago.get(user_id, {}).get('osago_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов ОСАГО!")
         view_osago_calc(message, show_description=False)
@@ -17352,12 +17634,9 @@ def process_delete_osago_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в ОСАГО')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный номер!\nПожалуйста, выберите существующие расчеты из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_delete_osago_selection)
             return
 
@@ -17376,12 +17655,9 @@ def process_delete_osago_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в ОСАГО')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_osago_selection)
 
 # ---------- РАСЧЕТ АВТОКРЕДИТА ----------
@@ -17396,10 +17672,11 @@ def process_delete_osago_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_autokredit_calc(message, show_description=True):
     description = (
-        "ℹ️ *Краткая справка по расчету автокредита*\n\n\n"
+        "ℹ️ *Краткая справка по расчету автокредита*\n\n"
         "📌 *Расчет автокредита:*\n"
         "Расчет ведется по следующим данным - *дата, стоимость авто, первый платеж, срок кредита, процентная ставка, схема оплаты, дополнительные погашения*\n\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе введенных параметров. Точные суммы зависят от условий банка и могут отличаться!_\n\n"
@@ -17423,7 +17700,7 @@ KREDIT_USERS_PATH = os.path.join('data base', 'calculators', 'kredit', 'kredit_u
 EXCEL_PATH_TEMPLATE = os.path.join('data base', 'calculators', 'kredit', 'excel', '{user_id}', '{user_id}_{timestamp}_autokredit.xlsx')
 
 user_data = {}
-user_history = {}
+user_history_kredit = {}
 
 loan_terms = {
     "1 месяц": 1, "3 месяца": 3, "6 месяцев": 6, "1 год": 12, "1,5 года": 18,
@@ -17438,26 +17715,28 @@ def ensure_path_and_file(file_path):
             json.dump({}, f, ensure_ascii=False, indent=2)
 
 def load_user_history_kredit():
-    global user_history
+    global user_history_kredit
     try:
         if os.path.exists(KREDIT_USERS_PATH):
             with open(KREDIT_USERS_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+                user_history_kredit = json.load(db_file)
         else:
-            user_history = {}
+            user_history_kredit = {}
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_kredit = {}
 
 def save_user_history_kredit():
     try:
         with open(KREDIT_USERS_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+            json.dump(user_history_kredit, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
 ensure_path_and_file(KREDIT_USERS_PATH)
 load_user_history_kredit()
+
+# ---------- РАССЧИТАТЬ АВТОКРЕДИТ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать автокредит")
 @check_function_state_decorator('Рассчитать автокредит')
@@ -17469,24 +17748,19 @@ load_user_history_kredit()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_car_loan_calculation(message):
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-    if message.text == "Вернуться в автокредит":
-        view_autokredit_calc(message, show_description=False)
-        return
-        
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
-    
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, "Введите дату выдачи автокредита в формате ДД.ММ.ГГГГ:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_loan_date_step)
 
+@text_only_handler
 def process_loan_date_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17494,7 +17768,10 @@ def process_loan_date_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         loan_date = datetime.strptime(message.text, "%d.%m.%Y")
@@ -17505,16 +17782,19 @@ def process_loan_date_step(message):
         
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Стоимость авто?\nВведите стоимость в рублях:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Введите стоимость авто в рублях:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_price_step)
     except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный формат даты! Используйте ДД.ММ.ГГГГ", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный формат даты!\nИспользуйте ДД.ММ.ГГГГ", reply_markup=markup)
         bot.register_next_step_handler(msg, process_loan_date_step)
 
+@text_only_handler
 def process_car_price_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17522,27 +17802,33 @@ def process_car_price_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         car_price = float(message.text.replace(',', '.'))
         if car_price <= 0:
-            raise ValueError
+            raise ValueError("Стоимость авто должна быть положительным числом!")
         user_data[user_id]['car_price'] = car_price
         
         markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("В ₽", "В %")
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(message.chat.id, "Как вы хотите внести первый платеж?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_down_payment_type_step)
-    except ValueError:
+    except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите положительное число", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод!\nВведите положительное число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_car_price_step)
 
+@text_only_handler
 def process_down_payment_type_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17550,14 +17836,18 @@ def process_down_payment_type_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     down_payment_type = message.text.strip()
     if down_payment_type not in ["В ₽", "В %"]:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите в ₽ или в %", reply_markup=markup)
         bot.register_next_step_handler(msg, process_down_payment_type_step)
         return
     
@@ -17565,10 +17855,12 @@ def process_down_payment_type_step(message):
     unit = "₽" if down_payment_type == "В ₽" else "%"
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, f"Введите сумму первого платежа в *{unit}*:", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_down_payment_amount_step)
 
+@text_only_handler
 def process_down_payment_amount_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17576,12 +17868,15 @@ def process_down_payment_amount_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         amount = float(message.text.replace(',', '.'))
         if amount < 0:
-            raise ValueError
+            raise ValueError("Сумма первого платежа не может быть отрицательной!")
         
         if user_data[user_id]['down_payment_type'] == "В ₽":
             if amount >= user_data[user_id]['car_price']:
@@ -17600,16 +17895,19 @@ def process_down_payment_amount_step(message):
             else:
                 markup.add(terms[i])
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Какой срок выдачи автокредита?", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Выберите срок выдачи автокредита:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_loan_term_step)
     except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод! Введите число", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод!\nВведите положительное число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_down_payment_amount_step)
 
+@text_only_handler
 def process_loan_term_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17617,24 +17915,30 @@ def process_loan_term_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     term = message.text.strip()
     if term not in loan_terms:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите срок из предложенных", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите срок из предложенных вариантов", reply_markup=markup)
         bot.register_next_step_handler(msg, process_loan_term_step)
         return
     
     user_data[user_id]['loan_term'] = loan_terms[term]
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
-    msg = bot.send_message(message.chat.id, "Введите процентную ставку автокредита:", reply_markup=markup)
+    msg = bot.send_message(message.chat.id, "Введите процентную ставку автокредита в процентах:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_interest_rate_step)
 
+@text_only_handler
 def process_interest_rate_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17642,27 +17946,33 @@ def process_interest_rate_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         rate = float(message.text.replace(',', '.'))
         if rate <= 0:
-            raise ValueError
+            raise ValueError("Процентная ставка должна быть положительным числом!")
         user_data[user_id]['interest_rate'] = rate / 100
         
         markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Равными долями", "Дифференцированные платежи")
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
         msg = bot.send_message(message.chat.id, "Выберите схему оплаты:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_payment_scheme_step)
-    except ValueError:
+    except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод!\nВведите положительное число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_interest_rate_step)
 
+@text_only_handler
 def process_payment_scheme_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17670,14 +17980,18 @@ def process_payment_scheme_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     scheme = message.text.strip()
-    if scheme not in ["Равными долями","Дифференцированные платежи"]:
+    if scheme not in ["Равными долями", "Дифференцированные платежи"]:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите схему из предложенных", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите равными долями или дифференцированные платежи", reply_markup=markup)
         bot.register_next_step_handler(msg, process_payment_scheme_step)
         return
     
@@ -17685,10 +17999,12 @@ def process_payment_scheme_step(message):
     markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     markup.add("Да", "Нет")
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, "Есть ли у вас дополнительные погашения?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_extra_payments_step)
 
+@text_only_handler
 def process_extra_payments_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17696,14 +18012,18 @@ def process_extra_payments_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     answer = message.text.strip()
     if answer not in ["Да", "Нет"]:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите Да или Нет", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
         bot.register_next_step_handler(msg, process_extra_payments_step)
         return
     
@@ -17713,10 +18033,12 @@ def process_extra_payments_step(message):
     else:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Сколько дополнительных погашений?", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Введите количество дополнительных погашений:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_extra_payments_count_step)
 
+@text_only_handler
 def process_extra_payments_count_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17724,22 +18046,27 @@ def process_extra_payments_count_step(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         count = int(message.text)
         if count <= 0:
-            raise ValueError
+            raise ValueError("Количество погашений должно быть положительным числом!")
         user_data[user_id]['extra_payments_count'] = count
         user_data[user_id]['extra_payments'] = []
         process_extra_payment_info(message, 1)
-    except ValueError:
+    except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод!\nВведите положительное число", reply_markup=markup)
         bot.register_next_step_handler(msg, process_extra_payments_count_step)
 
+@text_only_handler
 def process_extra_payment_info(message, payment_num):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17747,7 +18074,10 @@ def process_extra_payment_info(message, payment_num):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     if payment_num > user_data[user_id]['extra_payments_count']:
         calculate_loan(message)
@@ -17755,10 +18085,12 @@ def process_extra_payment_info(message, payment_num):
     
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, f"*Погашение №{payment_num}*\nВведите дату платежа в формате ДД.ММ.ГГГГ:", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, lambda m: process_extra_payment_date_step(m, payment_num))
 
+@text_only_handler
 def process_extra_payment_date_step(message, payment_num):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17766,7 +18098,10 @@ def process_extra_payment_date_step(message, payment_num):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         payment_date = datetime.strptime(message.text, "%d.%m.%Y")
@@ -17777,16 +18112,19 @@ def process_extra_payment_date_step(message, payment_num):
         markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Единоразово", "Ежемесячно", "Ежегодно")
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, f"*Погашение №{payment_num}*\nВыберите периодичность", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, f"*Погашение №{payment_num}*\nВыберите периодичность:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, lambda m: process_extra_payment_frequency_step(m, payment_num))
     except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный формат даты! Используйте ДД.ММ.ГГГГ", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный формат даты!\nИспользуйте формат ДД.ММ.ГГГГ", reply_markup=markup)
         bot.register_next_step_handler(msg, lambda m: process_extra_payment_date_step(m, payment_num))
 
+@text_only_handler
 def process_extra_payment_frequency_step(message, payment_num):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17794,14 +18132,18 @@ def process_extra_payment_frequency_step(message, payment_num):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     frequency = message.text.strip()
     if frequency not in ["Единоразово", "Ежемесячно", "Ежегодно"]:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите из предложенных вариантов", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите единоразово, ежемесячно или ежегодно", reply_markup=markup)
         bot.register_next_step_handler(msg, lambda m: process_extra_payment_frequency_step(m, payment_num))
         return
     
@@ -17809,10 +18151,12 @@ def process_extra_payment_frequency_step(message, payment_num):
     markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     markup.add("Срок", "Сумма")
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, f"*Погашение №{payment_num}*\nЧто уменьшать?", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, lambda m: process_extra_payment_target_step(m, payment_num))
 
+@text_only_handler
 def process_extra_payment_target_step(message, payment_num):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17820,24 +18164,30 @@ def process_extra_payment_target_step(message, payment_num):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     target = message.text.strip()
     if target not in ["Срок", "Сумма"]:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите cрок или cумма", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите срок или сумма", reply_markup=markup)
         bot.register_next_step_handler(msg, lambda m: process_extra_payment_target_step(m, payment_num))
         return
     
     user_data[user_id]['extra_payments'][payment_num-1]['target'] = target
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(message.chat.id, f"*Погашение №{payment_num}*\nВведите сумму погашения в рублях:", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, lambda m: process_extra_payment_amount_step(m, payment_num))
 
+@text_only_handler
 def process_extra_payment_amount_step(message, payment_num):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17845,28 +18195,33 @@ def process_extra_payment_amount_step(message, payment_num):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
-        
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+
     user_id = message.from_user.id
     try:
         amount = float(message.text.replace(',', '.'))
         if amount <= 0:
-            raise ValueError
+            raise ValueError("Сумма погашения должна быть положительным числом!")
         user_data[user_id]['extra_payments'][payment_num-1]['amount'] = amount
         process_extra_payment_info(message, payment_num + 1)
-    except ValueError:
+    except ValueError as e:
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, str(e) if str(e) else "Некорректный ввод!\nВведите положительное число", reply_markup=markup)
         bot.register_next_step_handler(msg, lambda m: process_extra_payment_amount_step(m, payment_num))
 
+@text_only_handler
 def calculate_loan(message):
     user_id = message.from_user.id
     data = user_data[user_id]
     
     principal = data['car_price'] - data['down_payment']
     months = data['loan_term']
-    monthly_rate = data['interest_rate'] / 12
+    monthly_rate = data['interest_rate'] / 12 / 100  
     
     payment_schedule = []
     total_interest = 0
@@ -17926,8 +18281,7 @@ def calculate_loan(message):
                         extra_amount = monthly_payment
                         adjusted_payment = 0
                     principal_payment += extra_amount
-                    remaining_principal -= extra_amount
-                else:
+                else:  
                     remaining_principal -= extra_amount
                     remaining_months = months - current_month - 1
                     if remaining_months > 0 and remaining_principal > 0:
@@ -17959,7 +18313,7 @@ def calculate_loan(message):
             if monthly_payment == 0:
                 break
     
-    else:
+    else: 
         monthly_principal = principal / months
         
         while remaining_principal > 0 and current_month < months:
@@ -17979,7 +18333,7 @@ def calculate_loan(message):
             if extra_amount > 0:
                 if extra_target == "Сумма":
                     principal_payment += extra_amount
-                else:
+                else:  
                     remaining_principal -= extra_amount
                     remaining_months = months - current_month - 1
                     if remaining_months > 0 and remaining_principal > 0:
@@ -18010,8 +18364,8 @@ def calculate_loan(message):
 
     timestamp_display = datetime.now().strftime("%d.%m.%Y в %H:%M")
     result_message = (
-        f"*Итоговый расчет по автокредиту на {timestamp_display}*\n\n\n"
-        f"✨ Ежемесячный платеж\n"
+        f"*Итоговый расчет по автокредиту на {timestamp_display}*\n\n"
+        f"✨ *Ежемесячный платеж:*\n"
         f"{monthly_payment if data['payment_scheme'] == 'Равными долями' else payment_schedule[0]['total_payment']:,.2f} ₽\n\n"
         f"🏛️ *Сумма кредита:*\n"
         f"{principal:,.2f} ₽\n\n"
@@ -18025,12 +18379,12 @@ def calculate_loan(message):
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
     
     timestamp = datetime.now().strftime("%d_%m_%Y_%H_%M")
-    timestamp_display = datetime.now().strftime("%d.%m.%Y в %H:%M")
     excel_path = EXCEL_PATH_TEMPLATE.format(user_id=user_id, timestamp=timestamp)
     
     os.makedirs(os.path.dirname(excel_path), exist_ok=True)
     save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display)
     
+    print(f"Сохранение автокредита для user_id: {user_id}")  # Отладка
     save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display)
     
     with open(excel_path, 'rb') as file:
@@ -18040,6 +18394,7 @@ def calculate_loan(message):
     view_autokredit_calc(message, show_description=False)
 
 def save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display):
+    user_id_int = int(user_id)  # Для user_data
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     
@@ -18056,9 +18411,9 @@ def save_to_excel(user_id, principal, total_interest, total_payment, payment_sch
         sheet[col].font = Font(bold=True)
         sheet[col].alignment = Alignment(horizontal='center', vertical='center')
     
-    sheet['A4'] = f"{user_data[user_id]['car_price']:,.2f} руб.".replace(',', ' ')
-    sheet['B4'] = f"{user_data[user_id]['loan_term']} мес"
-    sheet['C4'] = f"{user_data[user_id]['interest_rate'] * 100:.2f}%"
+    sheet['A4'] = f"{user_data[user_id_int]['car_price']:,.2f} руб.".replace(',', ' ')
+    sheet['B4'] = f"{user_data[user_id_int]['loan_term']} мес"
+    sheet['C4'] = f"{user_data[user_id_int]['interest_rate'] * 100:.2f}%"
     sheet['D4'] = f"{total_interest:,.2f} руб.".replace(',', ' ')
     for col in ['A4', 'B4', 'C4', 'D4']:
         sheet[col].alignment = Alignment(horizontal='center', vertical='center')
@@ -18123,36 +18478,45 @@ def save_to_excel(user_id, principal, total_interest, total_payment, payment_sch
     workbook.save(excel_path)
 
 def save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display):
-    username = user_data[user_id].get('username', 'unknown')
+    user_id_int = int(user_id)  # Для user_data
+    user_id_str = str(user_id)  # Для user_history_kredit
+    username = user_data[user_id_int].get('username', 'unknown')
     
     calculation_data = {
-        'car_price': user_data[user_id]['car_price'],
-        'down_payment': user_data[user_id]['down_payment'],
-        'loan_term': user_data[user_id]['loan_term'],
-        'interest_rate': user_data[user_id]['interest_rate'] * 100,
-        'payment_scheme': user_data[user_id]['payment_scheme'],
-        'has_extra_payments': user_data[user_id]['has_extra_payments'],
-        'loan_date': user_data[user_id]['loan_date'].strftime("%d.%m.%Y"),
+        'car_price': user_data[user_id_int]['car_price'],
+        'down_payment': user_data[user_id_int]['down_payment'],
+        'loan_term': user_data[user_id_int]['loan_term'],
+        'interest_rate': user_data[user_id_int]['interest_rate'] * 100,
+        'payment_scheme': user_data[user_id_int]['payment_scheme'],
+        'has_extra_payments': user_data[user_id_int]['has_extra_payments'],
+        'loan_date': user_data[user_id_int]['loan_date'].strftime("%d.%m.%Y"),
         'principal': principal,
         'total_interest': total_interest,
         'total_payment': total_payment,
-        'payment_schedule': payment_schedule,
         'timestamp': timestamp_display
     }
     
-    if user_data[user_id]['has_extra_payments']:
+    if user_data[user_id_int]['has_extra_payments']:
         calculation_data['extra_payments'] = [
             {**ep, 'date': ep['date'].strftime("%d.%m.%Y")} 
-            for ep in user_data[user_id]['extra_payments']
+            for ep in user_data[user_id_int]['extra_payments']
         ]
     
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
+    if user_id_str not in user_history_kredit:
+        user_history_kredit[user_id_str] = {
             'username': username,
-            'calculations': []
+            'autokredit_calculations': []
         }
+    elif 'autokredit_calculations' not in user_history_kredit[user_id_str]:
+        user_history_kredit[user_id_str]['autokredit_calculations'] = []
     
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    user_history_kredit[user_id_str]['autokredit_calculations'].append(calculation_data)
+    
+    # Проверка пути
+    if not KREDIT_USERS_PATH.endswith('kredit_users.json'):
+        print(f"Ошибка: неверный путь для сохранения: {KREDIT_USERS_PATH}")
+        raise ValueError("Попытка сохранить данные автокредита в неверный файл!")
+    
     save_user_history_kredit()
 
 # ---------- ПРОСМОТР АВТОКРЕДИТОВ ----------
@@ -18167,28 +18531,33 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_kredit: {user_id in user_history_kredit}")  # Отладка
+    if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
         return
-    view_autokredit_calculations(message.chat.id)
+    view_autokredit_calculations(message)
 
-def view_autokredit_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def view_autokredit_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Просмотр расчетов для user_id {user_id}, user_history_kredit: {user_history_kredit.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(bot.get_chat(chat_id))
+        view_autokredit_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_kredit[user_id]['autokredit_calculations']
     message_text = "*Список ваших расчетов автокредитов:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -18196,9 +18565,11 @@ def view_autokredit_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
+@text_only_handler
 def process_view_autokredit_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -18206,11 +18577,14 @@ def process_view_autokredit_selection(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_kredit.get(user_id, {}).get('autokredit_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -18230,12 +18604,9 @@ def process_view_autokredit_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в автокредит')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_autokredit_selection)
             return
 
@@ -18246,7 +18617,7 @@ def process_view_autokredit_selection(message):
         for index in valid_indices:
             calc = calculations[index]
             result_message = (
-                f"*📊 Итоговый расчет по автокредиту №{index + 1}:*\n\n\n"
+                f"*📊 Итоговый расчет по автокредиту №{index + 1}:*\n\n"
                 f"*Ваши данные:*\n\n"
                 f"📅 *Дата выдачи:* {calc['loan_date']}\n"
                 f"🚗 *Стоимость авто:* {calc['car_price']:,.2f} ₽\n"
@@ -18254,30 +18625,30 @@ def process_view_autokredit_selection(message):
                 f"⏳ *Срок кредита:* {calc['loan_term']} мес.\n"
                 f"📈 *Процентная ставка:* {calc['interest_rate']:.2f}%\n"
                 f"📋 *Схема оплаты:* {calc['payment_scheme']}\n"
-                f"💸 *Дополнительные погашения:* {'Да' if calc['has_extra_payments'] else 'Нет'}\n\n"
+                f"💸 *Дополнительные погашения:* {'Да' if calc['has_extra_payments'] else 'Нет'}\n"
             )
-            
+
             if calc['has_extra_payments']:
-                result_message += "\n*Дополнительные погашения:*\n\n"
+                result_message += "\n*Дополнительные погашения:*\n"
                 for i, extra in enumerate(calc['extra_payments'], 1):
                     result_message += (
-                        f"\n*Погашение №{i}:*\n\n"
-                        f"📅 Дата: {extra['date']}\n"
-                        f"💰 Сумма: {extra['amount']:,.2f} ₽\n"
-                        f"🔄 Периодичность: {extra['frequency']}\n"
-                        f"🎯 Цель: {extra['target']}\n"
+                        f"\n*Погашение №{i}:*\n"
+                        f"📅 *Дата:* {extra['date']}\n"
+                        f"💰 *Сумма:* {extra['amount']:,.2f} ₽\n"
+                        f"🔄 *Периодичность:* {extra['frequency']}\n"
+                        f"🎯 *Цель:* {extra['target']}\n"
                     )
-            
+
             result_message += (
-                f"\n\n*Итоговый расчет:*\n\n"
+                f"\n*Итоговый расчет:*\n\n"
                 f"🏛️ *Сумма кредита:* {calc['principal']:,.2f} ₽\n"
                 f"💸 *Сумма процентов:* {calc['total_interest']:,.2f} ₽\n"
                 f"💰 *Общая выплата:* {calc['total_payment']:,.2f} ₽\n"
                 f"🕒 *Дата расчета:* {calc['timestamp']}"
             )
-            
+
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
-            
+
             timestamp = calc['timestamp'].replace(' в ', '_').replace('.', '_').replace(':', '_')
             excel_path = EXCEL_PATH_TEMPLATE.format(user_id=user_id, timestamp=timestamp)
             if os.path.exists(excel_path):
@@ -18291,12 +18662,9 @@ def process_view_autokredit_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_autokredit_selection)
 
 # ---------- УДАЛЕНИЕ АВТОКРЕДИТОВ ----------
@@ -18311,28 +18679,33 @@ def process_view_autokredit_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_kredit: {user_id in user_history_kredit}")  # Отладка
+    if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
         return
-    delete_autokredit_calculations(message.chat.id)
+    delete_autokredit_calculations(message)
 
-def delete_autokredit_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def delete_autokredit_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Удаление расчетов для user_id {user_id}, user_history_kredit: {user_history_kredit.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_kredit or 'autokredit_calculations' not in user_history_kredit[user_id] or not user_history_kredit[user_id]['autokredit_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
-        view_autokredit_calc(bot.get_chat(chat_id))
+        view_autokredit_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_kredit[user_id]['autokredit_calculations']
     message_text = "*Список ваших расчетов автокредитов:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -18340,9 +18713,11 @@ def delete_autokredit_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в автокредит')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
+@text_only_handler
 def process_delete_autokredit_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -18350,11 +18725,14 @@ def process_delete_autokredit_selection(message):
     if message.text == "Вернуться в автокредит":
         view_autokredit_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_kredit.get(user_id, {}).get('autokredit_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов автокредитов!")
         view_autokredit_calc(message, show_description=False)
@@ -18374,12 +18752,9 @@ def process_delete_autokredit_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в автокредит')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_delete_autokredit_selection)
             return
 
@@ -18403,12 +18778,9 @@ def process_delete_autokredit_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_autokredit_selection)
 
 # ---------- РАСЧЕТ ШИН ----------
@@ -18423,10 +18795,11 @@ def process_delete_autokredit_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def view_tire_calc(message, show_description=True):
     description = (
-        "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
+        "ℹ️ *Краткая справка по шинному калькулятору*\n\n"
         "📌 *Расчет шин и дисков:*\n"
         "Расчет выполняется на основе данных - *ширина, профиль и диаметр текущих шин, ширина обода и вылет текущих дисков, а также параметры новых шин и дисков*\n\n"
         "_P.S. Калькулятор предоставляет ориентировочные данные для сравнения. Совместимость зависит от конструкции автомобиля и может отличаться!_\n\n"
@@ -18449,7 +18822,7 @@ def view_tire_calc(message, show_description=True):
 TIRE_HISTORY_PATH = os.path.join('data base', 'calculators', 'tires', 'tire_users.json')
 
 user_data = {}
-user_history = {}
+user_history_tire = {}
 
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -18458,27 +18831,29 @@ def ensure_path_and_file(file_path):
             json.dump({}, f, ensure_ascii=False, indent=2)
 
 def load_user_history_tires():
-    global user_history
+    global user_history_tire
     try:
         if os.path.exists(TIRE_HISTORY_PATH):
             with open(TIRE_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+                user_history_tire = json.load(db_file)
         else:
             print(f"Файл {TIRE_HISTORY_PATH} не найден! Создание нового...")
-            user_history = {}
+            user_history_tire = {}
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_tire = {}
 
 def save_user_history_tires():
     try:
         with open(TIRE_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+            json.dump(user_history_tire, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
 ensure_path_and_file(TIRE_HISTORY_PATH)
 load_user_history_tires()
+
+# ---------- РАССЧИТАТЬ ШИНЫ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать шины")
 @check_function_state_decorator('Рассчитать шины')
@@ -18490,6 +18865,7 @@ load_user_history_tires()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_tire_calculation(message):
     user_id = message.from_user.id
@@ -18497,44 +18873,54 @@ def start_tire_calculation(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add('Вернуться в шины')
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
-    msg = bot.send_message(message.chat.id, "Введите ширину текущих шин (мм):\n\n_P.S. ввод осуществляется от 135 до 400 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
+    msg = bot.send_message(message.chat.id, "Введите ширину текущих шин (мм):\n\n_P.S. ввод от 135 до 405 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_current_width_step)
 
+@text_only_handler
 def process_current_width_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
-        return
-    
+        return 
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
         width = int(message.text)
-        if width < 135 or width > 400 or (width - 135) % 10 != 0:
+        if width < 135 or width > 405 or (width - 135) % 10 != 0:
             raise ValueError
         user_data[user_id]['current_width'] = width
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите профиль текущих шин (%):\n\n_P.S. ввод осуществляется от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите профиль текущих шин (%):\n\n_P.S. ввод от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_current_profile_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 400 с шагом 10", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_width_step)
 
+@text_only_handler
 def process_current_profile_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-    
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18544,22 +18930,29 @@ def process_current_profile_step(message):
         user_data[user_id]['current_profile'] = profile
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите диаметр текущих шин (дюймы):\n\n_P.S. ввод осуществляется от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите диаметр текущих шин (дюймы):\n\n_P.S. ввод от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_current_diameter_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 30 до 80 с шагом 5", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_profile_step)
 
+@text_only_handler
 def process_current_diameter_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18569,22 +18962,29 @@ def process_current_diameter_step(message):
         user_data[user_id]['current_diameter'] = diameter
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите ширину обода текущих дисков (дюймы):\n\n_P.S. ввод осуществляется от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите ширину обода текущих дисков (дюймы):\n\n_P.S. ввод от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_current_rim_width_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 12 до 24", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_diameter_step)
 
+@text_only_handler
 def process_current_rim_width_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18594,22 +18994,29 @@ def process_current_rim_width_step(message):
         user_data[user_id]['current_rim_width'] = rim_width
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите вылет текущих дисков (ET, мм):\n\n_P.S. ввод осуществляется от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите вылет текущих дисков (ET, мм):\n\n_P.S. ввод от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_current_et_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 4 до 13 с шагом 0.5", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_rim_width_step)
 
+@text_only_handler
 def process_current_et_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18619,47 +19026,61 @@ def process_current_et_step(message):
         user_data[user_id]['current_et'] = et
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите ширину новых шин (мм):\n\n_P.S. ввод осуществляется от 135 до 400 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите ширину новых шин (мм):\n\n_P.S. ввод от 135 до 405 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_new_width_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от -55 до 65", reply_markup=markup)
         bot.register_next_step_handler(msg, process_current_et_step)
 
+@text_only_handler
 def process_new_width_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
         width = int(message.text)
-        if width < 135 or width > 400 or (width - 135) % 10 != 0:
+        if width < 135 or width > 405 or (width - 135) % 10 != 0:
             raise ValueError
         user_data[user_id]['new_width'] = width
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите профиль новых шин (%):\n\n_P.S. ввод осуществляется от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите профиль новых шин (%):\n\n_P.S. ввод от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_new_profile_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 135 до 400 с шагом 10", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_width_step)
 
+@text_only_handler
 def process_new_profile_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18669,22 +19090,29 @@ def process_new_profile_step(message):
         user_data[user_id]['new_profile'] = profile
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите диаметр новых шин (дюймы):\n\n_P.S. ввод осуществляется от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите диаметр новых шин (дюймы):\n\n_P.S. ввод от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_new_diameter_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 30 до 80 с шагом 5", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_profile_step)
 
+@text_only_handler
 def process_new_diameter_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18694,22 +19122,29 @@ def process_new_diameter_step(message):
         user_data[user_id]['new_diameter'] = diameter
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите ширину обода новых дисков (дюймы):\n\n_P.S. ввод осуществляется от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите ширину обода новых дисков (дюймы):\n\n_P.S. ввод от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_new_rim_width_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 12 до 24", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_diameter_step)
 
+@text_only_handler
 def process_new_rim_width_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18719,22 +19154,29 @@ def process_new_rim_width_step(message):
         user_data[user_id]['new_rim_width'] = rim_width
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, "Введите вылет новых дисков (ET, мм):\n\n_P.S. ввод осуществляется от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        msg = bot.send_message(message.chat.id, "Введите вылет новых дисков (ET, мм):\n\n_P.S. ввод от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_new_et_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 4 до 13 с шагом 0.5", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_rim_width_step)
 
+@text_only_handler
 def process_new_et_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -18744,9 +19186,14 @@ def process_new_et_step(message):
         user_data[user_id]['new_et'] = et
         calculate_tire(message)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от -55 до 65", reply_markup=markup)
         bot.register_next_step_handler(msg, process_new_et_step)
 
+@text_only_handler
 def calculate_tire(message):
     user_id = message.from_user.id
     data = user_data[user_id]
@@ -18823,18 +19270,23 @@ def calculate_tire(message):
             f"❌ Спидометр завышает на {abs(speed_diff_percent):.1f}%\n"
         )
 
+    current_tire = f"{data['current_width']}/{data['current_profile']} R{data['current_diameter']}"
+    current_rim = f"{data['current_rim_width']}x{data['current_diameter']} ET {data['current_et']}"
+    new_tire = f"{data['new_width']}/{data['new_profile']} R{data['new_diameter']}"
+    new_rim = f"{data['new_rim_width']}x{data['new_diameter']} ET {data['new_et']}"
+
     result_message = (
-        "*Результат расчета шин и дисков:*\n\n\n"
+        "*Результат расчета шин и дисков:*\n\n"
         "*Текущие параметры:*\n\n"
-        f"📏 Шины: {data['current_width']}/{data['current_profile']} R{data['current_diameter']}\n"
-        f"🔍 Диски: {data['current_rim_width']}x{data['current_diameter']} ET {data['current_et']}\n"
+        f"📏 Шины: {current_tire}\n"
+        f"🔍 Диски: {current_rim}\n"
         f"↔️ Ширина шины: {data['current_width']} мм\n"
         f"↕️ Высота профиля: {current_profile_height:.1f} мм\n"
         f"🔄 Диаметр: {current_total_diameter:.1f} мм\n"
         f"↔️ Ширина обода: {current_rim_width_mm:.1f} мм\n\n"
         "*Новые параметры:*\n\n"
-        f"📏 Шины: {data['new_width']}/{data['new_profile']} R{data['new_diameter']}\n"
-        f"🔍 Диски: {data['new_rim_width']}x{data['new_diameter']} ET {data['new_et']}\n"
+        f"📏 Шины: {new_tire}\n"
+        f"🔍 Диски: {new_rim}\n"
         f"↔️ Ширина шины: {data['new_width']} мм\n"
         f"↕️ Высота профиля: {new_profile_height:.1f} мм\n"
         f"🔄 Диаметр: {new_total_diameter:.1f} мм\n"
@@ -18851,10 +19303,16 @@ def calculate_tire(message):
     )
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)  # Изменённый вызов
+    
+    print(f"Сохранение расчета шин для user_id: {user_id}")  # Отладка
+    save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)
+    
+    del user_data[user_id]  # Очистка user_data после расчета
     view_tire_calc(message, show_description=False)
 
 def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
+    user_id_int = int(user_id)  # Для user_data
+    user_id_str = str(user_id)  # Для user_history_tire
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
     current_profile_height = data['current_width'] * (data['current_profile'] / 100)
@@ -18894,13 +19352,21 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
         'timestamp': timestamp
     }
 
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
-            'username': data['username'],
-            'calculations': []
+    if user_id_str not in user_history_tire:
+        user_history_tire[user_id_str] = {
+            'username': data.get('username', 'unknown'),
+            'tire_calculations': []
         }
+    elif 'tire_calculations' not in user_history_tire[user_id_str]:
+        user_history_tire[user_id_str]['tire_calculations'] = []
 
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    user_history_tire[user_id_str]['tire_calculations'].append(calculation_data)
+    
+    # Проверка пути
+    if not TIRE_HISTORY_PATH.endswith('tire_users.json'):
+        print(f"Ошибка: неверный путь для сохранения: {TIRE_HISTORY_PATH}")
+        raise ValueError("Попытка сохранить данные шин в неверный файл!")
+    
     save_user_history_tires()
 
 # ---------- ПРОСМОТР РАСЧЕТОВ ШИН ----------
@@ -18915,28 +19381,33 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_tire: {user_id in user_history_tire}")  # Отладка
+    if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
         return
-    view_tire_calculations(message.chat.id)
+    view_tire_calculations(message)
 
-def view_tire_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def view_tire_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Просмотр расчетов для user_id {user_id}, user_history_tire: {user_history_tire.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(bot.get_chat(chat_id))
+        view_tire_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_tire[user_id]['tire_calculations']
     message_text = "*Список ваших расчетов шин:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -18944,9 +19415,11 @@ def view_tire_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в шины')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
+@text_only_handler
 def process_view_tire_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -18954,11 +19427,14 @@ def process_view_tire_selection(message):
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_tire.get(user_id, {}).get('tire_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -18978,12 +19454,9 @@ def process_view_tire_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в шины')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_tire_selection)
             return
 
@@ -18993,13 +19466,15 @@ def process_view_tire_selection(message):
 
         for index in valid_indices:
             calc = calculations[index]
-            required_keys = ['current_width', 'new_width', 'current_profile_height', 'new_profile_height', 
-                            'current_diameter', 'new_diameter', 'current_rim_width_mm', 'new_rim_width_mm',
-                            'diameter_diff_mm', 'diameter_diff_percent', 'clearance_diff', 'speed_diff_percent',
-                            'rim_width_diff_mm', 'recommendation']
+            required_keys = [
+                'current_width', 'new_width', 'current_profile_height', 'new_profile_height',
+                'current_diameter', 'new_diameter', 'current_rim_width_mm', 'new_rim_width_mm',
+                'diameter_diff_mm', 'diameter_diff_percent', 'clearance_diff', 'speed_diff_percent',
+                'rim_width_diff_mm', 'recommendation', 'current_tire', 'current_rim', 'new_tire', 'new_rim'
+            ]
             for key in required_keys:
                 if key not in calc:
-                    bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены. Выполните новый расчет.")
+                    bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены! Выполните новый расчет!")
                     view_tire_calc(message, show_description=False)
                     return
 
@@ -19056,7 +19531,7 @@ def process_view_tire_selection(message):
                 )
 
             result_message = (
-                f"*📊 Результат расчета шин №{index + 1}:*\n\n\n"
+                f"*📊 Результат расчета шин №{index + 1}:*\n\n"
                 f"*Текущие параметры:*\n\n"
                 f"📏 Шины: {calc['current_tire']}\n"
                 f"🔍 Диски: {calc['current_rim']}\n"
@@ -19082,7 +19557,7 @@ def process_view_tire_selection(message):
                 f"*Рекомендация:*\n\n{calc['recommendation']}\n\n"
                 f"🕒 *Дата расчета:* {calc['timestamp']}"
             )
-            
+
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
         view_tire_calc(message, show_description=False)
@@ -19090,12 +19565,9 @@ def process_view_tire_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_tire_selection)
 
 # ---------- УДАЛЕНИЕ РАСЧЕТОВ ШИН ----------
@@ -19110,28 +19582,33 @@ def process_view_tire_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_tire: {user_id in user_history_tire}")  # Отладка
+    if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
         return
-    delete_tire_calculations(message.chat.id)
+    delete_tire_calculations(message)
 
-def delete_tire_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def delete_tire_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Удаление расчетов для user_id {user_id}, user_history_tire: {user_history_tire.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_tire or 'tire_calculations' not in user_history_tire[user_id] or not user_history_tire[user_id]['tire_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
-        view_tire_calc(bot.get_chat(chat_id))
+        view_tire_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_tire[user_id]['tire_calculations']
     message_text = "*Список ваших расчетов шин:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
-        timestamp = calc['timestamp']  
+        timestamp = calc['timestamp']
         message_text += f"🕒 *№{i}.* {timestamp}\n"
 
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
@@ -19139,9 +19616,11 @@ def delete_tire_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в шины')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
+@text_only_handler
 def process_delete_tire_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -19149,11 +19628,14 @@ def process_delete_tire_selection(message):
     if message.text == "Вернуться в шины":
         view_tire_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_tire.get(user_id, {}).get('tire_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
         view_tire_calc(message, show_description=False)
@@ -19173,12 +19655,9 @@ def process_delete_tire_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в шины')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_delete_tire_selection)
             return
 
@@ -19197,25 +19676,58 @@ def process_delete_tire_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_tire_selection)
-
 
 # ---------- РАСЧЕТ НАЛОГА ----------
 
+@bot.message_handler(func=lambda message: message.text == "Налог")
+@check_function_state_decorator('Налог')
+@track_usage('Налог')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def view_nalog_calc(message, show_description=True):
+    global stored_message
+    stored_message = message
+
+    description = (
+        "ℹ️ *Краткая справка по расчету транспортного налога*\n\n"
+        "📌 *Расчет налога:*\n"
+        "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n\n"
+        "_P.S. Региональный коэффициент завышен. Мы работаем над этим. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
+        "_Сумма налога (руб.) = налоговая база (л.с.) × ставка (руб.) × (количество полных месяцев владения / 12 месяцев)_\n\n"
+        "📌 *Просмотр налогов:*\n"
+        "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
+        "📌 *Удаление налогов:*\n"
+        "Вы можете удалить свои расчеты, если они вам больше не нужны"
+    )
+
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Рассчитать налог', 'Просмотр налогов', 'Удаление налогов')
+    markup.add('Вернуться в калькуляторы')
+    markup.add('В главное меню')
+
+    if show_description:
+        bot.send_message(message.chat.id, description, parse_mode='Markdown')
+
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 NALOG_JSON_PATH = os.path.join('files', 'nalog.json')
-USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
+USER_HISTORY_PATH_NALOG = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
 PERECHEN_AUTO_PATH = os.path.join('files', 'auto_10mln_rub_2025.json') 
 TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'transport_tax_{year}.json')
 
 nalog_data = {}
-user_history = {}
+user_history_nalog = {}
 user_data = {}
 expensive_cars = []
 tax_rates = {}
@@ -19236,23 +19748,23 @@ def load_nalog_data():
         print(f"Ошибка при загрузке файла nalog.json: {e}")
 
 def load_user_history_nalog():
-    global user_history
+    global user_history_nalog
     try:
-        if os.path.exists(USER_HISTORY_PATH):
-            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
-                user_history = json.load(db_file)
+        if os.path.exists(USER_HISTORY_PATH_NALOG):
+            with open(USER_HISTORY_PATH_NALOG, 'r', encoding='utf-8') as db_file:
+                user_history_nalog = json.load(db_file)
         else:
-            print(f"Файл {USER_HISTORY_PATH} не найден! Создание нового...")
-            user_history = {}
+            print(f"Файл {USER_HISTORY_PATH_NALOG} не найден! Создание нового...")
+            user_history_nalog = {}
             save_user_history_nalog()
     except Exception as e:
         print(f"Ошибка при загрузке истории пользователей: {e}")
-        user_history = {}
+        user_history_nalog = {}
 
 def save_user_history_nalog():
     try:
-        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
-            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+        with open(USER_HISTORY_PATH_NALOG, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history_nalog, db_file, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
@@ -19292,49 +19804,14 @@ def load_tax_rates(year):
         tax_rates = {}
 
 ensure_path_and_file(NALOG_JSON_PATH)
-ensure_path_and_file(USER_HISTORY_PATH)
+ensure_path_and_file(USER_HISTORY_PATH_NALOG)
 load_nalog_data()
 load_user_history_nalog()
 load_expensive_cars()
 load_tax_rates(2025)
 
-@bot.message_handler(func=lambda message: message.text == "Налог")
-@check_function_state_decorator('Налог')
-@track_usage('Налог')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
-@rate_limit_with_captcha
-def view_nalog_calc(message, show_description=True):
-    global stored_message
-    stored_message = message
+# ---------- РАССЧИТАТЬ НАЛОГ ----------
 
-    description = (
-        "ℹ️ *Краткая справка по расчету транспортного налога*\n\n\n"
-        "📌 *Расчет налога:*\n"
-        "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n\n"
-        "_P.S. Региональный коэффициент завышен. Мы работаем над этим. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
-        "_Сумма налога (руб.) = налоговая база (л.с.) × ставка (руб.) × (количество полных месяцев владения / 12 месяцев)_\n\n"
-        "📌 *Просмотр налогов:*\n"
-        "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
-        "📌 *Удаление налогов:*\n"
-        "Вы можете удалить свои расчеты, если они вам больше не нужны"
-    )
-
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Рассчитать налог', 'Просмотр налогов', 'Удаление налогов')
-    markup.add('Вернуться в калькуляторы')
-    markup.add('В главное меню')
-
-    if show_description:
-        bot.send_message(message.chat.id, description, parse_mode='Markdown')
-
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
-    
 @bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
 @check_function_state_decorator('Рассчитать налог')
 @track_usage('Рассчитать налог')
@@ -19345,6 +19822,7 @@ def view_nalog_calc(message, show_description=True):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def start_tax_calculation(message):
     if not nalog_data:
@@ -19352,7 +19830,7 @@ def start_tax_calculation(message):
         return
 
     user_id = message.from_user.id
-    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
 
     markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     regions = list(tax_rates.keys())
@@ -19361,25 +19839,38 @@ def start_tax_calculation(message):
             markup.row(regions[i], regions[i + 1])
         else:
             markup.add(regions[i])
-    markup.add("Вернуться в налог")       
+    markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите ваш регион:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_nalog_region_step)
 
+@text_only_handler
 def process_nalog_region_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     region_name = message.text.strip()
     if region_name not in tax_rates:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        regions = list(tax_rates.keys())
+        for i in range(0, len(regions), 2):
+            if i + 1 < len(regions):
+                markup.row(regions[i], regions[i + 1])
+            else:
+                markup.add(regions[i])
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный регион!\nВыберите регион из списка:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_nalog_region_step)
         return
 
@@ -19393,19 +19884,22 @@ def process_nalog_region_step(message):
         else:
             markup.add(years[i])
     markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите год для налога:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_year_step)
 
+@text_only_handler
 def process_year_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -19419,7 +19913,17 @@ def process_year_step(message):
             view_nalog_calc(message, show_description=False)
             return
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный год")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        years = [str(year) for year in available_years]
+        for i in range(0, len(years), 2):
+            if i + 1 < len(years):
+                markup.row(years[i], years[i + 1])
+            else:
+                markup.add(years[i])
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Некорректный год!\nВыберите год из списка: {', '.join(years)}", reply_markup=markup)
         bot.register_next_step_handler(msg, process_year_step)
         return
 
@@ -19431,19 +19935,22 @@ def process_year_step(message):
         else:
             markup.add(months[i])
     markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Количество месяцев владения ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_ownership_months_step)
 
+@text_only_handler
 def process_ownership_months_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -19452,7 +19959,17 @@ def process_ownership_months_step(message):
             raise ValueError
         user_data[user_id]['ownership_months'] = months
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число от 1 до 12")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        months = [str(i) for i in range(1, 13)]
+        for i in range(0, len(months), 2):
+            if i + 1 < len(months):
+                markup.row(months[i], months[i + 1])
+            else:
+                markup.add(months[i])
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число от 1 до 12", reply_markup=markup)
         bot.register_next_step_handler(msg, process_ownership_months_step)
         return
 
@@ -19464,24 +19981,37 @@ def process_ownership_months_step(message):
         else:
             markup.add(vehicle_types[i])
     markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Вид транспортного средства:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_vehicle_type_nalog_step)
 
+@text_only_handler
 def process_vehicle_type_nalog_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     vehicle_type = message.text.strip()
     if vehicle_type not in tax_rates[user_data[user_id]['region']]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        vehicle_types = list(tax_rates[user_data[user_id]['region']].keys())
+        for i in range(0, len(vehicle_types), 2):
+            if i + 1 < len(vehicle_types):
+                markup.row(vehicle_types[i], vehicle_types[i + 1])
+            else:
+                markup.add(vehicle_types[i])
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный тип ТС!\nВыберите тип из списка:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_vehicle_type_nalog_step)
         return
 
@@ -19490,26 +20020,29 @@ def process_vehicle_type_nalog_step(message):
 
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, f"Введите мощность двигателя (л.с.):", reply_markup=markup)
     bot.register_next_step_handler(msg, process_metric_value_step)
 
+@text_only_handler
 def process_metric_value_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
         value = float(message.text.replace(',', '.'))
         user_data[user_id]['metric_value'] = value
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВведите число")
         bot.register_next_step_handler(msg, process_metric_value_step)
         return
 
@@ -19517,25 +20050,33 @@ def process_metric_value_step(message):
         markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Да", "Нет")
         markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "ТС стоит больше 10 миллионов рублей?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_expensive_car_step)
     else:
         proceed_to_benefits(message)
 
+@text_only_handler
 def process_expensive_car_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     if message.text not in ["Да", "Нет"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите Да или Нет")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Да", "Нет")
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
         bot.register_next_step_handler(msg, process_expensive_car_step)
         return
 
@@ -19548,21 +20089,24 @@ def process_expensive_car_step(message):
 
         markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, f"*Марка ТС:*\n\n{brand_list}\n\nВведите номер марки:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_brand_step)
     else:
         proceed_to_benefits(message)
 
+@text_only_handler
 def process_brand_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -19579,22 +20123,29 @@ def process_brand_step(message):
 
         markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, f"*Модель ТС:*\n\n{model_list}\n\nВведите номер модели:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_model_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Некорректный номер!\nВведите число от 1 до {len(user_data[user_id]['brands'])}", reply_markup=markup)
         bot.register_next_step_handler(msg, process_brand_step)
 
+@text_only_handler
 def process_model_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     try:
@@ -19628,29 +20179,36 @@ def process_model_step(message):
                     y = int(match.group(1))
                     years.append(current_year - y)
         years = sorted(set(years))
-        year_list = "\n".join(f"📅 №{i+1}. {year}" for i, year in enumerate(years))
         user_data[user_id]['years'] = years
+        year_list = "\n".join(f"📅 №{i+1}. {year}" for i, year in enumerate(years))
 
         markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, f"*Год выпуска:*\n\n{year_list}\n\nВведите номер года:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_year_of_manufacture_step)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Некорректный номер!\nВведите число от 1 до {len(user_data[user_id]['models'])}", reply_markup=markup)
         bot.register_next_step_handler(msg, process_model_step)
 
+@text_only_handler
 def process_year_of_manufacture_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
+    
     try:
         year_idx = int(message.text) - 1
         years = user_data[user_id]['years']
@@ -19660,49 +20218,64 @@ def process_year_of_manufacture_step(message):
         user_data[user_id]['year_of_manufacture'] = selected_year
         proceed_to_benefits(message)
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Некорректный номер!\nВведите число от 1 до {len(user_data[user_id]['years'])}", reply_markup=markup)
         bot.register_next_step_handler(msg, process_year_of_manufacture_step)
 
+@text_only_handler
 def proceed_to_benefits(message):
     user_id = message.from_user.id
     markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
     benefits = ["Нет", "Да"]
     markup.add(*benefits)
     markup.add("Вернуться в налог")
+    markup.add('Вернуться в калькуляторы')
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Имею ли я право на льготу?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_benefits_step)
 
+@text_only_handler
 def process_benefits_step(message):
     user_id = message.from_user.id
-
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
-
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
         return
 
     benefit_desc = message.text.strip()
     if benefit_desc not in ["Нет", "Да"]:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        benefits = ["Нет", "Да"]
+        markup.add(*benefits)
+        markup.add("Вернуться в налог")
+        markup.add('Вернуться в калькуляторы')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод!\nВыберите ДА или НЕТ", reply_markup=markup)
         bot.register_next_step_handler(msg, process_benefits_step)
         return
 
     user_data[user_id]['benefit'] = benefit_desc
     calculate_tax(message)
 
+@text_only_handler
 def calculate_tax(message):
-    user_id = message.from_user.id
-    data = user_data[user_id]
+    user_id_int = message.from_user.id  # Для user_data
+    user_id_str = str(user_id_int)  # Для user_history_nalog
+    data = user_data[user_id_int]
 
     tax_base = data['metric_value']
-
     region = data['region']
     vehicle_type = data['vehicle_type']
     rates = tax_rates[region][vehicle_type]
-    
+
     rate = 0.0
     for condition, value in rates.items():
         if "до" in condition:
@@ -19717,12 +20290,11 @@ def calculate_tax(message):
 
     ownership_months = data['ownership_months']
     months_coefficient = ownership_months / 12
-
     benefit = data['benefit']
     benefit_coefficient = 1.0 if benefit == "Нет" else 0.0
-
     increasing_coefficient = 1.0
     expensive_details = "Нет"
+
     if data.get('is_expensive', False):
         years_passed = data['year'] - data['year_of_manufacture']
         if years_passed <= 3:
@@ -19736,9 +20308,8 @@ def calculate_tax(message):
             expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {data['year_of_manufacture']})"
 
     tax = tax_base * rate * months_coefficient * increasing_coefficient * benefit_coefficient
-
     result_message = (
-        f"*📊 Итоговый расчет транспортного налога*\n\n\n"
+        f"*📊 Итоговый расчет транспортного налога*\n\n"
         f"*Ваши данные:*\n\n"
         f"🌍 *Регион:* {data['region']}\n"
         f"📅 *Год:* {data['year']}\n"
@@ -19746,10 +20317,10 @@ def calculate_tax(message):
         f"💪 *Мощность двигателя:* {tax_base} л.с.\n"
         f"⏳ *Месяцев владения:* {ownership_months}\n"
         f"💰 *ТС дороже 10 млн руб.:* {expensive_details}\n"
-        f"⭐ *Льготы:* {benefit}\n"
-        f"\n*Итоговый расчет:*\n\n"
-        f"💰 *Сумма налога:* {tax:,.2f} руб.\n"
-        f"\n*Параметры расчета:*\n\n"
+        f"⭐ *Льготы:* {benefit}\n\n"
+        f"*Итоговый расчет:*\n\n"
+        f"💰 *Сумма налога:* {tax:,.2f} руб.\n\n"
+        f"*Параметры расчета:*\n\n"
         f"📏 *Налоговая база:* {tax_base} л.с.\n"
         f"💵 *Ставка:* {rate} руб./л.с.\n"
         f"⭐ *Коэффициент владения:* {months_coefficient:.2f} ({ownership_months}/12)\n"
@@ -19778,18 +20349,30 @@ def calculate_tax(message):
         calculation_data['selected_brand'] = data['selected_brand']
         calculation_data['selected_model'] = data['selected_model']
 
-    if str(user_id) not in user_history:
-        user_history[str(user_id)] = {
-            'username': data['username'],
-            'calculations': []
+    if user_id_str not in user_history_nalog:
+        user_history_nalog[user_id_str] = {
+            'username': data.get('username', 'unknown'),
+            'nalog_calculations': []
         }
-    user_history[str(user_id)]['calculations'].append(calculation_data)
+    elif 'nalog_calculations' not in user_history_nalog[user_id_str]:
+        user_history_nalog[user_id_str]['nalog_calculations'] = []
+
+    user_history_nalog[user_id_str]['nalog_calculations'].append(calculation_data)
+    
+    # Проверка пути
+    if not USER_HISTORY_PATH_NALOG.endswith('nalog_users.json'):
+        print(f"Ошибка: неверный путь для сохранения: {USER_HISTORY_PATH_NALOG}")
+        raise ValueError("Попытка сохранить данные налога в неверный файл!")
+    
+    print(f"Сохранение расчета налога для user_id: {user_id_str}")  # Отладка
     save_user_history_nalog()
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    
+    del user_data[user_id_int]  # Очистка user_data после расчета
     view_nalog_calc(message, show_description=False)
 
-# Просмотр расчетов
+# ---------- ПРОСМОТР РАСЧЕТОВ НАЛОГОВ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр налогов")
 @check_function_state_decorator('Просмотр налогов')
@@ -19801,24 +20384,29 @@ def calculate_tax(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_nalog: {user_id in user_history_nalog}")  # Отладка
+    if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
         return
-    view_nalog_calculations(message.chat.id)
+    view_nalog_calculations(message)
 
-def view_nalog_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def view_nalog_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Просмотр расчетов для user_id {user_id}, user_history_nalog: {user_history_nalog.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(bot.get_chat(chat_id))
+        view_nalog_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_nalog[user_id]['nalog_calculations']
     message_text = "*Список ваших расчетов налога:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
@@ -19830,9 +20418,11 @@ def view_nalog_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в налог')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
 
+@text_only_handler
 def process_view_nalog_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -19840,11 +20430,14 @@ def process_view_nalog_selection(message):
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -19864,12 +20457,9 @@ def process_view_nalog_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в налог')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_view_nalog_selection)
             return
 
@@ -19890,7 +20480,7 @@ def process_view_nalog_selection(message):
                     expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {calc['year_of_manufacture']})"
 
             result_message = (
-                f"*📊 Итоговый расчет транспортного налога №{index + 1}*\n\n\n"
+                f"*📊 Итоговый расчет транспортного налога №{index + 1}*\n\n"
                 f"*Ваши данные:*\n\n"
                 f"🌍 *Регион:* {calc['region']}\n"
                 f"📅 *Год:* {calc['year']}\n"
@@ -19898,16 +20488,16 @@ def process_view_nalog_selection(message):
                 f"💪 *Мощность двигателя:* {calc['engine_power']} л.с.\n"
                 f"⏳ *Месяцев владения:* {calc['ownership_months']}\n"
                 f"💰 *ТС дороже 10 млн руб.:* {expensive_details}\n"
-                f"⭐ *Льготы:* {calc['benefit']}\n"
-                f"\n*Итоговый расчет:*\n\n"
-                f"💰 *Сумма налога:* {calc['tax']:,.2f} руб.\n"
-                f"\n*Параметры расчета:*\n\n"
+                f"⭐ *Льготы:* {calc['benefit']}\n\n"
+                f"*Итоговый расчет:*\n\n"
+                f"💰 *Сумма налога:* {calc['tax']:,.2f} руб.\n\n"
+                f"*Параметры расчета:*\n\n"
                 f"📏 *Налоговая база:* {calc['engine_power']} л.с.\n"
                 f"💵 *Ставка:* {calc['rate']} руб./л.с.\n"
                 f"⭐ *Коэффициент владения:* {calc['months_coefficient']:.2f} ({calc['ownership_months']}/12)\n"
                 f"⭐ *Повышающий коэффициент:* {calc['increasing_coefficient']}\n"
-                f"⭐ *Льготный коэффициент:* {calc['benefit_coefficient']}\n"
-                f"\n🕒 *Дата расчета:* {calc['timestamp']}"
+                f"⭐ *Льготный коэффициент:* {calc['benefit_coefficient']}\n\n"
+                f"🕒 *Дата расчета:* {calc['timestamp']}"
             )
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
@@ -19916,15 +20506,13 @@ def process_view_nalog_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в налог')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_view_nalog_selection)
 
-# Удаление расчетов
+# ---------- УДАЛЕНИЕ РАСЧЕТОВ НАЛОГОВ ----------
+
 @bot.message_handler(func=lambda message: message.text == "Удаление налогов")
 @check_function_state_decorator('Удаление налогов')
 @track_usage('Удаление налогов')
@@ -19935,24 +20523,29 @@ def process_view_nalog_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+    print(f"Проверка user_id {user_id} в user_history_nalog: {user_id in user_history_nalog}")  # Отладка
+    if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
         return
-    delete_nalog_calculations(message.chat.id)
+    delete_nalog_calculations(message)
 
-def delete_nalog_calculations(chat_id):
-    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
-    
-    if user_id not in user_history or not user_history[user_id]['calculations']:
+@text_only_handler
+def delete_nalog_calculations(message):
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    print(f"Удаление расчетов для user_id {user_id}, user_history_nalog: {user_history_nalog.get(user_id, {})}")  # Отладка
+    if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(bot.get_chat(chat_id))
+        view_nalog_calc(message, show_description=False)
         return
 
-    calculations = user_history[user_id]['calculations']
+    calculations = user_history_nalog[user_id]['nalog_calculations']
     message_text = "*Список ваших расчетов налога:*\n\n"
 
     for i, calc in enumerate(calculations, 1):
@@ -19964,9 +20557,11 @@ def delete_nalog_calculations(chat_id):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в налог')
+    markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
 
+@text_only_handler
 def process_delete_nalog_selection(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -19974,11 +20569,14 @@ def process_delete_nalog_selection(message):
     if message.text == "Вернуться в налог":
         view_nalog_calc(message, show_description=False)
         return
+    if message.text == "Вернуться в калькуляторы":
+        return_to_calculators(message)
+        return
 
     chat_id = message.chat.id
     user_id = str(message.from_user.id)
 
-    calculations = user_history.get(user_id, {}).get('calculations', [])
+    calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
         view_nalog_calc(message, show_description=False)
@@ -19998,12 +20596,9 @@ def process_delete_nalog_selection(message):
         if not valid_indices and invalid_indices:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в налог')
+            markup.add('Вернуться в калькуляторы')
             markup.add('В главное меню')
-            msg = bot.send_message(
-                chat_id,
-                "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка:",
-                reply_markup=markup
-            )
+            msg = bot.send_message(chat_id, "Некорректный ввод!\nВыберите существующие номера расчетов из списка", reply_markup=markup)
             bot.register_next_step_handler(msg, process_delete_nalog_selection)
             return
 
@@ -20022,12 +20617,9 @@ def process_delete_nalog_selection(message):
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в налог')
+        markup.add('Вернуться в калькуляторы')
         markup.add('В главное меню')
-        msg = bot.send_message(
-            chat_id,
-            "❌ Некорректный ввод! Введите числа через запятую:",
-            reply_markup=markup
-        )
+        msg = bot.send_message(chat_id, "Некорректный ввод!\nВведите числа через запятую", reply_markup=markup)
         bot.register_next_step_handler(msg, process_delete_nalog_selection)
 
 
