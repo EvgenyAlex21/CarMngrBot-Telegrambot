@@ -30,7 +30,6 @@ import hashlib
 from statistics import mean
 from functools import wraps
 
-
 # (2) --------------- ТОКЕН БОТА ---------------
 
 bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
@@ -9225,6 +9224,9 @@ admin_sessions = set()
 
 ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
 
+# Глобальная переменная для отслеживания изменения данных входа
+credentials_changed = False
+
 # Функции для работы с единой базой данных
 # В функции load_admin_data добавляем загрузку удалённых админов
 def load_admin_data():
@@ -9234,13 +9236,13 @@ def load_admin_data():
             return {
                 "admin_sessions": set(data.get("admin_sessions", [])),
                 "admins_data": data.get("admins_data", {}),
-                "removed_admins": set(data.get("removed_admins", [])),
+                "removed_admins": {k: v for k, v in data.get("removed_admins", {}).items()},
                 "login_password_hash": data.get("login_password_hash", "")
             }
     return {
         "admin_sessions": set(),
         "admins_data": {},
-        "removed_admins": set(),
+        "removed_admins": {},
         "login_password_hash": ""
     }
 
@@ -9249,9 +9251,10 @@ def save_admin_data(admin_sessions, admins_data, login_password_hash, removed_ad
         json.dump({
             "admin_sessions": list(admin_sessions),
             "admins_data": admins_data,
-            "removed_admins": list(removed_admins or set()),
+            "removed_admins": removed_admins or {},
             "login_password_hash": login_password_hash
         }, file, ensure_ascii=False, indent=4)
+
 
 # Загрузка данных из единой базы
 data = load_admin_data()
@@ -9357,37 +9360,48 @@ def change_admin_credentials(new_username=None, new_password=None):
     save_admin_data(admin_sessions, admins_data, login_password_hash)
 
 # Функции управления администраторами. Добавление администратора
-def add_admin(admin_id, username, permissions):
+def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     admin_id = str(admin_id)
+    if permissions is None:
+        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"]  # Права по умолчанию
     user_data = {
         "user_id": admin_id,
         "first_name": " ",
         "last_name": " ",
         "username": username,
         "phone": " ",
-        "permissions": permissions
+        "permissions": [perm.split(':')[-1].strip() for perm in permissions]
     }
     admins_data[admin_id] = user_data
     admin_sessions.add(admin_id)  # Добавляем в текущие сессии
-    save_admin_data(admin_sessions, admins_data, login_password_hash)
+    save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
     bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
+    if initiator_chat_id:
+        bot.send_message(initiator_chat_id, f"Администратор {username} - {admin_id} успешно добавлен.")
+    bot.send_message(admin_id, f"Вам были назначены следующие права: {', '.join(permissions)}")
 
 # Удаление администратора
-def remove_admin(admin_id):
+def remove_admin(admin_id, initiator_chat_id):
     admin_id = str(admin_id)
     if admin_id in admins_data:
+        admin_username = admins_data[admin_id]["username"]
         # Добавляем в список удалённых администраторов
-        removed_admins.add(admin_id)
-        
+        removed_admins[admin_id] = {"username": admin_username}
+
         # Удаляем данные администратора
         del admins_data[admin_id]
         admin_sessions.discard(admin_id)
-        
+
         # Сохраняем изменения
-        save_admin_data(admin_sessions, admins_data, login_password_hash)
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+        # Отправляем сообщение удалённому администратору
         bot.send_message(admin_id, "Вас удалили из администраторов.")
+
+        # Отправляем сообщение инициатору
+        bot.send_message(initiator_chat_id, f"Администратор {admin_username} - {admin_id} успешно удалён.")
     else:
-        bot.send_message(admin_id, "Администратор с таким ID не найден.")
+        bot.send_message(initiator_chat_id, f"Администратор с ID {admin_username} - {admin_id} не найден.")
 
 def check_permission(admin_id, permission):
     return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
@@ -9427,20 +9441,24 @@ def update_admin_data(user_data):
         save_admin_data(admin_sessions, admins_data, login_password_hash)
 
 # Обработчик входа в админ-панель
+# Функция для обработки входа в админ-панель
 @bot.message_handler(commands=['admin'])
 @check_chat_state
 def handle_admin_login(message):
+    global credentials_changed
     user_data = get_user_data(message)
-    
+
     # Проверяем, есть ли пользователь в сессиях
     if str(user_data["user_id"]) in admin_sessions:  # Если сессия активна
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-        markup.add('Быстрый вход')
-        markup.add('Ввести логин и пароль заново')
+        if not credentials_changed:
+            markup.add('Быстрый вход')
+        if credentials_changed:
+            markup.add('Ввести логин и пароль заново')
         markup.add('В главное меню')
         bot.send_message(
-            user_data["user_id"], 
-            "Выберите способ входа:", 
+            user_data["user_id"],
+            "Выберите способ входа:",
             reply_markup=markup
         )
         bot.register_next_step_handler(message, process_login_choice)
@@ -9453,14 +9471,15 @@ def handle_admin_login(message):
         bot.register_next_step_handler(message, verify_username)
 
 def process_login_choice(message):
+    global credentials_changed
     user_id = str(message.chat.id)
-    
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
+
     if message.text == "Быстрый вход":
-        if user_id in admin_sessions:
+        if user_id in admin_sessions and not credentials_changed:
             session_data = admins_data.get(user_id, {})
             bot.send_message(message.chat.id, f"Добро пожаловать в админ-панель, {session_data.get('username', 'Админ')}!")
             show_admin_panel(message)
@@ -9468,7 +9487,10 @@ def process_login_choice(message):
             bot.send_message(message.chat.id, "Сессия недействительна. Пожалуйста, авторизуйтесь заново.")
             handle_admin_login(message)
     elif message.text == "Ввести логин и пароль заново":
-        bot.send_message(message.chat.id, "Введите логин:")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_main = types.KeyboardButton("В главное меню")
+        markup.add(item_main)
+        bot.send_message(message.chat.id, "Введите логин:", reply_markup=markup)
         bot.register_next_step_handler(message, verify_username)
     else:
         bot.send_message(message.chat.id, "Неверный выбор. Попробуйте снова.")
@@ -9478,12 +9500,14 @@ def verify_username(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
+
     username = message.text
     is_valid, error_message = is_valid_username(username)
     if not is_valid:
         bot.send_message(message.chat.id, f"Ошибка: {error_message}. Попробуйте снова.")
         bot.register_next_step_handler(message, verify_username)
         return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_main = types.KeyboardButton("В главное меню")
     markup.add(item_main)
@@ -9491,9 +9515,12 @@ def verify_username(message):
     bot.register_next_step_handler(message, verify_password, username)
 
 def verify_password(message, username):
+    global credentials_changed
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
+
     password = message.text
     admin_id = str(message.chat.id)
 
@@ -9514,6 +9541,9 @@ def verify_password(message, username):
 
         bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
         show_admin_panel(message)
+
+        # Сбрасываем флаг изменения данных входа
+        credentials_changed = False
         return
 
     # Проверяем индивидуальный хеш
@@ -9529,6 +9559,9 @@ def verify_password(message, username):
 
         bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
         show_admin_panel(message)
+
+        # Сбрасываем флаг изменения данных входа
+        credentials_changed = False
     else:
         bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
         handle_admin_login(message)
@@ -9544,6 +9577,7 @@ def admin_logout(message):
 
 # Показ админ-панели
 def show_admin_panel(message):
+
     markup = types.ReplyKeyboardMarkup(row_width=3)
     markup.add('Админ','Бан','Функции')
     markup.add('Оповещения','Общение','Статистика')
@@ -9558,6 +9592,24 @@ def handle_return_to_admin_panel(message):
 
 
 # (ADMIN 3) --------------------------------- " ФУНКЦИЯ "АДМИН" " --------------------------------------------- 
+
+# Функция для получения идентификатора корневого администратора
+def get_root_admin_id():
+    if admins_data:
+        # Возвращаем первый ключ из словаря admins_data
+        return next(iter(admins_data))
+    return None
+
+# Функция для проверки, является ли пользователь корневым администратором
+def is_root_admin(admin_id):
+    return admin_id == get_root_admin_id()
+
+
+def check_permission(admin_id, permission):
+    if is_root_admin(admin_id):
+        return True  # Корневой администратор имеет доступ ко всем функциям
+    return permission in admins_data.get(str(admin_id), {}).get("permissions", [])   
+
 
 # Функция для проверки логина на соответствие требованиям
 def is_valid_username(username):
@@ -9587,9 +9639,15 @@ def is_valid_password(password):
 
 @bot.message_handler(func=lambda message: message.text == 'Админ')
 def show_settings_menu(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Админ'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('Смена данных входа')
-    markup.add('Добавить админа', 'Удалить админа')
+    markup.add('Добавить админа', 'Удалить админа', 'Права доступа')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите настройку:", reply_markup=markup)
 
@@ -9598,7 +9656,8 @@ def generate_login_password_hash(username, password):
     return hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
 
 # Функция для изменения данных входа для конкретного admin_id
-def update_admin_login_credentials(admin_id, new_username=None, new_password=None):
+def update_admin_login_credentials(message, admin_id, new_username=None, new_password=None):
+    global credentials_changed
     admin_id = str(admin_id)
     if admin_id not in admins_data:
         bot.send_message(admin_id, "Администратор не найден.")
@@ -9621,11 +9680,23 @@ def update_admin_login_credentials(admin_id, new_username=None, new_password=Non
     save_admin_data(admin_sessions, admins_data, login_password_hash)
     bot.send_message(admin_id, "Данные входа успешно обновлены.")
 
+    # Устанавливаем флаг изменения данных входа
+    credentials_changed = True
+
+    # Перенаправляем админа в главное меню и просим авторизоваться заново
+    bot.send_message(admin_id, "Данные входа изменены. Пожалуйста, авторизуйтесь заново, используя команду /admin.")
+    return_to_menu(message)
+
 # Обработчики смены логина и пароля
 @bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and str(message.chat.id) in admin_sessions)
 def handle_change_credentials(message):
+    global credentials_changed
     admin_id = str(message.chat.id)
     admin_data = admins_data.get(admin_id, {})
+
+    if not check_permission(admin_id, 'Смена данных входа'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
 
     # Проверка, есть ли у админа логин и пароль
     has_credentials = admin_data.get("admins_username") and admin_data.get("login_password_hash_for_user_id")
@@ -9639,6 +9710,11 @@ def handle_change_credentials(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Сменить пароль')
 def handle_change_password(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Сменить пароль'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     password_requirements = (
@@ -9654,6 +9730,11 @@ def handle_change_password(message):
     bot.register_next_step_handler(message, process_new_password)
 
 def process_new_password(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_new_password)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -9663,16 +9744,26 @@ def process_new_password(message):
         bot.send_message(message.chat.id, f"Ошибка: {error_message}. Попробуйте снова.")
         bot.register_next_step_handler(message, process_new_password)
         return
-    update_admin_login_credentials(message.chat.id, new_password=new_password)
+    update_admin_login_credentials(message, message.chat.id, new_password=new_password)
 
 @bot.message_handler(func=lambda message: message.text == 'Сменить логин и пароль')
 def handle_change_login_and_password(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Сменить логин и пароль'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите новый логин:", reply_markup=markup)
     bot.register_next_step_handler(message, process_new_login_and_password_step1)
 
 def process_new_login_and_password_step1(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_new_login_and_password_step1)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -9701,6 +9792,11 @@ def process_new_login_and_password_step1(message):
     bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
 
 def process_new_login_and_password_step2(message, new_login):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -9710,112 +9806,566 @@ def process_new_login_and_password_step2(message, new_login):
         bot.send_message(message.chat.id, f"Ошибка: {error_message}. Попробуйте снова.")
         bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
         return
-    update_admin_login_credentials(message.chat.id, new_username=new_login, new_password=new_password)
+    update_admin_login_credentials(message, message.chat.id, new_username=new_login, new_password=new_password)
 
-# Добавление и удаление администраторов
-@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and str(message.chat.id) in admin_sessions)
-def handle_add_admin(message):
-    # Проверяем, является ли текущий пользователь корневым администратором
-    root_admin_id = list(admins_data.keys())[0]  # Первый ID в списке `admins_data`
-    if str(message.chat.id) != root_admin_id:
-        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может добавлять администраторов.")
-        return
-
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите ID нового администратора:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_new_admin_id, root_admin_id)
-
-def process_new_admin_id(message, root_admin_id):
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-    admin_id = message.text.strip()
-    if not admin_id.isdigit():
-        bot.send_message(message.chat.id, "ID администратора должен быть числом. Попробуйте снова.")
-        return
-
-    admin_id = int(admin_id)
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите username нового администратора:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_new_admin_username, admin_id, root_admin_id)
-
-def process_new_admin_username(message, admin_id, root_admin_id):
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-    username = message.text.strip()
-
-    # Проверяем, существует ли администратор с таким ID
-    if str(admin_id) in admins_data:
-        bot.send_message(message.chat.id, "Администратор с таким ID уже существует. Добавление отменено.")
-        return
-
-    # Добавляем администратора
-    add_admin(admin_id, username, permissions=["view_stats", "manage_users"])
-    bot.send_message(message.chat.id, f"Администратор {username} с ID {admin_id} успешно добавлен.")
-
-# Добавляем список для хранения удалённых администраторов
-removed_admins = set()
-
+# Загрузка данных из единой базы
 data = load_admin_data()
 admin_sessions = data["admin_sessions"]
 admins_data = data["admins_data"]
-removed_admins = data["removed_admins"]  # Загружаем список удалённых админов
+removed_admins = data["removed_admins"]
 login_password_hash = data["login_password_hash"]
+
+def escape_markdown(text):
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
+# Функция для отображения списка администраторов для удаления
+def list_admins_for_removal(message):
+    admin_list = []
+    for admin_id, data in admins_data.items():
+        username = escape_markdown(data['username'])
+        admin_list.append(f"№{len(admin_list) + 1}. {username} - `{admin_id}`")
+
+    if admin_list:
+        response_message = "📋 Список *всех* администраторов:\n\n\n" + "\n\n".join(admin_list)
+        if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+            bot.send_message(message.chat.id, "📜 Список администраторов слишком большой для отправки в одном сообщении!")
+        else:
+            bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для удаления (через запятую):", reply_markup=markup)
+
+def list_removed_admins(message):
+    removed_admin_list = []
+    for admin_id, data in removed_admins.items():
+        username = escape_markdown(data['username'])
+        removed_admin_list.append(f"№{len(removed_admin_list) + 1}. {username} - `{admin_id}`")
+
+    if removed_admin_list:
+        response_message = "📋 Список *удалённых* администраторов:\n\n\n" + "\n\n".join(removed_admin_list)
+        if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+            bot.send_message(message.chat.id, "📜 Список удалённых администраторов слишком большой для отправки в одном сообщении!")
+        else:
+            bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для добавления (через запятую):", reply_markup=markup)
+
+def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
+    admin_id = str(admin_id)
+    if permissions is None:
+        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"]  # Права по умолчанию
+    user_data = {
+        "user_id": admin_id,
+        "first_name": " ",
+        "last_name": " ",
+        "username": username,
+        "phone": " ",
+        "permissions": permissions
+    }
+    admins_data[admin_id] = user_data
+    admin_sessions.add(admin_id)  # Добавляем в текущие сессии
+    save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+    bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
+    if initiator_chat_id:
+        bot.send_message(initiator_chat_id, f"Администратор {username} - {admin_id} успешно добавлен.")
+
+def remove_admin(admin_id, initiator_chat_id):
+    admin_id = str(admin_id)
+    if admin_id in admins_data:
+        admin_username = admins_data[admin_id]["username"]
+        # Добавляем в список удалённых администраторов
+        removed_admins[admin_id] = {"username": admin_username}
+
+        # Удаляем данные администратора
+        del admins_data[admin_id]
+        admin_sessions.discard(admin_id)
+
+        # Сохраняем изменения
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+        # Отправляем сообщение удалённому администратору
+        bot.send_message(admin_id, "Вас удалили из администраторов.")
+
+        # Отправляем сообщение инициатору
+        bot.send_message(initiator_chat_id, f"Администратор {admin_username} - {admin_id} успешно удалён.")
+    else:
+        bot.send_message(initiator_chat_id, f"Администратор с ID {admin_id} не найден.")
+
+def check_permission(admin_id, permission):
+    if is_root_admin(admin_id):
+        return True  # Корневой администратор имеет доступ ко всем функциям
+    return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
+
+def is_root_admin(admin_id):
+    return admin_id == get_root_admin_id()
+
+def get_root_admin_id():
+    if admins_data:
+        # Возвращаем первый ключ из словаря admins_data
+        return next(iter(admins_data))
+    return None
+
+# Путь к файлу users.json
+users_db_path = os.path.join('data base', 'admin', 'users.json')
+
+# Функция для загрузки данных из users.json
+def load_users_data():
+    with open(users_db_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+# Загрузка данных из users.json
+users_data = load_users_data()
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить админа' and str(message.chat.id) in admin_sessions)
 def handle_remove_admin(message):
     # Проверяем, является ли текущий пользователь корневым администратором
-    root_admin_id = list(admins_data.keys())[0]  # Первый ID в списке `admins_data`
+    root_admin_id = get_root_admin_id()  # Первый ID в списке `admins_data`
     if str(message.chat.id) != root_admin_id:
         bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может удалять администраторов.")
         return
 
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите ID или username администратора для удаления:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_remove_admin, root_admin_id)
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить админа'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
 
-def process_remove_admin(message, root_admin_id):
+    list_admins_for_removal(message)
+    bot.register_next_step_handler(message, process_remove_admin, root_admin_id, message.chat.id)
+
+# Путь к файлу admin_sessions.json
+admin_sessions_db_path = os.path.join('data base', 'admin', 'admin_sessions.json')
+
+# Функция для загрузки данных из admin_sessions.json
+def load_admin_sessions_data():
+    with open(admin_sessions_db_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+# Загрузка данных из admin_sessions.json
+admin_sessions_data = load_admin_sessions_data()
+
+def process_remove_admin(message, root_admin_id, initiator_chat_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
     input_data = message.text.strip()
+    admin_ids = []
 
-    # Проверяем, вводится ли ID
-    if input_data.isdigit():
-        admin_id = input_data
-    else:
-        # Проверяем, вводится ли username
-        admin_id = next(
-            (admin_id for admin_id, data in admins_data.items() if data.get("username") == input_data),
-            None
-        )
-        if not admin_id:
-            bot.send_message(message.chat.id, "Администратор с таким username не найден. Попробуйте снова.")
+    # Разбиваем ввод на части
+    parts = input_data.split(',')
+    for part in parts:
+        part = part.strip()
+        if part.startswith('№'):
+            # Если ввод является номером из списка
+            index = int(part[1:]) - 1
+            if 0 <= index < len(admins_data):
+                admin_id = list(admins_data.keys())[index]
+                admin_ids.append(admin_id)
+        elif part.isdigit():
+            # Если ввод является ID
+            admin_id = part
+            if admin_id not in admin_sessions_data['admin_sessions']:
+                bot.send_message(message.chat.id, f"Такого администратора не существует {admin_id}! Попробуйте еще раз.")
+                bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
+                return
+            admin_ids.append(admin_id)
+        else:
+            # Если ввод является username
+            username = part
+            user_id = next(
+                (user_id for user_id, data in admin_sessions_data['admins_data'].items() if data.get("username") == username),
+                None
+            )
+            if not user_id:
+                bot.send_message(message.chat.id, f"Такого администратора не существует {username}! Попробуйте еще раз.")
+                bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
+                return
+            admin_ids.append(user_id)
+
+    for admin_id in admin_ids:
+        if str(message.chat.id) == admin_id:
+            bot.send_message(message.chat.id, "Невозможно удалить самого себя!")
+            continue
+        if admin_id == root_admin_id:
+            bot.send_message(message.chat.id, "Невозможно удалить корневого администратора!")
+            continue
+        remove_admin(admin_id, initiator_chat_id)
+
+    show_admin_panel(message)
+
+
+@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and str(message.chat.id) in admin_sessions)
+def handle_add_admin(message):
+    # Проверяем, является ли текущий пользователь корневым администратором
+    root_admin_id = get_root_admin_id()  # Первый ID в списке `admins_data`
+    if str(message.chat.id) != root_admin_id:
+        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может добавлять администраторов.")
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Добавить админа'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    list_removed_admins(message)
+    bot.register_next_step_handler(message, process_add_admin, root_admin_id, message.chat.id)
+
+def process_add_admin(message, root_admin_id, initiator_chat_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+    input_data = message.text.strip()
+    admin_ids = []
+
+    # Разбиваем ввод на части
+    parts = input_data.split(',')
+    for part in parts:
+        part = part.strip()
+        if part.startswith('№'):
+            # Если ввод является номером из списка
+            index = int(part[1:]) - 1
+            if 0 <= index < len(removed_admins):
+                admin_id = list(removed_admins.keys())[index]
+                admin_ids.append(admin_id)
+        elif part.isdigit():
+            # Если ввод является ID
+            admin_id = part
+            if admin_id not in users_data:
+                bot.send_message(message.chat.id, f"Такого пользователя не существует {admin_id}! Попробуйте еще раз.")
+                bot.register_next_step_handler(message, process_add_admin, root_admin_id, initiator_chat_id)
+                return
+            admin_ids.append(admin_id)
+        else:
+            # Если ввод является username
+            username = part
+            user_id = next(
+                (user_id for user_id, data in users_data.items() if data.get("username") == username),
+                None
+            )
+            if not user_id:
+                bot.send_message(message.chat.id, f"Такого пользователя не существует {username}! Попробуйте еще раз.")
+                bot.register_next_step_handler(message, process_add_admin, root_admin_id, initiator_chat_id)
+                return
+            admin_ids.append(user_id)
+
+    for admin_id in admin_ids:
+        if admin_id in admins_data:
+            username = users_data.get(admin_id, {}).get("username", "Неизвестный пользователь")
+            bot.send_message(message.chat.id, f"Администратор с {username} - {admin_id} уже существует.")
+            continue
+        username = users_data[admin_id]["username"]
+        add_admin(admin_id, username, permissions=["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"], initiator_chat_id=initiator_chat_id)
+        del removed_admins[admin_id]
+
+    save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+    show_admin_panel(message)
+
+
+
+# Функция для проверки прав доступа
+def check_permission(admin_id, permission):
+    if is_root_admin(admin_id):
+        return True  # Корневой администратор имеет доступ ко всем функциям
+
+    # Получаем текущие права администратора
+    current_permissions = admins_data.get(str(admin_id), {}).get("permissions", [])
+
+    # Проверяем, есть ли право в списке, игнорируя часть до двоеточия
+    for perm in current_permissions:
+        if perm.split(':')[-1].strip() == permission.split(':')[-1].strip():
+            return True
+    return False
+
+# Функция для экранирования специальных символов Markdown
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
+# Функция для отображения списка администраторов
+def list_admins(message):
+    admin_list = []
+    for admin_id, data in admins_data.items():
+        username = data['username']
+        # Экранируем имя пользователя
+        escaped_username = escape_markdown(username)
+        admin_list.append(f"№{len(admin_list) + 1}. {escaped_username} - `{admin_id}`")
+
+    if admin_list:
+        response_message = "📋 Список администраторов:\n\n" + "\n\n".join(admin_list)
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер администратора для просмотра его прав:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_admin_selection)
+
+# Функция для обработки выбора администратора
+def process_admin_selection(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_admin_selection)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        admin_number = int(message.text.strip())
+        if admin_number < 1 or admin_number > len(admins_data):
+            raise ValueError
+
+        admin_id = list(admins_data.keys())[admin_number - 1]
+        admin_data = admins_data[admin_id]
+        permissions = admin_data.get("permissions", [])
+
+        if is_root_admin(admin_id):
+            bot.send_message(message.chat.id, "*Корневой администратор* обладает *всеми правами*!", parse_mode='Markdown')
+            show_admin_panel(message)
             return
 
-    # Проверка: нельзя удалить самого себя
-    if str(message.chat.id) == admin_id:
-        bot.send_message(message.chat.id, "Невозможно удалить самого себя!")
+        # Экранируем имя пользователя
+        escaped_username = escape_markdown(admin_data['username'])
+        permissions_list = format_permissions_with_headers(permissions)
+        bot.send_message(message.chat.id, f"Текущие права администратора {escaped_username} - `{admin_id}`:\n\n{permissions_list}", parse_mode='Markdown')
+
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Добавить права', 'Удалить права')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_permission_action, admin_id)
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверный номер администратора. Пожалуйста, попробуйте снова")
+        bot.register_next_step_handler(message, process_admin_selection)
+
+
+def get_available_permissions(admin_id):
+    all_permissions = [
+        "Админ", "Бан", "Функции", "Оповещения", "Общение", "Статистика", "Файлы", "Резервная копия",
+        "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль",
+        "Админ: Удалить админа", "Админ: Добавить админа", "Бан: Заблокировать", "Бан: Разблокировать",
+        "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
+        "Функции: Включение", "Функции: Выключение", "Оповещения: По времени", "Оповещения: Отправить по времени",
+        "Оповещения: Активные", "Оповещения: Остановленные", "Оповещения: Всем", "Оповещения: Отправить сообщение",
+        "Оповещения: Отправленные", "Оповещения: Удалить отправленные", "Оповещения: Отдельно",
+        "Общение: Чат", "Общение: Запросы", "Общение: Диалоги", "Общение: Просмотр диалогов",
+        "Общение: Удалить диалоги", "Общение: Удалить диалог", "Общение: Удалить все диалоги",
+        "Просмотр файлов: Поиск файлов по ID", "Просмотр файлов: Замена файлов"
+    ]
+
+    # Получаем текущие права администратора
+    current_permissions = admins_data.get(admin_id, {}).get("permissions", [])
+
+    # Создаем множество для хранения уникальных прав
+    unique_permissions = set()
+
+    # Добавляем текущие права в множество, игнорируя часть до двоеточия
+    for perm in current_permissions:
+        unique_permissions.add(perm.split(':')[-1].strip())
+
+    # Возвращаем доступные права, исключая те, которые уже есть у администратора
+    available_permissions = [perm for perm in all_permissions if perm.split(':')[-1].strip() not in unique_permissions]
+    return available_permissions
+
+
+def format_permissions_with_headers(permissions):
+    main_functions = ['Админ', 'Бан', 'Функции', 'Оповещения', 'Общение', 'Статистика', 'Файлы', 'Резервная копия', 'Просмотр файлов']
+    formatted_permissions = []
+    counter = 1
+
+    # Добавляем основные функции в начало списка
+    formatted_permissions.append("*Основные права:*")
+    for main_func in main_functions:
+        if any(perm.split(':')[-1].strip() == main_func for perm in permissions):
+            formatted_permissions.append(f"№{counter}. {main_func}")
+            counter += 1
+    formatted_permissions.append("")  # Добавляем пустую строку для абзаца
+
+    for main_func in main_functions:
+        sub_permissions = [perm.split(':')[-1].strip() for perm in permissions if perm.startswith(main_func) and perm.split(':')[-1].strip() != main_func]
+        if sub_permissions:
+            formatted_permissions.append(f"*Права в \"{main_func}\":*")
+            for perm in sub_permissions:
+                formatted_permissions.append(f"№{counter}. {perm}")
+                counter += 1
+            formatted_permissions.append("")  # Добавляем пустую строку для абзаца
+
+    # Добавляем права, которые не начинаются с основных функций
+    other_permissions = [perm.split(':')[-1].strip() for perm in permissions if not any(perm.startswith(main_func) for main_func in main_functions)]
+    if other_permissions:
+        formatted_permissions.append("*Другие права:*")
+        for perm in other_permissions:
+            formatted_permissions.append(f"№{counter}. {perm}")
+            counter += 1
+
+    return "\n".join(formatted_permissions)
+
+
+# Функция для обработки выбора действия с правами
+def process_permission_action(message, admin_id):
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
         return
 
-    # Проверка: нельзя удалить корневого администратора
-    if admin_id == root_admin_id:
-        bot.send_message(message.chat.id, "Невозможно удалить корневого администратора!")
+    if message.text == 'Добавить права':
+        available_permissions = get_available_permissions(admin_id)
+        permissions_list = format_permissions_with_headers(available_permissions)
+        bot.send_message(message.chat.id, f"*Доступные* права для *добавления*:\n\n{permissions_list}", parse_mode='Markdown')
+
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите номера прав через запятую для *добавления*:", parse_mode='Markdown', reply_markup=markup)
+        bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+
+    elif message.text == 'Удалить права':
+        current_permissions = admins_data[admin_id].get("permissions", [])
+        permissions_list = format_permissions_with_headers(current_permissions)
+        bot.send_message(message.chat.id, f"*Текущие права* администратора:\n\n{permissions_list}", parse_mode='Markdown')
+
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите номера прав через запятую для *удаления*:", parse_mode='Markdown', reply_markup=markup)
+        bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+
+# Функция для форматирования списка прав с основными функциями
+def format_permissions_with_main_functions(permissions):
+    main_functions = ['Админ', 'Бан', 'Функции', 'Оповещения', 'Общение', 'Статистика', 'Файлы', 'Резервная копия']
+    formatted_permissions = []
+    counter = 1
+
+    # Добавляем основные функции в начало списка
+    formatted_permissions.append("*Основные функции:*")
+    for main_func in main_functions:
+        formatted_permissions.append(f"№{counter}. {main_func}")
+        counter += 1
+    formatted_permissions.append("")  # Добавляем пустую строку для абзаца
+
+    for main_func in main_functions:
+        sub_permissions = [perm for perm in permissions if perm.startswith(main_func) and perm != main_func]
+        if sub_permissions:
+            formatted_permissions.append(f"*{main_func}:*")
+            for perm in sub_permissions:
+                formatted_permissions.append(f"№{counter}. {perm.split(': ')[1]}")
+                counter += 1
+            formatted_permissions.append("")  # Добавляем пустую строку для абзаца
+
+    return "\n".join(formatted_permissions)
+
+# Функция для обработки добавления прав
+def process_add_permissions(message, admin_id, available_permissions):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
         return
 
-    if admin_id in admins_data:
-        # Удаляем администратора из базы данных
-        del admins_data[admin_id]
-        admin_sessions.discard(admin_id)
-        removed_admins.add(admin_id)  # Добавляем в список удалённых
-        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
-        bot.send_message(message.chat.id, f"Администратор {input_data} успешно удалён.")
-    else:
-        bot.send_message(message.chat.id, "Администратор с таким ID или username не найден.")
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        permission_numbers = [int(num.strip()) - 1 for num in message.text.split(',')]
+        permissions_to_add = []
+
+        for num in permission_numbers:
+            if 0 <= num < len(available_permissions):
+                permission = available_permissions[num].split(':')[-1].strip()
+                if permission in admins_data[admin_id].get("permissions", []):
+                    bot.send_message(message.chat.id, f"Право *{escape_markdown(permission)}* уже добавлено! Попробуйте снова", parse_mode='Markdown')
+                    bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+                    return
+                permissions_to_add.append(permission)
+            else:
+                bot.send_message(message.chat.id, f"Неверный номер права: *{num + 1}*! Попробуйте снова", parse_mode='Markdown')
+                bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+                return
+
+        if permissions_to_add:
+            admins_data[admin_id].setdefault("permissions", []).extend(permissions_to_add)
+            save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+            admin_data = admins_data[admin_id]
+            # Экранируем имя пользователя
+            escaped_username = escape_markdown(admin_data['username'])
+            # Преобразуем новые права в нижний регистр и экранируем их
+            escaped_permissions_to_add = [escape_markdown(permission.lower()) for permission in permissions_to_add]
+
+            bot.send_message(message.chat.id, f"Права для админа {escaped_username} - `{admin_id}` обновлены!", parse_mode='Markdown')
+            bot.send_message(admin_id, f"Ваши права были *изменены*!\n\n*Добавлены* новые права: {', '.join(escaped_permissions_to_add)}", parse_mode='Markdown')
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверные номера прав! Попробуйте снова")
+            bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверные номера прав! Попробуйте снова")
+        bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+
+# Функция для обработки удаления прав
+def process_remove_permissions(message, admin_id, current_permissions):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        permission_numbers = [int(num.strip()) - 1 for num in message.text.split(',')]
+        permissions_to_remove = []
+
+        for num in permission_numbers:
+            if 0 <= num < len(current_permissions):
+                permissions_to_remove.append(current_permissions[num])
+            else:
+                bot.send_message(message.chat.id, f"Неверный номер права: *{num + 1}*. Попробуйте снова", parse_mode='Markdown')
+                bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+                return
+
+        if permissions_to_remove:
+            admins_data[admin_id]["permissions"] = [perm for perm in current_permissions if perm not in permissions_to_remove]
+            save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+            admin_data = admins_data[admin_id]
+            # Экранируем имя пользователя
+            escaped_username = escape_markdown(admin_data['username'])
+            # Преобразуем удаляемые права в нижний регистр и экранируем их
+            escaped_permissions_to_remove = [escape_markdown(permission.lower()) for permission in permissions_to_remove]
+
+            bot.send_message(message.chat.id, f"Права для админа {escaped_username} - `{admin_id}` обновлены!", parse_mode='Markdown')
+            bot.send_message(admin_id, f"Ваши права были *изменены*!\n\n*Удалены* права: {', '.join(escaped_permissions_to_remove)}", parse_mode='Markdown')
+            show_admin_panel(message)
+        else:
+            bot.send_message(message.chat.id, "Неверные номера прав. Попробуйте снова")
+            bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверные номера прав. Попробуйте снова")
+        bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+
+# Функция для форматирования списка прав
+def format_permissions(permissions):
+    formatted_permissions = []
+    counter = 1
+
+    for perm in permissions:
+        formatted_permissions.append(f"№{counter}. {perm}")
+        counter += 1
+
+    return "\n".join(formatted_permissions)
+
+# Обработчик для команды "Права доступа"
+@bot.message_handler(func=lambda message: message.text == 'Права доступа' and str(message.chat.id) in admin_sessions)
+def handle_permissions(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Админ'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    list_admins(message)
 
 # (ADMIN 3) ------------------------------------------ "БАН ПОЛЬЗОВАТЕЛЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -10075,6 +10625,11 @@ def ban_user_prompt(message):
     list_users(message)
 
 def choose_ban_action(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if message.text == "Заблокировать":
         choose_block_method(message)
     elif message.text == "Разблокировать":
@@ -10083,6 +10638,11 @@ def choose_ban_action(message):
         show_admin_panel(message)
 
 def choose_block_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("По ID", "По USERNAME")
     markup.add("В меню админ-панели")
@@ -10090,6 +10650,11 @@ def choose_block_method(message):
     bot.register_next_step_handler(message, process_block_method)
 
 def process_block_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
@@ -10104,6 +10669,11 @@ def process_block_method(message):
         show_admin_panel(message)
 
 def choose_unblock_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Разблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("По ID", "По USERNAME")
     markup.add("В меню админ-панели")
@@ -10111,6 +10681,11 @@ def choose_unblock_method(message):
     bot.register_next_step_handler(message, process_unblock_method)
 
 def process_unblock_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Разблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
@@ -10218,6 +10793,12 @@ def list_active_users():
 # Пример обработчика для команды статистики
 @bot.message_handler(func=lambda message: message.text == 'Статистика')
 def show_statistics(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Статистика'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     """Показать статистику пользователей."""
     if not check_admin_access(message):
         return
@@ -10275,6 +10856,12 @@ def check_admin_access(message):
 # Обработчик для кнопки "Резервная копия"
 @bot.message_handler(func=lambda message: message.text == 'Резервная копия' and str(message.chat.id) in load_admin_sessions())
 def show_backup_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Резервная копия'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Создать копию', 'Восстановить данные')
     markup.add('В меню админ-панели')
@@ -10284,13 +10871,25 @@ def show_backup_menu(message):
 # Обработчик для кнопки "Создать копию"
 @bot.message_handler(func=lambda message: message.text == 'Создать копию')
 def handle_create_backup(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Создать копию'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     backup_path = create_backup()
-    bot.send_message(message.chat.id, f"Резервная копия создана!\n\nПуть к резвервной копии: _{backup_path}_", parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"*Резервная копия создана!*\n\n*Путь* к резвервной копии: _{backup_path}_", parse_mode="Markdown")
     show_admin_panel(message)
 
 # Обработчик для кнопки "Восстановить данные"
 @bot.message_handler(func=lambda message: message.text == 'Восстановить данные')
 def handle_restore_backup(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Восстановить данные'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     success = restore_latest_backup()
     if success:
         bot.send_message(message.chat.id, "Данные успешно восстановлены из последней резервной копии!")
@@ -10337,6 +10936,21 @@ def restore_latest_backup():
 
     print("Восстановление завершено")
     return True
+
+# Функция для отправки уведомления администратору
+def notify_admin(backup_path):
+    admin_sessions = load_admin_sessions()
+    current_time = datetime.now().strftime('%d.%m.%Y в %H:%M')
+    for admin_id in admin_sessions:
+        bot.send_message(admin_id, f"*Резервная копия создана*!\n\n*Время* создания: _{current_time}_\n\n*Путь* к резервной копии: _{backup_path}_", parse_mode="Markdown")
+
+# Функция для автоматического создания резервной копии и отправки уведомления
+def scheduled_backup():
+    backup_path = create_backup()
+    notify_admin(backup_path)
+
+# Планирование задачи на каждый день в 00:00
+schedule.every().day.at("00:00").do(scheduled_backup)
 
 
 # (ADMIN n) ------------------------------------------ "ВКЛ/ВЫКЛ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
@@ -10517,6 +11131,12 @@ def handle_time_deactivation(time_spec, function_names, message):
 # Обработчик для команды "Функции"
 @bot.message_handler(func=lambda message: message.text == 'Функции')
 def toggle_functions(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Функции'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if check_admin_access(message):
         if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
             bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -10530,6 +11150,12 @@ def toggle_functions(message):
 # Обработчик для кнопки "Включение"
 @bot.message_handler(func=lambda message: message.text == 'Включение')
 def enable_function(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Включение'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if check_admin_access(message):
         if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
             bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -10588,6 +11214,12 @@ def process_enable_function_step(message):
 # Обработчик для кнопки "Выключение"
 @bot.message_handler(func=lambda message: message.text == 'Выключение')
 def disable_function(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Выключение'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if check_admin_access(message):
         if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
             bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -10748,22 +11380,61 @@ def check_notifications():
 # Запускаем проверку уведомлений в отдельном потоке
 threading.Thread(target=check_notifications, daemon=True).start()
 
+
+
+# Путь к JSON файлу с админскими сессиями
+ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+
+# Загрузка админских сессий из JSON файла
+def load_admin_sessions():
+    if os.path.exists(ADMIN_SESSIONS_FILE):
+        with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data.get('admin_sessions', [])
+    return []
+
+admin_sessions = load_admin_sessions()
+
+def check_admin_access(message):
+    if str(message.chat.id) in admin_sessions:
+        return True
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        return False
+
+
 # Показ меню оповещений
-@bot.message_handler(func=lambda message: message.text == 'Оповещения' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Оповещения' and check_admin_access(message))
 def show_notifications_menu(message):
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('По времени', 'Всем', 'Отдельно', 'В меню админ-панели')
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+    markup.add('По времени', 'Всем', 'Отдельно')
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите тип оповещения:", reply_markup=markup)
 
+
 # Обработчик для "По времени"
-@bot.message_handler(func=lambda message: message.text == 'По времени' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'По времени' and check_admin_access(message))
 def handle_time_notifications(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'По времени'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add('Отправить по времени', 'Активные', 'Остановленные', 'В меню админ-панели')
+    markup.add('Отправить по времени')
+    markup.add('Активные', 'Остановленные')
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Управление оповещениями по времени:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == 'Отправить по времени' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Отправить по времени' and check_admin_access(message))
 def schedule_notification(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отправить по времени'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите текст уведомления:", reply_markup=markup)
@@ -10822,8 +11493,14 @@ def validate_time_format(time_str):
     except ValueError:
         return False
 
-@bot.message_handler(func=lambda message: message.text == 'Активные' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Активные' and check_admin_access(message))
 def show_active_notifications(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Активные'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if notifications:
         active_notifications = [f"{i + 1}. {n['text']} - {n['time']}" for i, n in enumerate(notifications) if n['status'] == 'active']
         if active_notifications:
@@ -10833,8 +11510,14 @@ def show_active_notifications(message):
     else:
         bot.send_message(message.chat.id, "Нет уведомлений.")
 
-@bot.message_handler(func=lambda message: message.text == 'Остановленные' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Остановленные' and check_admin_access(message))
 def show_stopped_notifications(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Остановленные'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     stopped_notifications = [f"{i + 1}. {n['text']} - {n['time']}" for i, n in enumerate(notifications) if n['status'] == 'stopped']
     if stopped_notifications:
         bot.send_message(message.chat.id, "\n".join(stopped_notifications))
@@ -10842,14 +11525,26 @@ def show_stopped_notifications(message):
         bot.send_message(message.chat.id, "Нет остановленных уведомлений.")
 
 # Обработчик для "Всем"
-@bot.message_handler(func=lambda message: message.text == 'Всем' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Всем' and check_admin_access(message))
 def handle_broadcast_notifications(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Всем'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add('Отправить сообщение', 'Отправленные', 'Удалить отправленные', 'В меню админ-панели')
+    markup.add('Отправить сообщение')
+    markup.add('Отправленные', 'Удалить отправленные')
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Управление оповещениями для всех:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and check_admin_access(message))
 def send_message_to_all(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отправить сообщение'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:", reply_markup=markup)
@@ -10886,16 +11581,26 @@ def process_broadcast_message(message):
     save_sent_messages()
     bot.send_message(message.chat.id, "Сообщение отправлено всем пользователям.")
 
-@bot.message_handler(func=lambda message: message.text == 'Отправленные' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Отправленные' and check_admin_access(message))
 def show_sent_messages(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отправленные'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if sent_messages:  # Используем загруженный список отправленных сообщений
         sent_messages_list = [f"Пользователь ID: {msg['user_id']} - Сообщение: {msg['text']} - Время: {msg['timestamp']}" for msg in sent_messages]
         bot.send_message(message.chat.id, "\n".join(sent_messages_list))
     else:
         bot.send_message(message.chat.id, "Нет отправленных сообщений.")
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
 def delete_sent_messages(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить отправленные'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     bot.send_message(message.chat.id, "Введите номер сообщения для удаления (например, '1' для первого):")
     bot.register_next_step_handler(message, process_delete_message)
 
@@ -10914,8 +11619,13 @@ def process_delete_message(message):
         delete_sent_messages(message)
 
 # Обработчик для "Отдельно"
-@bot.message_handler(func=lambda message: message.text == 'Отдельно' and message.chat.id in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Отдельно' and check_admin_access(message))
 def handle_individual_notifications(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отдельно'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите ID или username пользователя:", reply_markup=markup)
@@ -11145,6 +11855,12 @@ active_admin_chats = {}  # Хранит, с каким пользователе�
 # Обработчик для меню "Общение"
 @bot.message_handler(func=lambda message: message.text == 'Общение' and check_admin_access(message))
 def show_communication_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Общение'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('Чат', 'Запросы', 'Диалоги')
     markup.add('В меню админ-панели')
@@ -11208,6 +11924,12 @@ def handle_chat_topic(message):
 @bot.message_handler(func=lambda message: message.text == 'Чат')
 @bot.message_handler(commands=['chat'])
 def initiate_chat(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Чат'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     if not check_admin_access(message):  # Проверяем, является ли пользователь администратором
         return
 
@@ -11278,6 +12000,11 @@ def list_chat_requests(message):
 
     if not requests:
         bot.send_message(admin_id, "Нет *активных* запросов на чат!", parse_mode='Markdown')
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Запросы'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
     users_data = load_users()
@@ -11496,6 +12223,12 @@ def check_admin_access(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
 def show_dialogs_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Диалоги'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Просмотр диалогов", "Удалить диалоги")
     markup.add("В меню админ-панели")
@@ -11504,6 +12237,12 @@ def show_dialogs_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр диалогов' and check_admin_access(message))
 def show_user_dialogs(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Просмотр диалогов'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     chat_history = load_chat_history()
     users = load_users()
 
@@ -11691,6 +12430,12 @@ def save_dialog_states():
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалоги' and check_admin_access(message))
 def show_delete_dialogs_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить диалоги'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Удалить диалог", "Удалить все диалоги")
     markup.add("В меню админ-панели")
@@ -11699,6 +12444,12 @@ def show_delete_dialogs_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалог' and check_admin_access(message))
 def delete_dialog(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить диалог'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     chat_history = load_chat_history()
     users = load_users()
 
@@ -11807,6 +12558,12 @@ def handle_delete_dialog_selection(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить все диалоги' and check_admin_access(message))
 def delete_all_dialogs(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить все диалоги'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     chat_history = load_chat_history()
     users = load_users()
 
@@ -12024,6 +12781,12 @@ bot_data = {}
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and message.chat.id in admin_sessions)
 def view_files(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Просмотр файлов'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     bot.send_message(message.chat.id, "Введите путь к директории для просмотра:")
     bot.register_next_step_handler(message, process_directory_view)
 
@@ -12076,6 +12839,12 @@ def process_file_selection(message, matched_files):
 # Поиск файлов пользователя по ID
 @bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and message.chat.id in admin_sessions)
 def search_files_by_id(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Поиск файлов по ID'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     bot.send_message(message.chat.id, "Введите ID пользователя для поиска файлов:")
     bot.register_next_step_handler(message, process_file_search)
 
@@ -12125,6 +12894,12 @@ def process_file_selection(message, matched_files):
 # Замена файла
 @bot.message_handler(func=lambda message: message.text == 'Замена файлов' and message.chat.id in admin_sessions)
 def handle_file_replacement(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Замена файлов'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
     bot.send_message(message.chat.id, "Введите путь к файлу для замены:")
     bot.register_next_step_handler(message, process_file_replacement)
 
@@ -12451,7 +13226,11 @@ def echo_all(message):
 
 # (17) --------------- КОД ДЛЯ "ЗАПУСК БОТА" ---------------
 if __name__ == '__main__':
-    bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120)
-while True:
-    schedule.run_pending()
-    time.sleep(60)  # Проверка расписания каждые 60 секунд
+    # Запуск бота
+    bot_thread = threading.Thread(target=lambda: bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120), daemon=True)
+    bot_thread.start()
+
+    # Основной цикл для проверки расписания
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Проверка расписания каждые 60 секунд
