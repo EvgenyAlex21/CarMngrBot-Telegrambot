@@ -15,6 +15,7 @@ import requests
 from functools import partial
 from urllib.parse import quote
 import traceback
+from bs4 import BeautifulSoup
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -469,23 +470,111 @@ def process_date_step(message, distance):
 
 
 def show_fuel_types(chat_id, date, distance):
-    # Спрашиваем у пользователя тип топлива, передавая рассчитанное расстояние и дату
+    # Создаём клавиатуру с типами топлива и дополнительными кнопками
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    
+    # Добавляем кнопки с типами топлива
     row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
     row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
-    markup.add(*row1, *row2)  
-
+    
+    # Добавляем кнопки для возврата в меню и главное меню
+    row3 = [KeyboardButton("Вернуться в меню расчета топлива"), KeyboardButton("В главное меню")]
+    
+    markup.add(*row1, *row2, *row3)
+    
     sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_fuel_type, date, distance)
 
 
+def clean_price(price):
+    # Удаляем все символы, кроме цифр и точек
+    cleaned_price = re.sub(r'[^\d.]', '', price)
+    if cleaned_price.count('.') > 1:
+        cleaned_price = cleaned_price[:cleaned_price.find('.') + 1] + cleaned_price[cleaned_price.find('.') + 1:].replace('.', '')
+    return cleaned_price
+
+def get_average_fuel_prices():
+    url = 'https://azsprice.ru/benzin-cheboksary?ysclid=m1fguy8a6w869590461'  # Замените на URL сайта
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    table = soup.find('table')
+    fuel_prices = {}
+
+    rows = table.find_all('tr')
+    
+    for row in rows[1:]:
+        columns = row.find_all('td')
+        if len(columns) < 5:
+            continue
+        
+        fuel_type = columns[2].text.strip()  # Марка топлива
+        today_price = clean_price(columns[3].text.strip())  # Цена на топливо
+        
+        if today_price:
+            try:
+                price = float(today_price)
+
+                # Если это первый раз, когда мы видим эту марку топлива, инициализируем список
+                if fuel_type not in fuel_prices:
+                    fuel_prices[fuel_type] = []
+                
+                # Добавляем цену в список
+                fuel_prices[fuel_type].append(price)
+            except ValueError:
+                print(f"Не удалось преобразовать цену: {today_price}")
+
+    # Возвращаем словарь, где для каждой марки топлива указана средняя цена
+    average_prices = {}
+    for fuel_type, prices in fuel_prices.items():
+        average_prices[fuel_type] = sum(prices) / len(prices)  # Среднее значение
+
+    return average_prices
+
+
 def process_fuel_type(message, date, distance):
     chat_id = message.chat.id
-    fuel_type = message.text
-    
-    if fuel_type not in fuel_types:
+    fuel_type = message.text.strip().lower()  # Приводим тип топлива к нижнему регистру
+
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return    
+    if message.text == "В главное меню":
+        return_to_menu(message) 
+        return   
+
+    # Создаём словарь для сопоставления пользовательских названий топлива с названиями на сайте
+    fuel_type_mapping = {
+        "газ": "газ спбт",
+        "аи-92": "аи-92",
+        "аи-95": "аи-95",
+        "аи-98": "аи-98",
+        "дт": "дт",  # дизельное топливо
+        # Добавьте другие сопоставления при необходимости
+    }
+
+    # Проверяем, существует ли введённый тип топлива в сопоставлении
+    if fuel_type not in fuel_type_mapping:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов.")
         bot.register_next_step_handler(sent, process_fuel_type, date, distance)
+        return
+    
+    # Получаем соответствующее название топлива для сайта
+    actual_fuel_type = fuel_type_mapping[fuel_type]
+
+    fuel_prices = get_average_fuel_prices()  # Получаем актуальные цены на топливо
+    
+    # Проверяем, есть ли доступные цены на топливо
+    if not fuel_prices:
+        bot.send_message(chat_id, "К сожалению, не удалось получить актуальные данные о ценах на топливо. Попробуйте позже.")
+        return
+
+    # Приводим ключи в fuel_prices к нижнему регистру и ищем нужную цену
+    fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
+    price_per_liter = fuel_prices_lower.get(actual_fuel_type.lower())
+    
+    if price_per_liter is None:
+        bot.send_message(chat_id, "Не удалось найти цену для выбранного типа топлива.")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -493,10 +582,16 @@ def process_fuel_type(message, date, distance):
     item6 = types.KeyboardButton("В главное меню")
     markup.add(item5)
     markup.add(item6)
+
+    # Отправляем первое сообщение с типом топлива
+    bot.send_message(chat_id, f"Вы выбрали тип топлива: {fuel_type.upper()}.", reply_markup=types.ReplyKeyboardRemove())
     
-    bot.send_message(chat_id, "Вы выбрали тип топлива: " + fuel_type, reply_markup=types.ReplyKeyboardRemove())
-    sent = bot.send_message(chat_id, "Введите цену топлива за литр:", reply_markup=markup)
-    bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
+    # Форматируем цену с двумя знаками после запятой и отправляем второе сообщение
+    bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
+    
+    # Переходим к следующему шагу с готовой ценой
+    sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
 
 # (9.10) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ВВОДА РАСХОДА НА 100 КМ) ---------------
 
@@ -641,7 +736,7 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
     summary_message += f"Дата поездки: {date}\n"
     summary_message += f"Расстояние: {distance:.2f} км.\n"
     summary_message += f"Тип топлива: {fuel_type}\n"
-    summary_message += f"Цена топлива за литр: {price_per_liter} руб.\n"
+    summary_message += f"Цена топлива за литр: {price_per_liter:.2f} руб.\n"
     summary_message += f"Расход топлива на 100 км: {fuel_consumption} л.\n"
     summary_message += f"Количество пассажиров: {passengers}\n"
     summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {fuel_spent:.2f} л.\n"
@@ -761,7 +856,7 @@ def show_trip_details(message):
         summary_message += f"Дата поездки: {trip['date']}\n\n"
         summary_message += f"Расстояние: {trip['distance']:.2f} км.\n\n"
         summary_message += f"Тип топлива: {trip['fuel_type']}\n\n"
-        summary_message += f"Цена топлива за литр: {trip['price_per_liter']} руб.\n\n"
+        summary_message += f"Цена топлива за литр: {trip['price_per_liter']:.2f} руб.\n\n"
         summary_message += f"Расход топлива на 100 км: {trip['fuel_consumption']} л.\n\n"
         summary_message += f"Количество пассажиров: {trip['passengers']}\n\n"
         summary_message += f"ПОТРАЧЕНО ЛИТРОВ ТОПЛИВА: {trip['fuel_spent']:.2f} л.\n\n"
