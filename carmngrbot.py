@@ -1857,8 +1857,7 @@ leader_thread.start()
 @bot.message_handler(func=lambda message: message.text == "Баллы")
 def points_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Ваши баллы', 'История баллов', 'Обменять баллы')
-    markup.add('Подарить баллы')  # Добавляем новую опцию
+    markup.add('Ваши баллы', 'Подарки', 'Обменять баллы')
     markup.add('Вернуться в реферальную систему')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из меню баллов:", reply_markup=markup, parse_mode="Markdown")
@@ -1872,7 +1871,7 @@ def view_points(message):
     total_points_spent = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "spent")
     
     gifted_points = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "spent" and "Подарок @" in h['reason'])
-    received_gift_points = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "earned" and "Подарок от @" in h['reason'])
+    received_gift_points = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "earned" and "Подарок от" in h['reason'])
     
     bot.send_message(message.chat.id, (
         f"*Ваши баллы*\n\n"
@@ -1883,21 +1882,35 @@ def view_points(message):
         f"🎁 *Получено в подарок:* {received_gift_points}"
     ), parse_mode="Markdown")
 
-@bot.message_handler(func=lambda message: message.text == "История баллов")
-def view_points_history(message):
+def escape_markdown(text):
+    # Экранируем специальные символы для Markdown, но без лишних слешей в отображении
+    special_chars = r'([_*[\]()~`>#+\\|-])'
+    return re.sub(special_chars, r'\\\1', text)
+
+@bot.message_handler(func=lambda message: message.text == "История подарков")
+def view_gifts_history(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     history = data['subscriptions']['users'].get(user_id, {}).get('points_history', [])
     
     if not history:
-        bot.send_message(message.chat.id, "❌ История баллов пуста!", parse_mode="Markdown")
-    else:
-        msg = "*История баллов:*\n\n"
-        for i, entry in enumerate(history, 1):
+        bot.send_message(message.chat.id, "❌ История подарков и операций пуста!", parse_mode="Markdown")
+        return
+    
+    msg = "*История подарков и операций:*\n\n"
+    for i, entry in enumerate(history, 1):
+        if "Подарок времени" in entry['reason'] or "Подарок @" in entry['reason']:
+            action = "Подарено" if entry['action'] == "spent" else "Получено"
+            points_or_time = f"{entry['points']} баллов" if entry['points'] > 0 else entry['reason'].split(': ')[-1]
+            msg += f"🎁 №{i}. {entry['date']} - {action}: {points_or_time} ({escape_markdown(entry['reason'])})\n"
+        elif "Обмен на" in entry['reason']:
+            msg += f"🔄 №{i}. {entry['date']} - Обмен: {entry['reason'].split('на ')[-1]} ({escape_markdown(entry['reason'])})\n"
+        else:
             action = "Заработано" if entry['action'] == "earned" else "Потрачено"
-            msg += f"📝 №{i}. {entry['date']} - {action}: {entry['points']} баллов ({entry['reason']})\n"
-        send_long_message(message.chat.id, msg, parse_mode="Markdown")
-
+            msg += f"📝 №{i}. {entry['date']} - {action}: {entry['points']} баллов ({escape_markdown(entry['reason'])})\n"
+    
+    send_long_message(message.chat.id, msg, parse_mode="Markdown")
+    
 @bot.message_handler(func=lambda message: message.text == "Обменять баллы")
 def exchange_points_handler(message):
     user_id = str(message.from_user.id)
@@ -2139,11 +2152,36 @@ def process_promo_code(message):
         bot.register_next_step_handler(message, process_promo_code)
         return
 
+@bot.message_handler(func=lambda message: message.text == "Подарки")
+def gifts_menu(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Подарить баллы', 'История подарков', 'Подарить время')
+    markup.add('Вернуться в реферальную систему')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие из меню подарков:", reply_markup=markup, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda message: message.text == "Подарить баллы")
 def gift_points_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     points = data['subscriptions']['users'].get(user_id, {}).get('referral_points', 0)
+    
+    # Проверяем лимит на подарок баллов
+    last_gift_time = next(
+        (entry['date'] for entry in reversed(data['subscriptions']['users'].get(user_id, {}).get('points_history', []))
+         if "Подарок @" in entry['reason']),
+        "01.01.2000 в 00:00"
+    )
+    last_gift_dt = datetime.strptime(last_gift_time, "%d.%m.%Y в %H:%M")
+    if (datetime.now() - last_gift_dt).total_seconds() < 24 * 3600:
+        remaining_time = timedelta(seconds=24 * 3600 - (datetime.now() - last_gift_dt).total_seconds())
+        hours_left = remaining_time.seconds // 3600
+        minutes_left = (remaining_time.seconds % 3600) // 60
+        bot.send_message(message.chat.id, (
+            f"❌ Вы уже дарили баллы сегодня!\n"
+            f"⏳ Следующий подарок доступен через {hours_left} ч. {minutes_left} мин."
+        ), parse_mode="Markdown")
+        return
     
     if points < 1:
         bot.send_message(message.chat.id, "❌ У вас недостаточно баллов для подарка!", parse_mode="Markdown")
@@ -2176,28 +2214,46 @@ def process_gift_recipient(message, sender_points):
     
     recipient_id = None
     if recipient_input.startswith('@'):
+        # Ищем точное совпадение username в базе
         recipient_id = next((uid for uid, data_user in data['subscriptions']['users'].items() 
-                            if data_user.get('username') == recipient_input), None)
-    else:
-        if recipient_input.isdigit() and recipient_input in data['subscriptions']['users']:
+                            if data_user.get('username', '').lower() == recipient_input.lower()), None)
+    elif recipient_input.isdigit():
+        # Проверяем, существует ли ID в базе
+        if recipient_input in data['subscriptions']['users']:
             recipient_id = recipient_input
     
     if not recipient_id:
-        bot.send_message(message.chat.id, "❌ Пользователь не найден! Проверьте username или ID.", parse_mode="Markdown")
-        points_menu(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            "❌ Пользователь не найден! Проверьте username или ID.\n"
+            "Введите username с '@' или числовой ID."
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_recipient, sender_points)
         return
     
     if recipient_id == user_id:
-        bot.send_message(message.chat.id, "❌ Нельзя подарить баллы самому себе!", parse_mode="Markdown")
-        points_menu(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            "❌ Нельзя подарить баллы самому себе!"
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_recipient, sender_points)
         return
+    
+    # Получаем username получателя из базы
+    recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     bot.send_message(message.chat.id, (
-        f"🎁 *Подарок для @{data['subscriptions']['users'][recipient_id]['username']}*\n\n"
+        f"🎁 *Подарок для {recipient_username}*\n\n"
         f"Ваши баллы: *{sender_points}*\n"
         "Введите количество баллов для подарка:"
     ), reply_markup=markup, parse_mode="Markdown")
@@ -2224,31 +2280,38 @@ def process_gift_amount(message, recipient_id, sender_points):
         if gift_points > sender_points:
             raise ValueError("Недостаточно баллов!")
         
+        # Получаем username'ы из базы
+        sender_username = data['subscriptions']['users'][user_id].get('username', 'неизвестный')
+        recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
+        
+        # Обновляем баллы отправителя
         data['subscriptions']['users'][user_id]['referral_points'] -= gift_points
         data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
             "action": "spent",
             "points": gift_points,
-            "reason": f"Подарок @{data['subscriptions']['users'][recipient_id]['username']}",
+            "reason": f"Подарок {recipient_username}",
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         
+        # Обновляем баллы получателя
         data['subscriptions']['users'].setdefault(recipient_id, {}).setdefault('referral_points', 0)
         data['subscriptions']['users'][recipient_id]['referral_points'] += gift_points
         data['subscriptions']['users'][recipient_id].setdefault('points_history', []).append({
             "action": "earned",
             "points": gift_points,
-            "reason": f"Подарок от @{data['subscriptions']['users'][user_id]['username']}",
+            "reason": f"Подарок от {sender_username}",
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         
         save_payments_data(data)
         
+        # Отправляем сообщения с корректными username'ами
         bot.send_message(user_id, (
-            f"🎉 *Вы подарили @{data['subscriptions']['users'][recipient_id]['username']} {gift_points} баллов!*\n"
+            f"🎉 *Вы подарили {recipient_username} {gift_points} баллов!*\n"
             "Спасибо за щедрость! 😊"
         ), parse_mode="Markdown")
         bot.send_message(recipient_id, (
-            f"🎁 *@{data['subscriptions']['users'][user_id]['username']} подарил вам {gift_points} баллов!*\n"
+            f"🎁 *{sender_username} подарил вам {gift_points} баллов!*\n"
             "Используйте их в реферальной системе! 🚀"
         ), parse_mode="Markdown")
         
@@ -2262,6 +2325,367 @@ def process_gift_amount(message, recipient_id, sender_points):
         error_msg = str(e) if str(e) != "invalid literal for int() with base 10: '" + message.text + "'" else "Введите корректное число!"
         bot.send_message(message.chat.id, f"❌ {error_msg}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
+
+def process_gift_amount(message, recipient_id, sender_points):
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    
+    try:
+        gift_points = int(message.text)
+        if gift_points <= 0:
+            raise ValueError("Количество баллов должно быть положительным!")
+        if gift_points > sender_points:
+            raise ValueError("Недостаточно баллов!")
+        
+        # Получаем точный username отправителя и получателя
+        sender_username = data['subscriptions']['users'][user_id].get('username', 'неизвестный')
+        recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
+        
+        # Обновляем баллы и историю
+        data['subscriptions']['users'][user_id]['referral_points'] -= gift_points
+        data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
+            "action": "spent",
+            "points": gift_points,
+            "reason": f"Подарок {recipient_username}",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        data['subscriptions']['users'].setdefault(recipient_id, {}).setdefault('referral_points', 0)
+        data['subscriptions']['users'][recipient_id]['referral_points'] += gift_points
+        data['subscriptions']['users'][recipient_id].setdefault('points_history', []).append({
+            "action": "earned",
+            "points": gift_points,
+            "reason": f"Подарок от {sender_username}",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        save_payments_data(data)
+        
+        # Формируем сообщения с корректными username
+        bot.send_message(user_id, (
+            f"🎉 *Вы подарили {recipient_username} {gift_points} баллов!*\n"
+            "Спасибо за щедрость! 😊"
+        ), parse_mode="Markdown")
+        bot.send_message(recipient_id, (
+            f"🎁 *{sender_username} подарил вам {gift_points} баллов!*\n"
+            "Используйте их в реферальной системе! 🚀"
+        ), parse_mode="Markdown")
+        
+        points_menu(message)
+        
+    except ValueError as e:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        error_msg = str(e) if str(e) != "invalid literal for int() with base 10: '" + message.text + "'" else "Введите корректное число!"
+        bot.send_message(message.chat.id, f"❌ {error_msg}", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
+
+# Обработчик "Подарить время"
+@bot.message_handler(func=lambda message: message.text == "Подарить время")
+def gift_time_handler(message):
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    
+    # Проверяем лимит на подарок времени (1 раз в 24 часа)
+    last_gift_time = next(
+        (entry['date'] for entry in reversed(data['subscriptions']['users'].get(user_id, {}).get('points_history', []))
+         if "Подарок времени" in entry['reason']),
+        "01.01.2000 в 00:00"
+    )
+    last_gift_dt = datetime.strptime(last_gift_time, "%d.%m.%Y в %H:%M")
+    if (datetime.now() - last_gift_dt).total_seconds() < 24 * 3600:
+        remaining_time = timedelta(seconds=24 * 3600 - (datetime.now() - last_gift_dt).total_seconds())
+        hours_left = remaining_time.seconds // 3600
+        minutes_left = (remaining_time.seconds % 3600) // 60
+        bot.send_message(message.chat.id, (
+            f"❌ Вы уже дарили время сегодня!\n"
+            f"⏳ Следующий подарок доступен через {hours_left} ч. {minutes_left} мин."
+        ), parse_mode="Markdown")
+        return
+    
+    # Проверяем наличие активных купленных подписок
+    user_data = data['subscriptions']['users'].get(user_id, {})
+    paid_plans = [
+        plan for plan in user_data.get('plans', [])
+        if plan['plan_name'] in ['weekly', 'monthly', 'yearly']
+        and plan['source'] == 'user'
+        and datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()
+    ]
+    
+    if not paid_plans:
+        bot.send_message(message.chat.id, (
+            "❌ У вас нет активных купленных подписок для подарка!\n\n"
+            "🚀 Купите подписку, чтобы делиться временем с друзьями!"
+        ), parse_mode="Markdown")
+        return
+    
+    # Проверяем, что у отправителя осталось больше 1 дня подписки
+    now = datetime.now()
+    total_remaining_minutes = 0
+    for plan in paid_plans:
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        if end_date > now:
+            total_remaining_minutes += int((end_date - now).total_seconds() // 60)
+    
+    if total_remaining_minutes < 1440:  # 1440 минут = 1 день
+        bot.send_message(message.chat.id, (
+            "❌ У вас осталось менее 1 дня подписки!\n"
+            "⏳ Пожалуйста, продлите подписку, чтобы дарить время."
+        ), parse_mode="Markdown")
+        return
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(message.chat.id, (
+        f"🎁 *Подарить время*\n\n"
+        f"⏳ *Доступное время для подарка:* {total_remaining_minutes} минут\n"
+        f"💡 Это примерно {total_remaining_minutes // 1440} дней, "
+        f"{(total_remaining_minutes % 1440) // 60} часов, "
+        f"{total_remaining_minutes % 60} минут\n\n"
+        "Введите *username* (с @) или *ID* пользователя, которому хотите подарить время:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_gift_time_recipient, total_remaining_minutes)
+
+def process_gift_time_recipient(message, total_available_minutes):
+    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        globals()[message.text.lower().replace(" ", "_")](message)
+        return
+    
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    recipient_input = message.text.strip()
+    
+    # Проверяем получателя
+    recipient_id = None
+    if recipient_input.startswith('@'):
+        recipient_id = next(
+            (uid for uid, data_user in data['subscriptions']['users'].items()
+             if data_user.get('username', '').lower() == recipient_input.lower()), None
+        )
+    elif recipient_input.isdigit():
+        if recipient_input in data['subscriptions']['users']:
+            recipient_id = recipient_input
+    
+    if not recipient_id:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            "❌ Пользователь не найден! Проверьте username или ID.\n"
+            "Введите username с '@' или числовой ID."
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_time_recipient, total_available_minutes)
+        return
+    
+    if recipient_id == user_id:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            "❌ Нельзя подарить время самому себе!"
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_time_recipient, total_available_minutes)
+        return
+    
+    # Проверяем, зарегистрирован ли получатель более 24 часов
+    users_data = load_users_data()
+    join_date_str = users_data.get(recipient_id, {}).get('join_date', "01.01.2000 в 00:00")
+    join_date = datetime.strptime(join_date_str, "%d.%m.%Y в %H:%M")
+    if (datetime.now() - join_date).total_seconds() < 24 * 3600:
+        bot.send_message(message.chat.id, (
+            "❌ Нельзя дарить время пользователям, зарегистрированным менее 24 часов назад!"
+        ), parse_mode="Markdown")
+        return
+    
+    recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
+    
+    # Добавляем кнопки для выбора единиц времени
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Минуты"), types.KeyboardButton("Часы"), types.KeyboardButton("Дни"))
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    bot.send_message(message.chat.id, (
+        f"🎁 *Подарок для {recipient_username}*\n\n"
+        f"⏳ *Доступное время:* {total_available_minutes} минут\n"
+        "Выберите единицу времени для подарка:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_gift_time_unit, recipient_id, total_available_minutes)
+
+def process_gift_time_unit(message, recipient_id, total_available_minutes):
+    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        globals()[message.text.lower().replace(" ", "_")](message)
+        return
+    
+    unit = message.text
+    if unit not in ["Минуты", "Часы", "Дни"]:
+        bot.send_message(message.chat.id, "❌ Выберите одну из предложенных единиц времени!", parse_mode="Markdown")
+        process_gift_time_recipient(message, total_available_minutes)
+        return
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
+    unit_prompt = {
+        "Минуты": "минут",
+        "Часы": "часов",
+        "Дни": "дней"
+    }[unit]
+    
+    bot.send_message(message.chat.id, (
+        f"🎁 *Подарок времени*\n"
+        f"⏳ *Доступно:* {total_available_minutes} минут\n"
+        f"Введите количество {unit_prompt} для подарка:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_gift_time_amount, recipient_id, total_available_minutes, unit)
+
+def process_gift_time_amount(message, recipient_id, total_available_minutes, unit):
+    if message.text in ["Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        globals()[message.text.lower().replace(" ", "_")](message)
+        return
+    
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    
+    try:
+        amount = int(message.text)
+        if amount <= 0:
+            raise ValueError("Количество должно быть положительным!")
+        
+        # Переводим в минуты в зависимости от единицы времени
+        if unit == "Минуты":
+            gift_minutes = amount
+        elif unit == "Часы":
+            gift_minutes = amount * 60
+        elif unit == "Дни":
+            gift_minutes = amount * 1440
+        
+        if gift_minutes > total_available_minutes:
+            raise ValueError("Недостаточно времени для подарка!")
+        
+        # Получаем username отправителя и получателя
+        sender_username = data['subscriptions']['users'][user_id].get('username', 'неизвестный')
+        recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
+        
+        # Вычисляем время для подарка
+        gift_duration = timedelta(minutes=gift_minutes)
+        remaining_minutes = gift_minutes
+        
+        # Обновляем подписки отправителя
+        user_plans = data['subscriptions']['users'][user_id]['plans']
+        for plan in sorted(
+            [p for p in user_plans if p['plan_name'] in ['weekly', 'monthly', 'yearly'] and p['source'] == 'user'],
+            key=lambda x: datetime.strptime(x['end_date'], "%d.%m.%Y в %H:%M")
+        ):
+            if remaining_minutes <= 0:
+                break
+            end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+            if end_date <= datetime.now():
+                continue
+            available_minutes = int((end_date - datetime.now()).total_seconds() // 60)
+            minutes_to_deduct = min(remaining_minutes, available_minutes)
+            new_end_date = end_date - timedelta(minutes=minutes_to_deduct)
+            plan['end_date'] = new_end_date.strftime("%d.%m.%Y в %H:%M")
+            remaining_minutes -= minutes_to_deduct
+        
+        # Удаляем истекшие подписки
+        user_plans[:] = [p for p in user_plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()]
+        
+        # Добавляем время получателю
+        recipient_data = data['subscriptions']['users'].setdefault(recipient_id, {
+            "plans": [],
+            "total_amount": 0,
+            "username": recipient_username,
+            "referral_points": 0,
+            "free_feature_trials": {},
+            "promo_usage_history": [],
+            "referral_milestones": {},
+            "points_history": []
+        })
+        
+        latest_end = max(
+            [datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in recipient_data['plans']] or [datetime.now()]
+        )
+        new_end = latest_end + gift_duration
+        
+        recipient_data['plans'].append({
+            "plan_name": "gift_time",
+            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
+            "price": 0,
+            "source": f"gift_from_{user_id}"
+        })
+        
+        # Логируем в историю
+        data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
+            "action": "spent",
+            "points": 0,
+            "reason": f"Подарок времени {recipient_username}: {gift_minutes} минут",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        recipient_data.setdefault('points_history', []).append({
+            "action": "earned",
+            "points": 0,
+            "reason": f"Подарок времени от {sender_username}: {gift_minutes} минут",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        save_payments_data(data)
+        
+        # Формируем описание подарка
+        days = gift_minutes // 1440
+        hours = (gift_minutes % 1440) // 60
+        minutes = gift_minutes % 60
+        gift_description = ""
+        if days > 0:
+            gift_description += f"{days} дн. "
+        if hours > 0:
+            gift_description += f"{hours} ч. "
+        if minutes > 0:
+            gift_description += f"{minutes} мин."
+        
+        bot.send_message(user_id, (
+            f"🎉 *Вы подарили {recipient_username} {gift_description}!*\n"
+            f"⏳ Ваша подписка теперь активна до: "
+            f"{min([datetime.strptime(p['end_date'], '%d.%m.%Y в %H:%M') for p in user_plans] or [datetime.now()]).strftime('%d.%m.%Y в %H:%M')}"
+        ), parse_mode="Markdown")
+        
+        bot.send_message(recipient_id, (
+            f"🎁 *{sender_username} подарил вам {gift_description}!*\n"
+            f"⏳ Ваша подписка теперь активна до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
+        ), parse_mode="Markdown")
+        
+        gifts_menu(message)
+        
+    except ValueError as e:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        error_msg = str(e) if str(e).startswith(("Недостаточно", "Количество")) else "Введите корректное число!"
+        bot.send_message(message.chat.id, f"❌ {error_msg}", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_time_amount, recipient_id, total_available_minutes, unit)
 
 @bot.message_handler(func=lambda message: message.text == "Рекламные каналы")
 def get_day_for_ad(message):
