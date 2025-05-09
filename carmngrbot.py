@@ -155,12 +155,13 @@ def start(message):
     item7 = types.KeyboardButton("Цены на топливо")
     item8 = types.KeyboardButton("Анти-радар")
     item9 = types.KeyboardButton("Напоминания")
+    item10 = types.KeyboardButton("Коды OBD2")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
     markup.add(item5, item7)
     markup.add(item6, item8)
-    markup.add(item9)
+    markup.add(item9, item10)
 
     bot.send_message(chat_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
 
@@ -7148,6 +7149,66 @@ def confirm_delete_step(message):
         bot.send_message(message.chat.id, f"Напоминание '{removed['title']}' удалено.")
     except (ValueError, IndexError):
         bot.send_message(message.chat.id, "Неверный номер напоминания.")
+
+
+#----------------------------------------- КОДЫ OBD2-------------------------------
+
+# Загрузка кодов ошибок OBD-II из файла
+def load_error_codes():
+    error_codes = {}
+    with open("files/codes_obd2.txt", "r", encoding="utf-8") as file:
+        for line in file:
+            parts = line.strip().split(" ", 1)
+            if len(parts) == 2:
+                code, description = parts
+                error_codes[code] = description
+    return error_codes
+
+# Загружаем коды ошибок
+error_codes = load_error_codes()
+
+# Обработчик нажатия кнопки "OBD2"
+@bot.message_handler(func=lambda message: message.text == "Коды OBD2")
+def obd2_request(message):
+    # Устанавливаем клавиатуру с кнопкой "В главное меню"
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("В главное меню"))
+    
+    # Запрашиваем ввод кода ошибки
+    msg = bot.send_message(message.chat.id, "Введите код ошибки (или несколько через запятую):", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_error_codes)
+
+# Обработка введенных кодов ошибок
+def process_error_codes(message):
+    # Проверка, если пользователь нажал "В главное меню"
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    # Разделение и поиск описания для введенных кодов
+    codes = [code.strip().upper() for code in message.text.split(",")]
+    response = ""
+    
+    for code in codes:
+        if code in error_codes:
+            response += f"КОД ОШИБКИ: {code}\nОПИСАНИЕ: {error_codes[code]}\n\n"
+        else:
+            response += f"КОД ОШИБКИ: {code}\nОПИСАНИЕ: Не найдено\n\n"
+
+    # Отправляем ответ пользователю
+    bot.send_message(message.chat.id, response)
+
+    # Кнопки для повторного ввода кода ошибки или возврата в главное меню
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("Посмотреть другие ошибки"))
+    markup.add(telebot.types.KeyboardButton("В главное меню"))
+    bot.send_message(message.chat.id, "Нажмите 'Посмотреть другие ошибки', чтобы ввести новые коды.", reply_markup=markup)
+
+# Обработчик кнопки "Посмотреть другие ошибки"
+@bot.message_handler(func=lambda message: message.text == "Посмотреть другие ошибки")
+def another_error_request(message):
+    obd2_request(message)
+
 
 
 
