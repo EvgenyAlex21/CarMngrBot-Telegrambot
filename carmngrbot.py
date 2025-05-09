@@ -68,8 +68,9 @@ def save_trip_data(user_id):
 
     # Сохраняем данные поездок для конкретного пользователя
     file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
-    with open(file_path, "w") as json_file:
+    with open(file_path, "w", encoding='utf-8') as json_file:
         json.dump(user_trip_data.get(user_id, []), json_file, ensure_ascii=False, indent=4)
+
 
 # Данные поездок для всех пользователей
 user_trip_data = {}
@@ -79,28 +80,31 @@ folder_path = "data base\\trip"
 
 # Функция для загрузки данных для одного пользователя
 def load_trip_data(user_id):
+    folder_path = "data base\\trip"
     file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
     if os.path.exists(file_path):
-        with open(file_path, "r") as json_file:
-            return json.load(json_file)
+        try:
+            with open(file_path, "r", encoding='utf-8') as json_file:
+                return json.load(json_file)
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding='windows-1251') as json_file:
+                data = json.load(json_file)
+            with open(file_path, "w", encoding='utf-8') as json_file:
+                json.dump(data, json_file, ensure_ascii=False, indent=4)
+            return data
     else:
         return []  # Если данных нет, возвращаем пустой список
 
+
 # Функция для загрузки данных для всех пользователей
 def load_all_user_data():
+    folder_path = "data base\\trip"
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)  # Если папка не существует, создаем её
     for filename in os.listdir(folder_path):
         if filename.endswith("_trip_data.json"):
             user_id = filename.split("_")[0]  # Извлекаем user_id из имени файла
             user_trip_data[user_id] = load_trip_data(user_id)  # Загружаем данные для пользователя
-
-# Функция для сохранения данных
-def save_trip_data(user_id):
-    if user_id in user_trip_data:
-        file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
-        with open(file_path, "w") as json_file:
-            json.dump(user_trip_data[user_id], json_file, ensure_ascii=False, indent=4)
 
 # Функция для добавления поездки
 def add_trip(user_id, trip):
@@ -430,6 +434,47 @@ scheduler_thread.start()
 # Запуск задачи удаления старых ошибок каждую неделю в отдельном потоке
 weekly_task_thread = threading.Thread(target=run_weekly_task)
 weekly_task_thread.start()
+
+
+from functools import wraps
+from telebot.apihelper import ApiTelegramException
+
+# Путь к файлу с заблокированными пользователями
+BLOCKED_USERS_FILE = 'data base/admin/blocked_bot_users.json'
+
+# Загрузка списка заблокированных пользователей из файла
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_FILE):
+        with open(BLOCKED_USERS_FILE, 'r') as file:
+            return json.load(file)
+    return []
+
+# Сохранение списка заблокированных пользователей в файл
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_FILE, 'w') as file:
+        json.dump(blocked_users, file, indent=4)
+
+# Декоратор для проверки, заблокировал ли пользователь бота
+def check_user_blocked(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ApiTelegramException as e:
+            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                user_id = kwargs.get('user_id') or args[0].chat.id
+                print(f"User blocked the bot: {user_id}")
+
+                # Загрузка текущего списка заблокированных пользователей
+                blocked_users = load_blocked_users()
+
+                # Добавление нового пользователя в список, если его там еще нет
+                if user_id not in blocked_users:
+                    blocked_users.append(user_id)
+                    save_blocked_users(blocked_users)
+            else:
+                raise e
+    return wrapper
 
 
 # Старт
@@ -11674,8 +11719,19 @@ def handle_permissions(message):
 
 # (ADMIN 3) ------------------------------------------ "БАН ПОЛЬЗОВАТЕЛЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
-# Путь к JSON файлу с админскими сессиями
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+# Максимальная длина сообщения в Telegram
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+# Определение корневой директории на основе исполняемого файла
+EXECUTABLE_FILE = '(93 update ИСПРАВЛЕНИЕ25  ( (  )) CAR MANAGER TG BOT (official) v0924.py'
+BASE_DIR = os.path.dirname(os.path.abspath(EXECUTABLE_FILE))
+
+# Пути к директориям и файлам
+BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
+FILES_PATH = os.path.join(BASE_DIR, 'data base')
+ADDITIONAL_FILES_PATH = os.path.join(BASE_DIR, 'files')
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'admin_sessions.json')
+USER_DATA_PATH = os.path.join(BASE_DIR, 'data base', 'admin', 'users.json')
 
 # Загрузка админских сессий из JSON файла
 def load_admin_sessions():
@@ -11691,8 +11747,6 @@ def check_admin_access(message):
     else:
         bot.send_message(message.chat.id, "⚠️ У вас нет *прав доступа* для выполнения этой операции!", parse_mode='Markdown')
         return False
-
-USER_DATA_PATH = 'data base/admin/users.json'
 
 # Декоратор для ограничения доступа
 def restricted(func):
@@ -11747,7 +11801,7 @@ def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
-def list_users(message):
+def list_users_for_ban(message):
     users_data = load_user_data()
     user_list = []
     for user_id, data in users_data.items():
@@ -11763,9 +11817,89 @@ def list_users(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Заблокировать", "Разблокировать")
+    markup.add("Удалить данные", "Удалить пользователя")
     markup.add("В меню админ-панели")
     bot.send_message(message.chat.id, "Выберите действие для пользователя:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_ban_action)
+
+def choose_ban_action(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    if message.text == "Заблокировать":
+        choose_block_method(message)
+    elif message.text == "Разблокировать":
+        choose_unblock_method(message)
+    elif message.text == "Удалить данные":
+        delete_user_data(message)
+    elif message.text == "Удалить пользователя":
+        delete_user(message)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+
+def choose_block_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По USERNAME")
+    markup.add("В меню админ-панели")
+    bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_block_method)
+
+def process_block_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Заблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    if message.text == "По ID":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите *id* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(message, block_user_by_id)
+    elif message.text == "По USERNAME":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите *username* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(message, block_user_by_username)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+
+def choose_unblock_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Разблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("По ID", "По USERNAME")
+    markup.add("В меню админ-панели")
+    bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_unblock_method)
+
+def process_unblock_method(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Разблокировать'):
+        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        return
+
+    if message.text == "По ID":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите *id* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(message, unblock_user_by_id)
+    elif message.text == "По USERNAME":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Введите *username* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(message, unblock_user_by_username)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
 
 def block_user_by_username(message):
     # Проверка на мультимедиа и смайлы
@@ -11927,82 +12061,174 @@ def unblock_user_by_id(message):
 @bot.message_handler(func=lambda message: message.text == 'Бан')
 @restricted
 def ban_user_prompt(message):
-    list_users(message)
+    list_users_for_ban(message)
 
-def choose_ban_action(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+def delete_user_data_by_id(message, user_id):
+    if not os.path.exists(USER_DATA_PATH):
+        bot.send_message(message.chat.id, "База данных пользователей не существует.")
         return
 
-    if message.text == "Заблокировать":
-        choose_block_method(message)
-    elif message.text == "Разблокировать":
-        choose_unblock_method(message)
-    elif message.text == "В меню админ-панели":
+    users_data = load_user_data()
+    if str(user_id) not in users_data:
+        bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` не найден.")
+        return
+
+    for root, dirs, files in os.walk(BASE_DIR):
+        for file in files:
+            if file.endswith('.json'):
+                file_path = os.path.join(root, file)
+
+                # Проверяем, содержит ли название файла ID пользователя
+                if str(user_id) in file:
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                    except json.JSONDecodeError:
+                        continue
+                    except UnicodeDecodeError:
+                        try:
+                            with open(file_path, 'r', encoding='windows-1251') as f:
+                                data = json.load(f)
+                        except json.JSONDecodeError:
+                            continue
+                        except UnicodeDecodeError:
+                            continue
+
+                    if isinstance(data, list):
+                        updated_data = [item for item in data if item != str(user_id)]
+                        if len(updated_data) < len(data):
+                            data = updated_data
+                    elif isinstance(data, dict):
+                        if 'admin_sessions' in data and str(user_id) in data['admin_sessions']:
+                            data['admin_sessions'].remove(str(user_id))
+                        if 'admins_data' in data and str(user_id) in data['admins_data']:
+                            data['admins_data'].pop(str(user_id))
+                    else:
+                        continue
+
+                else:
+                    # Проверяем содержимое файла
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                    except json.JSONDecodeError:
+                        continue
+                    except UnicodeDecodeError:
+                        try:
+                            with open(file_path, 'r', encoding='windows-1251') as f:
+                                data = json.load(f)
+                        except json.JSONDecodeError:
+                            continue
+                        except UnicodeDecodeError:
+                            continue
+
+                    if isinstance(data, dict):
+                        if str(user_id) in data:
+                            data.pop(str(user_id), None)
+                        else:
+                            continue
+                    elif isinstance(data, list):
+                        updated_data = []
+                        for item in data:
+                            if isinstance(item, dict) and item.get('user_id') == user_id:
+                                continue
+                            else:
+                                updated_data.append(item)
+                        data = updated_data
+                    else:
+                        continue
+
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+
+    users_data.pop(str(user_id), None)
+    save_user_data(users_data)
+
+def delete_user_from_users_db(message, user_id=None, username=None):
+    if not os.path.exists(USER_DATA_PATH):
+        bot.send_message(message.chat.id, "База данных пользователей не существует.")
+        return
+
+    try:
+        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+            users_data = json.load(file)
+    except json.JSONDecodeError:
+        bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные.")
+        return
+    except UnicodeDecodeError:
+        try:
+            with open(USER_DATA_PATH, 'r', encoding='windows-1251') as file:
+                users_data = json.load(file)
+        except json.JSONDecodeError:
+            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные.")
+            return
+        except UnicodeDecodeError:
+            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректную кодировку.")
+            return
+
+    if user_id:
+        if str(user_id) not in users_data:
+            bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` не найден.")
+            return
+        users_data.pop(str(user_id), None)
+    elif username:
+        username = username.lstrip('@')
+        found = False
+        for user_id, data in list(users_data.items()):
+            if data.get('username') == username:
+                users_data.pop(user_id, None)
+                found = True
+                break
+        if not found:
+            bot.send_message(message.chat.id, f"Пользователь с username `@{username}` не найден.")
+            return
+
+    with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
+        json.dump(users_data, file, ensure_ascii=False, indent=4)
+
+def delete_user_data(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите *id* пользователя для удаления данных:", reply_markup=markup, parse_mode='Markdown')
+    bot.register_next_step_handler(message, process_delete_user_data)
+
+def process_delete_user_data(message):
+    if message.text == "В меню админ-панели":
         show_admin_panel(message)
-
-def choose_block_method(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("По ID", "По USERNAME")
-    markup.add("В меню админ-панели")
-    bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_block_method)
+    user_id = message.text.strip()
+    if user_id.isdigit():
+        user_id = int(user_id)
+        delete_user_data_by_id(message, user_id)
+        bot.send_message(message.chat.id, f"Данные пользователя с ID `{user_id}` успешно удалены.", parse_mode='Markdown')
+    else:
+        bot.send_message(message.chat.id, "Неверный формат ID. Пожалуйста, введите корректный ID.")
 
-def process_block_method(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
+    show_admin_panel(message)
 
-    if message.text == "По ID":
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *id* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
-        bot.register_next_step_handler(message, block_user_by_id)
-    elif message.text == "По USERNAME":
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *username* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
-        bot.register_next_step_handler(message, block_user_by_username)
-    elif message.text == "В меню админ-панели":
+def delete_user(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите *id* или *username* пользователя для удаления:", reply_markup=markup, parse_mode='Markdown')
+    bot.register_next_step_handler(message, process_delete_user)
+
+def process_delete_user(message):
+    if message.text == "В меню админ-панели":
         show_admin_panel(message)
-
-def choose_unblock_method(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Разблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
         return
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("По ID", "По USERNAME")
-    markup.add("В меню админ-панели")
-    bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_unblock_method)
+    user_input = message.text.strip()
+    if user_input.isdigit():
+        user_id = int(user_input)
+        delete_user_from_users_db(message, user_id=user_id)
+        bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` успешно удален.", parse_mode='Markdown')
+    else:
+        username = user_input.lstrip('@')
+        delete_user_from_users_db(message, username=username)
+        bot.send_message(message.chat.id, f"Пользователь с username `@{username}` успешно удален.", parse_mode='Markdown')
 
-def process_unblock_method(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Разблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
-
-    if message.text == "По ID":
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *id* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
-        bot.register_next_step_handler(message, unblock_user_by_id)
-    elif message.text == "По USERNAME":
-        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *username* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
-        bot.register_next_step_handler(message, unblock_user_by_username)
-    elif message.text == "В меню админ-панели":
-        show_admin_panel(message)
+    show_admin_panel(message)
 
 # (ADMIN 4) ------------------------------------------ "СТАТИСТИКА ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -12865,9 +13091,6 @@ def load_database():
     return {"sent_messages": {}, "notifications": {}}
 
 
-
-
-
 # Инициализация базы данных при запуске
 alerts = load_database()
 
@@ -12962,6 +13185,7 @@ def schedule_notification(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_send_action)
 
+@check_user_blocked
 def choose_send_action(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
@@ -12976,6 +13200,7 @@ def choose_send_action(message):
     elif message.text == 'Отправить отдельно':
         list_users_for_time_notification(message)
 
+@check_user_blocked
 def set_theme_for_notification(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
@@ -12988,6 +13213,7 @@ def set_theme_for_notification(message):
     bot.send_message(message.chat.id, "Введите текст уведомления или отправьте мультимедийный файл:", reply_markup=markup)
     bot.register_next_step_handler(message, set_time_for_notification, notification_theme)
 
+@check_user_blocked
 def set_time_for_notification(message, notification_theme):
     notification_text = message.text or message.caption
     content_type = message.content_type
@@ -13016,7 +13242,7 @@ def set_time_for_notification(message, notification_theme):
     bot.send_message(message.chat.id, "Введите дату (ДД.ММ.ГГГГ):", reply_markup=markup)
     bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
 
-
+@check_user_blocked
 def process_notification_date(message, notification_theme, notification_text, content_type, file_id, caption):
     date_str = message.text
     if not validate_date_format(date_str):
@@ -13040,6 +13266,7 @@ def process_notification_date(message, notification_theme, notification_text, co
     bot.send_message(message.chat.id, "Введите время (ЧЧ:ММ):", reply_markup=markup)
     bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
 
+@check_user_blocked
 def validate_date_format(date_str):
     try:
         datetime.strptime(date_str, "%d.%m.%Y")
@@ -13047,6 +13274,7 @@ def validate_date_format(date_str):
     except ValueError:
         return False
 
+@check_user_blocked
 def process_notification_time(message, notification_theme, notification_text, date_str, content_type, file_id, caption):
     time_str = message.text
     if not validate_time_format(time_str):
@@ -13085,7 +13313,8 @@ def process_notification_time(message, notification_theme, notification_text, da
     save_database()
     bot.send_message(message.chat.id, f"Уведомление '{notification_theme}' запланировано на {notification_time.strftime('%d.%m.%Y в %H:%M')}.")
     show_admin_panel(message)
-    
+
+@check_user_blocked  
 def validate_time_format(time_str):
     try:
         datetime.strptime(time_str, "%H:%M")
@@ -13253,6 +13482,7 @@ def process_delete_notification(message):
         bot.register_next_step_handler(message, process_delete_notification)
 
 # Обработчик для "Всем"
+@check_user_blocked
 @bot.message_handler(func=lambda message: message.text == 'Всем' and check_admin_access(message))
 def handle_broadcast_notifications(message):
     admin_id = str(message.chat.id)
@@ -13266,6 +13496,7 @@ def handle_broadcast_notifications(message):
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Управление уведомлениями для всех:", reply_markup=markup)
 
+@check_user_blocked
 @bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and check_admin_access(message))
 def send_message_to_all(message):
     admin_id = str(message.chat.id)
@@ -13278,6 +13509,7 @@ def send_message_to_all(message):
     bot.send_message(message.chat.id, "Введите тему сообщения:", reply_markup=markup)
     bot.register_next_step_handler(message, set_theme_for_broadcast)
 
+@check_user_blocked
 def set_theme_for_broadcast(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13289,6 +13521,7 @@ def set_theme_for_broadcast(message):
     bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:", reply_markup=markup)
     bot.register_next_step_handler(message, process_broadcast_message, broadcast_theme)
 
+@check_user_blocked
 def process_broadcast_message(message, broadcast_theme):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
