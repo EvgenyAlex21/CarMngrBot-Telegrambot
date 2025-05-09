@@ -1040,9 +1040,17 @@ def process_successful_payment(message):
     users_data = load_users_data()
     user_data = data['subscriptions']['users'].get(user_id, {"plans": []})
     
-    payload_parts = payment_info.invoice_payload.split('_')
-    plan_name = payload_parts[0]
-    plan_duration = int(payload_parts[2])  # 7, 30, 365
+    plan_key = payment_info.invoice_payload
+    plan_info = SUBSCRIPTION_PLANS[plan_key]
+    base_price = plan_info["base_price"]
+    fictitious_discount = plan_info["fictitious_discount"]
+    plan_duration = plan_info["duration"]
+    
+    user_discount = users_data.get(user_id, {}).get('discount', 0)
+    discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')  # По умолчанию одноразовая скидка
+    
+    discounted_price = base_price * (1 - user_discount / 100)
+    price = max(1, round(discounted_price - fictitious_discount, 2))
     
     latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
     new_end = latest_end + timedelta(days=plan_duration)
@@ -1053,38 +1061,40 @@ def process_successful_payment(message):
     else:
         consecutive_months = 1
     
+    # Проверяем скидку за лояльность
     discount = users_data.get(user_id, {}).get('discount', 0)
     if consecutive_months >= 3 and discount < 15:
         discount = 15
+        discount_type = "loyalty"  # Постоянная скидка
         bot.send_message(user_id, (
             "🎉 *Спасибо за лояльность!* 🎉\n"
             f"✨ Вы получили скидку *15%* за {consecutive_months} месяцев подписки подряд!\n"
             "🚀 Скидка применится к следующей покупке!"
         ), parse_mode="Markdown")
     
-    price = payment_info.total_amount / 100 * (1 - discount / 100)
-    
     user_data['plans'].append({
-        "plan_name": plan_name,
+        "plan_name": plan_key.split('_')[0],
         "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
         "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
         "price": price,
         "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
         "provider_payment_charge_id": payment_info.provider_payment_charge_id,
-        "source": "user"
+        "source": "user",
+        "user_discount": user_discount,
+        "fictitious_discount": fictitious_discount
     })
     user_data['total_amount'] = user_data.get('total_amount', 0) + price
     data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
     
     # Начисление баллов
-    is_first_purchase = not any(plan['source'] == "user" for plan in user_data['plans'][:-1])
+    is_first_purchase = not any(plan.get('source', 'unknown') == "user" for plan in user_data['plans'][:-1])
     bonus_points = 0
     if is_first_purchase:
-        bonus_points = {7: 5, 30: 10, 365: 15}.get(plan_duration, 0)
+        bonus_points = {7: 5, 31: 10, 365: 15}.get(plan_duration, 0)
         bonus_msg = f"Первая покупка подписки на {plan_duration} дней"
         notify_msg = f"✨ Вы получили *+{bonus_points} баллов* за первую подписку на {plan_duration} дней!\n"
     else:
-        bonus_points = {7: 1, 30: 3, 365: 10}.get(plan_duration, 0)
+        bonus_points = {7: 1, 31: 3, 365: 10}.get(plan_duration, 0)
         bonus_msg = f"Покупка подписки на {plan_duration} дней"
         notify_msg = f"✨ Вы получили *+{bonus_points} баллов* за подписку!\n"
 
@@ -1106,7 +1116,7 @@ def process_successful_payment(message):
     # Начисление бонусных дней реферу
     referrer_id = next((uid for uid, refs in data['referrals']['stats'].items() if user_id in refs), None)
     if referrer_id:
-        bonus_days = {7: 1, 30: 3, 365: 7}.get(plan_duration, 1)
+        bonus_days = {7: 1, 31: 3, 365: 7}.get(plan_duration, 1)
         new_end_referrer = set_free_trial_period(referrer_id, bonus_days, "referral_activity")
         bot.send_message(referrer_id, (
             "🎉 *Ваш реферал купил подписку!* 🎉\n\n"
@@ -1117,7 +1127,19 @@ def process_successful_payment(message):
     
     users_data.setdefault(user_id, {})
     users_data[user_id]['consecutive_months'] = consecutive_months
-    users_data[user_id]['discount'] = discount
+    
+    # Сбрасываем одноразовую скидку после покупки
+    if user_discount > 0 and discount_type == "promo":
+        bot.send_message(user_id, (
+            "🎉 Ваша скидка в размере {}% была успешно применена!\n"
+            "🚀 Теперь скидка сброшена. Используйте новые промокоды для получения скидок!"
+        ).format(user_discount), parse_mode="Markdown")
+        users_data[user_id]['discount'] = 0
+        users_data[user_id]['discount_type'] = None
+    else:
+        # Если скидка за лояльность, обновляем значение
+        users_data[user_id]['discount'] = discount
+        users_data[user_id]['discount_type'] = discount_type
     
     data['subscriptions']['users'][user_id] = user_data
     save_payments_data(data)
@@ -1127,33 +1149,61 @@ def process_successful_payment(message):
         "🎉 *Спасибо за оплату*!\n\n"
         f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
         f"⏳ *Подписка будет активна до:*\n{new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
+        f"💰 *Оплачено*: {price:.2f} ₽\n"
         "😊 Приятного использования!"
     ), parse_mode="Markdown")
     
     markup = create_main_menu()
     bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
 
+# Конфигурация цен
+SUBSCRIPTION_PLANS = {
+    "weekly_subscription_7": {
+        "base_price": 149,
+        "fictitious_discount": 50,
+        "label": "Неделя",
+        "duration": 7
+    },
+    "monthly_subscription_31": {
+        "base_price": 399,
+        "fictitious_discount": 100,
+        "label": "Месяц",
+        "duration": 31
+    },
+    "yearly_subscription_365": {
+        "base_price": 2999,
+        "fictitious_discount": 500,
+        "label": "Год",
+        "duration": 365
+    }
+}
+
 @bot.message_handler(commands=['buy'])
 def send_subscription_options(message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     users_data = load_users_data()
-    discount = users_data.get(str(user_id), {}).get('discount', 0)
+    user_discount = users_data.get(user_id, {}).get('discount', 0)
     markup = InlineKeyboardMarkup()
-    prices = {
-        "weekly_subscription_7": (149, "Неделя"),
-        "monthly_subscription_31": (399, "Месяц"),
-        "yearly_subscription_365": (2999, "Год")
-    }
-    for plan, (price, label) in prices.items():
-        discounted_price = price * (1 - discount / 100)
-        button_text = f"💳 {label} ({discounted_price:.0f} ₽) 💳"
-        markup.add(InlineKeyboardButton(button_text, callback_data=plan))
+
+    for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
+        base_price = plan_info["base_price"]
+        fictitious_discount = plan_info["fictitious_discount"]
+        label = plan_info["label"]
+
+        # Рассчитываем цену: базовая - пользовательская скидка - фиктивная скидка
+        discounted_price = base_price * (1 - user_discount / 100)
+        final_price = max(1, round(discounted_price - fictitious_discount, 2))
+        button_text = f"💳 {label} ({final_price:.2f} ₽)"
+        markup.add(InlineKeyboardButton(button_text, callback_data=plan_key))
+
     bot.send_message(user_id, (
-        "Выберите *период* подписки:\n\n\n"
-        "📌 *Неделя:* идеально для тестирования всех функций бота!\n\n"
-        "📌 *Месяц:* полный доступ ко всем функциям на продолжительный период!\n\n"
-        "📌 *Год:* экономия и долгосрочный доступ ко всем функциям бота!"
+        "Выберите *период* подписки:\n\n"
+        f"🎁 *Ваша скидка*: {user_discount}% + акционная скидка\n\n"
+        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"
+        "📌 *Месяц*: полный доступ ко всем функциям на продолжительный период!\n"
+        "📌 *Год*: экономия и долгосрочный доступ ко всем функциям бота!"
     ), reply_markup=markup, parse_mode="Markdown")
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_back = types.KeyboardButton("Вернуться в подписку")
     item_main = types.KeyboardButton("В главное меню")
@@ -1161,45 +1211,74 @@ def send_subscription_options(message):
     markup.add(item_main)
     bot.send_message(user_id, "Выберите период подписки для оплаты:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data in ["weekly_subscription_7", "monthly_subscription_31", "yearly_subscription_365"])
+@bot.callback_query_handler(func=lambda call: call.data in SUBSCRIPTION_PLANS)
 def send_subscription_invoice(call):
-    user_id = call.from_user.id
+    user_id = str(call.from_user.id)
+    plan_key = call.data
+    plan_info = SUBSCRIPTION_PLANS[plan_key]
+    base_price = plan_info["base_price"]
+    fictitious_discount = plan_info["fictitious_discount"]
+    label = plan_info["label"]
+    duration = plan_info["duration"]
+
+    users_data = load_users_data()
+    user_discount = users_data.get(user_id, {}).get('discount', 0)
+
+    # Рассчитываем цену
+    user_discount_amount = round(base_price * (user_discount / 100), 2)  # Сумма скидки в %
+    discounted_price = base_price - user_discount_amount  # Цена после пользовательской скидки
+    final_price = round(discounted_price - fictitious_discount, 2)  # Итог после фиктивной скидки
+
+    # Проверяем минимальную цену
+    if final_price < 1:
+        final_price = 1
+        print(f"Цена для user_id={user_id} скорректирована до 1 ₽ из-за скидок")
+        fictitious_discount = 0  # Убираем фиктивную скидку для отображения
+        if user_discount > 0:
+            user_discount_amount = base_price - 1  # Корректируем скидку, чтобы итог был 1 ₽
+
     provider_token = PAYMENT_PROVIDER_TOKEN
-    start_parameter = "sub"
     currency = "RUB"
-    invoice_payload = call.data  # Используем invoice_payload вместо payload
+    invoice_payload = plan_key
 
     bot_functions = (
-        "🚀 Ваш идеальный спутник в дороге: от расчета топлива и учета трат до прогноза погоды и анти-радара — все для удобства и экономии!"
+        "🚀 Ваш идеальный спутник в дороге: от расчета топлива и учета трат "
+        "до прогноза погоды и анти-радара — все для удобства и экономии!"
     )
 
-    if call.data == "weekly_subscription_7":
-        title = "🌟 Подписка на Неделя"
-        description = f"\nИдеально для тестирования всех функций бота!\n\n{bot_functions}"
-        prices = [types.LabeledPrice("🌟 Неделя", 14900), types.LabeledPrice("🏷️ Скидка", -5000)]
-    elif call.data == "monthly_subscription_31":
-        title = "🌟 Подписка на Месяц"
-        description = f"\nПолный доступ ко всем функциям на продолжительный период!\n\n{bot_functions}"
-        prices = [types.LabeledPrice("🌟 Месяц", 39900), types.LabeledPrice("🏷️ Скидка", -10000)]
-    elif call.data == "yearly_subscription_365":
-        title = "🌟 Подписка на Год"
-        description = f"\nЭкономия и долгосрочный доступ ко всем функциям бота!\n\n{bot_functions}"
-        prices = [types.LabeledPrice("🌟 Год", 299900), types.LabeledPrice("🏷️ Скидка", -50000)]
+    title = f"🌟 Подписка на {label}"
+    description = (
+        f"✨ Полный доступ ко всем функциям на {label.lower()}!\n"
+        f"💰 Базовая цена: {base_price:.2f} ₽\n"
+    )
+    prices = [types.LabeledPrice(f"Подписка на {label}", int(base_price * 100))]
+
+    # Добавляем пользовательскую скидку
+    if user_discount > 0:
+        description += f"🏷️ Скидка {user_discount}%: -{user_discount_amount:.2f} ₽\n"
+        prices.append(types.LabeledPrice(f"Скидка {user_discount}%", -int(user_discount_amount * 100)))
+
+    # Добавляем фиктивную скидку
+    if fictitious_discount > 0 and final_price > 1:
+        description += f"🎁 Акционная скидка: -{fictitious_discount:.2f} ₽\n"
+        prices.append(types.LabeledPrice("Акционная скидка", -int(fictitious_discount * 100)))
+
+    description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
     try:
         bot.send_invoice(
             chat_id=user_id,
             title=title,
             description=description,
-            invoice_payload=invoice_payload,  # Исправлено на invoice_payload
+            invoice_payload=invoice_payload,
             provider_token=provider_token,
             currency=currency,
             prices=prices,
-            start_parameter=start_parameter
+            start_parameter="sub"
         )
     except Exception as e:
         bot.send_message(user_id, "❌ Произошла ошибка при создании платежа. Пожалуйста, попробуйте позже или обратитесь в поддержку.")
-        print(f"Ошибка при отправке инвойса: {e}")
+        print(f"Ошибка при отправке инвойса для user_id={user_id}: {e}")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
