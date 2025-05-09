@@ -472,6 +472,178 @@ def check_subscription(func):
         ), parse_mode="Markdown")
     return wrapper
 
+# ---------- 4.10. Декоратор для отслеживания текстовых сообщений ---------
+
+def text_only_handler(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        # Проверяем наличие мультимедийных файлов
+        if (message.photo or message.video or message.document or 
+            message.animation or message.sticker or message.audio or 
+            message.contact or message.voice or message.video_note):
+            sent = bot.send_message(
+                message.chat.id, 
+                "⛔ Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение..."
+            )
+            # Если нужно, можно перенаправить на следующий шаг
+            bot.register_next_step_handler(sent, func, *args, **kwargs)
+            return
+        # Если сообщение текстовое, выполняем обработчик
+        return func(message, *args, **kwargs)
+    return wrapper
+
+# ---------- 4.11. Декоратор для ограничения запросов ---------
+import random
+
+# Настройки лимита
+REQUEST_LIMIT = 5
+TIME_WINDOW = 10
+CAPTCHA_TIMEOUT = 300  # 5 минут
+
+# Словари для данных
+user_requests = {}
+captcha_data = {}
+
+def save_captcha_data():
+    try:
+        with open('captcha_data.json', 'w', encoding='utf-8') as f:
+            json.dump(captcha_data, f)
+    except Exception as e:
+        logging.error(f"Error saving captcha_data: {e}")
+
+def load_captcha_data():
+    global captcha_data
+    try:
+        if os.path.exists('captcha_data.json') and os.path.getsize('captcha_data.json') > 0:
+            with open('captcha_data.json', 'r', encoding='utf-8') as f:
+                captcha_data = json.load(f)
+        else:
+            captcha_data = {}
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error in load_captcha_data: {e}")
+        captcha_data = {}
+    except Exception as e:
+        logging.error(f"Error loading captcha_data: {e}")
+        captcha_data = {}
+
+def rate_limit_with_captcha(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        current_time = time.time()
+
+        # Инициализация данных пользователя
+        if user_id not in user_requests:
+            user_requests[user_id] = []
+
+        # Очистка старых запросов
+        user_requests[user_id] = [t for t in user_requests[user_id] if current_time - t < TIME_WINDOW]
+
+        # Проверка режима капчи
+        if user_id in captcha_data:
+            # Проверка времени жизни капчи
+            if time.time() - captcha_data[user_id]['timestamp'] > CAPTCHA_TIMEOUT:
+                del captcha_data[user_id]
+                bot.send_message(message.chat.id, "⚠ Капча устарела. Отправляем новую.")
+                send_captcha(message)
+                bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
+                save_captcha_data()
+                return
+
+            try:
+                user_answer = int(message.text.strip())
+                correct_answer = captcha_data[user_id]['answer']
+                
+                if user_answer == correct_answer:
+                    del captcha_data[user_id]
+                    user_requests[user_id] = []
+                    bot.send_message(message.chat.id, "✅ Капча пройдена! Продолжайте использовать бота.")
+                    save_captcha_data()
+                    return func(message, *args, **kwargs)
+                else:
+                    bot.send_message(message.chat.id, f"❌ Неверный ответ! Решите задачу снова:\n\n{captcha_data[user_id]['question']}")
+                    bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
+                    return
+            except ValueError:
+                bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число! Решите задачу:\n\n{captcha_data[user_id]['question']}")
+                bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
+                return
+            except KeyError:
+                del captcha_data[user_id]
+                bot.send_message(message.chat.id, "⚠ Ошибка капчи. Отправляем новую.")
+                send_captcha(message)
+                bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
+                save_captcha_data()
+                return
+
+        # Проверка лимита запросов
+        if len(user_requests[user_id]) >= REQUEST_LIMIT:
+            logging.warning(f"User {user_id} exceeded request limit. Sending captcha.")
+            send_captcha(message)
+            bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
+            save_captcha_data()
+            return
+
+        # Добавляем текущий запрос
+        user_requests[user_id].append(current_time)
+        return func(message, *args, **kwargs)
+    
+    return wrapper
+
+def send_captcha(message):
+    user_id = message.from_user.id
+    # Если капча уже существует, не создаём новую
+    if user_id in captcha_data:
+        bot.send_message(message.chat.id, f"⚠ Пожалуйста, решите текущую капчу:\n\n{captcha_data[user_id]['question']}")
+        return
+
+    num1 = random.randint(1, 10)
+    num2 = random.randint(1, 10)
+    operation = random.choice(['+', '-', '*'])
+    answer = num1 + num2 if operation == '+' else num1 - num2 if operation == '-' else num1 * num2
+    question = f"{num1} {operation} {num2} = ?"
+    captcha_data[user_id] = {
+        'question': question,
+        'answer': answer,
+        'timestamp': time.time()
+    }
+    bot.send_message(message.chat.id, f"⚠ Вы отправляете слишком много запросов! Решите задачу:\n\n{question}")
+
+def handle_captcha(message, original_func, *args, **kwargs):
+    user_id = message.from_user.id
+    
+    if user_id not in captcha_data:
+        bot.send_message(message.chat.id, "⚠ Сессия капчи истекла или не найдена. Попробуйте снова.")
+        return original_func(message, *args, **kwargs)
+    
+    if time.time() - captcha_data[user_id]['timestamp'] > CAPTCHA_TIMEOUT:
+        del captcha_data[user_id]
+        bot.send_message(message.chat.id, "⚠ Капча устарела. Отправляем новую.")
+        send_captcha(message)
+        bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
+        save_captcha_data()
+        return
+    
+    try:
+        user_answer = int(message.text.strip())
+        correct_answer = captcha_data[user_id]['answer']
+        if user_answer == correct_answer:
+            del captcha_data[user_id]
+            user_requests[user_id] = []
+            bot.send_message(message.chat.id, "✅ Капча пройдена! Продолжайте использовать бота.")
+            save_captcha_data()
+            return original_func(message, *args, **kwargs)
+        else:
+            bot.send_message(message.chat.id, f"❌ Неверный ответ! Решите задачу снова:\n\n{captcha_data[user_id]['question']}")
+            bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
+    except ValueError:
+        bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число! Решите задачу:\n\n{captcha_data[user_id]['question']}")
+        bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
+    except KeyError:
+        del captcha_data[user_id]
+        bot.send_message(message.chat.id, "⚠ Ошибка капчи. Попробуйте снова.")
+        return original_func(message, *args, **kwargs)
+    
 # ---------- 5. УВЕДОЛЕНИЕ О НЕАКТИВНОСТИ ----------
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data base', 'admin', 'users.json')
@@ -1088,6 +1260,7 @@ def create_main_menu():
 
 @bot.message_handler(commands=['start'])
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -1325,16 +1498,64 @@ def send_subscription_invoice(call):
     users_data = load_users_data()
     user_discount = users_data.get(user_id, {}).get('discount', 0)
 
-    user_discount_amount = round(base_price * (user_discount / 100), 2)  
-    discounted_price = base_price - user_discount_amount 
-    final_price = round(discounted_price - fictitious_discount, 2) 
+    # Рассчитываем скидку
+    user_discount_amount = round(base_price * (user_discount / 100), 2)
+    discounted_price = base_price - user_discount_amount
+    final_price = round(discounted_price - fictitious_discount, 2)
 
+    # Если скидка 100%, предоставляем подписку без оплаты
+    if user_discount >= 100:
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].setdefault(user_id, {
+            "plans": [], "total_amount": 0, "referral_points": 0, "store_purchases": []
+        })
+
+        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
+        new_end = latest_end + timedelta(days=duration)
+
+        # Добавляем подписку
+        user_data['plans'].append({
+            "plan_name": plan_key.split('_')[0],
+            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
+            "price": 0,
+            "telegram_payment_charge_id": None,
+            "provider_payment_charge_id": None,
+            "source": "promo_100_percent",
+            "user_discount": user_discount,
+            "fictitious_discount": fictitious_discount
+        })
+
+        # Сбрасываем скидку, если она была от промокода
+        if users_data.get(user_id, {}).get('discount_type') == "promo":
+            bot.send_message(user_id, (
+                "🎉 Ваша скидка в размере *100%* была успешно применена!\n"
+                "🚀 Скидка сброшена! Используйте новые промокоды для получения скидок."
+            ), parse_mode="Markdown")
+            users_data[user_id]['discount'] = 0
+            users_data[user_id]['discount_type'] = None
+            save_users_data(users_data)
+
+        save_payments_data(data)
+
+        bot.send_message(user_id, (
+            "🎉 *Подписка активирована бесплатно!*\n\n"
+            f"📅 *Начало подписки:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⏳ *Подписка активна до:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
+            "😊 Приятного использования!"
+        ), parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Подписка активирована!")
+
+        markup = create_main_menu()
+        bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
+        return
+
+    # Если скидка меньше 100%, формируем счёт
     if final_price < 1:
         final_price = 1
         print(f"Цена для user_id={user_id} скорректирована до 1 ₽ из-за скидок")
-        fictitious_discount = 0 
-        if user_discount > 0:
-            user_discount_amount = base_price - 1  
+        fictitious_discount = 0
+        user_discount_amount = base_price - 1  # Корректируем скидку, чтобы итог был 1 ₽
 
     provider_token = PAYMENT_PROVIDER_TOKEN
     currency = "RUB"
@@ -1350,17 +1571,28 @@ def send_subscription_invoice(call):
         f"✨ Полный доступ ко всем функциям на {label.lower()}!\n"
         f"💰 Базовая цена: {base_price:.2f} ₽\n"
     )
+    
+    # Формируем список цен
     prices = [types.LabeledPrice(f"Подписка на {label}", int(base_price * 100))]
-
     if user_discount > 0:
         description += f"🏷️ Скидка {user_discount}%: -{user_discount_amount:.2f} ₽\n"
         prices.append(types.LabeledPrice(f"Скидка {user_discount}%", -int(user_discount_amount * 100)))
-
+    
     if fictitious_discount > 0 and final_price > 1:
         description += f"🎁 Акционная скидка: -{fictitious_discount:.2f} ₽\n"
         prices.append(types.LabeledPrice("Акционная скидка", -int(fictitious_discount * 100)))
 
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
+
+    # Проверяем, что итоговая сумма в ценах корректна
+    total_amount = sum(price.amount for price in prices)
+    if total_amount <= 0:
+        # Если итоговая сумма некорректна, корректируем prices
+        prices = [types.LabeledPrice(f"Подписка на {label}", int(final_price * 100))]
+        description = (
+            f"✨ Полный доступ ко всем функциям на {label.lower()}!\n"
+            f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
+        )
 
     try:
         bot.send_invoice(
@@ -1384,6 +1616,7 @@ def send_subscription_invoice(call):
     markup.add(item_back)
     markup.add(item_main)
     bot.send_message(user_id, "Выберите период подписки для оплаты:", reply_markup=markup)
+    bot.answer_callback_query(call.id, "Счёт отправлен!")
 
 @bot.message_handler(content_types=['successful_payment'])
 def process_successful_payment(message):
@@ -1520,7 +1753,11 @@ def process_successful_payment(message):
         purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
         monthly_key = datetime.now().strftime("%m.%Y")
 
-        # Проверка месячных лимитов
+        # Ensure store_purchases exists
+        if 'store_purchases' not in user_data:
+            user_data['store_purchases'] = []
+
+        # Calculate monthly points and days
         monthly_points = sum(p['points'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
         monthly_days = sum(p['duration'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
 
@@ -1606,9 +1843,6 @@ def process_successful_payment(message):
                 "😊 Приятного использования!"
             ), parse_mode="Markdown")
 
-        user_data['total_amount'] = user_data.get('total_amount', 0) + price
-        data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
-
         if user_discount > 0 and discount_type == "promo":
             bot.send_message(user_id, (
                 "🎉 Ваша скидка в размере *{}%* была успешно применена!\n"
@@ -1616,6 +1850,9 @@ def process_successful_payment(message):
             ).format(user_discount), parse_mode="Markdown")
             users_data[user_id]['discount'] = 0
             users_data[user_id]['discount_type'] = None
+
+        user_data['total_amount'] = user_data.get('total_amount', 0) + price
+        data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
 
     else:
         bot.send_message(user_id, "❌ Неизвестный тип платежа! Обратитесь в поддержку...")
@@ -2043,7 +2280,7 @@ def confirm_cancellation(message, user_id, paid_plans):
             return
 
         if invalid_numbers:
-            bot.send_message(user_id, f"⚠️ Номера {invalid_numbers} некорректны и пропущены!", parse_mode="Markdown")
+            bot.send_message(user_id, f"⚠️ Номера `{invalid_numbers}` некорректны и пропущены!", parse_mode="Markdown")
 
         refund_summary = "*Подтверждение отмены:*\n\n"
         total_refunded = 0.0
@@ -2145,108 +2382,23 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
 # ---------- 10.5. ПОДПИСКА НА БОТА (МАГАЗИН) ----------
 
 STORE_ITEMS = {
-    "points_5": {
-        "base_price": 20,
-        "fictitious_discount": 0,
-        "label": "5 баллов",
-        "points": 5
-    },
-    "points_10": {
-        "base_price": 38,
-        "fictitious_discount": 0,
-        "label": "10 баллов",
-        "points": 10
-    },
-    "points_15": {
-        "base_price": 54,
-        "fictitious_discount": 0,
-        "label": "15 баллов",
-        "points": 15
-    },
-    "points_30": {
-        "base_price": 105,
-        "fictitious_discount": 0,
-        "label": "30 баллов",
-        "points": 30
-    },
-    "points_50": {
-        "base_price": 170,
-        "fictitious_discount": 0,
-        "label": "50 баллов",
-        "points": 50
-    },
-    "points_75": {
-        "base_price": 247,
-        "fictitious_discount": 0,
-        "label": "75 баллов",
-        "points": 75
-    },
-    "points_100": {
-        "base_price": 320,
-        "fictitious_discount": 0,
-        "label": "100 баллов",
-        "points": 100
-    },
-    "points_150": {
-        "base_price": 465,
-        "fictitious_discount": 0,
-        "label": "150 баллов",
-        "points": 150
-    },
-    "points_250": {
-        "base_price": 750,
-        "fictitious_discount": 0,
-        "label": "250 баллов",
-        "points": 250
-    },
-    "points_350": {
-        "base_price": 1015,
-        "fictitious_discount": 0,
-        "label": "350 баллов",
-        "points": 350
-    },
-    "points_500": {
-        "base_price": 1400,
-        "fictitious_discount": 0,
-        "label": "500 баллов",
-        "points": 500
-    },
-    "points_1000": {
-        "base_price": 2800,
-        "fictitious_discount": 0,
-        "label": "1000 баллов",
-        "points": 1000
-    },
-    "time_1day": {
-        "base_price": 30,
-        "fictitious_discount": 0,
-        "label": "1 день подписки",
-        "duration": 1
-    },
-    "time_3days": {
-        "base_price": 85,
-        "fictitious_discount": 0,
-        "label": "3 дня подписки",
-        "duration": 3
-    },
-    "time_7days": {
-        "base_price": 175,
-        "fictitious_discount": 0,
-        "label": "7 дней подписки",
-        "duration": 7
-    },
-    "time_15days": {
-        "base_price": 360,
-        "fictitious_discount": 0,
-        "label": "15 дней подписки",
-        "duration": 15
-    },
-    "time_182days": {
-        "base_price": 4914,
-        "fictitious_discount": 0,
-        "label": "6 месяцев подписки",
-        "duration": 182
-    }
+    "points_5": {"base_price": 15, "fictitious_discount": 0, "label": "5 баллов", "points": 5},
+    "points_10": {"base_price": 28, "fictitious_discount": 0, "label": "10 баллов", "points": 10},
+    "points_15": {"base_price": 39, "fictitious_discount": 0, "label": "15 баллов", "points": 15},
+    "points_30": {"base_price": 75, "fictitious_discount": 0, "label": "30 баллов", "points": 30},
+    "points_50": {"base_price": 120, "fictitious_discount": 0, "label": "50 баллов", "points": 50},
+    "points_75": {"base_price": 172, "fictitious_discount": 0, "label": "75 баллов", "points": 75},
+    "points_100": {"base_price": 220, "fictitious_discount": 0, "label": "100 баллов", "points": 100},
+    "points_150": {"base_price": 315, "fictitious_discount": 0, "label": "150 баллов", "points": 150},
+    "points_250": {"base_price": 500, "fictitious_discount": 0, "label": "250 баллов", "points": 250},
+    "points_350": {"base_price": 665, "fictitious_discount": 0, "label": "350 баллов", "points": 350},
+    "points_500": {"base_price": 900, "fictitious_discount": 0, "label": "500 баллов", "points": 500},
+    "points_1000": {"base_price": 1700, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
+    "time_1day": {"base_price": 25, "fictitious_discount": 0, "label": "1 день подписки", "duration": 1},
+    "time_3days": {"base_price": 70, "fictitious_discount": 0, "label": "3 дня подписки", "duration": 3},
+    "time_7days": {"base_price": 149, "fictitious_discount": 0, "label": "7 дней подписки", "duration": 7},
+    "time_15days": {"base_price": 299, "fictitious_discount": 0, "label": "15 дней подписки", "duration": 15},
+    "time_182days": {"base_price": 1599, "fictitious_discount": 0, "label": "6 месяцев подписки", "duration": 182}
 }
 
 @bot.message_handler(func=lambda message: message.text == "Магазин")
@@ -2857,7 +3009,7 @@ def gift_points_handler(message):
     
     last_gift_time = next(
         (entry['date'] for entry in reversed(data['subscriptions']['users'].get(user_id, {}).get('points_history', []))
-         if "Подарок" in entry['reason']),
+         if ("Подарок @" in entry['reason'] or "Подарок баллов" in entry['reason']) and entry['action'] == "spent"),
         "01.01.2025 в 00:00"
     )
     last_gift_dt = datetime.strptime(last_gift_time, "%d.%m.%Y в %H:%M")
@@ -3037,9 +3189,10 @@ def gift_time_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     
+    # Проверяем только записи, где пользователь был отправителем (spent)
     last_gift_time = next(
         (entry['date'] for entry in reversed(data['subscriptions']['users'].get(user_id, {}).get('points_history', []))
-         if "Подарок времени" in entry['reason']),
+         if "Подарок времени" in entry['reason'] and entry['action'] == "spent"),
         "01.01.2025 в 00:00"
     )
     last_gift_dt = datetime.strptime(last_gift_time, "%d.%m.%Y в %H:%M")
@@ -3470,7 +3623,7 @@ def apply_referral_bonus(referrer_id):
         
         bot.send_message(referrer_id, (
             f"🎉 *Спасибо за приглашение!*\n\n"
-            f"✨ Вам назначено: *+{bonus_days} дня и +{bonus_points} балл(а)*!\n"
+            f"✨ Вам назначено: *+{bonus_days} дня и +{bonus_points} балл*!\n"
             f"⏳ Подписка до: {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
             f"{progress_msg}"
         ), parse_mode="Markdown")
@@ -3745,7 +3898,9 @@ def enter_promo_code(message):
             ), parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню")
+    markup.add("Вернуться в реферальную систему")
+    markup.add("Вернуться в подписку")
+    markup.add("В главное меню")
     bot.send_message(message.chat.id, (
         "✍️ *Введите промокод:*\n\n"
         "💡 *Что будет после ввода?*\n"
@@ -3789,7 +3944,9 @@ def process_promo_code(message):
             return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню")
+    markup.add("Вернуться в реферальную систему")
+    markup.add("Вернуться в подписку")
+    markup.add("В главное меню")
 
     if code not in promo_codes:
         bot.send_message(user_id, (
@@ -3800,7 +3957,8 @@ def process_promo_code(message):
         return
 
     promo = promo_codes[code]
-    if promo['used']:
+    # Безопасный доступ к 'used' с значением по умолчанию False
+    if promo.get('used', False):
         bot.send_message(user_id, (
             "❌ Этот промокод уже использован! Попробуйте другой промокод\n\n"
             "✍️ Введите промокод:"
@@ -3942,7 +4100,7 @@ def get_day_for_ad(message):
         return
 
     bot.send_message(user_id, (
-        "📢 *Подпишитесь на один из наших рекламных каналов!*\n"
+        "📢 *Подпишитесь на один из наших рекламных каналов!*\n\n"
         "✨ Получите *+1 день подписки* за подписку на любой канал!\n\n"
         "Выберите канал ниже:"
     ), reply_markup=markup, parse_mode="Markdown")
@@ -4077,6 +4235,7 @@ load_all_user_data()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_fuel_expense(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по расчету топлива*\n\n\n"
@@ -4122,6 +4281,7 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -4162,8 +4322,8 @@ def reset_user_data(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
+@rate_limit_with_captcha
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
 
@@ -5084,6 +5244,7 @@ def save_trip_to_excel(user_id, trip):
 @check_chat_state
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def save_data_handler(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
@@ -5131,6 +5292,7 @@ def return_to_menu(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def restart_handler(message):
     user_id = message.chat.id
     if user_id in user_trip_data:
@@ -5154,6 +5316,7 @@ def restart_handler(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_trips(message):
     user_id = message.chat.id
     trips = load_trip_data(user_id)
@@ -5191,6 +5354,7 @@ def view_trips(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def send_excel_file(message):
     user_id = message.chat.id
     excel_file_path = f"data base/trip/excel/{user_id}_trips.xlsx"
@@ -5265,6 +5429,7 @@ def show_trip_details(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_other_trips(message):
     view_trips(message)
 
@@ -5280,6 +5445,7 @@ def view_other_trips(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
@@ -5408,6 +5574,7 @@ def confirm_delete_all(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_expenses_and_repairs(message, show_description=True):
     user_id = message.from_user.id
 
@@ -5499,6 +5666,7 @@ user_transport = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_menu_2(message):
     user_id = message.from_user.id
     send_menu(user_id)
@@ -5583,6 +5751,7 @@ def get_user_transport_keyboard(user_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def record_expense(message):
     user_id = message.from_user.id
 
@@ -5602,7 +5771,7 @@ def handle_transport_selection_for_expense(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
     elif message.text == "В главное меню":
         return_to_menu(message)
@@ -5677,7 +5846,7 @@ def get_expense_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
@@ -5734,7 +5903,7 @@ def add_new_category(message, brand, model, license_plate):
 
     if new_category in ["вернуться в меню трат и ремонтов", "в главное меню"]:
         if new_category == "вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -5775,7 +5944,7 @@ def get_expense_name(message, selected_category, brand, model, license_plate):
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -5802,7 +5971,7 @@ def get_expense_description(message, selected_category, expense_name, brand, mod
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -5828,7 +5997,7 @@ def get_expense_date(message, selected_category, expense_name, description, bran
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -5959,6 +6128,7 @@ def save_expense_to_excel(user_id, expense_data):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_category_removal(message, brand=None, model=None, license_plate=None):
     user_id = message.from_user.id
     categories = get_user_categories(user_id)
@@ -5995,7 +6165,7 @@ def remove_selected_category(message, brand, model, license_plate):
     selected_index = message.text.strip()
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
     elif selected_index == "В главное меню":
         return_to_menu(message)
@@ -6114,6 +6284,7 @@ def send_menu1(user_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expenses(message):
     user_id = message.from_user.id
 
@@ -6170,6 +6341,7 @@ def handle_transport_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def send_expenses_excel(message):
     user_id = message.from_user.id
 
@@ -6191,6 +6363,7 @@ def send_expenses_excel(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expenses_by_category(message):
     user_id = message.from_user.id
     user_data = load_expense_data(user_id)
@@ -6220,7 +6393,7 @@ def handle_category_selection(message):
     selected_category = message.text
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -6291,6 +6464,7 @@ def handle_category_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expenses_by_month(message):
     user_id = message.from_user.id
 
@@ -6323,7 +6497,7 @@ def get_expenses_by_month(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -6400,6 +6574,7 @@ def get_expenses_by_month(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expenses_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -6433,7 +6608,7 @@ def get_expenses_by_license_plate(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -6502,6 +6677,7 @@ def get_expenses_by_license_plate(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_all_expenses(message):
     user_id = message.from_user.id
 
@@ -6560,6 +6736,7 @@ def save_selected_transport(user_id, selected_transport):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_expenses_menu(message):
     user_id = message.from_user.id
 
@@ -6647,6 +6824,7 @@ def send_long_message(user_id, text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
 
@@ -6706,7 +6884,7 @@ def handle_category_selection_for_deletion(message):
         return
 
     if selected_category == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_category == "В главное меню":
@@ -6771,7 +6949,7 @@ def delete_expense_confirmation(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_option == "В главное меню":
@@ -6826,6 +7004,7 @@ def send_long_message(user_id, text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_expense_by_month(message):
     user_id = message.from_user.id
 
@@ -6944,7 +7123,7 @@ def confirm_delete_expense_month(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_option == "В главное меню":
@@ -7000,6 +7179,7 @@ def send_long_message(user_id, text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_expense_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -7031,7 +7211,7 @@ def delete_expenses_by_license_plate(message):
         return
 
     if license_plate == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if license_plate == "В главное меню":
@@ -7115,7 +7295,7 @@ def confirm_delete_expense_license_plate(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_option == "В главное меню":
@@ -7157,6 +7337,7 @@ def confirm_delete_expense_license_plate(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -7186,7 +7367,7 @@ def confirm_delete_all_expenses(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -7416,6 +7597,7 @@ def remove_repair_category(user_id, category_to_remove):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def record_repair(message):
     user_id = message.from_user.id
     if contains_media(message):
@@ -7434,7 +7616,7 @@ def handle_transport_selection_for_repair(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
     elif message.text == "В главное меню":
         return_to_menu(message)
@@ -7506,7 +7688,7 @@ def get_repair_category(message, brand, model, license_plate):
         return
 
     if selected_index == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     elif selected_index == "В главное меню":
@@ -7624,7 +7806,7 @@ def remove_repair_category(message, categories, system_categories, brand, model,
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     elif message.text == "В главное меню":
@@ -7694,7 +7876,7 @@ def get_repair_name(message, selected_category, brand, model, license_plate):
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -7732,7 +7914,7 @@ def get_repair_description(message, selected_category, repair_name, brand, model
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -7789,7 +7971,7 @@ def get_repair_date(message, selected_category, repair_name, repair_description,
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -7871,7 +8053,7 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
-            return_to_menu_2(message, show_description=False)
+            return_to_menu_2(message)
         else:
             return_to_menu(message)
         return
@@ -8021,6 +8203,7 @@ def send_repair_menu(user_id):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_repairs(message):
     user_id = message.from_user.id
 
@@ -8081,6 +8264,7 @@ def handle_transport_selection_for_repairs(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
@@ -8117,6 +8301,7 @@ def send_message_with_split(user_id, message_text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_repairs_by_category(message):
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
@@ -8147,7 +8332,7 @@ def handle_repair_category_selection(message):
     selected_category = message.text.strip().lower()
 
     if not selected_category or selected_category == "вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
     if selected_category == "в главное меню":
         return_to_menu(message)
@@ -8226,6 +8411,7 @@ def send_message_with_split(user_id, message_text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -8258,7 +8444,7 @@ def get_repairs_by_month(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -8348,6 +8534,7 @@ def send_message_with_split(user_id, message_text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -8381,7 +8568,7 @@ def get_repairs_by_year(message):
         return
 
     if message.text == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if message.text == "В главное меню":
@@ -8463,6 +8650,7 @@ def send_message_with_split(user_id, message_text):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_all_repairs(message):
     user_id = message.from_user.id
 
@@ -8521,6 +8709,7 @@ def save_selected_repair_transport(user_id, selected_transport):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_repairs_menu(message):
     user_id = message.from_user.id
 
@@ -8594,6 +8783,7 @@ user_repairs_to_delete = {}
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_repair_transports.get(user_id)
@@ -8733,6 +8923,7 @@ def delete_repair_confirmation(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_repair_by_month(message):
     user_id = message.from_user.id
 
@@ -8841,7 +9032,7 @@ def confirm_delete_repair_month(message):
     selected_option = message.text.strip()
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_option == "В главное меню":
@@ -8899,6 +9090,7 @@ def send_long_message(user_id, message_text, parse_mode='Markdown'):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -8930,7 +9122,7 @@ def delete_repairs_by_year_handler(message):
         return
 
     if year == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if year == "В главное меню":
@@ -9009,7 +9201,7 @@ def confirm_delete_repair(message):
         return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
-        return_to_menu_2(message, show_description=False)
+        return_to_menu_2(message)
         return
 
     if selected_option == "В главное меню":
@@ -9050,6 +9242,7 @@ def confirm_delete_repair(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_all_repairs_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -9266,6 +9459,7 @@ def shorten_url(original_url):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def send_welcome(message, show_description=True):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -9309,6 +9503,7 @@ def send_welcome(message, show_description=True):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_reset_category(message):
     global selected_category
     selected_category = None
@@ -9341,6 +9536,7 @@ selected_category = None
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_menu_buttons(message):
     global selected_category
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:
@@ -9366,6 +9562,7 @@ def handle_menu_buttons(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_location(message):
     global selected_category
     user_id = message.chat.id
@@ -9633,6 +9830,7 @@ def handle_location(message):
 # @check_subscription
 # 
 # @check_subscription_chanal
+# @rate_limit_with_captcha
 #
 # def send_welcome(message):
 #     user_id = message.chat.id
@@ -9665,6 +9863,7 @@ def handle_location(message):
 # @check_subscription
 # 
 # @check_subscription_chanal
+# @rate_limit_with_captcha
 #
 # def handle_reset_category(message):
 #     global selected_category
@@ -9681,6 +9880,7 @@ def handle_location(message):
 # @check_subscription
 # 
 # @check_subscription_chanal
+# @rate_limit_with_captcha
 #
 # def handle_menu_buttons(message):
 #     global selected_category
@@ -9708,6 +9908,7 @@ def handle_location(message):
 # @check_subscription
 # 
 # @check_subscription_chanal
+# @rate_limit_with_captcha
 #
 # def handle_location(message):
 #     global selected_category, selected_location, user_locations
@@ -9816,6 +10017,7 @@ location_data = load_location_data()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_transport_search(message, show_description=True):
     global location_data
     user_id = str(message.from_user.id)
@@ -9830,14 +10032,14 @@ def start_transport_search(message, show_description=True):
         bot.send_message(message.chat.id, "Хотите продолжить с того места, где остановились?", reply_markup=markup)
         bot.register_next_step_handler(message, continue_or_restart)
     else:
-        start_new_transport_search(message, show_description=False)
+        start_new_transport_search(message, show_description=show_description)
 
-def start_new_transport_search(message):
+def start_new_transport_search(message, show_description=True):
     global location_data
     user_id = str(message.from_user.id)
     location_data[user_id] = {'start_location': None, 'end_location': None}
     save_location_data(location_data)
-    request_transport_location(message)
+    request_transport_location(message, show_description=show_description)
 
 def request_transport_location(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -9887,6 +10089,7 @@ def request_user_location(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -9983,6 +10186,7 @@ if regions_file_path:
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_start4(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по поиску кода региона и госномера авто*\n\n\n"
@@ -10101,10 +10305,11 @@ def translate_weather_description(english_description):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_start_5(message, show_description=True):
     try:
         help_message = (
-            "ℹ️ *Краткая справка по отображению погоды*\n\n"
+            "ℹ️ *Краткая справка по отображению погоды*\n\n\n"
             "📌 *Отправка геопозиции или ввод города:*\n"
             "Нажмите на кнопку ниже, чтобы отправить вашу геопозицию или введите город самостоятельно\n\n"
             "📌 *Выбор периода:*\n"
@@ -10191,6 +10396,7 @@ def handle_input_5(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
@@ -10949,6 +11155,7 @@ def get_city_code(city_name):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def fuel_prices_command(message, show_description=True):
     chat_id = message.chat.id
     load_citys_users_data()
@@ -11263,14 +11470,14 @@ def process_fuel_price_selection(message, city_code, site_type):
         if normal_parts:
             for i, part in enumerate(normal_parts):
                 if i == 0:
-                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type}:*\n\n\n{part}", parse_mode="Markdown")
+                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type}:*\n\n{part}", parse_mode="Markdown")
                 else:
                     bot.send_message(chat_id, part, parse_mode="Markdown")
 
         if premium_parts:
             for i, part in enumerate(premium_parts):
                 if i == 0:
-                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type} Премиум:*\n\n\n{part}", parse_mode="Markdown")
+                    bot.send_message(chat_id, f"*Актуальные цены на {readable_fuel_type} Премиум:*\n\n{part}", parse_mode="Markdown")
                 else:
                     bot.send_message(chat_id, part, parse_mode="Markdown")
 
@@ -11685,6 +11892,7 @@ def handle_notification_toggle(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_notification_toggle(message):
     chat_id = message.chat.id
     if message.text == "Включить погоду":
@@ -11967,6 +12175,7 @@ load_all_transport()
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def manage_transport(message):
     user_id = str(message.chat.id)
 
@@ -12008,6 +12217,7 @@ def create_transport_keyboard():
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def add_transport(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id): return
@@ -12150,6 +12360,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -12292,6 +12503,7 @@ def get_return_menu_keyboard():
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -12353,6 +12565,7 @@ def process_delete_all_confirmation(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -12379,6 +12592,7 @@ def view_transport(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_transport_menu(message):
     manage_transport(message)
 
@@ -12427,6 +12641,7 @@ user_tracking = {}
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_antiradar(message):
     user_id = message.chat.id
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False, 'database_missing_notified': False}
@@ -12458,6 +12673,7 @@ def start_antiradar(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_antiradar_location(message):
     user_id = message.chat.id
 
@@ -12488,6 +12704,7 @@ def handle_antiradar_location(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
@@ -12634,6 +12851,7 @@ def save_data(data):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_reminders_menu(message):
     reminders_menu(message, show_description=False)
 
@@ -12712,6 +12930,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def reminders_menu(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка для напоминаний*\n\n\n"
@@ -12743,6 +12962,7 @@ def reminders_menu(message, show_description=True):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def add_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -12930,6 +13150,7 @@ def process_time_step(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Активные', 'Истекшие')
@@ -12948,6 +13169,7 @@ def view_reminders(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (активные)', 'Ежедневно (активные)')
@@ -12967,6 +13189,7 @@ def view_active_reminders(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (истекшие)', 'Ежедневно (истекшие)')
@@ -12992,6 +13215,7 @@ def view_expired_reminders(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -13048,6 +13272,7 @@ def view_active_reminders_by_type(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -13090,6 +13315,7 @@ def view_expired_reminders_by_type(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Del Активные', 'Del Истекшие')
@@ -13109,6 +13335,7 @@ def delete_reminder(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (активные)', 'Del Ежедневно (активные)')
@@ -13128,6 +13355,7 @@ def delete_active_reminders(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (истекшие)', 'Del Ежедневно (истекшие)')
@@ -13149,6 +13377,7 @@ def delete_expired_reminders(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -13202,7 +13431,8 @@ def delete_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-@check_subscription_chanal 
+@check_subscription_chanal
+@rate_limit_with_captcha 
 def delete_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -13322,6 +13552,7 @@ def confirm_delete_expired_step(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def delete_all_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -13395,6 +13626,7 @@ error_codes = load_error_codes()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def obd2_request(message, show_description=True):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -13487,6 +13719,7 @@ def process_error_codes(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Новости', 'Для рекламы') 
@@ -13508,6 +13741,7 @@ def view_others(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_calculators(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Алкоголь', 'Автокредит', 'Налог') 
@@ -13524,6 +13758,7 @@ def view_calculators(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_calculators(message):
     view_calculators(message)
 
@@ -13542,6 +13777,7 @@ def return_to_calculators(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_alc_calc(message, show_description=True):
     global stored_message
     stored_message = message
@@ -13638,6 +13874,7 @@ load_user_history_alko()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -14227,6 +14464,7 @@ def save_alcohol_calculation_to_history(chat_id, promille):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14349,6 +14587,7 @@ def process_view_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14461,12 +14700,13 @@ def process_delete_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_rastamozka_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
     description = (
-        "ℹ️ *Краткая справка по расчету таможенных платежей*\n\n"
+        "ℹ️ *Краткая справка по расчету таможенных платежей*\n\n\n"
         "📌 *Расчет растаможки:*\n"
         "Расчет ведется по следующим данным - *кто ввозит, возраст авто, тип двигателя, мощность, объем двигателя, стоимость*\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе актуальных ставок. Точные суммы зависят от законодательства и могут отличаться!_\n\n"
@@ -14578,6 +14818,7 @@ load_user_history_rastamozka()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_customs_calculation(message):
     if not rastamozka_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -15211,6 +15452,7 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15349,6 +15591,7 @@ def process_view_rastamozka_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15460,12 +15703,13 @@ def process_delete_rastamozka_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_osago_calc(message, show_description=True):
     global stored_message
     stored_message = message
 
     description = (
-        "ℹ️ *Краткая справка по расчету ОСАГО*\n\n"
+        "ℹ️ *Краткая справка по расчету ОСАГО*\n\n\n"
         "📌 *Расчет ОСАГО:*\n"
         "Расчет ведется по следующим данным - *регион, мощность авто, возраст и стаж водителей, количество аварий, тип полиса (ограниченный/неограниченный), период использования*\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе актуальных коэффициентов. Точные суммы зависят от страховой компании и могут отличаться!_\n\n"
@@ -15545,6 +15789,7 @@ load_user_history_osago()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_osago_calculation(message):
     if not osago_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -16254,6 +16499,7 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -16439,6 +16685,7 @@ def process_view_osago_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -16550,11 +16797,12 @@ def process_delete_osago_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_autokredit_calc(message, show_description=True):
     description = (
-        "ℹ️ *Краткая справка по расчету автокредита*\n\n"
+        "ℹ️ *Краткая справка по расчету автокредита*\n\n\n"
         "📌 *Расчет автокредита:*\n"
-        "Расчет ведется по следующим данным - *дата, стоимость авто, первый платеж, срок кредита, процентная ставка, схема оплаты, дополнительные погашения*\n"
+        "Расчет ведется по следующим данным - *дата, стоимость авто, первый платеж, срок кредита, процентная ставка, схема оплаты, дополнительные погашения*\n\n"
         "_P.S. калькулятор предоставляет ориентировочные данные на основе введенных параметров. Точные суммы зависят от условий банка и могут отличаться!_\n\n"
         "📌 *Просмотр автокредитов:*\n"
         "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
@@ -16626,6 +16874,7 @@ load_user_history_kredit()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_car_loan_calculation(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -17324,6 +17573,7 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -17474,6 +17724,7 @@ def process_view_autokredit_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -17590,11 +17841,12 @@ def process_delete_autokredit_selection(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_tire_calc(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
         "📌 *Расчет шин и дисков:*\n"
-        "Расчет выполняется на основе данных - *ширина, профиль и диаметр текущих шин, ширина обода и вылет текущих дисков, а также параметры новых шин и дисков*\n"
+        "Расчет выполняется на основе данных - *ширина, профиль и диаметр текущих шин, ширина обода и вылет текущих дисков, а также параметры новых шин и дисков*\n\n"
         "_P.S. Калькулятор предоставляет ориентировочные данные для сравнения. Совместимость зависит от конструкции автомобиля и может отличаться!_\n\n"
         "📌 *Просмотр расчетов:*\n"
         "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
@@ -17660,6 +17912,7 @@ load_user_history_tires()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_tire_calculation(message):
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
@@ -18097,6 +18350,7 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -18298,6 +18552,7 @@ def process_view_tire_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -18505,6 +18760,7 @@ load_tax_rates(2025)  # Загружаем данные за 2025 год по у
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_nalog_calc(message, show_description=True):
     global stored_message
     stored_message = message
@@ -18512,7 +18768,7 @@ def view_nalog_calc(message, show_description=True):
     description = (
         "ℹ️ *Краткая справка по расчету транспортного налога*\n\n\n"
         "📌 *Расчет налога:*\n"
-        "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n"
+        "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n\n"
         "_P.S. Региональный коэффициент завышен. Мы работаем над этим. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
         "_Сумма налога (руб.) = налоговая база (л.с.) × ставка (руб.) × (количество полных месяцев владения / 12 месяцев)_\n\n"
         "📌 *Просмотр налогов:*\n"
@@ -18542,6 +18798,7 @@ def view_nalog_calc(message, show_description=True):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def start_tax_calculation(message):
     if not nalog_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -19017,6 +19274,7 @@ def calculate_tax(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -19157,6 +19415,7 @@ def process_view_nalog_selection(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -20367,7 +20626,7 @@ def get_available_permissions(admin_id):
         "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
         "Редакция: Опубликовать новость", "Редакция: Отредактировать новость", "Редакция: Посмотреть новость", "Редакция: Удалить новость",
         "Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Отмена остановки",
-        "Управление системой: Добавление подписки", "Управление системой: Просмотр подписок", "Управление системой: Удаление подписок", "Управление системой: Просмотр рефералов и статистики"
+        "Управление системой: Добавление подписки", "Управление системой: Просмотр подписок", "Управление системой: Удаление подписок", "Управление системой: Статистика системы"
     ]
 
     current_permissions = admins_data.get(admin_id, {}).get("permissions", [])
@@ -20722,7 +20981,7 @@ def list_users_for_ban(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -21307,7 +21566,7 @@ def get_user_last_active():
     user_last_active = [
         f"📌 {index + 1}) `{user_id}`: {escape_markdown(user.get('username', 'неизвестный'))} - {user['last_active'][:-3]}"
         for index, (user_id, user) in enumerate(users_data.items())
-        if not user['blocked']
+        if 'blocked' not in user or not user['blocked']  # Проверяем наличие ключа и его значение
     ]
     return "\n".join(user_last_active) if user_last_active else None
 
@@ -21474,7 +21733,7 @@ def handle_submenu_buttons(message):
                 f"🛑 <b>ОШИБКА №{index}</b> 🛑\n\n{error}"
                 for index, error in enumerate(error_list, start=1)
             ]
-            full_message = "\n\n".join(escaped_error_list)
+            full_message = "\n".join(escaped_error_list)
             if len(full_message) > 4096:
                 parts = [full_message[i:i + 4096] for i in range(0, len(full_message), 4096)]
                 for part in parts:
@@ -23128,7 +23387,7 @@ def list_users_for_time_notification(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -23825,7 +24084,7 @@ def list_users(message):
         status = " - *разблокирован* ✅" if not data.get('blocked', False) else " - *заблокирован* 🚫"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -24028,7 +24287,7 @@ def show_individual_messages(message):
         status = " - *разблокирован* ✅" if not data.get('blocked', False) else " - *заблокирован* 🚫"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -24227,7 +24486,7 @@ def delete_individual_messages(message):
         status = " - *разблокирован* ✅" if not data.get('blocked', False) else " - *заблокирован* 🚫"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -24411,6 +24670,7 @@ blocked_users = load_blocked_users()
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('Вернуться в меню для рекламы')
@@ -25287,6 +25547,7 @@ def show_advertisement_menu(message):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def show_user_advertisement_requests(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -25450,6 +25711,7 @@ def handle_user_advertisement_request_action(message, index):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def view_add_menu(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Заявка на рекламу', 'Ваши заявки')
@@ -25532,6 +25794,7 @@ def check_admin_access(message):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def show_news_menu(message, show_description=True):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('3 новости', '5 новостей', '7 новостей')
@@ -25571,6 +25834,7 @@ def show_news_menu(message, show_description=True):
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 def handle_news_selection(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
@@ -26603,7 +26867,7 @@ def list_users_for_files(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -27093,7 +27357,7 @@ def manage_system(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Управление подписками', 'Управление магазином')
     markup.add('Управление баллами', 'Управление обменами')
-    markup.add('Управление скидками', 'Просмотр рефералов и статистики')
+    markup.add('Управление скидками', 'Статистика системы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления системой:", reply_markup=markup)
 
@@ -27105,6 +27369,7 @@ def manage_system(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@rate_limit_with_captcha
 def manage_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление подписками'):
@@ -27127,6 +27392,7 @@ def manage_subscriptions(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@rate_limit_with_captcha
 def return_to_subs(message):
     manage_system(message)
 
@@ -27158,17 +27424,16 @@ def add_subscription(message):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
-    if message.text == "Вернуться в управление системой":
-        manage_system(message)
-        return
-
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-
     list_users_for_payments_pay(message)
 
+@text_only_handler
+@rate_limit_with_captcha
 def list_users_for_payments_pay(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27176,7 +27441,7 @@ def list_users_for_payments_pay(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
-
+    
     users_data = load_users()
     user_list = []
     for user_id, data in users_data.items():
@@ -27184,19 +27449,27 @@ def list_users_for_payments_pay(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
     markup.add(types.KeyboardButton('Вернуться в управление системой'))
     markup.add(types.KeyboardButton('В меню админ-панели'))
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для добавления подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_subscription)
 
+@text_only_handler
+@rate_limit_with_captcha
 def process_add_subscription(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27217,26 +27490,33 @@ def process_add_subscription(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
-        else:
-            user_id = None
 
-    if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+    if not user_id or user_id not in users_data:
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_subscription)
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Неделя', 'Месяц', 'Год', 'Свой план')
+    markup.add('Вернуться в управление подписками')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите план подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
 
+@text_only_handler
+@rate_limit_with_captcha
 def process_add_subscription_plan(message, user_id):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27247,13 +27527,14 @@ def process_add_subscription_plan(message, user_id):
 
     plan_name = message.text.strip().lower()
     if plan_name not in ['неделя', 'месяц', 'год', 'свой план']:
-        bot.send_message(message.chat.id, "Неверный план подписки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверный план подписки!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
         return
 
     if plan_name == 'свой план':
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('В минутах', 'В часах', 'В днях')
+        markup.add('Вернуться в управление подписками')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, "Выберите единицу измерения длительности подписки:", reply_markup=markup)
@@ -27296,16 +27577,34 @@ def process_add_subscription_plan(message, user_id):
     users_data = load_users()
     username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-    admin_message = f"✅ Пользователю {username} - `{user_id}` назначен план подписки *{plan_name_rus}* с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!"
-    user_message = f"✅ Администратор назначил вам план подписки на *{plan_name_rus}* с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!\nПриятного пользования! 😊"
+    # Новый формат сообщений
+    admin_message = (
+        f"✅ Пользователю {username} - `{user_id}` назначен:\n\n"
+        f"💼 *План подписки:* {plan_name_rus}\n"
+        f"🕒 *Начало:* {latest_end_date.strftime('%d.%m.%Y в %H:%M')}\n"
+        f"⌛ *Конец:* {new_end_date.strftime('%d.%m.%Y в %H:%M')}"
+    )
+    user_message = (
+        f"✅ Администратор назначил вам:\n\n"
+        f"💼 *План подписки:* {plan_name_rus}\n"
+        f"🕒 *Начало:* {latest_end_date.strftime('%d.%m.%Y в %H:%M')}\n"
+        f"⌛ *Конец:* {new_end_date.strftime('%d.%m.%Y в %H:%M')}\n\n"
+        f"😊 Приятного использования!"
+    )
 
     bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
     bot.send_message(user_id, user_message, parse_mode="Markdown")
 
     manage_system(message)
 
-# Новая функция для выбора единицы измерения "Свой план"
+@text_only_handler
+@rate_limit_with_captcha
 def process_custom_plan_unit(message, user_id):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27316,25 +27615,32 @@ def process_custom_plan_unit(message, user_id):
 
     unit = message.text.strip().lower()
     if unit not in ['в минутах', 'в часах', 'в днях']:
-        bot.send_message(message.chat.id, "Неверная единица измерения! Пожалуйста, выберите снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверная единица измерения!\nПожалуйста, выберите снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_custom_plan_unit, user_id)
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в управление подписками')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     if unit == 'в минутах':
-        prompt = "Введите количество минут для подписки (например, 60):"
+        prompt = "Введите количество минут для подписки:"
     elif unit == 'в часах':
-        prompt = "Введите количество часов для подписки (например, 24):"
-    else:  # в днях
-        prompt = "Введите количество дней для подписки (например, 30):"
+        prompt = "Введите количество часов для подписки:"
+    else:  
+        prompt = "Введите количество дней для подписки:"
 
     bot.send_message(message.chat.id, prompt, reply_markup=markup)
     bot.register_next_step_handler(message, process_custom_plan_duration, user_id, unit)
 
-# Новая функция для обработки длительности "Свой план"
+@text_only_handler
+@rate_limit_with_captcha
 def process_custom_plan_duration(message, user_id, unit):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27347,7 +27653,7 @@ def process_custom_plan_duration(message, user_id, unit):
         duration = float(message.text.strip())
         if duration <= 0:
             raise ValueError("Длительность должна быть положительным числом!")
-        duration_int = int(duration)  # Преобразуем в целое число для сохранения
+        duration_int = int(duration)  
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].setdefault(str(user_id), {'plans': []})
@@ -27358,7 +27664,6 @@ def process_custom_plan_duration(message, user_id, unit):
             if plan_end_date > latest_end_date:
                 latest_end_date = plan_end_date
 
-        # Маппинг для единиц измерения
         unit_mapping = {
             'в минутах': 'минуты',
             'в часах': 'часы',
@@ -27377,9 +27682,9 @@ def process_custom_plan_duration(message, user_id, unit):
         elif unit.lower() == 'в часах':
             new_end_date = latest_end_date + timedelta(hours=duration)
             duration_str = f"{duration_int} ч."
-        else:  # в днях
+        else:
             new_end_date = latest_end_date + timedelta(days=duration)
-            duration_str = f"{duration_int} д."
+            duration_str = f"{duration_int} дн."
 
         new_plan = {
             "plan_name": "custom",
@@ -27388,7 +27693,7 @@ def process_custom_plan_duration(message, user_id, unit):
             "price": 0,
             "source": "admin",
             "duration_unit": duration_unit,
-            "duration_value": duration_int  # Сохраняем как целое число
+            "duration_value": duration_int
         }
         user_data['plans'].append(new_plan)
         data['subscriptions']['users'][str(user_id)] = user_data
@@ -27398,13 +27703,17 @@ def process_custom_plan_duration(message, user_id, unit):
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
         admin_message = (
-            f"✅ Пользователю {username} - `{user_id}` назначен *свой план* подписки на *{duration_str}* "
-            f"с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!"
+            f"✅ Пользователю {username} - `{user_id}` назначен:\n\n"
+            f"💼 *План подписки:* индивидуальный ({duration_str})\n"
+            f"🕒 *Начало:* {latest_end_date.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⌛ *Конец:* {new_end_date.strftime('%d.%m.%Y в %H:%M')}"
         )
         user_message = (
-            f"✅ Администратор назначил вам *свой план* подписки на *{duration_str}* "
-            f"с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!\n"
-            "Приятного пользования! 😊"
+            f"✅ Администратор назначил вам:\n\n"
+            f"💼 *План подписки:* индивидуальный ({duration_str})\n"
+            f"🕒 *Начало:* {latest_end_date.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⌛ *Конец:* {new_end_date.strftime('%d.%m.%Y в %H:%M')}\n\n"
+            f"😊 Приятного использования!"
         )
 
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
@@ -27412,7 +27721,7 @@ def process_custom_plan_duration(message, user_id, unit):
 
         manage_system(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, введите корректное число")
+        bot.send_message(message.chat.id, f"❌ {str(e)}!\nПожалуйста, введите корректное число")
         bot.register_next_step_handler(message, process_custom_plan_duration, user_id, unit)
 
 # ---------- 34.2 УПРАВЛЕНИЕ ПОДПИСКАМИ (ПРОСМОТР ПОДПИСОК) ----------
@@ -27423,23 +27732,23 @@ def process_custom_plan_duration(message, user_id, unit):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@rate_limit_with_captcha
 def view_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр подписок'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
-
-    if message.text == "Вернуться в управление системой":
-        manage_system(message)
-        return
-
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-
+    
     list_users_for_payments_view(message)
 
+@text_only_handler
+@rate_limit_with_captcha
 def list_users_for_payments_view(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27455,19 +27764,27 @@ def list_users_for_payments_view(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
     markup.add(types.KeyboardButton('Вернуться в управление системой'))
     markup.add(types.KeyboardButton('В меню админ-панели'))
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра подписок:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_subscriptions)
 
+@text_only_handler
+@rate_limit_with_captcha
 def process_view_subscriptions(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27479,46 +27796,46 @@ def process_view_subscriptions(message):
     user_input = message.text.strip()
     user_id = None
 
+    users_data = load_users()
     if user_input.isdigit():
         if len(user_input) >= 5:
             user_id = user_input
         else:
-            users_data = load_users()
-            user_list = list(users_data.items())
-            if 0 < int(user_input) <= len(user_list):
-                user_id = user_list[int(user_input) - 1][0]
+            idx = int(user_input)
+            if 1 <= idx <= len(users_data):
+                user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        users_data = load_users()
-        for user_id, data in users_data.items():
-            if data['username'] == user_input[1:]:
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+                user_id = uid
                 break
 
-    if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова")
+    if not user_id or user_id not in users_data:
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_view_subscriptions)
         return
 
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     if 'plans' not in user_data or not user_data['plans']:
-        bot.send_message(message.chat.id, "У пользователя нет подписок!")
+        bot.send_message(message.chat.id, "❌ У пользователя нет подписок!", parse_mode="Markdown")
         manage_system(message)
         return
 
-    plans_summary = "💎 *Список подписок:*\n\n\n"
+    plans_summary = "💎 *Список подписок:*\n\n"
     total_days_left = 0
     total_cost_active = 0
     active_plans = []
-    now = datetime.now()  # Инициализация текущего времени
+    now = datetime.now()  
 
-    # Маппинг для сокращений единиц измерения
     unit_display = {
         'минуты': 'мин.',
         'часы': 'ч.',
         'дни': 'дн.'
     }
 
-    # Список платных планов
     paid_plans = {'weekly', 'monthly', 'yearly'}
 
     for idx, plan in enumerate(user_data['plans'], start=1):
@@ -27526,7 +27843,6 @@ def process_view_subscriptions(message):
         is_active = end_date >= now
 
         if is_active:
-            # Активный план: показываем оставшееся время
             remaining_time = end_date - now
             days_left = remaining_time.days
             hours_left, remainder = divmod(remaining_time.seconds, 3600)
@@ -27536,7 +27852,6 @@ def process_view_subscriptions(message):
             total_cost_active += plan['price']
             active_plans.append(plan)
         else:
-            # Завершённый план: показываем время, прошедшее с окончания
             elapsed_time = now - end_date
             days_elapsed = elapsed_time.days
             hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600)
@@ -27581,7 +27896,6 @@ def process_view_subscriptions(message):
     total_amount_formatted = f"{total_amount:.2f}"
 
     if active_plans:
-        # Формируем список типов подписок
         subscription_types = []
         for p in active_plans:
             plan_name_lower = p['plan_name'].lower()
@@ -27594,7 +27908,7 @@ def process_view_subscriptions(message):
                 subscription_types.append(translate_plan_name(p['plan_name']).lower())
 
         total_amount_message = (
-            "💎 *Итоговая подписочная оценка (активные подписки):*\n\n"
+            "💎 *Итоговая подписочная оценка:*\n\n"
             f"💼 *Типы подписок:* {', '.join(subscription_types)}\n"
             f"📅 *Дней осталось:* {total_days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
             f"🕒 *Начало:* {min(datetime.strptime(p['start_date'], '%d.%m.%Y в %H:%M') for p in active_plans).strftime('%d.%m.%Y в %H:%M')}\n"
@@ -27605,7 +27919,7 @@ def process_view_subscriptions(message):
     else:
         total_amount_message = (
             "💎 *Итоговая подписочная оценка:*\n\n"
-            "📅 *Активных подписок нет.*\n"
+            "📅 *Активных подписок нет!*\n"
             f"💰 *Общая стоимость всех подписок:* {total_amount_formatted} руб."
         )
 
@@ -27620,23 +27934,24 @@ def process_view_subscriptions(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
+@rate_limit_with_captcha
 def delete_subscription(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удаление подписок'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
-
-    if message.text == "Вернуться в управление системой":
-        manage_system(message)
-        return
-
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-
+    
     list_users_for_payments_del(message)
 
+@text_only_handler
+@rate_limit_with_captcha
 def list_users_for_payments_del(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27652,19 +27967,27 @@ def list_users_for_payments_del(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
     markup.add(types.KeyboardButton('Вернуться в управление системой'))
     markup.add(types.KeyboardButton('В меню админ-панели'))
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для удаления подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_subscription)
 
+@text_only_handler
+@rate_limit_with_captcha
 def process_delete_subscription(message):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27676,35 +27999,43 @@ def process_delete_subscription(message):
     user_input = message.text.strip()
     user_id = None
 
-    if user_input.isdigit() and len(user_input) > 5:
-        user_id = user_input
-    else:
-        users_data = load_users()
-        for idx, (uid, data) in enumerate(users_data.items(), start=1):
-            if data['username'] == user_input or str(uid) == user_input or str(idx) == user_input:
+    users_data = load_users()
+    if user_input.isdigit():
+        if len(user_input) >= 5:
+            user_id = user_input
+        else:
+            idx = int(user_input)
+            if 1 <= idx <= len(users_data):
+                user_id = list(users_data.keys())[idx - 1]
+    elif user_input.startswith('@'):
+        username = user_input[1:]  # Убираем '@' из ввода
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
+            if db_username.lower() == username.lower():  # Сравнение без учета регистра
                 user_id = uid
                 break
 
-    if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+    if not user_id or user_id not in users_data:
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_delete_subscription)
         return
 
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     if 'plans' not in user_data or not user_data['plans']:
-        bot.send_message(message.chat.id, "У пользователя нет подписок для удаления!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ У пользователя нет подписок для удаления!", parse_mode="Markdown")
         manage_system(message)
         return
 
-    now = datetime.now()  # Инициализация текущего времени
-    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now]
+    now = datetime.now()
+    # Исключаем пробный период (free) из списка активных подписок
+    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now and p['plan_name'].lower() != 'free']
     if not active_plans:
-        bot.send_message(message.chat.id, "У пользователя нет активных подписок для удаления!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ У пользователя нет активных подписок для удаления!", parse_mode="Markdown")
         manage_system(message)
         return
 
-    plans_summary = "💎 *Список активных подписок:*\n\n\n"
+    plans_summary = "💎 *Список активных подписок:*\n\n"
 
     # Маппинг для сокращений единиц измерения
     unit_display = {
@@ -27728,10 +28059,7 @@ def process_delete_subscription(message):
         source = plan.get('source', '')
         is_paid = plan_name_lower in paid_plans and source != 'admin'
 
-        if plan_name_lower == "free":
-            period_type = f"🎁 *№{idx}.* *Пробный период:*"
-            subscription_type = "3 дня бесплатно"
-        elif plan_name_lower in {"referral_bonus", "points_bonus", "ad_bonus", "activity", "gift_time", "referral", "monthly_leader_bonus", "leaderboard", "store_time"}:
+        if plan_name_lower in {"referral_bonus", "points_bonus", "ad_bonus", "activity", "gift_time", "referral", "monthly_leader_bonus", "leaderboard", "store_time"}:
             period_type = f"🎁 *№{idx}.* *Бонусный период:*"
             subscription_type = translate_plan_name(plan['plan_name']).lower()
         elif plan_name_lower == "custom":
@@ -27760,7 +28088,14 @@ def process_delete_subscription(message):
     bot.send_message(message.chat.id, "Введите номера подписок для удаления:")
     bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, active_plans)
 
+@text_only_handler
+@rate_limit_with_captcha
 def process_delete_subscription_plan(message, user_id, plans):
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
@@ -27770,10 +28105,26 @@ def process_delete_subscription_plan(message, user_id, plans):
         return
 
     try:
-        plan_numbers = [int(num.strip()) for num in message.text.strip().split(',')]
-        for plan_number in plan_numbers:
-            if plan_number < 1 or plan_number > len(plans):
-                raise ValueError("Неверный номер подписки.")
+        # Разделяем введенные номера подписок
+        plan_numbers_input = [num.strip() for num in message.text.strip().split(',')]
+        plan_numbers = []
+        invalid_numbers = []
+
+        # Проверяем каждый номер на корректность
+        for num in plan_numbers_input:
+            try:
+                num_int = int(num)
+                if 1 <= num_int <= len(plans):
+                    plan_numbers.append(num_int)
+                else:
+                    invalid_numbers.append(num)
+            except ValueError:
+                invalid_numbers.append(num)
+
+        if not plan_numbers:
+            bot.send_message(message.chat.id, "Ни один из введенных номеров не является корректным!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+            bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
+            return
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'][str(user_id)]
@@ -27788,13 +28139,9 @@ def process_delete_subscription_plan(message, user_id, plans):
             'дни': 'дн.'
         }
 
-        for plan_number in sorted(plan_numbers, reverse=True):  # Обратный порядок для безопасного удаления
+        # Удаляем только корректные подписки
+        for plan_number in sorted(set(plan_numbers), reverse=True):  # Уникальные номера, обратный порядок
             plan = plans[plan_number - 1]
-
-            if plan['plan_name'].lower() == "free":
-                bot.send_message(message.chat.id, "Невозможно удалить пробную подписку! Пожалуйста, выберите другую подписку", parse_mode="Markdown")
-                bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
-                return
 
             # Формируем название плана для уведомления
             subscription_type = translate_plan_name(plan['plan_name']).lower()
@@ -27803,16 +28150,21 @@ def process_delete_subscription_plan(message, user_id, plans):
                 duration_unit = plan.get('duration_unit', 'дни')
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
 
-            user_data['plans'].remove(plan)
+            # Новый формат сообщений
             admin_message = (
-                f"🚫 План подписки *{subscription_type}* пользователя {username} - `{user_id}`, "
-                f"назначенный с *{plan['start_date']}* по *{plan['end_date']}*, был отменён!"
+                f"🚫 Пользователю {username} - `{user_id}` отменён:\n\n"
+                f"💼 *План подписки:* {subscription_type}\n"
+                f"🕒 *Начало:* {plan['start_date']}\n"
+                f"⌛ *Конец:* {plan['end_date']}"
             )
             user_message = (
-                f"🚫 Ваш план подписки *{subscription_type}*, "
-                f"назначенный с *{plan['start_date']}* по *{plan['end_date']}*, был отменён администратором!"
+                f"🚫 Администратор отменил вам:\n\n"
+                f"💼 *План подписки:* {subscription_type}\n"
+                f"🕒 *Начало:* {plan['start_date']}\n"
+                f"⌛ *Конец:* {plan['end_date']}"
             )
 
+            user_data['plans'].remove(plan)
             bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
             bot.send_message(user_id, user_message, parse_mode="Markdown")
 
@@ -27820,22 +28172,29 @@ def process_delete_subscription_plan(message, user_id, plans):
         user_data['total_amount'] = sum(p['price'] for p in user_data.get('plans', []))
 
         save_payments_data(data)
+
+        # Если были некорректные номера, выводим предупреждение
+        if invalid_numbers:
+            invalid_numbers_str = ", ".join(invalid_numbers)
+            bot.send_message(message.chat.id, f"⚠️ Номера `{invalid_numbers_str}` некорректны и пропущены!", parse_mode="Markdown")
+
         manage_system(message)
     except ValueError:
-        bot.send_message(message.chat.id, "Неверный номер подписки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверный формат номеров!\nВведите номера через запятую", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
 
-# ---------- 34.4 УПРАВЛЕНИЕ ПОДПИСКАМИ (ПРОСМОТР РЕФЕРАЛОВ И СТАТИСТИКИ) ----------
+# ---------- 34.4 УПРАВЛЕНИЕ ПОДПИСКАМИ (Статистика системы) ----------
 
-@bot.message_handler(func=lambda message: message.text == 'Просмотр рефералов и статистики' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Статистика системы' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@rate_limit_with_captcha
 def view_referrals_and_stats(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Просмотр рефералов и статистики'):
+    if not check_permission(admin_id, 'Статистика системы'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
@@ -27883,7 +28242,7 @@ def view_referrals_and_stats(message):
             f"📈 Рефералов с активной подпиской: {active_referral_subscriptions}\n"
         )
     else:
-        referral_summary += "Данные о рефералах отсутствуют!\n"
+        referral_summary += "Данные о рефералах отсутствуют!\n\n"
 
     # Подсчет реферальных баллов
     for user_id, user_data in data.get('subscriptions', {}).get('users', {}).items():
@@ -27893,7 +28252,7 @@ def view_referrals_and_stats(message):
             referral_users += 1
     avg_referral_points = total_referral_points / referral_users if referral_users > 0 else 0
     referral_summary += (
-        f"🎯 Всего реферальных баллов: {total_referral_points:.2f}\n"
+        f"🎯 Всего реферальных баллов: {total_referral_points:.2f}\n\n"
         f"📊 Среднее количество баллов на пользователя: {avg_referral_points:.2f}\n"
     )
 
@@ -27915,7 +28274,7 @@ def view_referrals_and_stats(message):
                 username = f"@{username}"
             subscription_summary += (
                 f"👤 *№{idx}.* {escape_markdown(username)} (`{escape_markdown(user_id)}`): "
-                f"*{user_total_amount} руб.*\n"
+                f"{user_total_amount:.2f} руб.\n"  # Исправлено форматирование
             )
             if user_total_amount > 0:
                 paying_users += 1
@@ -27937,7 +28296,7 @@ def view_referrals_and_stats(message):
         avg_payment = total_amount / paying_users if paying_users > 0 else 0
         subscription_summary += (
             f"\n*Общая статистика:*\n"
-            f"💰 Итоговая сумма платежей: {total_amount} руб.\n"
+            f"💰 Итоговая сумма платежей: {total_amount:.2f} руб.\n"  # Исправлено форматирование
             f"👥 Платящих пользователей: {paying_users}\n"
             f"📊 Средний чек: {avg_payment:.2f} руб.\n"
             f"📝 Всего транзакций: {transaction_count}\n"
@@ -28009,7 +28368,7 @@ def manage_store(message):
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Начисление покупки', 'Просмотр покупок', 'Удаление покупки')
+    markup.add('Начисление покупки', 'Просмотр покупок', 'Удаление покупок')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления магазином:", reply_markup=markup)
@@ -28022,6 +28381,7 @@ def manage_store(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def add_store_purchase(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Начисление покупки'):
@@ -28035,7 +28395,7 @@ def add_store_purchase(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -28048,6 +28408,7 @@ def add_store_purchase(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для начисления покупки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_store_purchase)
 
+@text_only_handler
 def process_add_store_purchase(message):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28072,11 +28433,11 @@ def process_add_store_purchase(message):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
         username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
         bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
@@ -28091,6 +28452,7 @@ def process_add_store_purchase(message):
     bot.send_message(message.chat.id, "Выберите тип покупки для начисления:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_store_purchase_type, user_id)
 
+@text_only_handler
 def process_add_store_purchase_type(message, user_id):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28104,7 +28466,7 @@ def process_add_store_purchase_type(message, user_id):
 
     purchase_type = message.text.strip()
     if purchase_type not in ['Баллы', 'Дни подписки']:
-        bot.send_message(message.chat.id, "Неверный тип покупки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверный тип покупки!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_store_purchase_type, user_id)
         return
 
@@ -28124,6 +28486,7 @@ def process_add_store_purchase_type(message, user_id):
         bot.send_message(message.chat.id, "Выберите единицу измерения времени:", reply_markup=markup)
         bot.register_next_step_handler(message, process_add_store_purchase_unit, user_id)
 
+@text_only_handler
 def process_add_store_purchase_unit(message, user_id):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28137,7 +28500,7 @@ def process_add_store_purchase_unit(message, user_id):
 
     unit = message.text.strip()
     if unit not in ['В минутах', 'В часах', 'В днях']:
-        bot.send_message(message.chat.id, "Неверная единица измерения! Пожалуйста, выберите снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Неверная единица измерения!\nПожалуйста, выберите снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_store_purchase_unit, user_id)
         return
 
@@ -28155,6 +28518,7 @@ def process_add_store_purchase_unit(message, user_id):
     bot.send_message(message.chat.id, prompt, reply_markup=markup)
     bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, 'Дни подписки', unit_key)
 
+@text_only_handler
 def process_add_store_purchase_amount(message, user_id, purchase_type, unit='days'):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28197,8 +28561,6 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         # Проверка и инициализация store_purchases
         if 'store_purchases' not in user_data:
             user_data['store_purchases'] = []
-            with open("store_purchases.log", "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now()}: Initialized store_purchases for user {user_id}\n")
 
         users_data = load_users()
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
@@ -28212,7 +28574,7 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         if purchase_type == 'Баллы':
             if monthly_points + amount > 3000:
                 bot.send_message(message.chat.id, (
-                    "⚠️ Пользователь превысит месячный лимит покупки баллов в размере 3000! Попробуйте меньшее количество."
+                    "⚠️ Пользователь превысит месячный лимит покупки баллов в размере 3000! Попробуйте меньшее количество..."
                 ), parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
                 return
@@ -28240,13 +28602,13 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
                 "fictitious_discount": 0
             })
 
-            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} баллов* в магазине!"
-            user_message = f"🎉 Администратор начислил вам *{display_amount} баллов* в магазине!"
+            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} баллов* из магазина!"
+            user_message = f"✅ Администратор начислил вам *{display_amount} баллов* из магазина!"
 
         else:
             if monthly_days + amount > 300:
                 bot.send_message(message.chat.id, (
-                    "⚠️ Пользователь превысит месячный лимит покупки времени в размере 300 дней! Попробуйте меньшее количество."
+                    "⚠️ Пользователь превысит месячный лимит покупки времени в размере 300 дней! Попробуйте меньшее количество..."
                 ), parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
                 return
@@ -28280,27 +28642,22 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
                 "fictitious_discount": 0
             })
 
-            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} {unit_display} подписки* в магазине!"
+            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} {unit_display} подписки* из магазина!"
             user_message = (
-                f"🎉 Администратор начислил вам *{display_amount} {unit_display} подписки* в магазине!\n"
+                f"✅ Администратор начислил вам *{display_amount} {unit_display} подписки* из магазина!\n"
                 f"⏳ Активно до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
             )
 
         save_payments_data(data)
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
-
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Admin added {purchase_type} (input_amount={input_amount}, unit={unit}, duration={amount}) for user {user_id}, store_purchases={user_data['store_purchases'][-1]}\n")
-
         manage_store(message)
+
     except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Произошла ошибка: {str(e)}. Обратитесь в поддержку.", parse_mode="Markdown")
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Error in process_add_store_purchase_amount for user {user_id}: {str(e)}\n")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
         
 # ---------- 35.2 Просмотр покупок в магазине ----------
@@ -28311,6 +28668,7 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def view_store_purchases(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр покупок'):
@@ -28324,7 +28682,7 @@ def view_store_purchases(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -28337,6 +28695,7 @@ def view_store_purchases(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра покупок:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_store_purchases)
 
+@text_only_handler
 def process_view_store_purchases(message):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28360,15 +28719,15 @@ def process_view_store_purchases(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:] 
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@') 
+            if db_username.lower() == username.lower():  
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_view_store_purchases)
         return
 
@@ -28378,12 +28737,11 @@ def process_view_store_purchases(message):
     plans = user_data.get('plans', [])
 
     if not store_purchases:
-        bot.send_message(message.chat.id, "У пользователя нет покупок в магазине!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ У пользователя нет покупок в магазине!", parse_mode="Markdown")
         manage_store(message)
         return
 
-    # Список покупок
-    purchases_summary = "*Список покупок в магазине:*\n\n\n"
+    purchases_summary = "*Список покупок в магазине:*\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
         days = purchase.get('duration', 0)
@@ -28392,7 +28750,7 @@ def process_view_store_purchases(message):
         label = purchase.get('label', 'Неизвестно')
         source = purchase.get('source', 'user')
         purchases_summary += (
-            f"📅 *№{idx}. Покупка:* {label}\n"
+            f"📅 *Покупка №{idx}:* {label}\n"
             f"🕒 *Дата:* {purchase_date}\n"
             f"💰 *Баллы:* {points}\n"
             f"📆 *Дни подписки:* {days:.2f}\n"
@@ -28400,20 +28758,16 @@ def process_view_store_purchases(message):
             f"🔗 *Источник:* {'Администратор' if source == 'admin' else 'Пользователь'}\n\n\n"
         )
 
-    # Отправка списка покупок
     message_parts = split_message(purchases_summary)
     for part in message_parts:
         bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
-    # Итоговая оценка покупок
     current_time = datetime.now()
     active_plans = [p for p in plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > current_time]
     
-    # Типы покупок
     purchase_types = [purchase['label'] for purchase in store_purchases]
     types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
-    # Всего баллов
     total_points = sum(purchase['points'] for purchase in store_purchases)
 
     # Дней осталось
@@ -28454,17 +28808,18 @@ def process_view_store_purchases(message):
 
     manage_store(message)
 
-# ---------- 35.3 Удаление покупки в магазине ----------
+# ---------- 35.3 Удаление покупок в магазине ----------
 
-@bot.message_handler(func=lambda message: message.text == 'Удаление покупки' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Удаление покупок' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def delete_store_purchase(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Удаление покупки'):
+    if not check_permission(admin_id, 'Удаление покупок'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
@@ -28475,7 +28830,7 @@ def delete_store_purchase(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -28488,6 +28843,7 @@ def delete_store_purchase(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для удаления покупки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_store_purchase)
 
+@text_only_handler
 def process_delete_store_purchase(message):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28511,15 +28867,15 @@ def process_delete_store_purchase(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
+        username = user_input[1:]  
+        for uid, data in users_data.items():
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower(): 
+                user_id = uid
                 break
-        else:
-            user_id = None
 
     if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Пользователь не найден!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_delete_store_purchase)
         return
 
@@ -28529,11 +28885,10 @@ def process_delete_store_purchase(message):
     plans = user_data.get('plans', [])
 
     if not store_purchases:
-        bot.send_message(message.chat.id, "У пользователя нет покупок для удаления!", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ У пользователя нет покупок для удаления!", parse_mode="Markdown")
         manage_store(message)
         return
 
-    # Список покупок (унифицирован с process_view_store_purchases)
     purchases_summary = "*Список покупок в магазине:*\n\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
@@ -28548,26 +28903,21 @@ def process_delete_store_purchase(message):
             f"💰 *Баллы:* {points}\n"
             f"📆 *Дни подписки:* {days:.2f}\n"
             f"💸 *Стоимость:* {price:.2f} руб.\n"
-            f"🔗 *Источник:* {'Администратор' if source == 'admin' else 'Пользователь'}\n\n\n"
+            f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
         )
 
-    # Отправка списка покупок
     message_parts = split_message(purchases_summary)
     for part in message_parts:
         bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
-    # Итоговая оценка покупок (как в process_view_store_purchases)
     current_time = datetime.now()
     active_plans = [p for p in plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > current_time]
     
-    # Типы покупок
     purchase_types = [purchase['label'] for purchase in store_purchases]
     types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
-    # Всего баллов
     total_points = sum(purchase['points'] for purchase in store_purchases)
 
-    # Дней осталось
     if active_plans:
         latest_end = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans)
         time_left = latest_end - current_time
@@ -28578,13 +28928,11 @@ def process_delete_store_purchase(message):
     else:
         time_left_str = "0 дней и 00:00 часов"
 
-    # Начало и конец
     start_date = min((datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans), default=current_time) if active_plans else current_time
     end_date = latest_end if active_plans else current_time
     start_date_str = start_date.strftime("%d.%m.%Y в %H:%M")
     end_date_str = end_date.strftime("%d.%m.%Y в %H:%M")
 
-    # Стоимость
     active_purchase_dates = {p['start_date'] for p in active_plans}.union({p['end_date'] for p in active_plans})
     active_cost = sum(purchase['price'] for purchase in store_purchases if purchase['purchase_date'] in active_purchase_dates or purchase['source'] == 'admin')
     total_cost = sum(purchase['price'] for purchase in store_purchases)
@@ -28600,10 +28948,8 @@ def process_delete_store_purchase(message):
         f"💰 *Общая стоимость всех покупок:* {total_cost:.2f} руб.\n"
     )
 
-    # Отправка итоговой оценки отдельным сообщением
     bot.send_message(message.chat.id, summary, parse_mode="Markdown")
 
-    # Запрос номера покупки для удаления
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add('Вернуться в управление магазином')
     markup.add('Вернуться в управление системой')
@@ -28611,6 +28957,7 @@ def process_delete_store_purchase(message):
     bot.send_message(message.chat.id, "Введите номер покупки для удаления:", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
 
+@text_only_handler
 def process_delete_store_purchase_select(message, user_id):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
@@ -28648,7 +28995,7 @@ def process_delete_store_purchase_select(message, user_id):
             user_data.setdefault('points_history', []).append({
                 'action': 'spent',
                 'points': points,
-                'reason': 'Удаление покупки администратором',
+                'reason': 'удаление покупок администратором',
                 'date': datetime.now().strftime("%d.%m.%Y в %H:%M"),
                 'source': 'admin_delete'
             })
@@ -28664,18 +29011,14 @@ def process_delete_store_purchase_select(message, user_id):
                         user_data['plans'].remove(plan)
                         break
 
-        # Обновление общей суммы
         user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - price)
         data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - price)
 
-        # Удаление покупки
         store_purchases.pop(purchase_number - 1)
         user_data['store_purchases'] = store_purchases
 
-        # Сохранение данных
         save_payments_data(data)
 
-        # Уведомления
         admin_message = (
             f"🚫 Покупка *{label}* от {purchase_date} "
             f"(баллы: {points}, дни: {days:.2f}, стоимость: {price:.2f} руб.) "
@@ -28687,19 +29030,13 @@ def process_delete_store_purchase_select(message, user_id):
         )
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
-
-        # Логирование
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Admin deleted purchase (label={label}, points={points}, days={days}, price={price}) for user {user_id}\n")
-
         manage_store(message)
+
     except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Произошла ошибка: {str(e)}. Обратитесь в поддержку.", parse_mode="Markdown")
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Error in process_delete_store_purchase_select for user {user_id}: {str(e)}\n")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
         
 # ---------- 36. УПРАВЛЕНИЕ БАЛЛАМИ ----------
@@ -28743,7 +29080,7 @@ def add_points(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -28835,14 +29172,9 @@ def process_add_points_amount(message, user_id):
         user_message = f"🎉 Администратор начислил вам *{points} баллов*! Текущий баланс: {user_data['referral_points']}"
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
-
-        # Логирование
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Admin added {points} points to user {user_id}, new balance: {user_data['referral_points']}\n")
-
         manage_points(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_points_amount, user_id)
 
 # ---------- 36.2 Просмотр баллов ----------
@@ -28866,7 +29198,7 @@ def view_points(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -28976,7 +29308,7 @@ def remove_points(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -29083,14 +29415,9 @@ def process_remove_points_amount(message, user_id):
         user_message = f"🚫 Администратор списал *{points:.1f} баллов*! Текущий баланс: {user_data['referral_points']:.1f}"
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
-
-        # Логирование
-        with open("store_purchases.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now()}: Admin removed {points:.1f} points from user {user_id}, new balance: {user_data['referral_points']:.1f}\n")
-
         manage_points(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_remove_points_amount, user_id)
 
 # ---------- 36.4 Просмотр истории баллов ----------
@@ -29114,7 +29441,7 @@ def view_points_history(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -29227,7 +29554,7 @@ def perform_exchange(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -29654,7 +29981,7 @@ def view_exchanges(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -29743,7 +30070,7 @@ def manage_discounts(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Создать промокод','Назначить скидку') 
-    markup.add('Просмотр промокодов', 'Удалить промокод')
+    markup.add('Просмотр промокодов', 'Удаление промокодов')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления скидками:", reply_markup=markup)
@@ -29842,7 +30169,7 @@ def assign_discount(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -30027,12 +30354,12 @@ def view_promo_codes(message):
     save_payments_data(data)
     manage_discounts(message)
 
-# ---------- 38.4 Удалить промокод ----------
+# ---------- 38.4 Удаление промокодов ----------
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить промокод' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Удаление промокодов' and check_admin_access(message))
 def delete_promo_code(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Удалить промокод'):
+    if not check_permission(admin_id, 'Удаление промокодов'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
@@ -31100,7 +31427,7 @@ def list_users_for_chat(message):
         status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
         user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:
         bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
@@ -31441,6 +31768,7 @@ def return_admin_to_menu(admin_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
+@rate_limit_with_captcha
 def request_chat_with_admin(message, show_description=True):
     global active_chats
     if active_chats is None:
@@ -31695,6 +32023,7 @@ start_bot_with_retries()
 @check_subscription
 
 @check_subscription_chanal
+@rate_limit_with_captcha
 
 def echo_all(message):
     bot.reply_to(message, message.text)
@@ -31719,6 +32048,7 @@ def background_subscription_expiration_check(chat_id):
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=lambda: bot.infinity_polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120), daemon=True)
     bot_thread.start()
+    load_captcha_data()  # Загрузка данных капчи при старте
 
     while True:
         schedule.run_pending()
