@@ -562,6 +562,10 @@ def process_distance_choice_step(message, distance_km):
 def process_date_step(message, distance):
     chat_id = message.chat.id
 
+    if message.text == "Пропустить ввод даты":
+        selected_date = "Без даты"
+        process_selected_date(message, selected_date)
+
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
         return
@@ -573,7 +577,8 @@ def process_date_step(message, distance):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_calendar = types.KeyboardButton("Выбрать дату из календаря")
     item_manual = types.KeyboardButton("Ввести дату вручную")
-    markup.add(item_calendar, item_manual)
+    item_skip = types.KeyboardButton("Пропустить ввод даты")
+    markup.add(item_calendar, item_manual, item_skip)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
     markup.add(item1)
@@ -585,6 +590,11 @@ def process_date_step(message, distance):
 
 def handle_date_selection(message, distance):
     chat_id = message.chat.id
+    user_code = trip_data[chat_id].get("user_code", "ru")  # Задаем код по умолчанию
+
+    if message.text == "Пропустить ввод даты":
+        selected_date = "Без даты"
+        process_selected_date(message, selected_date)
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -595,7 +605,7 @@ def handle_date_selection(message, distance):
         return
 
     if message.text == "Выбрать дату из календаря":
-        show_calendar(chat_id)
+        show_calendar(chat_id, user_code)  # Передаем user_code
     elif message.text == "Ввести дату вручную":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
@@ -613,9 +623,9 @@ def handle_date_selection(message, distance):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите корректный вариант.")
         bot.register_next_step_handler(sent, handle_date_selection, distance)
 
-def show_calendar(chat_id):
-    # Inline-календарь
-    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31)).build()
+def show_calendar(chat_id, user_code):
+    # Inline-календарь с использованием кода пользователя
+    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale=user_code).build()
 
     # Обычная клавиатура для кнопок навигации
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -630,7 +640,9 @@ def show_calendar(chat_id):
 
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func())
 def handle_calendar(call):
-    result, key, step = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31)).process(call.data)
+    result, key, step = DetailedTelegramCalendar(
+        min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), unique_key=call.data
+    ).process(call.data)
 
     if not result and key:
         bot.edit_message_text(f"Выберите {step}",
@@ -643,7 +655,7 @@ def handle_calendar(call):
                               call.message.chat.id,
                               call.message.message_id)
 
-        # Переходим к следующему шагу, но не отправляем сообщение снова
+        # Переходим к следующему шагу
         process_selected_date(call.message, selected_date)
 
 
