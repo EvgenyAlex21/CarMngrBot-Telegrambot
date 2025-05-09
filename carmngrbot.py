@@ -35,12 +35,14 @@ import threading
 
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
+from geopy.exc import GeocoderUnavailable
 
 import csv
 import shutil
 import pytz
 import uuid
 import sys
+import random
 from statistics import mean
 from functools import wraps
 from collections import defaultdict
@@ -477,7 +479,6 @@ def check_subscription(func):
 def text_only_handler(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
-        # Проверяем наличие мультимедийных файлов
         if (message.photo or message.video or message.document or 
             message.animation or message.sticker or message.audio or 
             message.contact or message.voice or message.video_note):
@@ -485,22 +486,17 @@ def text_only_handler(func):
                 message.chat.id, 
                 "⛔ Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение..."
             )
-            # Если нужно, можно перенаправить на следующий шаг
             bot.register_next_step_handler(sent, func, *args, **kwargs)
             return
-        # Если сообщение текстовое, выполняем обработчик
         return func(message, *args, **kwargs)
     return wrapper
 
 # ---------- 4.11. Декоратор для ограничения запросов ---------
-import random
 
-# Настройки лимита
 REQUEST_LIMIT = 5
 TIME_WINDOW = 10
-CAPTCHA_TIMEOUT = 300  # 5 минут
+CAPTCHA_TIMEOUT = 300 
 
-# Словари для данных
 user_requests = {}
 captcha_data = {}
 
@@ -509,7 +505,7 @@ def save_captcha_data():
         with open(r'data base\admin\captcha_data.json', 'w', encoding='utf-8') as f:
             json.dump(captcha_data, f)
     except Exception as e:
-        logging.error(f"Error saving captcha_data: {e}")
+        pass
 
 def load_captcha_data():
     global captcha_data
@@ -520,10 +516,8 @@ def load_captcha_data():
         else:
             captcha_data = {}
     except json.JSONDecodeError as e:
-        logging.error(f"JSON decode error in load_captcha_data: {e}")
         captcha_data = {}
     except Exception as e:
-        logging.error(f"Error loading captcha_data: {e}")
         captcha_data = {}
 
 def rate_limit_with_captcha(func):
@@ -532,19 +526,15 @@ def rate_limit_with_captcha(func):
         user_id = message.from_user.id
         current_time = time.time()
 
-        # Инициализация данных пользователя
         if user_id not in user_requests:
             user_requests[user_id] = []
 
-        # Очистка старых запросов
         user_requests[user_id] = [t for t in user_requests[user_id] if current_time - t < TIME_WINDOW]
 
-        # Проверка режима капчи
         if user_id in captcha_data:
-            # Проверка времени жизни капчи
             if time.time() - captcha_data[user_id]['timestamp'] > CAPTCHA_TIMEOUT:
                 del captcha_data[user_id]
-                bot.send_message(message.chat.id, "⚠ Капча устарела. Отправляем новую.")
+                bot.send_message(message.chat.id, "⚠️ Капча устарела!\nОтправляем новую...")
                 send_captcha(message)
                 bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
                 save_captcha_data()
@@ -557,34 +547,31 @@ def rate_limit_with_captcha(func):
                 if user_answer == correct_answer:
                     del captcha_data[user_id]
                     user_requests[user_id] = []
-                    bot.send_message(message.chat.id, "✅ Капча пройдена! Продолжайте использовать бота.")
+                    bot.send_message(message.chat.id, "✅ Капча пройдена!\nПродолжайте использовать бота...")
                     save_captcha_data()
                     return func(message, *args, **kwargs)
                 else:
-                    bot.send_message(message.chat.id, f"❌ Неверный ответ! Решите задачу снова:\n\n{captcha_data[user_id]['question']}")
+                    bot.send_message(message.chat.id, f"❌ Неверный ответ!\nРешите задачу снова:\n\n{captcha_data[user_id]['question']}")
                     bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
                     return
             except ValueError:
-                bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число! Решите задачу:\n\n{captcha_data[user_id]['question']}")
+                bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число!\nРешите задачу:\n\n{captcha_data[user_id]['question']}")
                 bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
                 return
             except KeyError:
                 del captcha_data[user_id]
-                bot.send_message(message.chat.id, "⚠ Ошибка капчи. Отправляем новую.")
+                bot.send_message(message.chat.id, "⚠️ Ошибка капчи!\nОтправляем новую...")
                 send_captcha(message)
                 bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
                 save_captcha_data()
                 return
 
-        # Проверка лимита запросов
         if len(user_requests[user_id]) >= REQUEST_LIMIT:
-            logging.warning(f"User {user_id} exceeded request limit. Sending captcha.")
             send_captcha(message)
             bot.register_next_step_handler(message, handle_captcha, func, *args, **kwargs)
             save_captcha_data()
             return
 
-        # Добавляем текущий запрос
         user_requests[user_id].append(current_time)
         return func(message, *args, **kwargs)
     
@@ -592,9 +579,8 @@ def rate_limit_with_captcha(func):
 
 def send_captcha(message):
     user_id = message.from_user.id
-    # Если капча уже существует, не создаём новую
     if user_id in captcha_data:
-        bot.send_message(message.chat.id, f"⚠ Пожалуйста, решите текущую капчу:\n\n{captcha_data[user_id]['question']}")
+        bot.send_message(message.chat.id, f"⚠️ Пожалуйста, решите текущую капчу:\n\n{captcha_data[user_id]['question']}")
         return
 
     num1 = random.randint(1, 10)
@@ -607,18 +593,18 @@ def send_captcha(message):
         'answer': answer,
         'timestamp': time.time()
     }
-    bot.send_message(message.chat.id, f"⚠ Вы отправляете слишком много запросов! Решите задачу:\n\n{question}")
+    bot.send_message(message.chat.id, f"⚠️ Вы отправляете слишком много запросов!\nРешите задачу:\n\n{question}")
 
 def handle_captcha(message, original_func, *args, **kwargs):
     user_id = message.from_user.id
     
     if user_id not in captcha_data:
-        bot.send_message(message.chat.id, "⚠ Сессия капчи истекла или не найдена. Попробуйте снова.")
+        bot.send_message(message.chat.id, "⚠️ Сессия капчи истекла или не найдена! Попробуйте снова")
         return original_func(message, *args, **kwargs)
     
     if time.time() - captcha_data[user_id]['timestamp'] > CAPTCHA_TIMEOUT:
         del captcha_data[user_id]
-        bot.send_message(message.chat.id, "⚠ Капча устарела. Отправляем новую.")
+        bot.send_message(message.chat.id, "⚠️ Капча устарела!\nОтправляем новую...")
         send_captcha(message)
         bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
         save_captcha_data()
@@ -630,18 +616,18 @@ def handle_captcha(message, original_func, *args, **kwargs):
         if user_answer == correct_answer:
             del captcha_data[user_id]
             user_requests[user_id] = []
-            bot.send_message(message.chat.id, "✅ Капча пройдена! Продолжайте использовать бота.")
+            bot.send_message(message.chat.id, "✅ Капча пройдена!\nПродолжайте использовать бота...")
             save_captcha_data()
             return original_func(message, *args, **kwargs)
         else:
-            bot.send_message(message.chat.id, f"❌ Неверный ответ! Решите задачу снова:\n\n{captcha_data[user_id]['question']}")
+            bot.send_message(message.chat.id, f"❌ Неверный ответ!\nРешите задачу снова:\n\n{captcha_data[user_id]['question']}")
             bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
     except ValueError:
-        bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число! Решите задачу:\n\n{captcha_data[user_id]['question']}")
+        bot.send_message(message.chat.id, f"❌ Пожалуйста, введите число!\nРешите задачу:\n\n{captcha_data[user_id]['question']}")
         bot.register_next_step_handler(message, handle_captcha, original_func, *args, **kwargs)
     except KeyError:
         del captcha_data[user_id]
-        bot.send_message(message.chat.id, "⚠ Ошибка капчи. Попробуйте снова.")
+        bot.send_message(message.chat.id, "⚠️ Ошибка капчи!\nПопробуйте снова...")
         return original_func(message, *args, **kwargs)
     
 # ---------- 5. УВЕДОМЛЕНИЕ О НЕАКТИВНОСТИ ----------
@@ -1090,6 +1076,7 @@ FREE_FEATURES = [
     "Для рекламы", "Заявка на рекламу", "Ваши заявки",
     "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
     "Чат с админом",
+    "Курсы валют",
     "Вернуться в главное меню", "Вернуться в меню напоминаний", "Вернуться в меню для рекламы",
     "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу"
 ]
@@ -1285,10 +1272,8 @@ def start(message):
     has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() for plan in user_plans)
     has_trial = any(plan['plan_name'] == "free" for plan in user_plans)
 
-    # Проверка, является ли пользователь рефералом
     is_referral = any(str(user_id) in refs for refs in data['referrals']['stats'].values())
 
-    # Если пользователь уже реферал и у него есть/была подписка (включая план "free"), то ничего не отправляем
     if is_referral and (user_plans or has_trial):
         markup = create_main_menu()
         bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
@@ -1310,8 +1295,8 @@ def start(message):
 
     if not user_plans or not has_trial:
         new_end_trial = set_free_trial_period(user_id, 3)
-        start_date = datetime.now().strftime("%d.%m.%Y в %H:%M")  # Начало пробного периода
-        end_date_str = new_end_trial.strftime("%d.%m.%Y в %H:%M")  # Конец пробного периода
+        start_date = datetime.now().strftime("%d.%m.%Y в %H:%M") 
+        end_date_str = new_end_trial.strftime("%d.%m.%Y в %H:%M")  
         referral_link = create_referral_link(user_id)
         trial_message = (
             "🎉 <b>Поздравляем!</b>\n\n"
@@ -1328,11 +1313,10 @@ def start(message):
             bot.send_message(chat_id, referral_message, parse_mode="HTML")
     elif has_active_plan and referral_bonus_applied:
         referral_link = create_referral_link(user_id)
-        # Находим активный план с максимальной датой окончания
         active_plans = [plan for plan in user_plans if datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()]
         latest_plan = max(active_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
-        start_date = latest_plan['start_date']  # Начало текущей подписки
-        end_date_str = latest_plan['end_date']  # Конец текущей подписки
+        start_date = latest_plan['start_date'] 
+        end_date_str = latest_plan['end_date']
         trial_message = (
             "🎉 <b>Поздравляем!</b>\n\n"
             "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n"
@@ -1406,10 +1390,11 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243'
 
 @bot.message_handler(func=lambda message: message.text == "Подписка на бота")
 @text_only_handler
+@rate_limit_with_captcha
 def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _код региона, коды OBD2, напоминания, калькуляторы (алкоголь, налог), прочее (новости, для рекламы, уведомления, чат с админом)_\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _код региона, коды OBD2, напоминания, калькуляторы (алкоголь, налог), прочее (новости, для рекламы, чат с админом, курсы валют, уведомления)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *Неделя:* 149 ₽ — идеально для тестирования всех функций бота!\n"
         "👉 *Месяц:* 399 ₽ — полный доступ ко всем функциям на продолжительный период!\n"
@@ -1453,6 +1438,7 @@ def payments_function(message, show_description=True):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в подписку")
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_subscription(message):
     payments_function(message, show_description=False)
 
@@ -1481,6 +1467,7 @@ SUBSCRIPTION_PLANS = {
 
 @bot.message_handler(func=lambda message: message.text == "Купить подписку")
 @text_only_handler
+@rate_limit_with_captcha
 def buy_subscription(message):
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
@@ -1589,7 +1576,6 @@ def send_subscription_invoice(call):
 
     print(f"send_subscription_invoice - User ID: {user_id}, Plan Key: {plan_key}, User Discount: {user_discount}, Applicable Items: {applicable_items}, Applicable Category: {applicable_category}, Discount Type: {discount_type}")
 
-    # Улучшенная проверка применимости скидки
     discount_applicable = (
         applicable_category == "subscriptions" or
         plan_key in applicable_items or
@@ -1692,7 +1678,6 @@ def send_subscription_invoice(call):
         prices = [types.LabeledPrice(f"Подписка на {label}", int(MINIMUM_AMOUNT * 100))]
         description += f"\n⚠️ Цена скорректирована до минимальной ({MINIMUM_AMOUNT} ₽) из-за требований платежной системы!\n"
 
-    # Сохраняем данные перед отправкой счета
     save_payments_data(data)
 
     try:
@@ -1728,7 +1713,6 @@ def process_successful_payment(message):
 
     payload = payment_info.invoice_payload
 
-    # Загружаем данные о скидке
     user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
@@ -1743,7 +1727,6 @@ def process_successful_payment(message):
         fictitious_discount = plan_info["fictitious_discount"]
         plan_duration = plan_info["duration"]
 
-        # Проверяем, применима ли скидка
         discount_applicable = (
             applicable_category == "subscriptions" or
             plan_key in applicable_items or
@@ -1758,10 +1741,8 @@ def process_successful_payment(message):
         latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
         new_end = latest_end + timedelta(days=plan_duration)
 
-        # Подсчет общего количества покупок подписок
-        total_purchases = sum(1 for p in user_data['plans'] if p.get('source') == "user") + 1  # Учитываем текущую покупку
+        total_purchases = sum(1 for p in user_data['plans'] if p.get('source') == "user") + 1  
 
-        # Начисление скидки лояльности за каждую третью покупку (3, 6, 9, ...)
         new_loyalty_discount = False
         if total_purchases % 3 == 0 and user_discount < 10:
             data['subscriptions']['users'][user_id]['discount'] = 10
@@ -1830,7 +1811,6 @@ def process_successful_payment(message):
                 "😊 Спасибо за приглашение!"
             ), parse_mode="Markdown")
 
-        # Сбрасываем скидку, если она была применена
         if applied_discount > 0 and discount_type == "loyalty" and not new_loyalty_discount:
             bot.send_message(user_id, (
                 f"🎉 Ваша скидка лояльности *{applied_discount:.0f}%* была применена!\n"
@@ -1863,7 +1843,6 @@ def process_successful_payment(message):
         fictitious_discount = item_info["fictitious_discount"]
         label = item_info["label"]
 
-        # Проверяем, применима ли скидка
         discount_applicable = (
             applicable_category == "store" or
             payload in applicable_items or
@@ -1871,7 +1850,6 @@ def process_successful_payment(message):
         )
         applied_discount = round(user_discount) if discount_applicable else 0
 
-        # Рассчитываем цену
         user_discount_amount = round(base_price * (applied_discount / 100), 2)
         discounted_price = base_price - user_discount_amount
         MINIMUM_AMOUNT = 10
@@ -1980,7 +1958,6 @@ def process_successful_payment(message):
                 f"⌛ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n"
             ), parse_mode="Markdown")
 
-        # Сбрасываем скидку, если она была применена
         if applied_discount > 0 and discount_type == "promo":
             bot.send_message(user_id, (
                 f"🎉 Ваша скидка в размере *{applied_discount:.0f}%* была успешно применена!\n"
@@ -2007,7 +1984,6 @@ def process_successful_payment(message):
 # ---------- 10.2. ПОДПИСКА НА БОТА (ПОСМОТРЕТЬ ПОДПИСКУ) ----------
 
 def translate_plan_name(plan_name):
-    # Перевод названий планов подписки
     return {
         "free": "пробный период",           # Бонусный период (🎁)
         "referral_bonus": "реферальный бонус",  # Бонусный период (🎁)
@@ -2033,6 +2009,7 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
 @text_only_handler
+@rate_limit_with_captcha
 def view_subscription(message):
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
@@ -2053,7 +2030,7 @@ def view_subscription(message):
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now()  # Инициализация текущего времени для динамического пересчёта
+    now = datetime.now() 
     active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now]
     if not active_plans:
         bot.send_message(user_id, (
@@ -2066,7 +2043,6 @@ def view_subscription(message):
     plans_summary = "💎 *Список активных подписок:*\n\n\n"
     total_cost_active = 0
 
-    # Маппинг для сокращений единиц измерения
     unit_display = {
         'минуты': 'мин.',
         'часы': 'ч.',
@@ -2080,15 +2056,14 @@ def view_subscription(message):
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
 
-        # Определяем тип периода и смайл на основе plan_name и source
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
 
-        # Бонусный период (🎁)
+
         if plan_name_lower in {"free", "referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-        # Подаренный период (✨)
+
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx + 1}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -2097,11 +2072,10 @@ def view_subscription(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-        # Платный (💳) или Назначенный (📦) период
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx + 1}. Платный период:*"
-            else:  # source == 'admin' or other
+            else: 
                 period_type = f"📦 *№{idx + 1}. Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -2157,6 +2131,7 @@ def view_subscription(message):
 
 @bot.message_handler(func=lambda message: message.text == "История подписок")
 @text_only_handler
+@rate_limit_with_captcha
 def view_subscription_history(message):
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
@@ -2176,7 +2151,7 @@ def view_subscription_history(message):
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now()  # Инициализация текущего времени
+    now = datetime.now() 
     expired_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < now]
     if not expired_plans:
         bot.send_message(user_id, (
@@ -2187,7 +2162,6 @@ def view_subscription_history(message):
 
     plans_summary = "📜 *История подписок:*\n\n\n"
 
-    # Маппинг для сокращений единиц измерения
     unit_display = {
         'минуты': 'мин.',
         'часы': 'ч.',
@@ -2201,15 +2175,13 @@ def view_subscription_history(message):
         hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600)
         minutes_elapsed = remainder // 60
 
-        # Определяем тип периода и смайл на основе plan_name и source
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
 
-        # Бонусный период (🎁)
         if plan_name_lower in {"free", "referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx + 1}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-        # Подаренный период (✨)
+
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx + 1}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -2218,11 +2190,11 @@ def view_subscription_history(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-        # Платный (💳) или Назначенный (📦) период
+
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx + 1}. Платный период:*"
-            else:  # source == 'admin' or other
+            else: 
                 period_type = f"📦 *№{idx + 1}. Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -2243,7 +2215,6 @@ def view_subscription_history(message):
 
 # ---------- 10.4. ПОДПИСКА НА БОТА (ОТМЕНА ПОДПИСКИ) ----------
 
-# Константы
 PAYMASTER_MERCHANT_ID = "1744374395"
 PAYMASTER_SECRET_KEY = "93aa42be8420f58d5243"
 PAYMASTER_API_URL = "https://paymaster.ru/api/v2/"
@@ -2255,9 +2226,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_FILE = os.path.join(BASE_DIR, "data base", "admin", "payments.json")
 ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data base", "admin", "admin_sessions.json")
 
-# Вспомогательные функции для работы с базой данных
 def load_payment_data():
-    """Загружает данные из payments.json."""
     try:
         with open(PAYMENTS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -2266,7 +2235,6 @@ def load_payment_data():
         return {"subscriptions": {"users": {}}, "refunds": [], "all_users_total_amount": 0}
 
 def save_payments_data(data):
-    """Сохраняет данные в payments.json."""
     try:
         os.makedirs(os.path.dirname(PAYMENTS_FILE), exist_ok=True)
         with open(PAYMENTS_FILE, 'w', encoding='utf-8') as f:
@@ -2275,7 +2243,6 @@ def save_payments_data(data):
         print(f"Ошибка сохранения payments.json: {str(e)}")
 
 def load_admin_chat_id():
-    """Загружает ID первого администратора из admin_sessions.json."""
     try:
         os.makedirs(os.path.dirname(ADMIN_SESSIONS_FILE), exist_ok=True)
         with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as f:
@@ -2287,14 +2254,11 @@ def load_admin_chat_id():
         return None
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
-    """Отправляет длинное сообщение частями, если превышает лимит Telegram."""
     max_length = 4096
     for i in range(0, len(message_text), max_length):
         bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
 
-# Расчет суммы возврата
 def calculate_refunded_amount(plan):
-    """Рассчитывает сумму возврата для подписки."""
     try:
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
@@ -2333,9 +2297,7 @@ def calculate_refunded_amount(plan):
     except Exception as e:
         return 0.0, f"Ошибка расчета возврата: {str(e)}"
 
-# Запрос на возврат платежа
 def refund_payment(user_id, refund_amount, payment_id, plan):
-    """Отправляет запрос на возврат платежа через Paymaster."""
     refund_data = {
         "paymentId": payment_id,
         "amount": {
@@ -2364,7 +2326,6 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
 
     except Exception as e:
         data = load_payment_data()
-        # Ensure 'refunds' key exists
         if "refunds" not in data:
             data["refunds"] = []
         refund_data = {
@@ -2391,11 +2352,10 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
         print(f"Ошибка возврата для user_id={user_id}: {str(e)}")
         return False
 
-# Обработка отмены подписки
 @bot.message_handler(func=lambda message: message.text == "Отменить подписку")
 @text_only_handler
+@rate_limit_with_captcha
 def cancel_subscription(message):
-    """Обрабатывает запрос на отмену подписки с отображением в стиле view_subscription."""
     user_id = message.from_user.id
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -2435,7 +2395,6 @@ def cancel_subscription(message):
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
 
-        # Определяем тип периода и смайл на основе source
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
         if source in {"user", "store"}:
@@ -2465,7 +2424,6 @@ def cancel_subscription(message):
 
 @text_only_handler
 def confirm_cancellation(message, user_id, paid_plans):
-    """Подтверждает выбор подписок для отмены."""
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
@@ -2535,7 +2493,6 @@ def confirm_cancellation(message, user_id, paid_plans):
 
 @text_only_handler
 def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
-    """Обрабатывает отмену выбранных подписок."""
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
@@ -2585,7 +2542,6 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
             "provider_payment_charge_id": payment_id,
             "status": "success"
         }
-        # Ensure 'refunds' key exists before appending
         if "refunds" not in data:
             data["refunds"] = []
         data["refunds"].append(refund_data)
@@ -2625,6 +2581,7 @@ STORE_ITEMS = {
 
 @bot.message_handler(func=lambda message: message.text == "Магазин")
 @text_only_handler
+@rate_limit_with_captcha
 def send_store_options(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
@@ -2787,19 +2744,15 @@ def show_time_packages(call):
 def back_to_store(call):
     user_id = str(call.from_user.id)
     
-    # Проверяем, не является ли отправитель ботом
     if call.from_user.is_bot:
-        bot.answer_callback_query(call.id, "Боты не могут взаимодействовать с магазином.")
+        bot.answer_callback_query(call.id, "Боты не могут взаимодействовать с магазином!")
         return
 
     try:
-        # Пытаемся удалить предыдущее сообщение
         bot.delete_message(chat_id=user_id, message_id=call.message.message_id)
     except Exception as e:
         print(f"Ошибка при удалении сообщения: {e}")
-        # Продолжаем выполнение, даже если удаление не удалось
 
-    # Создаём фейковое сообщение для совместимости с send_store_options
     fake_message = types.Message(
         message_id=call.message.message_id,
         chat=call.message.chat,
@@ -2815,6 +2768,7 @@ def back_to_store(call):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в магазин")
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_store(message):
     send_store_options(message)
 
@@ -2893,7 +2847,6 @@ def send_store_invoice(call):
         prices = [types.LabeledPrice(label, int(MINIMUM_AMOUNT * 100))]
         description += f"\n⚠️ Цена скорректирована до минимальной ({MINIMUM_AMOUNT} ₽) из-за требований платежной системы!\n"
 
-    # Сохраняем данные перед отправкой счета
     save_payments_data(data)
 
     try:
@@ -2926,6 +2879,7 @@ def escape_markdown(text):
 
 @bot.message_handler(func=lambda message: message.text == "Баллы")
 @text_only_handler
+@rate_limit_with_captcha
 def points_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ваши баллы', 'Обменять баллы', 'Подарки')
@@ -2935,6 +2889,7 @@ def points_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в баллы")
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_scores_menu(message):
     points_menu(message)
 
@@ -2962,6 +2917,7 @@ def format_time(minutes):
 
 @bot.message_handler(func=lambda message: message.text == "Ваши баллы")
 @text_only_handler
+@rate_limit_with_captcha
 def view_points(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
@@ -2970,7 +2926,6 @@ def view_points(message):
     
     points = user_data.get('referral_points', 0)
     
-    # Категории начисления баллов
     total_earned = sum(entry['points'] for entry in history if entry['action'] == 'earned')
     earned_daily = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'] == 'Ежедневный вход')
     earned_admin = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Начисление от администратора'))
@@ -2981,7 +2936,6 @@ def view_points(message):
     earned_top_referrals = sum(entry['points'] for entry in history if entry['action'] == 'earned' and 'Топ-10 рефералов' in entry['reason'])
     earned_purchases = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Покупка подписки'))
 
-    # Категории трат баллов
     total_spent = sum(entry['points'] for entry in history if entry['action'] == 'spent')
     spent_gifts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower().startswith('подарок'))
     spent_time = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.']))
@@ -2990,7 +2944,6 @@ def view_points(message):
     spent_admin_delete = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'] == 'удаление покупок администратором')
     spent_admin = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower() == 'списание администратором')
 
-    # Вычисление времени для "Подарено времени" и "Получено времени"
     gifted_time_minutes = 0
     received_time_minutes = 0
     for entry in history:
@@ -3051,6 +3004,7 @@ def view_points(message):
 
 @bot.message_handler(func=lambda message: message.text == "Обменять баллы")
 @text_only_handler
+@rate_limit_with_captcha
 def exchange_points_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
@@ -3078,7 +3032,7 @@ def exchange_points_handler(message):
     markup.add(telebot.types.KeyboardButton("В главное меню"))
     
     total_exchanged = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "spent")
-    exchange_rate = 2.0  # Новый курс: 1 балл = 2 часа
+    exchange_rate = 2.0 
     
     bot.send_message(message.chat.id, (
         f"*Обмен баллов:*\n\n"
@@ -3231,7 +3185,6 @@ def process_feature_exchange(message, feature, points):
         if exchange_points % 5 != 0:
             raise ValueError("Баллы должны быть кратны 5!")
         
-        # 1 балл = 3 минуты (5 баллов = 15 минут)
         total_minutes = exchange_points * 3
         days = int(total_minutes // (24 * 60))
         remaining_minutes = total_minutes % (24 * 60)
@@ -3437,7 +3390,6 @@ def process_discount_exchange(message):
 
 # ---------- 10.9. ПОДПИСКА НА БОТА (ПОДАРКИ) ----------
 
-# Вспомогательные функции для форматирования
 def format_number(number):
     if number.is_integer():
         return str(int(number))
@@ -3484,6 +3436,7 @@ def pluralize_points(points):
 
 @bot.message_handler(func=lambda message: message.text == "Подарки")
 @text_only_handler
+@rate_limit_with_captcha
 def gifts_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Подарить баллы', 'Подарить время', 'История подарков')
@@ -3494,6 +3447,7 @@ def gifts_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в подарки")
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_gifts_menu(message):
     gifts_menu(message)
 
@@ -3501,13 +3455,13 @@ def return_to_gifts_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "Подарить баллы")
 @text_only_handler
+@rate_limit_with_captcha
 def gift_points_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(user_id, {})
     points = user_data.get('referral_points', 0)
     
-    # Проверка на 24-часовое ограничение только для подарков баллов
     last_gift_time = next(
         (entry['date'] for entry in reversed(user_data.get('points_history', []))
          if entry['action'] == "spent" and "подарок @" in entry['reason'].lower() and "времени" not in entry['reason'].lower()),
@@ -3698,12 +3652,12 @@ def process_gift_amount(message, recipient_id, sender_points):
 
 @bot.message_handler(func=lambda message: message.text == "Подарить время")
 @text_only_handler
+@rate_limit_with_captcha
 def gift_time_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(user_id, {})
     
-    # Проверка на 24-часовое ограничение только для подарков времени
     last_gift_time = next(
         (entry['date'] for entry in reversed(user_data.get('points_history', []))
          if "подарок времени" in entry['reason'].lower() and entry['action'] == "spent"),
@@ -3721,14 +3675,11 @@ def gift_time_handler(message):
         return_to_gifts_menu(message)
         return
 
-    # Планы, которые можно дарить
     giftable_plans = [
         plan for plan in user_data.get('plans', [])
         if (
-            # Планы, которые можно дарить безусловно
             plan['plan_name'] in ['points_bonus', 'gift_time', 'exchange_time']
             or (
-                # weekly, monthly, yearly, store_time, custom — только если они куплены (source='user' или 'store')
                 plan['plan_name'] in ['weekly', 'monthly', 'yearly', 'store_time', 'custom']
                 and plan['source'] in ['user', 'store']
             )
@@ -4046,6 +3997,7 @@ def user_process_gift_time_amount(message, recipient_id, total_available_minutes
 
 @bot.message_handler(func=lambda message: message.text == "История подарков")
 @text_only_handler
+@rate_limit_with_captcha
 def view_gifts_history(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
@@ -4091,6 +4043,7 @@ def view_gifts_history(message):
 
 @bot.message_handler(func=lambda message: message.text == "Промокоды")
 @text_only_handler
+@rate_limit_with_captcha
 def promo_payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ввести промокод', 'Ваши промокоды')
@@ -4100,10 +4053,10 @@ def promo_payments_function(message):
 
 @bot.message_handler(func=lambda message: message.text == "Ввести промокод")
 @text_only_handler
+@rate_limit_with_captcha
 def enter_promo_code(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
-    # users_data = load_users_data()  # Удаляем, так как не нужно
 
     last_promo_used = data['subscriptions']['users'].get(user_id, {}).get('last_promo_used')
     current_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
@@ -4292,9 +4245,8 @@ def process_promo_code(message):
 
 # ---------- 11. ????? (ВАШИИ ПРОМОКОДЫ) ----------
 
-# Словарь перевода
 TRANSLATIONS_YOURPROMOCODES = {
-    "all_items": "все товары",  # Перевод для "все товары"
+    "all_items": "все товары",  
     "subscriptions": "все подписки",
     "store": "весь магазин",
     "points_5": "5 баллов в магазине",
@@ -4317,27 +4269,24 @@ TRANSLATIONS_YOURPROMOCODES = {
     "weekly_subscription_7": "неделя в подписках",
     "monthly_subscription_31": "месяц в подписках",
     "yearly_subscription_365": "год в подписках",
-    "discount_type_promo": "промокод",  # Перевод для типа скидки "promo"
-    "discount_type_referral": "реферальная"  # Перевод для типа скидки "referral" (если есть)
+    "discount_type_promo": "промокод", 
+    "discount_type_referral": "реферальная" 
 }
 
-# Функция для формирования читаемой строки применимости
 def get_applicability_str(applicable_category, applicable_items):
     if applicable_category is None and not applicable_items:
-        return TRANSLATIONS_YOURPROMOCODES["all_items"]  # Используем перевод из словаря
+        return TRANSLATIONS_YOURPROMOCODES["all_items"] 
     if applicable_category in TRANSLATIONS_YOURPROMOCODES:
         return TRANSLATIONS_YOURPROMOCODES[applicable_category]
     applicable_labels = [TRANSLATIONS_YOURPROMOCODES.get(item, item) for item in applicable_items]
     return ", ".join(applicable_labels)
 
-# Функция для разбиения длинного сообщения
 def send_long_message(chat_id, message_text, parse_mode="Markdown"):
     MAX_MESSAGE_LENGTH = 4096
     if len(message_text) <= MAX_MESSAGE_LENGTH:
         bot.send_message(chat_id, message_text, parse_mode=parse_mode)
         return
     
-    # Разбиваем сообщение на части
     parts = []
     current_part = ""
     for line in message_text.split("\n"):
@@ -4349,7 +4298,6 @@ def send_long_message(chat_id, message_text, parse_mode="Markdown"):
     if current_part:
         parts.append(current_part.strip())
     
-    # Отправляем каждую часть
     for i, part in enumerate(parts, 1):
         if i == 1:
             bot.send_message(chat_id, part, parse_mode=parse_mode)
@@ -4358,56 +4306,47 @@ def send_long_message(chat_id, message_text, parse_mode="Markdown"):
             bot.send_message(chat_id, header + part, parse_mode=parse_mode)
 
 def format_discount(discount):
-    """Форматирует скидку: целое число без десятичных, дробное — с двумя знаками."""
     if isinstance(discount, (int, float)) and discount.is_integer():
         return f"{int(discount)}"
     return f"{discount:.2f}"
 
 @bot.message_handler(func=lambda message: message.text == "Ваши промокоды")
 @text_only_handler
+@rate_limit_with_captcha
 def show_promo_codes(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     
-    # Получаем данные пользователя
     user_data = data["subscriptions"]["users"].get(user_id, {})
     promo_history = user_data.get("promo_usage_history", [])
     
-    # Текущая активная скидка
     current_discount = user_data.get("discount", 0)
     discount_type = user_data.get("discount_type", "promo")
     applicable_category = user_data.get("applicable_category", None)
     applicable_items = user_data.get("applicable_items", [])
     
-    # Получаем список доступных (неприменённых) промокодов
     promo_codes = data.get("promo_codes", {})
     unused_promos = []
-    used_promo_codes = [promo["promo_code"] for promo in promo_history]  # Промокоды из истории
+    used_promo_codes = [promo["promo_code"] for promo in promo_history]  
     
     now = datetime.now()
     for promo_code, promo_data in promo_codes.items():
-        # Пропускаем неактивные промокоды
         if not promo_data.get("active", False):
             continue
         
-        # Проверяем, не использовал ли пользователь этот промокод
         used_by = [entry["user_id"] for entry in promo_data.get("used_by", [])]
         if user_id in used_by or promo_code in used_promo_codes:
             continue
         
-        # Проверяем, предназначен ли промокод для пользователя
-        # Показываем только промокоды, где user_id совпадает с текущим пользователем
         promo_user_id = promo_data.get("user_id")
         if promo_user_id != user_id:
             continue
         
-        # Проверяем срок действия промокода (30 дней с момента создания)
         created_at = datetime.strptime(promo_data["created_at"], "%d.%m.%Y в %H:%M")
         days_since_creation = (now - created_at).days
         if days_since_creation > 30:
             continue
         
-        # Проверяем, не превышено ли количество использований
         uses = promo_data.get("uses", 1)
         if len(used_by) >= uses:
             continue
@@ -4419,17 +4358,14 @@ def show_promo_codes(message):
             "applicable_items": promo_data.get("applicable_items", [])
         })
     
-    # Формируем сообщение
     if not promo_history and current_discount == 0 and not unused_promos:
         bot.send_message(user_id, "❌ *У вас пока нет промокодов или скидок!*\n"
                                  "Введите новый промокод или продолжайте пользоваться ботом, чтобы получить скидки!",
                          parse_mode="Markdown")
         return
     
-    # Заголовок сообщения
     response = "🎟 *Ваши промокоды и скидки:*\n\n"
     
-    # История применённых промокодов
     if promo_history:
         response += "✅ *Применённые промокоды:*\n\n"
         for index, promo in enumerate(promo_history, 1):
@@ -4439,7 +4375,6 @@ def show_promo_codes(message):
             category = promo.get("applicable_category", None)
             items = promo.get("applicable_items", [])
             
-            # Формируем читаемую строку применимости
             applicability = get_applicability_str(category, items)
             
             response += (f"🔸 *№{index}.* `{promo_code}`:\n"
@@ -4447,7 +4382,6 @@ def show_promo_codes(message):
                          f"   *Использован:* {used_at}\n"
                          f"   *Применимо к:* {applicability}\n\n")
     
-    # Добавляем текущую активную скидку, если она есть
     if current_discount > 0:
         applicability = get_applicability_str(applicable_category, applicable_items)
         translated_discount_type = TRANSLATIONS_YOURPROMOCODES.get(f"discount_type_{discount_type}", discount_type)
@@ -4457,7 +4391,6 @@ def show_promo_codes(message):
                      f"   *Скидка:* {format_discount(current_discount)}%\n"
                      f"   *Применимо к:* {applicability}\n\n")
     
-    # Добавляем доступные (неприменённые) промокоды
     if unused_promos:
         response += "⚠️ *Доступные промокоды:*\n\n"
         for index, promo in enumerate(unused_promos, 1):
@@ -4475,7 +4408,6 @@ def show_promo_codes(message):
     
     response += "🚀 Введите новый промокод, чтобы получить ещё больше скидок!"
     
-    # Отправляем сообщение с учётом лимита длины
     send_long_message(user_id, response, parse_mode="Markdown")
 
 # ---------- 11.5. ????? (РЕКЛАМНЫЕ КАНАЛЫ) ----------
@@ -4526,6 +4458,7 @@ thread = threading.Thread(target=background_subscription_check, daemon=True)
 thread.start()
 
 @bot.message_handler(func=lambda message: message.text == "Рекламные каналы")
+@rate_limit_with_captcha
 def get_day_for_ad(message):
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
@@ -4544,7 +4477,6 @@ def get_day_for_ad(message):
         ), parse_mode="Markdown")
         return
 
-    # Получаем список каналов, на которые пользователь уже подписан или получал бонусы
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     subscribed_channels = user_data.get('ad_channels_subscribed', [])
 
@@ -4554,7 +4486,6 @@ def get_day_for_ad(message):
     for chat_id, channel in data['ad_channels'].items():
         if channel.get('active', False) and is_channel_available(chat_id):
             active_channels = True
-            # Пропускаем канал, если пользователь уже получал за него бонус
             if chat_id not in subscribed_channels:
                 markup.add(InlineKeyboardButton(
                     f"Подписаться на {channel['name']}",
@@ -4654,6 +4585,7 @@ def check_ad_subscription(call):
 
 @bot.message_handler(func=lambda message: message.text == "Реферальная система")
 @text_only_handler
+@rate_limit_with_captcha
 def refferal_payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ваша ссылка', 'Ваши рефералы', 'Топ рефералов')
@@ -4663,6 +4595,7 @@ def refferal_payments_function(message):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в реферальную систему")
 @text_only_handler
+@rate_limit_with_captcha
 def return_to_referral_menu(message):
     refferal_payments_function(message)
 
@@ -4700,7 +4633,6 @@ def apply_referral_bonus(referrer_id):
     
     referral_count = len(data['referrals']['stats'][referrer_id_str])
     
-    # Начисление баллов
     points = 0
     if referral_count <= 4:
         points = 1.0
@@ -4708,7 +4640,7 @@ def apply_referral_bonus(referrer_id):
         points = 1.5
     elif 8 <= referral_count <= 10:
         points = 1.0
-    else:  # > 10 рефералов
+    else: 
         points = 1.5
     
     data['subscriptions']['users'][referrer_id_str]['referral_points'] += points
@@ -4719,7 +4651,6 @@ def apply_referral_bonus(referrer_id):
         "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
     })
     
-    # Начисление дней подписки
     bonus_days = 0
     discount = 0
     if referral_count == 1:
@@ -4737,8 +4668,8 @@ def apply_referral_bonus(referrer_id):
                          for p in data['subscriptions']['users'].get(referrer_id_str, {}).get('plans', [])] 
                          or [datetime.now()])
         new_end = latest_end + timedelta(days=bonus_days)
-        start_date = latest_end.strftime("%d.%m.%Y в %H:%M")  # Начало бонусного периода
-        end_date_str = new_end.strftime("%d.%m.%Y в %H:%M")  # Конец бонусного периода
+        start_date = latest_end.strftime("%d.%m.%Y в %H:%M") 
+        end_date_str = new_end.strftime("%d.%m.%Y в %H:%M")  
         data['subscriptions']['users'][referrer_id_str]['plans'].append({
             "plan_name": "referral",
             "start_date": start_date,
@@ -4755,7 +4686,6 @@ def apply_referral_bonus(referrer_id):
     
     save_payments_data(data)
     
-    # Форматирование баллов: целое число, если points — целое, иначе с двумя знаками после точки
     points_str = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
     
     message = f"🎉 *Новый реферал!*\n\n✨ Вы получили +{points_str} балл{'а' if points != 1 else ''} за приглашение пользователя!\n\n"
@@ -4775,6 +4705,7 @@ def apply_referral_bonus(referrer_id):
 
 @bot.message_handler(func=lambda message: message.text == "Ваша ссылка")
 @text_only_handler
+@rate_limit_with_captcha
 def send_referral_link_message(message):
     user_id = message.from_user.id
     referral_link = create_referral_link(user_id)
@@ -4800,6 +4731,7 @@ def send_referral_link_message(message):
 
 @bot.message_handler(func=lambda message: message.text == "Ваши рефералы")
 @text_only_handler
+@rate_limit_with_captcha
 def view_referrals_and_bonuses(message):
     user_id = message.from_user.id
     data = load_payment_data()
@@ -4815,13 +4747,11 @@ def view_referrals_and_bonuses(message):
         ), parse_mode="Markdown")
         return
 
-    # Подсчет бонусов за регистрацию рефералов
     referral_count = len(referrals)
     total_bonus_days = 0
     total_bonus_points = 0
     total_discount = 0
 
-    # Подсчет бонусных дней за регистрацию
     for i in range(1, referral_count + 1):
         if i == 1:
             total_bonus_days += 1
@@ -4831,7 +4761,6 @@ def view_referrals_and_bonuses(message):
             total_bonus_days += 10
             total_discount = 10
 
-    # Подсчет баллов за регистрацию
     for i in range(1, referral_count + 1):
         if i <= 4:
             total_bonus_points += 1.0
@@ -4839,17 +4768,16 @@ def view_referrals_and_bonuses(message):
             total_bonus_points += 1.5
         elif 8 <= i <= 10:
             total_bonus_points += 1.0
-        else:  # i >= 11
+        else:  
             total_bonus_points += 1.5
 
-    # Подсчет бонусных дней за покупки рефералов
     total_purchase_bonus_days = 0
-    referral_purchase_bonuses = {}  # Хранит бонусные дни за покупки для каждого реферала
+    referral_purchase_bonuses = {} 
     for referral_id in referrals:
         referral_plans = data['subscriptions']['users'].get(referral_id, {}).get('plans', [])
         purchase_bonus_days = 0
         for plan in referral_plans:
-            if plan.get('source') == "user":  # План куплен пользователем
+            if plan.get('source') == "user": 
                 duration = (datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") - 
                            datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M")).days
                 if duration >= 365:
@@ -4861,13 +4789,10 @@ def view_referrals_and_bonuses(message):
         referral_purchase_bonuses[referral_id] = purchase_bonus_days
         total_purchase_bonus_days += purchase_bonus_days
 
-    # Общее количество бонусных дней
     total_bonus_days += total_purchase_bonus_days
 
-    # Форматирование баллов
     points_str = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
 
-    # Формирование сообщения
     message_text = (
         f"🤝 *Ваши рефералы:*\n\n"
         f"👥 *Всего рефералов:* {len(referrals)} человек\n"
@@ -4876,14 +4801,12 @@ def view_referrals_and_bonuses(message):
         f"🏷️ *Текущая скидка:* {total_discount}%\n\n"
     )
 
-    # Информация о каждом реферале
     for index, referral_id in enumerate(referrals, start=1):
         referral_data = data['subscriptions']['users'].get(referral_id, {})
         referral_username = escape_markdown(referral_data.get('username', 'Неизвестно'))
         join_date = users_data.get(referral_id, {}).get('join_date', 'Неизвестно')
         
-        # Бонусы за регистрацию этого реферала
-        referral_index = index  # Порядковый номер реферала
+        referral_index = index  
         registration_bonus_days = 0
         registration_bonus_points = 0
         if referral_index == 1:
@@ -4901,18 +4824,15 @@ def view_referrals_and_bonuses(message):
             registration_bonus_points = 1.5
         elif 8 <= referral_index <= 10:
             registration_bonus_points = 1.0
-        else:  # referral_index >= 11
+        else:  
             registration_bonus_points = 1.5
 
-        # Форматирование баллов за регистрацию
         registration_bonus_points_str = f"{int(registration_bonus_points)}" if registration_bonus_points.is_integer() else f"{registration_bonus_points:.2f}"
 
-        # Бонусные дни реферала (за регистрацию по реферальной ссылке)
         referral_bonus_days = sum((datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") - 
                                   datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M")).days 
                                   for p in referral_data.get('plans', []) if p.get('source') == "referral")
 
-        # Бонусные дни за покупки реферала
         purchase_bonus_days = referral_purchase_bonuses.get(referral_id, 0)
 
         message_text += (
@@ -4921,13 +4841,11 @@ def view_referrals_and_bonuses(message):
             f"📅 *Дата вступления:* {join_date}\n"
         )
 
-        # Бонусы за регистрацию
         message_text += f"🎁 *Ваш бонус за регистрацию:*\n"
         if registration_bonus_days > 0:
             message_text += f"  • +{registration_bonus_days} дней подписки\n"
         message_text += f"  • +{registration_bonus_points_str} баллов\n"
 
-        # Бонусы за покупки
         if purchase_bonus_days > 0:
             message_text += f"🎁 *Ваш бонус за покупки реферала:*\n"
             message_text += f"  • +{purchase_bonus_days} дней подписки\n"
@@ -4940,6 +4858,7 @@ def view_referrals_and_bonuses(message):
 
 @bot.message_handler(func=lambda message: message.text == "Топ рефералов")
 @text_only_handler
+@rate_limit_with_captcha
 def view_referral_leaderboard(message):
     user_id = str(message.from_user.id) 
     data = load_payment_data()
@@ -4971,7 +4890,6 @@ def view_referral_leaderboard(message):
             f"⏳ *Дней на вершине:* {days_at_top}\n"
         )
     
-    # Добавляем информацию о следующем начислении бонусов
     now = datetime.now()
     top_formed_date = data['referrals'].get('top_formed_date')
     last_bonus_date = data['referrals'].get('last_top10_bonus')
@@ -5013,7 +4931,6 @@ def check_monthly_leader_bonus():
         try:
             data = load_payment_data()
             
-            # Проверка структуры данных
             if 'referrals' not in data or 'stats' not in data['referrals']:
                 print("Ошибка: отсутствует или некорректна структура 'referrals' в payments.json")
                 data['referrals'] = {
@@ -5032,14 +4949,12 @@ def check_monthly_leader_bonus():
                 time.sleep(86400)
                 continue
             
-            # Формирование топа
             leaderboard_data = []
             for uid, refs in data['referrals']['stats'].items():
                 ref_count = len(set(refs))
                 milestone_date = data['subscriptions']['users'].get(uid, {}).get('referral_milestones', {}).get(str(ref_count), "01.01.2025 в 00:00")
                 leaderboard_data.append((uid, ref_count, milestone_date))
             
-            # Если топ еще не сформирован
             if not leaderboard_data:
                 data['referrals']['top_formed_date'] = None
                 save_payments_data(data)
@@ -5048,12 +4963,10 @@ def check_monthly_leader_bonus():
             
             now = datetime.now()
             
-            # Если топ только что сформировался
             if data['referrals'].get('top_formed_date') is None:
                 data['referrals']['top_formed_date'] = now.strftime("%d.%m.%Y в %H:%M")
                 save_payments_data(data)
             
-            # Обновление текущего лидера
             leaderboard = sorted(leaderboard_data, key=lambda x: (-x[1], x[2]))
             current_top_user, top_referrals, _ = leaderboard[0]
             leader_history = data['referrals']['leaderboard_history']
@@ -5069,19 +4982,15 @@ def check_monthly_leader_bonus():
                     days_at_top = (now - start_date).days + 1
                     leader_history['days_at_top'] = days_at_top
             
-            # Проверка начисления бонусов каждые 30 дней
             top_formed_date = data['referrals'].get('top_formed_date')
             if top_formed_date:
                 top_formed_dt = datetime.strptime(top_formed_date, "%d.%m.%Y в %H:%M")
                 last_bonus_date = data['referrals'].get('last_top10_bonus')
                 
-                # Если бонусы еще не начислялись
                 if last_bonus_date is None:
                     days_since_formation = (now - top_formed_dt).days
                     if days_since_formation >= 30:
-                        # Начисление бонусов
                         for idx, (uid, ref_count, _) in enumerate(leaderboard[:10], 1):
-                            # Начисление 1 балла для всех в топ-10
                             data['subscriptions']['users'].setdefault(uid, {}).setdefault('referral_points', 0)
                             data['subscriptions']['users'][uid]['referral_points'] += 1
                             data['subscriptions']['users'][uid].setdefault('points_history', []).append({
@@ -5091,7 +5000,6 @@ def check_monthly_leader_bonus():
                                 "date": now.strftime("%d.%m.%Y в %H:%M")
                             })
                             
-                            # Начисление дней подписки для топ-1, топ-2, топ-3
                             bonus_days = {1: 3, 2: 2, 3: 1}.get(idx, 0)
                             if bonus_days > 0:
                                 new_end = set_free_trial_period(int(uid), bonus_days, f"leaderboard_top_{idx}")
@@ -5107,30 +5015,22 @@ def check_monthly_leader_bonus():
                                     "🚀 Продолжайте приглашать друзей!"
                                 ), parse_mode="Markdown")
                             
-                            # Уведомление о балле
                             bot.send_message(uid, (
                                 "🎉 *Вы в ТОП-10 рефералов месяца!*\n"
                                 "✨ Получено *+1 балл*! Продолжайте приглашать!"
                             ), parse_mode="Markdown")
                         
-                        # Обновляем дату последнего начисления (сохраняем с временем)
                         data['referrals']['last_top10_bonus'] = now.strftime("%d.%m.%Y в %H:%M")
                 else:
-                    # Если бонусы уже начислялись, проверяем формат даты
                     try:
-                        # Пробуем разобрать дату в формате с временем
                         last_bonus_dt = datetime.strptime(last_bonus_date, "%d.%m.%Y в %H:%M")
                     except ValueError:
-                        # Если формат без времени, добавляем "в 00:00" и преобразуем
                         last_bonus_dt = datetime.strptime(f"{last_bonus_date} в 00:00", "%d.%m.%Y в %H:%M")
-                        # Исправляем дату в базе, добавляя время
                         data['referrals']['last_top10_bonus'] = last_bonus_dt.strftime("%d.%m.%Y в %H:%M")
                     
                     days_since_last_bonus = (now - last_bonus_dt).days
                     if days_since_last_bonus >= 30:
-                        # Начисление бонусов
                         for idx, (uid, ref_count, _) in enumerate(leaderboard[:10], 1):
-                            # Начисление 1 балла для всех в топ-10
                             data['subscriptions']['users'].setdefault(uid, {}).setdefault('referral_points', 0)
                             data['subscriptions']['users'][uid]['referral_points'] += 1
                             data['subscriptions']['users'][uid].setdefault('points_history', []).append({
@@ -5140,7 +5040,6 @@ def check_monthly_leader_bonus():
                                 "date": now.strftime("%d.%m.%Y в %H:%M")
                             })
                             
-                            # Начисление дней подписки для топ-1, топ-2, топ-3
                             bonus_days = {1: 3, 2: 2, 3: 1}.get(idx, 0)
                             if bonus_days > 0:
                                 new_end = set_free_trial_period(int(uid), bonus_days, f"leaderboard_top_{idx}")
@@ -5156,13 +5055,11 @@ def check_monthly_leader_bonus():
                                     "🚀 Продолжайте приглашать друзей!"
                                 ), parse_mode="Markdown")
                             
-                            # Уведомление о балле
                             bot.send_message(uid, (
                                 "🎉 *Вы в ТОП-10 рефералов месяца!*\n"
                                 "✨ Получено *+1 балл*! Продолжайте приглашать!"
                             ), parse_mode="Markdown")
                         
-                        # Обновляем дату последнего начисления (сохраняем с временем)
                         data['referrals']['last_top10_bonus'] = now.strftime("%d.%m.%Y в %H:%M")
             
             save_payments_data(data)
@@ -5176,7 +5073,81 @@ def check_monthly_leader_bonus():
 leader_thread = threading.Thread(target=check_monthly_leader_bonus, daemon=True)
 leader_thread.start()
 
-# ---------- 12. ПОСЛЕ ОБНОВЛЕНИЕ НАЧАЛО БУДЕТ С 12-ГО ПУНКТА!!! ----------
+# ---------- 12. КУРСЫ ВАЛЮТ ----------
+
+def fetch_exchange_rates_cbr():
+    url = 'https://www.cbr-xml-daily.ru/daily_json.js'
+    try:
+        response = requests.get(url)
+        data = response.json()
+        rates = data['Valute']
+        return {
+            'USD': rates['USD']['Value'], 
+            'EUR': rates['EUR']['Value'],  
+            'GBP': rates['GBP']['Value'],  
+            'CHF': rates['CHF']['Value'],  
+            'JPY': rates['JPY']['Value'] / 100,  
+            'CNY': rates['CNY']['Value'] / 10,  
+            'AUD': rates['AUD']['Value'],  
+            'CAD': rates['CAD']['Value'],  
+            'BYN': rates['BYN']['Value'],  
+            'KRW': rates['KRW']['Value'] / 1000,  
+            'SGD': rates['SGD']['Value'],  
+            'NZD': rates['NZD']['Value'],  
+            'RUB': 1  
+        }
+    except Exception as e:
+        print(f"Ошибка при запросе курсов валют ЦБ РФ: {e}")
+        return get_default_rates()
+
+def get_default_rates():
+    return {
+        'USD': 83.6813,
+        'EUR': 89.6553,
+        'GBP': 104.3210,
+        'CHF': 94.1234,
+        'JPY': 0.55,
+        'CNY': 11.46,
+        'AUD': 55.4321,
+        'CAD': 60.9876,
+        'BYN': 27.34,
+        'KRW': 0.05705,
+        'SGD': 61.2345,
+        'NZD': 50.8765,
+        'RUB': 1
+    }
+
+CURRENCY_NAMES = {
+    'USD': ('Доллар США', '💵'),
+    'EUR': ('Евро', '💶'),
+    'GBP': ('Британский фунт', '💷'),
+    'CHF': ('Швейцарский франк', '🇨🇭'),
+    'JPY': ('Японская иена', '💴'),
+    'CNY': ('Китайский юань', '🇨🇳'),
+    'AUD': ('Австралийский доллар', '🇦🇺'),
+    'CAD': ('Канадский доллар', '🇨🇦'),
+    'BYN': ('Белорусский рубль', '🇧🇾'),
+    'KRW': ('Южнокорейская вона', '🇰🇷'),
+    'SGD': ('Сингапурский доллар', '🇸🇬'),
+    'NZD': ('Новозеландский доллар', '🇳🇿'),
+    'RUB': ('Российский рубль', '🇷🇺')
+}
+
+@bot.message_handler(func=lambda message: message.text == "Курсы валют")
+def view_exchange_rates(message):
+    exchange_rates = fetch_exchange_rates_cbr()
+
+    current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+
+    rates_message = f"📊 *Актуальные курсы валют на {current_time}*\n\n"
+    for currency, rate in exchange_rates.items():
+        if currency in CURRENCY_NAMES:
+            name, emoji = CURRENCY_NAMES[currency]
+            rates_message += f"{emoji} {name} - {rate:.2f} руб.\n"
+
+    bot.send_message(message.chat.id, rates_message, parse_mode='Markdown')
+
+# ---------- 13. ПОСЛЕ ОБНОВЛЕНИЕ НАЧАЛО БУДЕТ С 13-ГО ПУНКТА!!! ----------
 
 # ---------- 9. РАСХОД ТОПЛИВА ----------
 
@@ -5349,6 +5320,7 @@ def calculate_fuel_cost_handler(message):
 
     bot.register_next_step_handler(sent, process_start_location_step)
 
+@text_only_handler
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5366,16 +5338,11 @@ def process_start_location_step(message):
         return_to_menu(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_start_location_step)
-        return
-
     if message.location:
         location = message.location
         try:
             start_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         trip_data[chat_id] = {
@@ -5390,7 +5357,7 @@ def process_start_location_step(message):
         start_location = message.text
         try:
             location = geolocator.geocode(start_location, timeout=10)
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -5410,6 +5377,7 @@ def process_start_location_step(message):
     sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_end_location_step)
 
+@text_only_handler
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5427,16 +5395,11 @@ def process_start_location_step(message):
         return_to_menu(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_start_location_step)
-        return
-
     if message.location:
         location = message.location
         try:
             start_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен! Попробуйте позже")
             return
         trip_data[chat_id] = {
@@ -5451,7 +5414,7 @@ def process_start_location_step(message):
         start_location = message.text
         try:
             location = geolocator.geocode(start_location, timeout=10)
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -5471,6 +5434,7 @@ def process_start_location_step(message):
     sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_end_location_step)
 
+@text_only_handler
 def process_end_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5486,16 +5450,11 @@ def process_end_location_step(message):
         return_to_menu(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_end_location_step)
-        return
-
     if message.location:
         location = message.location
         try:
             end_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         trip_data[chat_id]["end_location"] = {
@@ -5508,7 +5467,7 @@ def process_end_location_step(message):
         end_location = message.text
         try:
             location = geolocator.geocode(end_location, timeout=10)
-        except GeocoderUnavailable: # type: ignore
+        except GeocoderUnavailable: 
             bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
             return
         if location:
@@ -5540,6 +5499,7 @@ def process_end_location_step(message):
     sent = bot.send_message(chat_id, "Выберите вариант ввода расстояния:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
+@text_only_handler
 def process_custom_distance_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5547,11 +5507,6 @@ def process_custom_distance_step(message):
     item2 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_custom_distance_step)
-        return
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id, show_description=False)
@@ -5750,6 +5705,7 @@ def process_selected_date(message, selected_date):
 
     show_fuel_types(chat_id, selected_date, distance_km)
 
+@text_only_handler
 def process_manual_date_step(message, distance):
     chat_id = message.chat.id
     date_pattern = r"\d{2}\.\d{2}\.\d{4}"
@@ -5767,11 +5723,6 @@ def process_manual_date_step(message, distance):
     item2 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_manual_date_step, distance)
-        return
 
     if re.match(date_pattern, message.text):
         day, month, year = map(int, message.text.split('.'))
@@ -5900,6 +5851,7 @@ def get_fuel_prices_from_website(city_code='cheboksary'):
         print(f"Ошибка при получении данных с сайта: {e}")
         return None
 
+@text_only_handler
 def process_fuel_type(message, date, distance):
     if message is None:
         return
@@ -5914,12 +5866,6 @@ def process_fuel_type(message, date, distance):
         return_to_menu(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.voice or message.video_note:
-        bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        sent = bot.send_message(chat_id, "Выберите тип топлива:")
-        bot.register_next_step_handler(sent, process_fuel_type, date, distance)
-        return
-
     fuel_type = message.text.strip().lower() if message.text else ""
 
     fuel_type_mapping = {
@@ -5932,7 +5878,7 @@ def process_fuel_type(message, date, distance):
     }
 
     if fuel_type not in fuel_type_mapping:
-        sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов.")
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива только из предложенных вариантов!")
         bot.register_next_step_handler(sent, process_fuel_type, date, distance)
         return
 
@@ -5993,6 +5939,7 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов")
         bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, fuel_type)
 
+@text_only_handler
 def process_price_per_liter_step(message, date, distance, fuel_type):
     chat_id = message.chat.id
 
@@ -6001,11 +5948,6 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
         return
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
         return
 
     input_text = message.text.replace(',', '.')
@@ -6029,6 +5971,7 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
         sent = bot.send_message(chat_id, "Пожалуйста, введите положительное число для цены топлива за литр:")
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
 
+@text_only_handler
 def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_liter):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
@@ -6037,10 +5980,7 @@ def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
-        return
+
     input_text = message.text.replace(',', '.')
     try:
         fuel_consumption = float(input_text)
@@ -6053,6 +5993,7 @@ def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_
         sent = bot.send_message(chat_id, "Пожалуйста, введите положительное число для расхода топлива на 100 км:")
         bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
 
+@text_only_handler
 def process_passengers_step(message, date, distance, fuel_type, price_per_liter, fuel_consumption):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
@@ -6060,10 +6001,6 @@ def process_passengers_step(message, date, distance, fuel_type, price_per_liter,
         return
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_passengers_step, date, distance, fuel_type, price_per_liter, fuel_consumption)
         return
     try:
         passengers = int(message.text)
@@ -6760,13 +6697,9 @@ def get_user_transport_keyboard(user_id):
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def record_expense(message):
     user_id = message.from_user.id
-
-    if contains_media(message):
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, record_expense)
-        return
 
     markup = get_user_transport_keyboard(str(user_id))
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
@@ -6838,18 +6771,9 @@ def process_category_selection(user_id, brand, model, license_plate, prompt_mess
         prompt_message = bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(prompt_message, get_expense_category, brand, model, license_plate)
 
+@text_only_handler
 def get_expense_category(message, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
-        return
-
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
-        return
 
     selected_index = message.text.strip()
 
@@ -6894,18 +6818,9 @@ def get_expense_category(message, brand, model, license_plate):
         bot.send_message(user_id, "Пожалуйста, введите номер категории.")
         bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
 
+@text_only_handler
 def add_new_category(message, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, add_new_category, brand, model, license_plate)
-        return
-
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, add_new_category, brand, model, license_plate)
-        return
 
     new_category = message.text.strip().lower()
 
@@ -6942,13 +6857,9 @@ def proceed_to_expense_name(message, selected_category, brand, model, license_pl
     bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, license_plate)
 
+@text_only_handler
 def get_expense_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, license_plate)
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -6969,13 +6880,9 @@ def get_expense_name(message, selected_category, brand, model, license_plate):
     bot.send_message(user_id, "Введите описание траты или пропустите этот шаг:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, license_plate)
 
+@text_only_handler
 def get_expense_description(message, selected_category, expense_name, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, license_plate)
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -6995,13 +6902,9 @@ def get_expense_description(message, selected_category, expense_name, brand, mod
     bot.send_message(user_id, "Введите дату траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
 
+@text_only_handler
 def get_expense_date(message, selected_category, expense_name, description, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -7037,13 +6940,9 @@ def get_expense_date(message, selected_category, expense_name, description, bran
     bot.send_message(user_id, "Введите сумму траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
 
+@text_only_handler
 def get_expense_amount(message, selected_category, expense_name, description, expense_date, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
-        return
 
     expense_amount = message.text.replace(",", ".")
     if not is_numeric(expense_amount):
@@ -7157,18 +7056,9 @@ def handle_category_removal(message, brand=None, model=None, license_plate=None)
     bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
 
+@text_only_handler
 def remove_selected_category(message, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
-        return
-
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
-        return
 
     selected_index = message.text.strip()
 
@@ -7396,6 +7286,7 @@ def view_expenses_by_category(message):
     bot.send_message(user_id, "Выберите категорию для просмотра трат:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_category_selection)
 
+@text_only_handler
 def handle_category_selection(message):
     user_id = message.from_user.id
     selected_category = message.text
@@ -7406,16 +7297,6 @@ def handle_category_selection(message):
 
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_category_selection)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_category_selection)
         return
 
     user_data = load_expense_data(user_id)
@@ -7470,7 +7351,6 @@ def handle_category_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_expenses_by_month(message):
@@ -7485,22 +7365,13 @@ def view_expenses_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра трат за этот период:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expenses_by_month)
 
+@text_only_handler
 def get_expenses_by_month(message):
     user_id = message.from_user.id
     date = message.text.strip() if message.text else None
 
     if not date:
-        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, get_expenses_by_month)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expenses_by_month)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
+        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение!")
         bot.register_next_step_handler(message, get_expenses_by_month)
         return
 
@@ -7580,7 +7451,6 @@ def get_expenses_by_month(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_expenses_by_license_plate(message):
@@ -7595,25 +7465,11 @@ def view_expenses_by_license_plate(message):
     bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра трат за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expenses_by_license_plate)
 
+@text_only_handler
 def get_expenses_by_license_plate(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expenses_by_license_plate)
-        return
-
     year_input = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expenses_by_license_plate)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_expenses_by_license_plate)
-        return
 
     if message.text == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -7683,7 +7539,6 @@ def get_expenses_by_license_plate(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_all_expenses(message):
@@ -7742,7 +7597,6 @@ def save_selected_transport(user_id, selected_transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_expenses_menu(message):
@@ -7830,7 +7684,6 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_expenses_by_category(message):
@@ -7871,25 +7724,11 @@ selected_categories = {}
 
 user_expenses_to_delete = {}
 
+@text_only_handler
 def handle_category_selection_for_deletion(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_category_selection_for_deletion)
-        return
-
     selected_category = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_category_selection_for_deletion)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_category_selection_for_deletion)
-        return
 
     if selected_category == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -7936,25 +7775,11 @@ def handle_category_selection_for_deletion(message):
 
     bot.register_next_step_handler(message, delete_expense_confirmation)
 
+@text_only_handler
 def delete_expense_confirmation(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_expense_confirmation)
-        return
-
     selected_option = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_expense_confirmation)
-        return
-
-    if re.search(r'[^\w\s,.?!]', selected_option):
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_expense_confirmation)
-        return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -8010,7 +7835,6 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_expense_by_month(message):
@@ -8024,25 +7848,10 @@ def delete_expense_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления трат за этот месяц:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_expenses_by_month)
 
-
+@text_only_handler
 def delete_expenses_by_month(message):
     user_id = message.from_user.id
     month_year = message.text.strip() if message.text else None
-
-    if not month_year:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение")
-        bot.register_next_step_handler(message, delete_expenses_by_month)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, delete_expenses_by_month)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_expenses_by_month)
-        return
 
     match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2})$", month_year)
     if not match:
@@ -8110,25 +7919,11 @@ def delete_expenses_by_month(message):
         bot.send_message(user_id, f"Нет трат для удаления за *{month_year}* месяц", parse_mode="Markdown")
         send_menu(user_id)
 
+@text_only_handler
 def confirm_delete_expense_month(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение")
-        bot.register_next_step_handler(message, confirm_delete_expense_month)
-        return
-
     selected_option = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, confirm_delete_expense_month)
-        return
-
-    if re.search(r'[^\w\s,.?!]', selected_option):
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, confirm_delete_expense_month)
-        return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -8185,7 +7980,6 @@ def send_long_message(user_id, text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_expense_by_license_plate(message):
@@ -8199,22 +7993,13 @@ def delete_expense_by_license_plate(message):
     bot.send_message(user_id, "Введите год (ГГГГ) для удаления трат за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_expenses_by_license_plate)
 
+@text_only_handler
 def delete_expenses_by_license_plate(message):
     user_id = message.from_user.id
     license_plate = message.text.strip() if message.text else None
 
     if not license_plate:
-        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_expenses_by_license_plate)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, delete_expenses_by_license_plate)
-        return
-
-    if re.search(r'[^\w\s,.?!]', license_plate):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
+        bot.send_message(user_id, "Пожалуйста, введите текстовое сообщение!")
         bot.register_next_step_handler(message, delete_expenses_by_license_plate)
         return
 
@@ -8282,25 +8067,11 @@ def delete_expenses_by_license_plate(message):
         bot.send_message(user_id, f"За *{license_plate}* год трат не найдено для удаления", parse_mode="Markdown")
         send_menu(user_id)
 
+@text_only_handler
 def confirm_delete_expense_license_plate(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
-        return
-
     selected_option = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
-        return
-
-    if re.search(r'[^\w\s,.?!]', selected_option):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_expense_license_plate)
-        return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -8343,7 +8114,6 @@ def confirm_delete_expense_license_plate(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_all_expenses_for_selected_transport(message):
@@ -8361,18 +8131,9 @@ def delete_all_expenses_for_selected_transport(message):
                     reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, confirm_delete_all_expenses)
 
+@text_only_handler
 def confirm_delete_all_expenses(message):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_expenses)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_expenses)
-        return
 
     if message.text == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -8380,11 +8141,6 @@ def confirm_delete_all_expenses(message):
 
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_expenses)
         return
 
     response = message.text.strip().lower()
@@ -8603,15 +8359,11 @@ def remove_repair_category(user_id, category_to_remove):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def record_repair(message):
     user_id = message.from_user.id
-    if contains_media(message):
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, record_repair)
-        return
 
     markup = get_user_transport_keyboard(user_id)
     markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
@@ -8681,19 +8433,10 @@ def process_category_selection_repair(user_id, brand, model, license_plate):
 
     bot.register_next_step_handler(prompt_message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
 
+@text_only_handler
 def get_repair_category(message, brand, model, license_plate):
     user_id = message.from_user.id
     selected_index = message.text.strip() if message.text else ""
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
-        return
 
     if selected_index == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -8728,6 +8471,7 @@ def get_repair_category(message, brand, model, license_plate):
         bot.send_message(user_id, "Пожалуйста, введите номер категории")
         bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
 
+@text_only_handler
 def add_new_repair_category(message, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -8740,20 +8484,8 @@ def add_new_repair_category(message, brand, model, license_plate):
 
     system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(add_new_repair_category, brand=brand, model=model, license_plate=license_plate))
-        return
-
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(add_new_repair_category, brand=brand, model=model, license_plate=license_plate))
-        return
-
-
     if new_category in system_categories:
-        bot.send_message(user_id, "Эта категория уже существует в системе")
+        bot.send_message(user_id, "Эта категория уже существует в системе!")
         process_category_selection_repair(user_id, brand, model, license_plate)
         return
 
@@ -8769,24 +8501,15 @@ def add_new_repair_category(message, brand, model, license_plate):
 
     process_category_selection_repair(user_id, brand, model, license_plate)
 
+@text_only_handler
 def handle_repair_category_removal(message, brand, model, license_plate):
     user_id = message.from_user.id
     categories = get_user_repair_categories(user_id)
 
     system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(handle_repair_category_removal, brand=brand, model=model, license_plate=license_plate))
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, partial(handle_repair_category_removal, brand=brand, model=model, license_plate=license_plate))
-        return
-
     if not categories:
-        bot.send_message(user_id, "Нет доступных категорий для удаления")
+        bot.send_message(user_id, "Нет доступных категорий для удаления!")
         process_category_selection_repair(user_id, brand, model, license_plate)
         return
 
@@ -8863,24 +8586,9 @@ def proceed_to_repair_name(message, selected_category, brand, model, license_pla
     bot.send_message(user_id, "Введите название ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_name, selected_category, brand, model, license_plate)
 
+@text_only_handler
 def get_repair_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(get_repair_name, selected_category=selected_category, brand=brand, model=model, license_plate=license_plate)
-        )
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(get_repair_name, selected_category=selected_category, brand=brand, model=model, license_plate=license_plate)
-        )
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -8894,31 +8602,14 @@ def get_repair_name(message, selected_category, brand, model, license_plate):
     item_skip = types.KeyboardButton("Пропустить описание")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_skip)
-    markup.add(item_return)
-    markup.add(item_main_menu)
+    markup.add(item_skip, item_return, item_main_menu)
 
     bot.send_message(user_id, "Введите описание ремонта или пропустите этот шаг:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_description, selected_category, repair_name, brand, model, license_plate)
 
+@text_only_handler
 def get_repair_description(message, selected_category, repair_name, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(get_repair_description, selected_category=selected_category, repair_name=repair_name, brand=brand, model=model, license_plate=license_plate)
-        )
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(get_repair_description, selected_category=selected_category, repair_name=repair_name, brand=brand, model=model, license_plate=license_plate)
-        )
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -8932,8 +8623,7 @@ def get_repair_description(message, selected_category, repair_name, brand, model
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
+    markup.add(item_return, item_main_menu)
 
     bot.send_message(user_id, "Введите дату ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_date, selected_category, repair_name, repair_description, brand, model, license_plate)
@@ -8942,40 +8632,9 @@ def is_valid_date(date_str):
     pattern = r'^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(2000|20[01][0-9]|202[0-9]|203[0-9]|[2-9][0-9]{3})$'
     return bool(re.match(pattern, date_str))
 
+@text_only_handler
 def get_repair_date(message, selected_category, repair_name, repair_description, brand, model, license_plate):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(
-                get_repair_date,
-                selected_category=selected_category,
-                repair_name=repair_name,
-                repair_description=repair_description,
-                brand=brand,
-                model=model,
-                license_plate=license_plate
-            )
-        )
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(
-                get_repair_date,
-                selected_category=selected_category,
-                repair_name=repair_name,
-                repair_description=repair_description,
-                brand=brand,
-                model=model,
-                license_plate=license_plate
-            )
-        )
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -9003,8 +8662,7 @@ def get_repair_date(message, selected_category, repair_name, repair_description,
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
-    markup.add(item_main_menu)
+    markup.add(item_return, item_main_menu)
 
     bot.send_message(user_id, "Введите сумму ремонта:", reply_markup=markup)
     bot.register_next_step_handler(
@@ -9020,44 +8678,9 @@ def get_repair_date(message, selected_category, repair_name, repair_description,
         f"{brand} {model} {license_plate}"
     )
 
+@text_only_handler
 def save_repair_data_final(message, selected_category, repair_name, repair_description, repair_date, brand, model, license_plate, selected_transport):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(
-                save_repair_data_final,
-                selected_category=selected_category,
-                repair_name=repair_name,
-                repair_description=repair_description,
-                repair_date=repair_date,
-                brand=brand,
-                model=model,
-                license_plate=license_plate,
-                selected_transport=selected_transport
-            )
-        )
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(
-            message,
-            partial(
-                save_repair_data_final,
-                selected_category=selected_category,
-                repair_name=repair_name,
-                repair_description=repair_description,
-                repair_date=repair_date,
-                brand=brand,
-                model=model,
-                license_plate=license_plate,
-                selected_transport=selected_transport
-            )
-        )
-        return
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         if message.text == "Вернуться в меню трат и ремонтов":
@@ -9111,7 +8734,7 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
                 selected_transport=selected_transport
             )
         )
-
+        
 def save_repair_to_excel(user_id, repair_data):
     excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
 
@@ -9209,7 +8832,6 @@ def send_repair_menu(user_id):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_repairs(message):
@@ -9270,7 +8892,6 @@ def handle_transport_selection_for_repairs(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def send_repairs_excel(message):
@@ -9307,7 +8928,6 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_repairs_by_category(message):
@@ -9417,7 +9037,6 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_repairs_by_month(message):
@@ -9432,24 +9051,10 @@ def view_repairs_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_month)
 
+@text_only_handler
 def get_repairs_by_month(message):
     user_id = message.from_user.id
     date = message.text.strip() if message.text else None
-
-    if not date:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_repairs_by_month)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_repairs_by_month)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка смайликов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, get_repairs_by_month)
-        return
 
     if message.text == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -9540,7 +9145,6 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_repairs_by_year(message):
@@ -9555,25 +9159,11 @@ def view_repairs_by_year(message):
     bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра ремонтов за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_year)
 
+@text_only_handler
 def get_repairs_by_year(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_repairs_by_year)
-        return
-
     year_input = message.text.strip()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_repairs_by_year)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, get_repairs_by_year)
-        return
 
     if message.text == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -9656,7 +9246,6 @@ def send_message_with_split(user_id, message_text):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_all_repairs(message):
@@ -9715,7 +9304,6 @@ def save_selected_repair_transport(user_id, selected_transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_repairs_menu(message):
@@ -9789,7 +9377,6 @@ user_repairs_to_delete = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_repairs_by_category(message):
@@ -9943,24 +9530,10 @@ def delete_repair_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления ремонтов за этот месяц:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_month_handler)
 
+@text_only_handler
 def delete_repairs_by_month_handler(message):
     user_id = message.from_user.id
     month_year = message.text.strip() if message.text else None
-
-    if not month_year:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_repairs_by_month_handler)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_repairs_by_month_handler)
-        return
-
-    if re.search(r'[^\w\s,.?!]', month_year):
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, delete_repairs_by_month_handler)
-        return
 
     match = re.match(r"^(0[1-9]|1[0-2])\.(20[0-9]{2})$", month_year)
     if not match:
@@ -10029,13 +9602,9 @@ def delete_repairs_by_month_handler(message):
         bot.send_message(user_id, f"Нет ремонтов для удаления за *{month_year}* месяц", parse_mode="Markdown")
         send_menu(user_id)
 
+@text_only_handler
 def confirm_delete_repair_month(message):
     user_id = message.from_user.id
-
-    if not message.text:
-        bot.send_message(user_id, "Извините, отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, confirm_delete_repair_month)
-        return
 
     selected_option = message.text.strip()
 
@@ -10096,7 +9665,6 @@ def send_long_message(user_id, message_text, parse_mode='Markdown'):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_repairs_by_year(message):
@@ -10110,24 +9678,10 @@ def delete_repairs_by_year(message):
     bot.send_message(user_id, "Введите год (ГГГГ) для удаления ремонтов за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_year_handler)
 
+@text_only_handler
 def delete_repairs_by_year_handler(message):
     user_id = message.from_user.id
     year = message.text.strip() if message.text else None
-
-    if not year:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, delete_repairs_by_year_handler)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, delete_repairs_by_year_handler)
-        return
-
-    if re.search(r'[^\w\s,.?!]', year):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, delete_repairs_by_year_handler)
-        return
 
     if year == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -10193,20 +9747,11 @@ def delete_repairs_by_year_handler(message):
         bot.send_message(user_id, f"За *{year}* год ремонтов не найдено для удаления", parse_mode="Markdown")
         send_menu(user_id)
 
+@text_only_handler
 def confirm_delete_repair(message):
     user_id = message.from_user.id
 
-    if not message.text:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_repair)
-        return
-
     selected_option = message.text.strip()
-
-    if re.search(r'[^\w\s,.?!]', selected_option):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_repair)
-        return
 
     if selected_option == "Вернуться в меню трат и ремонтов":
         return_to_menu_2(message)
@@ -10248,7 +9793,6 @@ def confirm_delete_repair(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_all_repairs_for_selected_transport(message):
@@ -10266,18 +9810,9 @@ def delete_all_repairs_for_selected_transport(message):
                      reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, confirm_delete_all_repairs)
 
+@text_only_handler
 def confirm_delete_all_repairs(message):
     user_id = message.from_user.id
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_repairs)
-        return
-
-    if re.search(r'[^\w\s,.?!]', message.text):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_repairs)
-        return
 
     if message.text == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
@@ -10568,7 +10103,6 @@ def handle_menu_buttons(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_location(message):
@@ -10611,373 +10145,6 @@ def handle_location(message):
             bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
     else:
         bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню")
-
-# ---------- 11 (COMMENT). ПОИСК МЕСТ (работает ну нужен API Yandex) ----------
-
-# geolocator = Nominatim(user_agent="geo_bot")
-
-# user_locations = {}
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def calculate_distance(origin, destination):
-#     return geodesic(origin, destination).kilometers
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def shorten_url(original_url):
-#     endpoint = 'https://clck.ru/--'
-#     response = requests.get(endpoint, params={'url': original_url})
-#     return response.text
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_fuel_stations(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "АЗС",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     fuel_stations = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         fuel_stations.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return fuel_stations
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_car_washes(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "Автомойка",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     car_washes = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         car_washes.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return car_washes
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_auto_services(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "Автосервис",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     auto_services = []
-#     for feature in data.get("features", []):
-#         coordinates = feature.get("geometry", {}).get("coordinates")
-#         name = feature.get("properties", {}).get("name")
-#         address = feature.get("properties", {}).get("description", "Адрес не указан")
-#         if coordinates and name:
-#             auto_services.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return auto_services
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_parking(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "Парковки",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     parking_places = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         parking_places.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return parking_places
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_evacuation_services(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "Эвакуация",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     evacuation_services = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         evacuation_services.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return evacuation_services
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_gibdd_mreo(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "ГИБДД",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     gibdd_mreo_offices = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         gibdd_mreo_offices.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return gibdd_mreo_offices
-
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-#
-# def get_nearby_accident_commissioner(latitude, longitude, user_coordinates):
-#     api_url = "https://search-maps.yandex.ru/v1/"
-#     params = {
-#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
-#         "text": "Комиссары",
-#         "lang": "ru_RU",
-#         "ll": f"{longitude},{latitude}",
-#         "spn": "0.045,0.045",
-#         "type": "biz"
-#     }
-#     response = requests.get(api_url, params=params)
-#     data = response.json()
-
-#     accident_commissioners = []
-#     for feature in data["features"]:
-#         coordinates = feature["geometry"]["coordinates"]
-#         name = feature["properties"]["name"]
-#         address = feature["properties"]["description"]
-#         accident_commissioners.append({"name": name, "coordinates": coordinates, "address": address})
-
-#     return accident_commissioners
-
-# @bot.message_handler(func=lambda message: message.text == "Поиск мест")
-# @restricted
-# @track_user_activity
-# @check_chat_state
-# @track_usage('Поиск мест')
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-# @check_subscription
-# 
-# @check_subscription_chanal
-# @rate_limit_with_captcha
-#
-# def send_welcome(message):
-#     user_id = message.chat.id
-#     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-#     button_azs = types.KeyboardButton("АЗС")
-#     button_car_wash = types.KeyboardButton("Автомойки")
-#     button_auto_service = types.KeyboardButton("Автосервисы")
-#     button_parking = types.KeyboardButton("Парковки")
-#     button_evacuation = types.KeyboardButton("Эвакуация")
-#     button_gibdd_mreo = types.KeyboardButton("ГИБДД")
-#     button_accident_commissioner = types.KeyboardButton("Комиссары")
-
-#     item1 = types.KeyboardButton("В главное меню")
-
-#     markup.add(button_azs, button_car_wash, button_auto_service)
-#     markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner)
-#     markup.add(item1)
-
-#     bot.send_message(user_id, "Выберите категорию для ближайшего поиска:", reply_markup=markup)
-
-# @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
-# @restricted
-# @track_user_activity
-# @check_chat_state
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-# @check_subscription
-# 
-# @check_subscription_chanal
-# @rate_limit_with_captcha
-#
-# def handle_reset_category(message):
-#     global selected_category
-#     selected_category = None
-#     send_welcome(message)
-
-# selected_category = None
-
-# @bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"})
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-# @check_subscription
-# 
-# @check_subscription_chanal
-# @rate_limit_with_captcha
-#
-# def handle_menu_buttons(message):
-#     global selected_category
-#     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"}:
-#         selected_category = message.text
-#         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-#         button_send_location = types.KeyboardButton("Отправить геолокацию", request_location=True)
-#         button_reset_category = types.KeyboardButton("Выбрать категорию заново")
-#         item1 = types.KeyboardButton("В главное меню")
-#         keyboard.add(button_send_location)
-#         keyboard.add(button_reset_category)
-#         keyboard.add(item1)
-#         bot.send_message(message.chat.id, f"Отправьте свою геолокацию. Вам будет выдан список ближайших {selected_category.lower()}.", reply_markup=keyboard)
-#     else:
-#         selected_category = None
-#         bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
-
-# @bot.message_handler(content_types=['location'])
-# @check_function_state_decorator('Функция для обработки локации')
-# @track_usage('Функция для обработки локации')
-# @restricted
-# @track_user_activity
-# @check_chat_state
-#
-# @check_subscription
-# 
-# @check_subscription_chanal
-# @rate_limit_with_captcha
-#
-# def handle_location(message):
-#     global selected_category, selected_location, user_locations
-#     latitude = message.location.latitude
-#     longitude = message.location.longitude
-#     user_id = message.from_user.id
-
-#     try:
-#         location = geolocator.reverse((latitude, longitude), language='ru', timeout=10)
-#         address = location.address
-
-#         if selected_category is None:
-#             bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
-#             return
-
-#         user_locations[user_id] = {"address": address, "coordinates": (latitude, longitude)}
-
-#         if selected_category == "АЗС":
-#             locations = get_nearby_fuel_stations(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "Автомойки":
-#             locations = get_nearby_car_washes(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "Автосервисы":
-#             locations = get_nearby_auto_services(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "Парковки":
-#             locations = get_nearby_parking(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "Эвакуация":
-#             locations = get_nearby_evacuation_services(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "ГИБДД":
-#             locations = get_nearby_gibdd_mreo(latitude, longitude, user_locations[user_id]["coordinates"])
-#         elif selected_category == "Комиссары":
-#             locations = get_nearby_accident_commissioner(latitude, longitude, user_locations[user_id]["coordinates"])
-
-#         selected_location = {"address": address, "coordinates": (latitude, longitude)}
-
-#         message_text = f"📍 *Ближайшие объекты по адресу:*\n\n🏠 *{address}*\n\n"
-#         message_text += f"🔍 *{selected_category}:*\n\n"
-
-#         for location in locations:
-#             name = location["name"]
-#             coordinates = location["coordinates"]
-#             address = location["address"]
-
-#             yandex_maps_url = f"https://yandex.ru/maps/?rtext={user_locations[user_id]['coordinates'][0]},{user_locations[user_id]['coordinates'][1]}~{coordinates[1]},{coordinates[0]}&l=map&rtt=auto&ruri=~ymapsbm1%3A%2F%2Forg%3Foid%3D1847883008%26name%3D{quote(name)}%26address%3D{quote(address)}\n\n"
-#             short_yandex_maps_url = shorten_url(yandex_maps_url)
-
-#             message_text += f"🚗 *{name}* ({address}):\n[Посмотреть на карте]({short_yandex_maps_url})\n\n"
-
-#         bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
-
-#         selected_category = None
-
-#         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-#         button_reset_category = types.KeyboardButton("Выбрать категорию заново")
-#         item1 = types.KeyboardButton("В главное меню")
-#         keyboard.add(button_reset_category)
-#         keyboard.add(item1)
-#         bot.send_message(message.chat.id, "Выберите категорию заново или вернитесь в главное меню.", reply_markup=keyboard)
-
-#     except Exception as e:
-#         bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
-
 
 # ---------- 12. ПОИСК ТРАНСПОРТА ----------
 
@@ -11095,7 +10262,6 @@ def request_user_location(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_car_location(message):
@@ -11214,14 +10380,10 @@ def handle_start4(message, show_description=True):
     bot.send_message(message.chat.id, "Введите коды регионов или госномера автомобилей через запятую:", reply_markup=markup)
     bot.register_next_step_handler(message, process_input)
 
+@text_only_handler
 def process_input(message):
     if message.text == "В главное меню":
         return_to_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_input)
         return
 
     text = message.text.strip()
@@ -12084,16 +11246,14 @@ def load_citys_users_data():
                     'recent_cities': data.get('recent_cities', [])
                 }
             else:
-                # Объединяем recent_cities, избегая дубликатов
                 existing_cities = unique_user_data[chat_id].get('recent_cities', [])
                 new_cities = data.get('recent_cities', [])
                 unique_user_data[chat_id]['recent_cities'] = list(set(existing_cities + new_cities))
-                # Обновляем city_code, если он есть в новой записи
                 if data.get('city_code'):
                     unique_user_data[chat_id]['city_code'] = data['city_code']
 
         user_data = unique_user_data
-        save_citys_users_data()  # Сохраняем очищенные данные
+        save_citys_users_data()  
     except (FileNotFoundError, json.JSONDecodeError):
         user_data = {}
         save_citys_users_data()
@@ -12164,6 +11324,7 @@ def get_city_code(city_name):
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def fuel_prices_command(message, show_description=True):
     chat_id = message.chat.id
     load_citys_users_data()
@@ -12178,7 +11339,6 @@ def fuel_prices_command(message, show_description=True):
         city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
         markup.row(*city_buttons)
 
-    # Добавляем кнопку для отправки геопозиции
     markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
     markup.add(types.KeyboardButton("В главное меню"))
 
@@ -12199,8 +11359,9 @@ def fuel_prices_command(message, show_description=True):
     bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
     bot.register_next_step_handler(message, process_city_selection)
 
+@text_only_handler
 def get_city_from_coordinates(latitude, longitude):
-    time.sleep(1)  # Задержка 1 секунда
+    time.sleep(1) 
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
         headers = {
@@ -12217,6 +11378,7 @@ def get_city_from_coordinates(latitude, longitude):
         print(f"Ошибка получения города по координатам: {e}")
         return None
 
+@text_only_handler
 def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
@@ -12232,7 +11394,6 @@ def process_city_selection(message):
     city_name = None
     city_code = None
 
-    # Проверяем, отправлена ли геопозиция
     if message.location:
         latitude = message.location.latitude
         longitude = message.location.longitude
@@ -12266,7 +11427,6 @@ def process_city_selection(message):
         bot.register_next_step_handler(message, process_city_selection)
         return
 
-    # Инициализация данных пользователя, если их нет
     if str_chat_id not in user_data:
         user_data[str_chat_id] = {
             'recent_cities': [],
@@ -12274,17 +11434,13 @@ def process_city_selection(message):
             'site_type': 'default_site_type'
         }
     else:
-        # Обновляем city_code
         user_data[str_chat_id]['city_code'] = city_code
-        # Обновляем site_type, если отсутствует
         if 'site_type' not in user_data[str_chat_id]:
             user_data[str_chat_id]['site_type'] = 'default_site_type'
 
-    # Обновляем список последних городов
     update_recent_cities(str_chat_id, city_name)
     save_citys_users_data()
 
-    # Сохраняем геолокацию, если она есть
     latitude = message.location.latitude if message.location else None
     longitude = message.location.longitude if message.location else None
     save_user_location(chat_id, latitude, longitude, city_code)
@@ -12302,14 +11458,11 @@ def update_recent_cities(chat_id, city_name):
 
     recent_cities = user_data[chat_id].get('recent_cities', [])
 
-    # Удаляем город, если он уже есть, чтобы избежать дублирования
     if city_name in recent_cities:
         recent_cities.remove(city_name)
     
-    # Добавляем новый город
     recent_cities.append(city_name)
 
-    # Ограничиваем список до 3 городов
     if len(recent_cities) > 3:
         recent_cities = recent_cities[-3:]
 
@@ -12769,11 +11922,10 @@ def save_user_location(chat_id, latitude, longitude, city_code):
     notifications = initialize_user_notifications(chat_id)
     str_chat_id = str(chat_id)
 
-    # Обновляем только те поля, которые переданы (не None)
     if latitude is not None:
-        notifications[str_chat_id]["latitude"] = float(latitude)  # Приводим к float для консистентности
+        notifications[str_chat_id]["latitude"] = float(latitude)  
     if longitude is not None:
-        notifications[str_chat_id]["longitude"] = float(longitude)  # Приводим к float для консистентности
+        notifications[str_chat_id]["longitude"] = float(longitude) 
     if city_code is not None:
         notifications[str_chat_id]["city_code"] = city_code
 
@@ -12807,7 +11959,6 @@ def toggle_notification(chat_id, notification_type):
         with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f: 
             json.dump(notifications, f, ensure_ascii=False, indent=4)
         
-        # Return the new status for notification message
         return user_notifications[notification_type]
 
 def get_notification_status(chat_id):
@@ -13079,7 +12230,6 @@ def send_weather_notifications():
         if notification_status.get("weather"):
             weather_message = get_current_weather(coords)
             if weather_message:
-                # Удаляем заголовок из get_current_weather и добавляем его отдельно
                 weather_message = weather_message.replace("🔔 *Вам пришло новое уведомление!*\n\n", "")
                 messages.append(weather_message)
 
@@ -13106,7 +12256,6 @@ def send_weather_notifications():
 
         if messages:
             try:
-                # Добавляем заголовок "Вам пришло уведомление" один раз перед всеми сообщениями
                 final_message = "🔔 *Вам пришло новое уведомление!*\n\n" + "\n".join(messages)
                 bot.send_message(chat_id, final_message, parse_mode="Markdown")
             except ApiTelegramException as e:
@@ -13183,7 +12332,6 @@ load_all_transport()
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def manage_transport(message):
@@ -13195,16 +12343,6 @@ def manage_transport(message):
     keyboard.add("В главное меню")
 
     bot.send_message(user_id, "Выберите действие для транспорта:", reply_markup=keyboard)
-
-def check_media(message, user_id, next_step_handler=None, *args):
-    if (message.photo or message.video or message.document or message.animation or
-        message.sticker or message.location or message.audio or
-        message.contact or message.voice or message.video_note):
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        if next_step_handler:
-            bot.register_next_step_handler(message, next_step_handler, *args)
-        return True
-    return False
 
 def create_transport_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -13225,21 +12363,20 @@ def create_transport_keyboard():
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def add_transport(message):
     user_id = str(message.chat.id)
-    if check_media(message, user_id): return
     bot.send_message(user_id, "Введите марку транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_brand)
 
 def format_brand_model(text):
     return " ".join(word.capitalize() for word in text.split())
 
+@text_only_handler
 def process_brand(message):
     user_id = str(message.chat.id)
-    if check_media(message, user_id, process_brand): return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -13253,9 +12390,9 @@ def process_brand(message):
     bot.send_message(user_id, "Введите модель транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_model, brand)
 
+@text_only_handler
 def process_model(message, brand):
     user_id = str(message.chat.id)
-    if check_media(message, user_id, process_model, brand): return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -13269,9 +12406,9 @@ def process_model(message, brand):
     bot.send_message(user_id, "Введите год транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_year, brand, model)
 
+@text_only_handler
 def process_year(message, brand, model):
     user_id = str(message.chat.id)
-    if check_media(message, user_id, process_year, brand, model): return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -13293,10 +12430,9 @@ def process_year(message, brand, model):
     bot.send_message(user_id, "Введите госномер:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_license_plate, brand, model, year)
 
+@text_only_handler
 def process_license_plate(message, brand, model, year):
     user_id = str(message.chat.id)
-    if check_media(message, user_id, process_license_plate, brand, model, year):
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -13368,7 +12504,6 @@ def delete_repairs_related_to_transport(user_id, transport):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_transport(message):
@@ -13511,7 +12646,6 @@ def get_return_menu_keyboard():
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_all_transports(message):
@@ -13573,7 +12707,6 @@ def process_delete_all_confirmation(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_transport(message):
@@ -13649,7 +12782,6 @@ user_tracking = {}
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def start_antiradar(message):
@@ -13681,7 +12813,6 @@ def start_antiradar(message):
 @track_user_activity
 @check_chat_state
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_antiradar_location(message):
@@ -13712,7 +12843,6 @@ def handle_antiradar_location(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def stop_antiradar(message):
@@ -13970,7 +13100,6 @@ def reminders_menu(message, show_description=True):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def add_reminder(message):
@@ -13980,14 +13109,10 @@ def add_reminder(message):
     msg = bot.send_message(message.chat.id, "Введите название напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_title_step)
 
+@text_only_handler
 def process_title_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_title_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14012,15 +13137,11 @@ def process_title_step(message):
     msg = bot.send_message(message.chat.id, "Выберите тип напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_type_step)
 
+@text_only_handler
 def process_type_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_type_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14046,15 +13167,11 @@ def process_type_step(message):
     msg = bot.send_message(message.chat.id, "Введите дату напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_date_step_for_repairs)
 
+@text_only_handler
 def process_date_step_for_repairs(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_date_step_for_repairs)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14095,15 +13212,11 @@ def process_date_step_for_repairs(message):
     msg = bot.send_message(message.chat.id, "Введите время напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_time_step)
 
+@text_only_handler
 def process_time_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_time_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14158,7 +13271,6 @@ def process_time_step(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_reminders(message):
@@ -14177,7 +13289,6 @@ def view_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_active_reminders(message):
@@ -14197,7 +13308,6 @@ def view_active_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_expired_reminders(message):
@@ -14223,7 +13333,6 @@ def view_expired_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_active_reminders_by_type(message):
@@ -14280,7 +13389,6 @@ def view_active_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_expired_reminders_by_type(message):
@@ -14323,7 +13431,6 @@ def view_expired_reminders_by_type(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_reminder(message):
@@ -14343,7 +13450,6 @@ def delete_reminder(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_active_reminders(message):
@@ -14363,7 +13469,6 @@ def delete_active_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_expired_reminders(message):
@@ -14385,7 +13490,6 @@ def delete_expired_reminders(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_active_reminders_by_type(message):
@@ -14485,16 +13589,12 @@ def delete_expired_reminders_by_type(message):
     bot.send_message(message.chat.id, "Введите номер для удаления напоминания:", reply_markup=markup)
     bot.register_next_step_handler(message, confirm_delete_expired_step)
 
+@text_only_handler
 def confirm_delete_active_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"][user_id].get("current_reminders", [])
     reminder_type = data["users"][user_id].get("current_reminder_type")
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_active_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14518,16 +13618,12 @@ def confirm_delete_active_step(message):
         bot.send_message(message.chat.id, "Неверный номер напоминания. Пожалуйста, введите правильный номер")
         bot.register_next_step_handler(message, confirm_delete_active_step)
 
+@text_only_handler
 def confirm_delete_expired_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"][user_id].get("current_reminders", [])
     reminder_type = data["users"][user_id].get("current_reminder_type")
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_expired_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14560,7 +13656,6 @@ def confirm_delete_expired_step(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def delete_all_reminders(message):
@@ -14572,14 +13667,10 @@ def delete_all_reminders(message):
 
     bot.register_next_step_handler(message, confirm_delete_all_step)
 
+@text_only_handler
 def confirm_delete_all_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, confirm_delete_all_step)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14637,12 +13728,8 @@ error_codes = load_error_codes()
 @check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def obd2_request(message, show_description=True):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        msg = bot.send_message(message.chat.id, "Введите коды ошибок OBD2 через запятую:")
-        bot.register_next_step_handler(msg, process_error_codes)
-        return
 
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -14676,11 +13763,8 @@ def obd2_request(message, show_description=True):
     msg = bot.send_message(message.chat.id, "Введите коды ошибок OBD2 через запятую:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_error_codes)
 
+@text_only_handler
 def process_error_codes(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_error_codes)
-        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14732,8 +13816,8 @@ def process_error_codes(message):
 @rate_limit_with_captcha
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Новости', 'Для рекламы') 
-    markup.add('Уведомления', 'Чат с админом') 
+    markup.add('Новости', 'Для рекламы', 'Чат с админом') 
+    markup.add('Курсы валют', 'Уведомления') 
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
 
@@ -14749,7 +13833,6 @@ def view_others(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def view_calculators(message):
@@ -15288,7 +14371,7 @@ def calculate_and_show_result(chat_id):
     user_id = user_data[chat_id]['user_id']
     data = user_data[user_id]
 
-    print(f"Данные для расчёта: {data}")  # Отладочный вывод
+    print(f"Данные для расчёта: {data}") 
 
     r = 0.70 if data['gender'] == 'мужской' else 0.60
 
@@ -15346,7 +14429,7 @@ def calculate_and_show_result(chat_id):
     else:
         result = "📊 *Итоговый расчёт*\n\n✅ Вы уже трезвы или алкоголь еще не поступил в кровь!"
 
-    print(f"Перед сохранением: chat_id={chat_id}, promille={c}")  # Отладочный вывод
+    print(f"Перед сохранением: chat_id={chat_id}, promille={c}")  
     save_alcohol_calculation_to_history(chat_id, c)
     user_data[user_id] = data
     bot.send_message(chat_id, result, parse_mode='Markdown')
@@ -15472,7 +14555,6 @@ def save_alcohol_calculation_to_history(chat_id, promille):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_alcohol(message):
@@ -15535,7 +14617,6 @@ def process_view_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Если все номера некорректны, запрашиваем ввод снова
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в алкоголь')
             markup.add('В главное меню')
@@ -15548,11 +14629,9 @@ def process_view_selection(message):
             return
 
         if invalid_indices:
-            # Если есть некорректные номера, но есть и корректные, сообщаем о пропущенных
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
-        # Обрабатываем корректные номера
         for index in valid_indices:
             calc = calculations[index]
             timestamp = calc['timestamp']
@@ -15569,11 +14648,9 @@ def process_view_selection(message):
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
-        # Возвращаемся в меню только после успешного просмотра
         view_alc_calc(message, show_description=False)
 
     except ValueError:
-        # Если ввод не является числом, запрашиваем снова
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в алкоголь')
         markup.add('В главное меню')
@@ -15595,7 +14672,6 @@ def process_view_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_alcohol(message):
@@ -15658,7 +14734,6 @@ def process_delete_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Если все номера некорректны, запрашиваем ввод снова
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в алкоголь')
             markup.add('В главное меню')
@@ -15671,23 +14746,19 @@ def process_delete_selection(message):
             return
 
         if invalid_indices:
-            # Если есть некорректные номера, но есть и корректные, сообщаем о пропущенных
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
-        # Удаляем корректные номера
-        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
+        valid_indices.sort(reverse=True) 
         for index in valid_indices:
             del calculations[index]
 
         save_user_history_alko()
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
 
-        # Возвращаемся в меню только после успешного удаления
         view_alc_calc(message, show_description=False)
 
     except ValueError:
-        # Если ввод не является числом, запрашиваем снова
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в алкоголь')
         markup.add('В главное меню')
@@ -15736,7 +14807,6 @@ def view_rastamozka_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-# Пути к файлам
 RASTAMOZKA_JSON_PATH = os.path.join('files', 'rastamozka.json')
 USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'rastamozka', 'rastamozka_users.json')
 
@@ -15764,7 +14834,7 @@ def fetch_exchange_rates_cbr():
         print(f"Ошибка при запросе курсов валют ЦБ РФ: {e}")
         return get_default_rates()
 
-# Резервные курсы на случай сбоя API (ваши исходные значения)
+# Резервные курсы на случай сбоя API
 def get_default_rates():
     return {
         'USD': 83.6813,
@@ -15776,7 +14846,6 @@ def get_default_rates():
         'RUB': 1
     }
 
-# Инициализация курсов валют при запуске
 EXCHANGE_RATES = fetch_exchange_rates_cbr()
 
 def ensure_path_and_file(file_path):
@@ -15837,7 +14906,6 @@ def start_customs_calculation(message):
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
 
-    # Обновляем курсы валют перед расчетом
     global EXCHANGE_RATES
     EXCHANGE_RATES = fetch_exchange_rates_cbr()
 
@@ -16092,11 +15160,7 @@ def process_car_cost_value_step(message):
 
     try:
         car_cost_value = float(message.text.strip().replace(",", "."))
-        print(f"Введенная стоимость автомобиля: {car_cost_value}")  # Отладочное сообщение
-
         user_data[user_id]['car_cost_value'] = car_cost_value
-        print(f"Сохраненная стоимость автомобиля: {car_cost_value}")  # Отладочное сообщение
-
         calculate_customs(message)
 
     except ValueError:
@@ -16165,7 +15229,6 @@ def calculate_customs_fee(car_cost_rub):
         return 30000
 
 def calculate_customs_duty(car_cost_rub, engine_volume, car_age, engine_type, car_importer):
-    # Определяем возрастной диапазон
     if car_age == "До 3 лет":
         age_category = "до 3 лет"
     elif car_age == "От 3 до 5 лет":
@@ -16177,12 +15240,9 @@ def calculate_customs_duty(car_cost_rub, engine_volume, car_age, engine_type, ca
     else:
         raise ValueError("Некорректный формат возраста автомобиля!")
 
-    print(f"Возрастная категория автомобиля: {age_category}")  # Отладочное сообщение
-
     if engine_type == "Электрический":
         return car_cost_rub * 0.15
 
-    # Логика для юридических лиц
     if car_importer == "Юридическое лицо":
         if engine_type == "Бензиновый":
             if age_category == "до 3 лет":
@@ -16220,7 +15280,7 @@ def calculate_customs_duty(car_cost_rub, engine_volume, car_age, engine_type, ca
                     return max(car_cost_rub * 0.2, (0.44 * engine_volume) * EXCHANGE_RATES['EUR'])
                 else:
                     return max(car_cost_rub * 0.2, (0.8 * engine_volume) * EXCHANGE_RATES['EUR'])
-            else:  # Старше 7 лет
+            else:  
                 if engine_volume <= 1000:
                     return (1.4 * engine_volume) * EXCHANGE_RATES['EUR']
                 elif engine_volume <= 1500:
@@ -16252,14 +15312,13 @@ def calculate_customs_duty(car_cost_rub, engine_volume, car_age, engine_type, ca
                     return max(car_cost_rub * 0.2, (0.4 * engine_volume) * EXCHANGE_RATES['EUR'])
                 else:
                     return max(car_cost_rub * 0.2, (0.8 * engine_volume) * EXCHANGE_RATES['EUR'])
-            else:  # Старше 7 лет
+            else:  
                 if engine_volume <= 1500:
                     return (1.5 * engine_volume) * EXCHANGE_RATES['EUR']
                 elif engine_volume <= 2500:
                     return (2.2 * engine_volume) * EXCHANGE_RATES['EUR']
                 else:
                     return (3.2 * engine_volume) * EXCHANGE_RATES['EUR']
-    # Логика для физических лиц
     else:
         if age_category == "до 3 лет":
             car_cost_eur = car_cost_rub / EXCHANGE_RATES['EUR']
@@ -16288,7 +15347,7 @@ def calculate_customs_duty(car_cost_rub, engine_volume, car_age, engine_type, ca
                 return (3.0 * engine_volume) * EXCHANGE_RATES['EUR']
             else:
                 return (3.6 * engine_volume) * EXCHANGE_RATES['EUR']
-        else:  # От 5 до 7 лет и старше
+        else:  
             if engine_volume <= 1000:
                 return (3.0 * engine_volume) * EXCHANGE_RATES['EUR']
             elif engine_volume <= 1500:
@@ -16308,7 +15367,6 @@ def calculate_utilization_fee(engine_volume, engine_type, car_age, car_importer)
     return base_rate * coefficient
 
 def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importer):
-    # Определяем возрастной диапазон
     if car_age == "До 3 лет":
         age_category = "до 3 лет"
     elif car_age == "От 3 до 5 лет":
@@ -16352,27 +15410,27 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
                 return 180.24
         elif age_category == "от 5 до 7 лет":
             if engine_volume <= 1000:
-                return 25.0  # Пример значения, уточните
+                return 25.0  
             elif engine_volume <= 2000:
-                return 60.0  # Пример значения, уточните
+                return 60.0  
             elif engine_volume <= 3000:
-                return 145.0  # Пример значения, уточните
+                return 145.0  
             elif engine_volume <= 3500:
-                return 170.0  # Пример значения, уточните
+                return 170.0 
             else:
-                return 185.0  # Пример значения, уточните
-        else:  # Старше 7 лет
+                return 185.0  
+        else: 
             if engine_volume <= 1000:
-                return 27.0  # Пример значения, уточните
+                return 27.0  
             elif engine_volume <= 2000:
-                return 62.0  # Пример значения, уточните
+                return 62.0  
             elif engine_volume <= 3000:
-                return 150.0  # Пример значения, уточните
+                return 150.0  
             elif engine_volume <= 3500:
-                return 175.0  # Пример значения, уточните
+                return 175.0  
             else:
-                return 190.0  # Пример значения, уточните
-    else:  # Для физических лиц
+                return 190.0  
+    else: 
         if age_category == "до 3 лет":
             if engine_volume <= 1000:
                 return 0.17
@@ -16384,7 +15442,7 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
                 return 107.67
             else:
                 return 137.11
-        else:  # Старше 3 лет
+        else:  
             if engine_volume <= 1000:
                 return 0.26
             elif engine_volume <= 2000:
@@ -16460,7 +15518,6 @@ def save_rastamozka_calculation_to_history(user_id, total_cost):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_rastamozka(message):
@@ -16511,8 +15568,6 @@ def process_view_rastamozka_selection(message):
         view_rastamozka_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (растаможки, просмотр): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -16525,7 +15580,6 @@ def process_view_rastamozka_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в растаможку')
             markup.add('В главное меню')
@@ -16538,7 +15592,6 @@ def process_view_rastamozka_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -16573,11 +15626,9 @@ def process_view_rastamozka_selection(message):
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
-        # Возвращаемся в меню после успешной обработки
         view_rastamozka_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в растаможку')
         markup.add('В главное меню')
@@ -16599,7 +15650,6 @@ def process_view_rastamozka_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_rastamozka(message):
@@ -16650,8 +15700,6 @@ def process_delete_rastamozka_selection(message):
         view_rastamozka_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (растаможки, удаление): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -16664,7 +15712,6 @@ def process_delete_rastamozka_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в растаможку')
             markup.add('В главное меню')
@@ -16677,7 +15724,6 @@ def process_delete_rastamozka_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -16690,7 +15736,6 @@ def process_delete_rastamozka_selection(message):
         view_rastamozka_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в растаможку')
         markup.add('В главное меню')
@@ -16739,16 +15784,13 @@ def view_osago_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-# Paths to files
 OSAGO_JSON_PATH = os.path.join('files', 'osago.json')
 USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'osago', 'osago_users.json')
 
-# Global variables
 osago_data = {}
 user_history = {}
 user_data = {}
 
-# Ensure file paths exist and load data
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     if not os.path.exists(file_path):
@@ -16788,7 +15830,6 @@ ensure_path_and_file(USER_HISTORY_PATH)
 load_osago_data()
 load_user_history_osago()
 
-# Start OSAGO calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать ОСАГО")
 @check_function_state_decorator('Рассчитать ОСАГО')
 @track_usage('Рассчитать ОСАГО')
@@ -16820,7 +15861,6 @@ def start_osago_calculation(message):
     msg = bot.send_message(message.chat.id, "Кто владелец ТС?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_owner_type_step)
 
-# Step 1: Owner type
 def process_owner_type_step(message):
     user_id = message.from_user.id
 
@@ -16852,7 +15892,6 @@ def process_owner_type_step(message):
     msg = bot.send_message(message.chat.id, "Выберите тип ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_vehicle_type_step)
 
-# Step 2: Vehicle type
 def process_vehicle_type_step(message):
     user_id = message.from_user.id
 
@@ -16886,7 +15925,6 @@ def process_vehicle_type_step(message):
     msg = bot.send_message(message.chat.id, "Выберите регион:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_osago_region_step)
 
-# Step 3: Region
 def process_osago_region_step(message):
     user_id = message.from_user.id
 
@@ -16923,7 +15961,6 @@ def process_osago_region_step(message):
     msg = bot.send_message(message.chat.id, "Выберите город:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_city_step)
 
-# Step 3.1: City
 def process_city_step(message):
     user_id = message.from_user.id
 
@@ -16948,10 +15985,9 @@ def process_city_step(message):
     else:
         user_data[user_id]['kt'] = region['cities'].get(city_name, 1.0)
 
-    # Проверяем, нужно ли запрашивать мощность двигателя
     vehicle_id = user_data[user_id]['vehicle_id']
-    if vehicle_id >= 5 and vehicle_id <= 12:  # Для грузовиков, автобусов и спецтехники мощность не нужна
-        user_data[user_id]['km'] = 1.0  # Устанавливаем КМ по умолчанию
+    if vehicle_id >= 5 and vehicle_id <= 12: 
+        user_data[user_id]['km'] = 1.0  
         proceed_to_usage_period(message)
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -16960,7 +15996,6 @@ def process_city_step(message):
         msg = bot.send_message(message.chat.id, "Введите мощность двигателя (л.с.):", reply_markup=markup)
         bot.register_next_step_handler(msg, process_engine_power_step)
 
-# Step 4: Engine power (если требуется)
 def process_engine_power_step(message):
     user_id = message.from_user.id
 
@@ -16982,7 +16017,6 @@ def process_engine_power_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
         bot.register_next_step_handler(msg, process_engine_power_step)
 
-# Переход к выбору периода использования
 def proceed_to_usage_period(message):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
@@ -16997,7 +16031,6 @@ def proceed_to_usage_period(message):
     msg = bot.send_message(message.chat.id, "Выберите период использования ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_usage_period_step)
 
-# Step 5: Usage period
 def process_usage_period_step(message):
     user_id = message.from_user.id
 
@@ -17026,7 +16059,6 @@ def process_usage_period_step(message):
     msg = bot.send_message(message.chat.id, "Лица, допущенные к управлению:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_driver_restriction_step)
 
-# Step 6: Driver restriction
 def process_driver_restriction_step(message):
     user_id = message.from_user.id
 
@@ -17045,7 +16077,7 @@ def process_driver_restriction_step(message):
         return
 
     user_data[user_id]['driver_restriction'] = restriction
-    user_data[user_id]['ko'] = 2.27 if restriction == "Без ограничений по водителям" else 1.0  # Обновлено на 2025 год
+    user_data[user_id]['ko'] = 2.27 if restriction == "Без ограничений по водителям" else 1.0  
 
     if restriction == "Без ограничений по водителям":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -17060,7 +16092,6 @@ def process_driver_restriction_step(message):
         msg = bot.send_message(message.chat.id, "Сколько человек допущено к управлению?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_restricted_driver_count_step)
 
-# Step 5.1: Unrestricted - Age and Experience
 def process_unrestricted_age_experience_step(message):
     user_id = message.from_user.id
 
@@ -17095,7 +16126,6 @@ def process_unrestricted_age_experience_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите возраст и стаж через запятую (например: 18, 0)")
         bot.register_next_step_handler(msg, process_unrestricted_age_experience_step)
 
-# Step 5.1.1: Unrestricted - Accidents
 def process_unrestricted_accidents_step(message):
     user_id = message.from_user.id
 
@@ -17124,7 +16154,6 @@ def process_unrestricted_accidents_step(message):
         msg = bot.send_message(message.chat.id, "Сколько было аварий (по его вине)?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_unrestricted_accident_count_step)
 
-# Step 5.1.1: Unrestricted - Accident Count
 def process_unrestricted_accident_count_step(message):
     user_id = message.from_user.id
 
@@ -17145,7 +16174,6 @@ def process_unrestricted_accident_count_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
         bot.register_next_step_handler(msg, process_unrestricted_accident_count_step)
 
-# Step 5.2: Restricted - Driver Count
 def process_restricted_driver_count_step(message):
     user_id = message.from_user.id
 
@@ -17166,7 +16194,6 @@ def process_restricted_driver_count_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
         bot.register_next_step_handler(msg, process_restricted_driver_count_step)
 
-# Step 5.2.1: Restricted - Driver Info
 def process_driver_info(message, driver_num):
     user_id = message.from_user.id
     if driver_num > user_data[user_id]['driver_count']:
@@ -17259,7 +16286,6 @@ def process_driver_accident_count_step(message, driver_num):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
         bot.register_next_step_handler(msg, lambda m: process_driver_accident_count_step(m, driver_num))
 
-# Helper functions
 def calculate_km(power):
     if power <= 50: return 0.6
     elif power <= 70: return 0.8
@@ -17284,7 +16310,7 @@ def calculate_ks(period_name):
 def calculate_kvs(age, experience):
     if age < 18 or experience < 0:
         raise ValueError("Возраст должен быть >= 18, стаж >= 0")
-    if age <= 22 and experience <= 3: return 2.27  # Обновлено на 2025 год
+    if age <= 22 and experience <= 3: return 2.27  
     elif age <= 22 and experience > 3: return 1.93
     elif age > 22 and experience <= 3: return 1.87
     else: return 1.0
@@ -17308,22 +16334,21 @@ def calculate_kbm(age, experience, accidents):
     return 0.46
 
 def get_base_tariff(vehicle_id):
-    # Базовые тарифы на 2025 год в РФ
     tariffs = {
-        1: (1548, 5552),  # Мотоциклы и мопеды
-        2: (2471, 5431),  # Легковые авто физ. лиц
-        3: (2089, 6603),  # Легковые авто юр. лиц
-        4: (2966, 7396),  # Такси
-        5: (2089, 6603),  # Грузовики до 16 тонн
-        6: (2966, 7396),  # Грузовики свыше 16 тонн
-        7: (2089, 6603),  # Автобусы до 16 мест
-        8: (2966, 7396),  # Автобусы более 16 мест
-        9: (4449, 8875),  # Автобусы на регулярных перевозках
-        10: (2966, 7396), # Троллейбусы
-        11: (1483, 3698), # Трамваи
-        12: (1125, 3374)  # Тракторы и спецтехника
+        1: (1548, 5552),  
+        2: (2471, 5431),  
+        3: (2089, 6603),  
+        4: (2966, 7396),  
+        5: (2089, 6603),  
+        6: (2966, 7396), 
+        7: (2089, 6603),  
+        8: (2966, 7396), 
+        9: (4449, 8875),  
+        10: (2966, 7396),
+        11: (1483, 3698), 
+        12: (1125, 3374)  
     }
-    return tariffs.get(vehicle_id, (2471, 5431))  # По умолчанию легковые авто физ. лиц
+    return tariffs.get(vehicle_id, (2471, 5431)) 
 
 def calculate_restricted_kbm(message):
     user_id = message.from_user.id
@@ -17337,7 +16362,6 @@ def calculate_restricted_kbm(message):
         kvs_list.append(kvs)
         kbm_list.append(kbm)
         
-        # Individual calculation for each driver
         base_tariff_min, base_tariff_max = 1646, 7535
         kt = user_data[user_id]['kt']
         km = user_data[user_id]['km']
@@ -17355,13 +16379,11 @@ def calculate_restricted_kbm(message):
             'max_cost': max_cost
         })
     
-    # Final combined result (using worst coefficients)
-    user_data[user_id]['kvs'] = max(kvs_list)  # Highest KVS
-    user_data[user_id]['kbm'] = max(kbm_list)  # Highest KBM
+    user_data[user_id]['kvs'] = max(kvs_list)  
+    user_data[user_id]['kbm'] = max(kbm_list) 
     user_data[user_id]['driver_results'] = driver_results
     calculate_osago(message)
 
-# Step 6: Calculate OSAGO
 def calculate_osago(message):
     user_id = message.from_user.id
     data = user_data[user_id]
@@ -17507,7 +16529,6 @@ def save_osago_calculation_to_history(user_id, min_cost, max_cost):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_osago(message):
@@ -17558,8 +16579,6 @@ def process_view_osago_selection(message):
         view_osago_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (ОСАГО, просмотр): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -17572,7 +16591,6 @@ def process_view_osago_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в ОСАГО')
             markup.add('В главное меню')
@@ -17585,7 +16603,6 @@ def process_view_osago_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -17667,11 +16684,9 @@ def process_view_osago_selection(message):
 
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
-        # Возвращаемся в меню после успешной обработки
         view_osago_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в ОСАГО')
         markup.add('В главное меню')
@@ -17693,7 +16708,6 @@ def process_view_osago_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_osago(message):
@@ -17744,8 +16758,6 @@ def process_delete_osago_selection(message):
         view_osago_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (ОСАГО, удаление): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -17758,7 +16770,6 @@ def process_delete_osago_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в ОСАГО')
             markup.add('В главное меню')
@@ -17771,7 +16782,6 @@ def process_delete_osago_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -17784,7 +16794,6 @@ def process_delete_osago_selection(message):
         view_osago_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в ОСАГО')
         markup.add('В главное меню')
@@ -17830,22 +16839,18 @@ def view_autokredit_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-# Пути для сохранения данных
 KREDIT_USERS_PATH = os.path.join('data base', 'calculators', 'kredit', 'kredit_users.json')
 EXCEL_PATH_TEMPLATE = os.path.join('data base', 'calculators', 'kredit', 'excel', '{user_id}', '{user_id}_{timestamp}_autokredit.xlsx')
 
-# Глобальное хранилище данных пользователей
 user_data = {}
 user_history = {}
 
-# Временные периоды в месяцах
 loan_terms = {
     "1 месяц": 1, "3 месяца": 3, "6 месяцев": 6, "1 год": 12, "1,5 года": 18,
     "2 года": 24, "3 года": 36, "4 года": 48, "5 лет": 60, "6 лет": 72,
     "7 лет": 84, "8 лет": 96, "9 лет": 108, "10 лет": 120, "15 лет": 180, "20 лет": 240
 }
 
-# Обеспечение существования файла и директорий
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     if not os.path.exists(file_path):
@@ -18002,7 +17007,7 @@ def process_down_payment_amount_step(message):
             if amount >= user_data[user_id]['car_price']:
                 raise ValueError("Первый платеж не может быть больше или равен стоимости авто!")
             user_data[user_id]['down_payment'] = amount
-        else:  # В %
+        else:  
             if amount > 100:
                 raise ValueError("Процент не может быть больше 100!")
             user_data[user_id]['down_payment'] = user_data[user_id]['car_price'] * (amount / 100)
@@ -18581,7 +17586,6 @@ def save_credit_calculation_to_history(user_id, principal, total_interest, total
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_autokredit(message):
@@ -18632,8 +17636,6 @@ def process_view_autokredit_selection(message):
         view_autokredit_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (автокредиты, просмотр): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -18646,7 +17648,6 @@ def process_view_autokredit_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в автокредит')
             markup.add('В главное меню')
@@ -18659,7 +17660,6 @@ def process_view_autokredit_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -18706,11 +17706,9 @@ def process_view_autokredit_selection(message):
             else:
                 bot.send_message(chat_id, "❌ Excel-файл для этого расчета не найден!")
 
-        # Возвращаемся в меню после успешной обработки
         view_autokredit_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
         markup.add('В главное меню')
@@ -18732,7 +17730,6 @@ def process_view_autokredit_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_autokredit(message):
@@ -18783,8 +17780,6 @@ def process_delete_autokredit_selection(message):
         view_autokredit_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (автокредиты, удаление): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -18797,7 +17792,6 @@ def process_delete_autokredit_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в автокредит')
             markup.add('В главное меню')
@@ -18810,7 +17804,6 @@ def process_delete_autokredit_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -18828,7 +17821,6 @@ def process_delete_autokredit_selection(message):
         view_autokredit_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в автокредит')
         markup.add('В главное меню')
@@ -18874,14 +17866,11 @@ def view_tire_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-# Пути к файлам для хранения истории
 TIRE_HISTORY_PATH = os.path.join('data base', 'calculators', 'tires', 'tire_users.json')
 
-# Глобальные переменные
 user_data = {}
 user_history = {}
 
-# Обеспечение существования файлов и загрузка данных
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     if not os.path.exists(file_path):
@@ -18911,7 +17900,6 @@ def save_user_history_tires():
 ensure_path_and_file(TIRE_HISTORY_PATH)
 load_user_history_tires()
 
-# Обработчик команды "Рассчитать шины"
 @bot.message_handler(func=lambda message: message.text == "Рассчитать шины")
 @check_function_state_decorator('Рассчитать шины')
 @track_usage('Рассчитать шины')
@@ -18933,7 +17921,6 @@ def start_tire_calculation(message):
     msg = bot.send_message(message.chat.id, "Введите ширину текущих шин (мм):\n\n_P.S. ввод осуществляется от 135 до 400 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
     bot.register_next_step_handler(msg, process_current_width_step)
 
-# Шаг 1: Ширина текущих шин
 def process_current_width_step(message):
     user_id = message.from_user.id
 
@@ -18959,7 +17946,6 @@ def process_current_width_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_current_width_step)
 
-# Шаг 2: Профиль текущих шин
 def process_current_profile_step(message):
     user_id = message.from_user.id
 
@@ -18985,7 +17971,6 @@ def process_current_profile_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_current_profile_step)
 
-# Шаг 3: Диаметр текущих шин
 def process_current_diameter_step(message):
     user_id = message.from_user.id
 
@@ -19011,7 +17996,6 @@ def process_current_diameter_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_current_diameter_step)
 
-# Шаг 4: Ширина обода текущих дисков
 def process_current_rim_width_step(message):
     user_id = message.from_user.id
 
@@ -19037,7 +18021,6 @@ def process_current_rim_width_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_current_rim_width_step)
 
-# Шаг 5: Вылет текущих дисков
 def process_current_et_step(message):
     user_id = message.from_user.id
 
@@ -19063,7 +18046,6 @@ def process_current_et_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_current_et_step)
 
-# Шаг 6: Ширина новых шин
 def process_new_width_step(message):
     user_id = message.from_user.id
 
@@ -19089,7 +18071,6 @@ def process_new_width_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_new_width_step)
 
-# Шаг 7: Профиль новых шин
 def process_new_profile_step(message):
     user_id = message.from_user.id
 
@@ -19115,7 +18096,6 @@ def process_new_profile_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_new_profile_step)
 
-# Шаг 8: Диаметр новых шин
 def process_new_diameter_step(message):
     user_id = message.from_user.id
 
@@ -19141,7 +18121,6 @@ def process_new_diameter_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_new_diameter_step)
 
-# Шаг 9: Ширина обода новых дисков
 def process_new_rim_width_step(message):
     user_id = message.from_user.id
 
@@ -19167,7 +18146,6 @@ def process_new_rim_width_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_new_rim_width_step)
 
-# Шаг 10: Вылет новых дисков и расчет
 def process_new_et_step(message):
     user_id = message.from_user.id
 
@@ -19189,7 +18167,6 @@ def process_new_et_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
         bot.register_next_step_handler(msg, process_new_et_step)
 
-# Расчет параметров шин и дисков
 def calculate_tire(message):
     user_id = message.from_user.id
     data = user_data[user_id]
@@ -19297,7 +18274,6 @@ def calculate_tire(message):
     save_tire_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)  # Изменённый вызов
     view_tire_calc(message, show_description=False)
 
-# Сохранение в историю
 def save_tire_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
@@ -19358,7 +18334,6 @@ def save_tire_calculation_to_history(user_id, data, current_diameter, new_diamet
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_tire_calc(message):
@@ -19409,8 +18384,6 @@ def process_view_tire_selection(message):
         view_tire_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (шины, просмотр): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -19423,7 +18396,6 @@ def process_view_tire_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в шины')
             markup.add('В главное меню')
@@ -19436,7 +18408,6 @@ def process_view_tire_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -19534,11 +18505,9 @@ def process_view_tire_selection(message):
             
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
-        # Возвращаемся в меню после успешной обработки
         view_tire_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в шины')
         markup.add('В главное меню')
@@ -19560,7 +18529,6 @@ def process_view_tire_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_tire_calc(message):
@@ -19611,8 +18579,6 @@ def process_delete_tire_selection(message):
         view_tire_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (шины, удаление): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -19625,7 +18591,6 @@ def process_delete_tire_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в шины')
             markup.add('В главное меню')
@@ -19638,7 +18603,6 @@ def process_delete_tire_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -19651,7 +18615,6 @@ def process_delete_tire_selection(message):
         view_tire_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в шины')
         markup.add('В главное меню')
@@ -19666,21 +18629,18 @@ def process_delete_tire_selection(message):
 # ---------- РАСЧЕТ НАЛОГА ----------
 
 
-# Paths to files
 NALOG_JSON_PATH = os.path.join('files', 'nalog.json')
 USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
-PERECHEN_AUTO_PATH = os.path.join('files', 'auto_10mln_rub_2025.json')  # Обновленный путь
+PERECHEN_AUTO_PATH = os.path.join('files', 'auto_10mln_rub_2025.json') 
 TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'transport_tax_{year}.json')
 
-# Global variables
 nalog_data = {}
 user_history = {}
 user_data = {}
 expensive_cars = []
 tax_rates = {}
-available_years = [2021, 2022, 2023, 2024, 2025]  # Список доступных годов
+available_years = [2021, 2022, 2023, 2024, 2025] 
 
-# Ensure file paths exist and load data
 def ensure_path_and_file(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     if not os.path.exists(file_path):
@@ -19720,7 +18680,7 @@ def load_expensive_cars():
     global expensive_cars
     try:
         with open(PERECHEN_AUTO_PATH, 'r', encoding='utf-8') as file:
-            data = json.load(file)  # Теперь data — это массив
+            data = json.load(file) 
             car_data = []
             for section in data:
                 cost_range = "10-15" if "10 миллионов до 15 миллионов рублей" in section['subtitle'] else "15+"
@@ -19751,15 +18711,13 @@ def load_tax_rates(year):
         print(f"Ошибка при загрузке файла transport_tax_{year}.json: {e}")
         tax_rates = {}
 
-# Инициализация данных
 ensure_path_and_file(NALOG_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH)
 load_nalog_data()
 load_user_history_nalog()
 load_expensive_cars()
-load_tax_rates(2025)  # Загружаем данные за 2025 год по умолчанию
+load_tax_rates(2025)
 
-# Обработчик команды "Налог"
 @bot.message_handler(func=lambda message: message.text == "Налог")
 @check_function_state_decorator('Налог')
 @track_usage('Налог')
@@ -19797,7 +18755,6 @@ def view_nalog_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
     
-# Start tax calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
 @check_function_state_decorator('Рассчитать налог')
 @track_usage('Рассчитать налог')
@@ -19829,7 +18786,6 @@ def start_tax_calculation(message):
     msg = bot.send_message(message.chat.id, "Выберите ваш регион:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_nalog_region_step)
 
-# Step 1: Region
 def process_nalog_region_step(message):
     user_id = message.from_user.id
 
@@ -19861,7 +18817,6 @@ def process_nalog_region_step(message):
     msg = bot.send_message(message.chat.id, "Выберите год для налога:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_year_step)
 
-# Step 2: Year
 def process_year_step(message):
     user_id = message.from_user.id
 
@@ -19900,7 +18855,6 @@ def process_year_step(message):
     msg = bot.send_message(message.chat.id, "Количество месяцев владения ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_ownership_months_step)
 
-# Step 3: Ownership months
 def process_ownership_months_step(message):
     user_id = message.from_user.id
 
@@ -19934,7 +18888,6 @@ def process_ownership_months_step(message):
     msg = bot.send_message(message.chat.id, "Вид транспортного средства:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_vehicle_type_nalog_step)
 
-# Step 4: Vehicle type
 def process_vehicle_type_nalog_step(message):
     user_id = message.from_user.id
 
@@ -19961,7 +18914,6 @@ def process_vehicle_type_nalog_step(message):
     msg = bot.send_message(message.chat.id, f"Введите мощность двигателя (л.с.):", reply_markup=markup)
     bot.register_next_step_handler(msg, process_metric_value_step)
 
-# Step 5: Metric value (e.g., engine power)
 def process_metric_value_step(message):
     user_id = message.from_user.id
 
@@ -19991,7 +18943,6 @@ def process_metric_value_step(message):
     else:
         proceed_to_benefits(message)
 
-# Step 5.1: Expensive car check
 def process_expensive_car_step(message):
     user_id = message.from_user.id
 
@@ -20023,7 +18974,6 @@ def process_expensive_car_step(message):
     else:
         proceed_to_benefits(message)
 
-# Step 5.1a: Brand selection
 def process_brand_step(message):
     user_id = message.from_user.id
 
@@ -20056,7 +19006,6 @@ def process_brand_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_brand_step)
 
-# Step 5.1b: Model selection
 def process_model_step(message):
     user_id = message.from_user.id
 
@@ -20111,7 +19060,6 @@ def process_model_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_model_step)
 
-# Step 5.1c: Year of manufacture
 def process_year_of_manufacture_step(message):
     user_id = message.from_user.id
 
@@ -20135,7 +19083,6 @@ def process_year_of_manufacture_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_year_of_manufacture_step)
 
-# Step 6: Benefits
 def proceed_to_benefits(message):
     user_id = message.from_user.id
     markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
@@ -20166,15 +19113,12 @@ def process_benefits_step(message):
     user_data[user_id]['benefit'] = benefit_desc
     calculate_tax(message)
 
-# Step 7: Calculate tax
 def calculate_tax(message):
     user_id = message.from_user.id
     data = user_data[user_id]
 
-    # Налоговая база
     tax_base = data['metric_value']
 
-    # Определяем налоговую ставку
     region = data['region']
     vehicle_type = data['vehicle_type']
     rates = tax_rates[region][vehicle_type]
@@ -20191,15 +19135,12 @@ def calculate_tax(message):
             if tax_base > limit:
                 rate = value
 
-    # Учитываем количество месяцев владения
     ownership_months = data['ownership_months']
     months_coefficient = ownership_months / 12
 
-    # Проверяем льготы
     benefit = data['benefit']
     benefit_coefficient = 1.0 if benefit == "Нет" else 0.0
 
-    # Проверяем, стоит ли ТС больше 10 млн рублей
     increasing_coefficient = 1.0
     expensive_details = "Нет"
     if data.get('is_expensive', False):
@@ -20214,10 +19155,8 @@ def calculate_tax(message):
             increasing_coefficient = 1.5
             expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {data['year_of_manufacture']})"
 
-    # Расчет налога
     tax = tax_base * rate * months_coefficient * increasing_coefficient * benefit_coefficient
 
-    # Формируем результат
     result_message = (
         f"*📊 Итоговый расчет транспортного налога*\n\n\n"
         f"*Ваши данные:*\n\n"
@@ -20238,7 +19177,6 @@ def calculate_tax(message):
         f"⭐ *Льготный коэффициент:* {benefit_coefficient}"
     )
 
-    # Сохранение в историю
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     calculation_data = {
         'region': data['region'],
@@ -20282,7 +19220,6 @@ def calculate_tax(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_view_nalog(message):
@@ -20333,8 +19270,6 @@ def process_view_nalog_selection(message):
         view_nalog_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (налоги, просмотр): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -20347,7 +19282,6 @@ def process_view_nalog_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в налог')
             markup.add('В главное меню')
@@ -20360,7 +19294,6 @@ def process_view_nalog_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -20398,11 +19331,9 @@ def process_view_nalog_selection(message):
             )
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
-        # Возвращаемся в меню после успешной обработки
         view_nalog_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в налог')
         markup.add('В главное меню')
@@ -20423,7 +19354,6 @@ def process_view_nalog_selection(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_delete_nalog(message):
@@ -20474,8 +19404,6 @@ def process_delete_nalog_selection(message):
         view_nalog_calc(message, show_description=False)
         return
 
-    print(f"Ввод пользователя {user_id} (налоги, удаление): {message.text}")  # Логирование
-
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -20488,7 +19416,6 @@ def process_delete_nalog_selection(message):
                 invalid_indices.append(index + 1)
 
         if not valid_indices and invalid_indices:
-            # Все номера некорректны, запрашиваем повторный ввод
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Вернуться в налог')
             markup.add('В главное меню')
@@ -20501,7 +19428,6 @@ def process_delete_nalog_selection(message):
             return
 
         if invalid_indices:
-            # Есть некорректные номера, но есть и корректные
             invalid_str = ", ".join(map(str, invalid_indices))
             bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
 
@@ -20514,7 +19440,6 @@ def process_delete_nalog_selection(message):
         view_nalog_calc(message, show_description=False)
 
     except ValueError:
-        # Некорректный формат ввода, запрашиваем повторный ввод
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в налог')
         markup.add('В главное меню')
@@ -20896,7 +19821,7 @@ def verify_password(message, username):
         bot.send_message(message.chat.id, "❌ Неверные логин или пароль! Попробуйте снова...")
         handle_admin_login(message)
 
-    bot.delete_message(message.chat.id, message.message_id)  # Убедимся, что сообщение удаляется
+    bot.delete_message(message.chat.id, message.message_id) 
 
 # ---------- 22.4 ВХОД В /ADMIN, ДОБАВЛЕНИЕ И УДАЛЕНИЕ АДМИНА (ВЫХОД) ----------
 
@@ -21093,11 +20018,8 @@ def is_password_unique(new_password):
             return False
     return True
 
+@text_only_handler
 def process_new_password(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_new_password)
-        return
 
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -21144,11 +20066,8 @@ def handle_change_login_and_password(message):
     msg = bot.send_message(message.chat.id, login_requirements, reply_markup=markup)
     bot.register_next_step_handler(msg, process_new_login_and_password_step1)
 
+@text_only_handler
 def process_new_login_and_password_step1(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_new_login_and_password_step1)
-        return
 
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -21178,11 +20097,8 @@ def process_new_login_and_password_step1(message):
     bot.register_next_step_handler(msg, process_new_login_and_password_step2, new_login)
     bot.delete_message(message.chat.id, message.message_id)  
 
+@text_only_handler
 def process_new_login_and_password_step2(message, new_login):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
-        return
 
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -21558,13 +20474,9 @@ def list_admins(message):
             raise e
     bot.register_next_step_handler(message, process_admin_selection)
 
+@text_only_handler
 def process_admin_selection(message):
     if message.chat.id in blocked_users:
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_admin_selection)
         return
 
     if message.text == "Вернуться в админ":
@@ -21776,13 +20688,9 @@ def format_permissions_with_main_functions(permissions):
 
     return "\n".join(formatted_permissions)
 
+@text_only_handler
 def process_add_permissions(message, admin_id, available_permissions):
     if message.chat.id in blocked_users:
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
         return
 
     if message.text == "Вернуться в админ":
@@ -21840,13 +20748,9 @@ def process_add_permissions(message, admin_id, available_permissions):
         bot.send_message(message.chat.id, "Неверные номера прав! Попробуйте снова")
         bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
 
+@text_only_handler
 def process_remove_permissions(message, admin_id, current_permissions):
     if message.chat.id in blocked_users:
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
         return
 
     if message.text == "Вернуться в админ":
@@ -21992,10 +20896,8 @@ def unblock_user(user_id):
 
 def get_user_id_by_username(username):
     users_data = load_users_data()
-    # Удаляем @ из входного username, если он есть, так как в базе он уже включен
     username_to_check = username.lstrip('@')
     for user_id, data in users_data.items():
-        # Проверяем, существует ли ключ 'username' и совпадает ли значение
         if 'username' in data and data['username'].lstrip('@') == username_to_check:
             return int(user_id)
     return None
@@ -22602,7 +21504,7 @@ def get_user_last_active():
     user_last_active = [
         f"📌 {index + 1}) `{user_id}`: {escape_markdown(user.get('username', 'неизвестный'))} - {user['last_active'][:-3]}"
         for index, (user_id, user) in enumerate(users_data.items())
-        if 'blocked' not in user or not user['blocked']  # Проверяем наличие ключа и его значение
+        if 'blocked' not in user or not user['blocked'] 
     ]
     return "\n".join(user_last_active) if user_last_active else None
 
@@ -23162,7 +22064,7 @@ new_functions = {
         "Выключить анти-радар", "Функция для обработки локации"
     ],
     "Прочее": [
-        "Чат с админом", "Для рекламы", "Новости", "Уведомления"
+        "Чат с админом", "Для рекламы", "Новости", "Уведомления", "Курсы валют"
     ],
     "Меню новости": [
         "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей"
@@ -23302,6 +22204,7 @@ def handle_time_deactivation(time_spec, function_names, message):
         bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
 
 @bot.message_handler(func=lambda message: message.text == 'Функции' and check_admin_access(message))
+@text_only_handler
 def toggle_functions(message):
     admin_id = str(message.chat.id)
     blocked_users = load_blocked_users()
@@ -23322,21 +22225,6 @@ def toggle_functions(message):
                 raise e
         return
 
-    if check_admin_access(message):
-        if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-            try:
-                bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    pass
-                    if admin_id not in blocked_users:
-                        blocked_users.append(admin_id)
-                        save_blocked_users(blocked_users)
-                else:
-                    raise e
-            bot.register_next_step_handler(message, toggle_functions)
-            return
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(types.KeyboardButton('Включение'), types.KeyboardButton('Выключение'))
     markup.add(types.KeyboardButton('В меню админ-панели'))
@@ -23352,6 +22240,7 @@ def toggle_functions(message):
             raise e
 
 @bot.message_handler(func=lambda message: message.text == 'Включение' and check_admin_access(message))
+@text_only_handler
 def enable_function(message):
     admin_id = str(message.chat.id)
     blocked_users = load_blocked_users()
@@ -23371,21 +22260,6 @@ def enable_function(message):
             else:
                 raise e
         return
-
-    if check_admin_access(message):
-        if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-            try:
-                bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    pass
-                    if admin_id not in blocked_users:
-                        blocked_users.append(admin_id)
-                        save_blocked_users(blocked_users)
-            else:
-                raise e
-            bot.register_next_step_handler(message, enable_function)
-            return
 
     disabled_functions = [(name, data['deactivation_time']) for name, data in function_states.items() if not data['state']]
     if disabled_functions:
@@ -23431,6 +22305,7 @@ def enable_function(message):
                 raise e
         toggle_functions(message)
 
+@text_only_handler
 def process_enable_function_step(message, function_index_map):
     if message.text == "Вернуться в функции":
         toggle_functions(message)
@@ -23438,11 +22313,6 @@ def process_enable_function_step(message, function_index_map):
 
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_enable_function_step, function_index_map)
         return
 
     try:
@@ -23470,6 +22340,7 @@ def process_enable_function_step(message, function_index_map):
         bot.send_message(message.chat.id, "Неверный формат! Введите номера функций через запятую")
 
 @bot.message_handler(func=lambda message: message.text == 'Выключение' and check_admin_access(message))
+@text_only_handler
 def disable_function(message):
     admin_id = str(message.chat.id)
     blocked_users = load_blocked_users()
@@ -23489,21 +22360,6 @@ def disable_function(message):
             else:
                 raise e
         return
-
-    if check_admin_access(message):
-        if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-            try:
-                bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-            except ApiTelegramException as e:
-                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                    pass
-                    if admin_id not in blocked_users:
-                        blocked_users.append(admin_id)
-                        save_blocked_users(blocked_users)
-            else:
-                raise e
-            bot.register_next_step_handler(message, disable_function)
-            return
 
     enabled_functions = [name for name, data in function_states.items() if data['state']]
     if enabled_functions:
@@ -23544,6 +22400,7 @@ def disable_function(message):
                 raise e
         toggle_functions(message)
 
+@text_only_handler
 def process_disable_function_step(message, function_index_map):
     if message.text == "Вернуться в функции":
         toggle_functions(message)
@@ -23551,11 +22408,6 @@ def process_disable_function_step(message, function_index_map):
 
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, process_disable_function_step, function_index_map)
         return
 
     try:
@@ -23574,8 +22426,7 @@ def process_disable_function_step(message, function_index_map):
 
         if function_names:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add(types.KeyboardButton('Вернуться в функции'))
-            markup.add(types.KeyboardButton('В меню админ-панели'))
+            markup.add(types.KeyboardButton('Вернуться в функции'), types.KeyboardButton('В меню админ-панели'))
             bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ для выключения:", reply_markup=markup)
             bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
         else:
@@ -23585,6 +22436,7 @@ def process_disable_function_step(message, function_index_map):
         bot.send_message(message.chat.id, "Неверный формат! Введите номера функций через запятую")
         bot.register_next_step_handler(message, process_disable_function_step, function_index_map)
 
+@text_only_handler
 def process_disable_function_date_step(message, function_names):
     admin_id = str(message.chat.id)
     blocked_users = load_blocked_users()
@@ -23600,30 +22452,14 @@ def process_disable_function_date_step(message, function_names):
         show_admin_panel(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        try:
-            bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if admin_id not in blocked_users:
-                    blocked_users.append(admin_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
-        bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
-        return
-
     date_str = message.text
     if is_valid_date_time(date_str, "00:00"):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton('Вернуться в функции'))
-        markup.add(types.KeyboardButton('В меню админ-панели'))
+        markup.add(types.KeyboardButton('Вернуться в функции'), types.KeyboardButton('В меню админ-панели'))
         try:
             bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для выключения:", reply_markup=markup)
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 if admin_id not in blocked_users:
                     blocked_users.append(admin_id)
                     save_blocked_users(blocked_users)
@@ -23635,7 +22471,6 @@ def process_disable_function_date_step(message, function_names):
             bot.send_message(message.chat.id, "Неверный формат даты! Попробуйте снова")
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 if admin_id not in blocked_users:
                     blocked_users.append(admin_id)
                     save_blocked_users(blocked_users)
@@ -23643,6 +22478,7 @@ def process_disable_function_date_step(message, function_names):
                 raise e
         bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
 
+@text_only_handler
 def process_disable_function_time_step(message, function_names, date_str, original_message):
     admin_id = str(message.chat.id)
     blocked_users = load_blocked_users()
@@ -23658,20 +22494,6 @@ def process_disable_function_time_step(message, function_names, date_str, origin
         show_admin_panel(message)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        try:
-            bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if admin_id not in blocked_users:
-                    blocked_users.append(admin_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
-        bot.register_next_step_handler(message, process_disable_function_time_step, function_names, date_str, original_message)
-        return
-
     time_str = message.text
     if is_valid_date_time(date_str, time_str):
         time_spec = f"{date_str}; {time_str}"
@@ -23681,7 +22503,6 @@ def process_disable_function_time_step(message, function_names, date_str, origin
             bot.send_message(message.chat.id, "Неверный формат времени! Попробуйте снова")
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 if admin_id not in blocked_users:
                     blocked_users.append(admin_id)
                     save_blocked_users(blocked_users)
@@ -23924,11 +22745,8 @@ def schedule_notification(message):
     bot.send_message(message.chat.id, "Выберите действие для отправки по времени:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_send_action)
 
+@text_only_handler
 def choose_send_action(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, choose_send_action)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -23951,11 +22769,8 @@ def choose_send_action(message):
     elif message.text == 'Отправить отдельно':
         list_users_for_time_notification(message)
 
+@text_only_handler
 def set_theme_for_notification(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, set_theme_for_notification)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24018,11 +22833,8 @@ def set_time_for_notification(message, notification_theme):
     bot.send_message(message.chat.id, "Введите дату оповещения в формате ДД.ММ.ГГГГ:", reply_markup=markup)
     bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
 
+@text_only_handler
 def process_notification_date(message, notification_theme, notification_text, content_type, file_id, caption):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
-        return
 
     date_str = message.text
 
@@ -24067,11 +22879,8 @@ def validate_date_format(date_str):
     except ValueError:
         return False
 
+@text_only_handler
 def process_notification_time(message, notification_theme, notification_text, date_str, content_type, file_id, caption):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
-        return
 
     time_str = message.text
 
@@ -24244,11 +23053,8 @@ def show_stopped_notifications(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет остановленных оповещений!")
 
+@text_only_handler
 def show_notification_details(message, status):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, show_notification_details, status)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24358,11 +23164,8 @@ def delete_notification(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет оповещений по времени для удаления!")
 
+@text_only_handler
 def process_delete_notification(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_delete_notification)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24409,11 +23212,8 @@ def process_delete_notification(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер оповещения!")
         bot.register_next_step_handler(message, process_delete_notification)
 
+@text_only_handler
 def list_users_for_time_notification(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, list_users_for_time_notification)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24446,11 +23246,8 @@ def list_users_for_time_notification(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для отправки оповещения:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_time_notification)
 
+@text_only_handler
 def choose_user_for_time_notification(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, choose_user_for_time_notification)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24479,11 +23276,8 @@ def choose_user_for_time_notification(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя!")
         bot.register_next_step_handler(message, choose_user_for_time_notification)
 
+@text_only_handler
 def set_theme_for_time_notification(message, user_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, set_theme_for_time_notification, user_id)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24543,11 +23337,8 @@ def set_time_for_time_notification(message, user_id, individual_theme):
     bot.send_message(message.chat.id, "Введите дату оповещения в формате ДД.ММ.ГГГГ:", reply_markup=markup)
     bot.register_next_step_handler(message, process_time_notification_date, user_id, individual_theme, notification_text, content_type, file_id, caption)
 
+@text_only_handler
 def process_time_notification_date(message, user_id, individual_theme, notification_text, content_type, file_id, caption):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_time_notification_date, user_id, individual_theme, notification_text, content_type, file_id, caption)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24573,11 +23364,8 @@ def process_time_notification_date(message, user_id, individual_theme, notificat
     bot.send_message(message.chat.id, "Введите время оповещения в формате ЧЧ:ММ:", reply_markup=markup)
     bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
 
+@text_only_handler
 def process_time_notification_time(message, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24675,11 +23463,8 @@ def handle_broadcast_notifications(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
+@text_only_handler
 def send_message_to_all(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, send_message_to_all)
-        return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить сообщение'):
@@ -24704,11 +23489,8 @@ def send_message_to_all(message):
     bot.send_message(message.chat.id, "Введите тему для оповещения:", reply_markup=markup)
     bot.register_next_step_handler(message, set_theme_for_broadcast)
 
+@text_only_handler
 def set_theme_for_broadcast(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_theme_for_broadcast)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -24877,11 +23659,8 @@ def show_sent_messages(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет отправленных оповещений для просмотра!")
 
+@text_only_handler
 def show_sent_message_details(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, show_sent_message_details)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25010,11 +23789,8 @@ def delete_sent_messages(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет отправленных оповещений для удаления!")
 
+@text_only_handler
 def process_delete_sent_message(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_delete_sent_message)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25143,11 +23919,8 @@ def list_users(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для отправки сообщения:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_send)
 
+@text_only_handler
 def choose_user_for_send(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_user_for_send)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25192,11 +23965,8 @@ def send_individual_message(message, user_id):
     bot.send_message(message.chat.id, "Введите тему для оповещения:")
     bot.register_next_step_handler(message, set_theme_for_individual_broadcast, user_id)
 
+@text_only_handler
 def set_theme_for_individual_broadcast(message, user_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_theme_for_individual_broadcast, user_id)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25346,11 +24116,8 @@ def show_individual_messages(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_view)
 
+@text_only_handler
 def choose_user_for_view(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_user_for_view)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25426,11 +24193,8 @@ def view_individual_messages_for_user(message, user_id):
         bot.send_message(message.chat.id, "❌ Нет отправленных оповещений для простмотра по этому пользователю!")
         show_notifications_menu(message)
 
+@text_only_handler
 def show_individual_message_details(message, user_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, show_individual_message_details, user_id)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25545,11 +24309,8 @@ def delete_individual_messages(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для удаления:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_delete)
 
+@text_only_handler
 def choose_user_for_delete(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_user_for_delete)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25618,11 +24379,8 @@ def delete_individual_messages_for_user(message, user_id):
         bot.send_message(message.chat.id, "❌ Нет отправленных оповещений для удаления по этому пользователю!")
         show_notifications_menu(message)
 
+@text_only_handler
 def process_delete_individual_message(message, user_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_delete_individual_message, user_id)
-        return
 
     if message.text == "Вернуться в оповещения":
         show_notifications_menu(message)
@@ -25725,6 +24483,7 @@ def handle_advertisement_request(message):
     bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
     bot.register_next_step_handler(message, set_advertisement_theme)
 
+@text_only_handler
 def set_advertisement_theme(message):
 
     if message.text == 'Вернуться в меню для рекламы':
@@ -25737,15 +24496,11 @@ def set_advertisement_theme(message):
         return_to_menu(message)
         return
 
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_advertisement_theme)
-        return
-
     advertisement_theme = message.text
     bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ, на которую вы хотите разместить рекламу:")
     bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
 
+@text_only_handler
 def set_advertisement_date(message, advertisement_theme):
 
     if message.text == 'Вернуться в меню для рекламы':
@@ -25756,11 +24511,6 @@ def set_advertisement_date(message, advertisement_theme):
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
-        return
-
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
         return
 
     expected_date = message.text
@@ -25777,6 +24527,7 @@ def set_advertisement_date(message, advertisement_theme):
     bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ, на которое вы хотите разместить рекламу:")
     bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
 
+@text_only_handler
 def set_advertisement_time(message, advertisement_theme, expected_date):
 
     if message.text == 'Вернуться в меню для рекламы':
@@ -25787,11 +24538,6 @@ def set_advertisement_time(message, advertisement_theme, expected_date):
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
-        return
-
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
         return
 
     expected_time = message.text
@@ -25808,6 +24554,7 @@ def set_advertisement_time(message, advertisement_theme, expected_date):
     bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ для окончания действия рекламы:")
     bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
 
+@text_only_handler
 def set_advertisement_end_date(message, advertisement_theme, expected_date, expected_time):
     if message.text == 'В главное меню':
         temp_advertisement.clear()
@@ -25816,11 +24563,6 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
 
     if message.text == 'Вернуться в меню для рекламы':
         view_add_menu(message, show_description=False)
-        return
-
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
         return
 
     end_date = message.text
@@ -25844,6 +24586,7 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
     bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для окончания действия рекламы:")
     bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
 
+@text_only_handler
 def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
@@ -25853,11 +24596,6 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
-        return
-
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
         return
 
     end_time = message.text
@@ -25876,6 +24614,7 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
     bot.send_message(message.chat.id, "Отправьте текст рекламы:")
     bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
 
+@text_only_handler
 def collect_advertisement_text(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
 
     if message.text == 'Вернуться в меню для рекламы':
@@ -25885,11 +24624,6 @@ def collect_advertisement_text(message, advertisement_theme, expected_date, expe
 
     if message.text == 'В главное меню':
         return_to_menu(message)
-        return
-
-    if message.content_type != 'text':
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
         return
 
     temp_advertisement['text'] = message.text
@@ -26592,15 +25326,10 @@ def show_advertisement_menu(message):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def show_user_advertisement_requests(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, show_user_advertisement_requests)
-        return
-
     user_id = message.chat.id
     user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
 
@@ -26630,11 +25359,8 @@ def show_user_advertisement_requests(message):
     else:
         bot.send_message(message.chat.id, "❌ У вас нет активных заявок на рекламу!", parse_mode="Markdown")
 
+@text_only_handler
 def show_user_advertisement_request_details(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, show_user_advertisement_request_details)
-        return
 
     if message.text == "Вернуться в меню для рекламы":
         view_add_menu(message, show_description=False)
@@ -26712,11 +25438,8 @@ def show_user_advertisement_request_details(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер заявки!")
         show_user_advertisement_requests(message)
 
+@text_only_handler
 def handle_user_advertisement_request_action(message, index):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, handle_user_advertisement_request_action, index)
-        return
 
     if message.text == "Вернуться в меню для рекламы":
         view_add_menu(message, show_description=False)
@@ -26879,14 +25602,10 @@ def show_news_menu(message, show_description=True):
 @check_user_blocked
 @log_user_actions
 @check_subscription
-
 @check_subscription_chanal
 @rate_limit_with_captcha
+@text_only_handler
 def handle_news_selection(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_news_selection)
-        return
 
     count = int(message.text.split()[0])
     news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
@@ -26943,11 +25662,8 @@ def handle_news_selection(message):
         bot.send_message(message.chat.id, "✅ Новости закончились!")
         view_others(message)
 
+@text_only_handler
 def handle_more_news(message, start_index):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, handle_more_news, start_index)
-        return
 
     if message.text == 'Еще новости':
         news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
@@ -27036,11 +25752,8 @@ def publish_news(message):
     bot.send_message(message.chat.id, "Введите заголовок новости:", reply_markup=markup)
     bot.register_next_step_handler(message, set_news_title)
 
+@text_only_handler
 def set_news_title(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, set_news_title)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27061,11 +25774,8 @@ def set_news_title(message):
     bot.send_message(message.chat.id, "Введите подпись для новости:", reply_markup=markup)
     bot.register_next_step_handler(message, collect_news_caption)
 
+@text_only_handler
 def collect_news_caption(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, collect_news_caption)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27195,11 +25905,8 @@ def edit_news(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет новостей для редактирования!")
 
+@text_only_handler
 def choose_news_to_edit(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_news_to_edit)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27282,11 +25989,8 @@ def choose_news_to_edit(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости!")
         bot.register_next_step_handler(message, choose_news_to_edit)
 
+@text_only_handler
 def edit_news_item(message, news_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, edit_news_item, news_id)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27343,11 +26047,8 @@ def edit_news_item(message, news_id):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пункта!")
         bot.register_next_step_handler(message, edit_news_item, news_id)
 
+@text_only_handler
 def edit_news_title(message, news_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, edit_news_title, news_id)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27363,11 +26064,8 @@ def edit_news_title(message, news_id):
     bot.send_message(message.chat.id, "✅ Заголовок новости отредактирован!")
     show_editorial_menu(message)
 
+@text_only_handler
 def edit_news_text(message, news_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, edit_news_text, news_id)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27383,11 +26081,8 @@ def edit_news_text(message, news_id):
     bot.send_message(message.chat.id, "✅ Текст новости отредактирован!")
     show_editorial_menu(message)
 
+@text_only_handler
 def edit_news_caption(message, news_id):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, edit_news_caption, news_id)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27523,11 +26218,8 @@ def view_news(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет новостей для просмотра!")
 
+@text_only_handler
 def choose_news_to_view(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_news_to_view)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27633,11 +26325,8 @@ def delete_news(message):
     else:
         bot.send_message(message.chat.id, "❌ Нет новостей для удаления!")
 
+@text_only_handler
 def choose_news_to_delete(message):
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(message, choose_news_to_delete)
-        return
 
     if message.text == "В редакцию":
         show_editorial_menu(message)
@@ -27783,17 +26472,13 @@ def view_files(message):
     bot.send_message(message.chat.id, "Введите номер для выбора расширения:", reply_markup=markup)
     bot.register_next_step_handler(message, process_extension_selection)
 
+@text_only_handler
 def process_extension_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_extension_selection)
         return
 
     try:
@@ -27828,17 +26513,13 @@ def process_extension_selection(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_extension_selection)
 
+@text_only_handler
 def process_file_selection(message, matched_files):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_file_selection, matched_files)
         return
 
     try:
@@ -27926,17 +26607,13 @@ def list_users_for_files(message):
     bot.send_message(message.chat.id, "Введите *номер* пользователя, *username* или *id* для поиска файлов:", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_user_input_for_file_search)
 
+@text_only_handler
 def process_user_input_for_file_search(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_user_input_for_file_search)
         return
 
     user_input = message.text.strip()
@@ -28151,17 +26828,13 @@ def add_files(message):
     bot.send_message(message.chat.id, "Выберите директорию для добавления файла:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_file_directory_selection)
 
+@text_only_handler
 def process_add_file_directory_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_add_file_directory_selection)
         return
 
     try:
@@ -28267,17 +26940,13 @@ def delete_files(message):
     bot.send_message(message.chat.id, "Выберите директорию для удаления файла:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_file_directory_selection)
 
+@text_only_handler
 def process_delete_file_directory_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_delete_file_directory_selection)
         return
 
     try:
@@ -28311,17 +26980,13 @@ def process_delete_file_directory_selection(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_delete_file_directory_selection)
 
+@text_only_handler
 def process_delete_file_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
     if message.text == 'В меню файлы':
         show_files_menu(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
-        bot.register_next_step_handler(sent, process_delete_file_selection)
         return
 
     try:
@@ -28417,7 +27082,6 @@ def manage_system(message):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@rate_limit_with_captcha
 def manage_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Управление подписками'):
@@ -28432,15 +27096,14 @@ def manage_subscriptions(message):
     bot.send_message(message.chat.id, "Выберите действие для управления подписками:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в управление системой")
-# @check_function_state_decorator('Вернуться в управление системой')
-# @track_usage('Вернуться в управление системой')
+@check_function_state_decorator('Вернуться в управление системой')
+@track_usage('Вернуться в управление системой')
 @restricted
 @track_user_activity
 @check_chat_state
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
-@rate_limit_with_captcha
 def return_to_subs(message):
     manage_system(message)
 
@@ -28475,7 +27138,6 @@ def add_subscription(message):
     list_users_for_payments_pay(message)
 
 @text_only_handler
-@rate_limit_with_captcha
 def list_users_for_payments_pay(message):
 
     if message.text == "Вернуться в управление подписками":
@@ -28511,7 +27173,6 @@ def list_users_for_payments_pay(message):
     bot.register_next_step_handler(message, process_add_subscription)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_add_subscription(message):
 
     if message.text == "Вернуться в управление подписками":
@@ -28538,10 +27199,10 @@ def process_add_subscription(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@') 
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -28559,7 +27220,6 @@ def process_add_subscription(message):
     bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_add_subscription_plan(message, user_id):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -28625,7 +27285,6 @@ def process_add_subscription_plan(message, user_id):
     users_data = load_users()
     username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-    # Новый формат сообщений
     admin_message = (
         f"✅ Пользователю {username} - `{user_id}` назначен:\n\n"
         f"💼 *План подписки:* {plan_name_rus}\n"
@@ -28645,7 +27304,6 @@ def process_add_subscription_plan(message, user_id):
     manage_system(message)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_custom_plan_unit(message, user_id):
 
     if message.text == "Вернуться в управление подписками":
@@ -28681,7 +27339,6 @@ def process_custom_plan_unit(message, user_id):
     bot.register_next_step_handler(message, process_custom_plan_duration, user_id, unit)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_custom_plan_duration(message, user_id, unit):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -28694,13 +27351,11 @@ def process_custom_plan_duration(message, user_id, unit):
         return
 
     try:
-        # Заменяем запятую на точку для корректной обработки
         input_text = message.text.strip().replace(',', '.')
         duration = float(input_text)
         if duration <= 0:
             raise ValueError("Длительность должна быть положительным числом!")
         
-        # Форматирование длительности: целое или с 2 знаками после точки
         duration_display = f"{int(duration)}" if duration.is_integer() else f"{duration:.2f}"
         duration_int = int(duration)
 
@@ -28780,7 +27435,6 @@ def process_custom_plan_duration(message, user_id, unit):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@rate_limit_with_captcha
 def view_subscriptions(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр подписок'):
@@ -28790,7 +27444,6 @@ def view_subscriptions(message):
     list_users_for_payments_view(message)
 
 @text_only_handler
-@rate_limit_with_captcha
 def list_users_for_payments_view(message):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -28823,7 +27476,6 @@ def list_users_for_payments_view(message):
     bot.register_next_step_handler(message, process_view_subscriptions)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_view_subscriptions(message):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -28847,10 +27499,10 @@ def process_view_subscriptions(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:] 
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@') 
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -28898,15 +27550,13 @@ def process_view_subscriptions(message):
             minutes_elapsed = remainder // 60
             time_status = f"📅 *Завершено:* {days_elapsed} дней и {hours_elapsed:02d}:{minutes_elapsed:02d} часов назад"
 
-        # Определяем тип периода и смайл на основе plan_name и source
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
 
-        # Бонусный период (🎁)
         if plan_name_lower in {"free", "referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx}. {'(Завершён)' if not is_active else ''} Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-        # Подаренный период (✨)
+
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx}. {'(Завершён)' if not is_active else ''} Подаренный период:*"
             if plan_name_lower == "custom":
@@ -28915,11 +27565,10 @@ def process_view_subscriptions(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-        # Платный (💳) или Назначенный (📦) период
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx}. {'(Завершён)' if not is_active else ''} Платный период:*"
-            else:  # source == 'admin' или другой
+            else:  
                 period_type = f"📦 *№{idx}. {'(Завершён)' if not is_active else ''} Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -28980,7 +27629,6 @@ def process_view_subscriptions(message):
 @check_user_blocked
 @log_user_actions
 @text_only_handler
-@rate_limit_with_captcha
 def delete_subscription(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удаление подписок'):
@@ -28990,7 +27638,6 @@ def delete_subscription(message):
     list_users_for_payments_del(message)
 
 @text_only_handler
-@rate_limit_with_captcha
 def list_users_for_payments_del(message):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -29023,7 +27670,6 @@ def list_users_for_payments_del(message):
     bot.register_next_step_handler(message, process_delete_subscription)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_delete_subscription(message):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -29047,10 +27693,10 @@ def process_delete_subscription(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -29067,7 +27713,6 @@ def process_delete_subscription(message):
         return
 
     now = datetime.now()
-    # Исключаем пробный период (free) из списка активных подписок
     active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now and p['plan_name'].lower() != 'free']
     if not active_plans:
         bot.send_message(message.chat.id, "❌ У пользователя нет активных подписок для удаления!", parse_mode="Markdown")
@@ -29089,15 +27734,13 @@ def process_delete_subscription(message):
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
 
-        # Определяем тип периода и смайл на основе plan_name и source
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
 
-        # Бонусный период (🎁)
         if plan_name_lower in {"referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-        # Подаренный период (✨)
+
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -29106,11 +27749,11 @@ def process_delete_subscription(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-        # Платный (💳) или Назначенный (📦) период
+
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx}. Платный период:*"
-            else:  # source == 'admin' или другой
+            else:  
                 period_type = f"📦 *№{idx}. Назначенный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
 
@@ -29132,7 +27775,6 @@ def process_delete_subscription(message):
     bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, active_plans)
 
 @text_only_handler
-@rate_limit_with_captcha
 def process_delete_subscription_plan(message, user_id, plans):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
@@ -29145,12 +27787,10 @@ def process_delete_subscription_plan(message, user_id, plans):
         return
 
     try:
-        # Разделяем введенные номера подписок
         plan_numbers_input = [num.strip() for num in message.text.strip().split(',')]
         plan_numbers = []
         invalid_numbers = []
 
-        # Проверяем каждый номер на корректность
         for num in plan_numbers_input:
             try:
                 num_int = int(num)
@@ -29178,11 +27818,9 @@ def process_delete_subscription_plan(message, user_id, plans):
             'дни': 'дн.'
         }
 
-        # Удаляем только корректные подписки
-        for plan_number in sorted(set(plan_numbers), reverse=True):  # Уникальные номера, обратный порядок
+        for plan_number in sorted(set(plan_numbers), reverse=True): 
             plan = plans[plan_number - 1]
 
-            # Формируем название плана для уведомления
             plan_name_lower = plan['plan_name'].lower()
             subscription_type = translate_plan_name(plan_name_lower)
             if plan_name_lower == 'custom':
@@ -29190,7 +27828,6 @@ def process_delete_subscription_plan(message, user_id, plans):
                 duration_unit = plan.get('duration_unit', 'дни')
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
 
-            # Новый формат сообщений
             admin_message = (
                 f"🚫 Пользователю {username} - `{user_id}` отменён:\n\n"
                 f"💼 *План подписки:* {subscription_type}\n"
@@ -29208,12 +27845,10 @@ def process_delete_subscription_plan(message, user_id, plans):
             bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
             bot.send_message(user_id, user_message, parse_mode="Markdown")
 
-        # Пересчёт total_amount после удаления всех выбранных планов
         user_data['total_amount'] = sum(p['price'] for p in user_data.get('plans', []))
 
         save_payments_data(data)
 
-        # Если были некорректные номера, выводим предупреждение
         if invalid_numbers:
             invalid_numbers_str = ", ".join(invalid_numbers)
             bot.send_message(message.chat.id, f"⚠️ Номера `{invalid_numbers_str}` некорректны и пропущены!", parse_mode="Markdown")
@@ -29225,7 +27860,6 @@ def process_delete_subscription_plan(message, user_id, plans):
 
 # ---------- 34.4 УПРАВЛЕНИЕ ПОДПИСКАМИ (Статистика системы) ----------
 
-# Функция для форматирования чисел
 def format_number(num):
     if isinstance(num, int):
         return f"{num}"
@@ -29239,7 +27873,6 @@ def format_number(num):
 @check_chat_state
 @check_user_blocked
 @log_user_actions
-@rate_limit_with_captcha
 def view_referrals_and_stats(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Статистика системы'):
@@ -29258,7 +27891,6 @@ def view_referrals_and_stats(message):
     users_data = load_users()
     now = datetime.strptime("01.01.2025 в 00:00", "%d.%m.%Y в %H:%M")
 
-    # 1. Статистика рефералов
     referral_summary = "*Статистика реферальной системы:*\n\n\n"
     referral_stats = data.get('referrals', {}).get('stats', {})
     total_referrals = 0
@@ -29276,7 +27908,6 @@ def view_referrals_and_stats(message):
                 f"{len(referrals)} рефералов\n"
             )
             total_referrals += len(referrals)
-            # Подсчет активных подписок рефералов
             for referral_id in referrals:
                 user_plans = data.get('subscriptions', {}).get('users', {}).get(referral_id, {}).get('plans', [])
                 for plan in user_plans:
@@ -29292,7 +27923,6 @@ def view_referrals_and_stats(message):
     else:
         referral_summary += "❌ Данные о рефералах отсутствуют!\n\n"
 
-    # Подсчет реферальных баллов
     for user_id, user_data in data.get('subscriptions', {}).get('users', {}).items():
         points = user_data.get('referral_points', 0)
         total_referral_points += points
@@ -29304,7 +27934,6 @@ def view_referrals_and_stats(message):
         f"📊 Среднее количество баллов на пользователя: {avg_referral_points:.2f}\n"
     )
 
-    # 2. Статистика подписок и платежей
     subscription_summary = "*Статистика подписок и платежей:*\n\n\n"
     subscription_users = data.get('subscriptions', {}).get('users', {})
     total_amount = data.get('all_users_total_amount', 0)
@@ -29326,13 +27955,11 @@ def view_referrals_and_stats(message):
             )
             if user_total_amount > 0:
                 paying_users += 1
-            # Подсчет активных подписок
             for plan in user_data.get('plans', []):
                 end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
                 if end_date >= now:
                     active_subscriptions += 1
                     break
-            # Подсчет транзакций и покупок в магазине
             for purchase in user_data.get('store_purchases', []):
                 store_purchase_count += 1
                 store_purchase_amount += purchase.get('price', 0)
@@ -29355,7 +27982,6 @@ def view_referrals_and_stats(message):
     else:
         subscription_summary += "❌ Данные о подписках отсутствуют!\n"
 
-    # 3. Статистика промокодов
     promo_summary = "*Статистика промокодов:*\n\n"
     promo_codes = data.get('promo_codes', {})
     total_promo_codes = len(promo_codes)
@@ -29373,7 +27999,6 @@ def view_referrals_and_stats(message):
                 used_promo_codes += 1
             uses = len(details.get('used_by', []))
             total_promo_uses += uses
-            # Расчет суммы скидок на основе promo_usage_history
             for user_id, user_data in subscription_users.items():
                 for promo in user_data.get('promo_usage_history', []):
                     if promo['promo_code'] == code:
@@ -29392,7 +28017,6 @@ def view_referrals_and_stats(message):
     else:
         promo_summary += "❌ Данные о промокодах отсутствуют!\n"
 
-    # 4. Статистика обменов
     exchange_summary = "*Статистика обменов:*\n\n"
     total_exchanges = 0
     subscription_exchanges = 0
@@ -29410,10 +28034,8 @@ def view_referrals_and_stats(message):
                     points = history.get('points', 0)
                     total_points_spent += points
                     reason = history.get('reason', '').lower()
-                    # Классификация обмена
                     if any(unit in reason for unit in ['дн.', 'ч.', 'мин.']) and 'функци' not in reason:
                         subscription_exchanges += 1
-                        # Извлечение времени подписки
                         time_match = re.search(r'(\d+\.?\d*)\s*дн\.?\s*(\d+\.?\d*)\s*ч\.?', reason)
                         if time_match:
                             days = float(time_match.group(1))
@@ -29421,7 +28043,6 @@ def view_referrals_and_stats(message):
                             total_subscription_days += days
                             total_subscription_hours += hours
                         else:
-                            # Проверка только часов или минут
                             hours_match = re.search(r'(\d+\.?\d*)\s*ч\.?', reason)
                             if hours_match:
                                 hours = float(hours_match.group(1))
@@ -29435,7 +28056,6 @@ def view_referrals_and_stats(message):
                     elif 'функци' in reason:
                         feature_exchanges += 1
 
-        # Нормализация времени (перевод часов в дни, если больше 24)
         total_subscription_days += total_subscription_hours // 24
         total_subscription_hours = total_subscription_hours % 24
         avg_points_per_exchange = total_points_spent / total_exchanges if total_exchanges > 0 else 0
@@ -29451,14 +28071,12 @@ def view_referrals_and_stats(message):
     else:
         exchange_summary += "❌ Данные об обменах отсутствуют!\n"
 
-    # Отправка статистики
     summaries = [referral_summary, subscription_summary, promo_summary, exchange_summary]
     for summary in summaries:
         message_parts = split_message(summary)
         for part in message_parts:
             bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
-    # Возврат в manage_subscriptions
     manage_system(message)
 
 # ---------- 35. УПРАВЛЕНИЕ МАГАЗИНОМ ----------
@@ -29639,24 +28257,20 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         return
 
     try:
-        # Заменяем запятую на точку для корректной обработки
         input_text = message.text.strip().replace(',', '.')
         input_amount = float(input_text)
         if input_amount <= 0:
             raise ValueError("Количество должно быть положительным!")
 
-        # Форматирование количества: целое или с 2 знаками после точки
         display_amount = f"{int(input_amount)}" if input_amount.is_integer() else f"{input_amount:.2f}"
 
-        # Конвертация в дни для времени подписки
         amount = input_amount
         if purchase_type == 'Дни подписки':
             if unit == 'minutes':
-                amount = input_amount / (24 * 60)  # Минуты в дни
+                amount = input_amount / (24 * 60)  
             elif unit == 'hours':
-                amount = input_amount / 24  # Часы в дни
+                amount = input_amount / 24  
 
-        # Форматирование единицы измерения для уведомлений и label
         unit_display = {
             'minutes': 'минут',
             'hours': 'часов',
@@ -29668,7 +28282,6 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
             'plans': [], 'total_amount': 0, 'referral_points': 0, 'store_purchases': []
         })
 
-        # Проверка и инициализация store_purchases
         if 'store_purchases' not in user_data:
             user_data['store_purchases'] = []
 
@@ -29677,7 +28290,6 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
         monthly_key = datetime.now().strftime("%m.%Y")
 
-        # Проверка месячных лимитов
         monthly_points = sum(p['points'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
         monthly_days = sum(p['duration'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
 
@@ -29726,7 +28338,6 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
             latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
             new_end = latest_end + timedelta(days=amount)
 
-            # Определение читаемого имени плана
             plan_name_rus = "подписка из магазина"
 
             user_data['plans'].append({
@@ -29870,7 +28481,6 @@ def process_view_store_purchases(message):
         label = purchase.get('label', 'Неизвестно')
         source = purchase.get('source', 'user')
 
-        # Определяем тип покупки и единицу измерения времени
         purchase_type = "баллов" if points > 0 else "времени"
         time_unit = "дней подписки"
         display_duration = f"{days:.2f}"
@@ -29884,7 +28494,6 @@ def process_view_store_purchases(message):
             time_unit = "дней подписки"
             display_duration = f"{days:.2f}"
 
-        # Форматирование чисел: целое без .0, дробное с 2 знаками
         if points > 0:
             if isinstance(points, int):
                 points_display = f"{points}"
@@ -29897,7 +28506,6 @@ def process_view_store_purchases(message):
             else:
                 display_duration = f"{duration_value:.2f}"
 
-        # Формирование записи о покупке
         purchase_entry = f"📅 *№{idx}. Покупка {purchase_type}:*\n\n"
         purchase_entry += f"🕒 *Дата:* {purchase_date}\n"
         if points > 0:
@@ -30048,7 +28656,6 @@ def process_delete_store_purchase(message):
         label = purchase.get('label', 'Неизвестно')
         source = purchase.get('source', 'user')
 
-        # Определяем тип покупки и единицу измерения времени
         purchase_type = "баллов" if points > 0 else "времени"
         time_unit = "дней подписки"
         display_duration = f"{days:.2f}"
@@ -30062,7 +28669,6 @@ def process_delete_store_purchase(message):
             time_unit = "дней подписки"
             display_duration = f"{days:.2f}"
 
-        # Форматирование чисел: целое без .0, дробное с 2 знаками
         if points > 0:
             if isinstance(points, int):
                 points_display = f"{points}"
@@ -30075,7 +28681,6 @@ def process_delete_store_purchase(message):
             else:
                 display_duration = f"{duration_value:.2f}"
 
-        # Формирование записи о покупке
         purchase_entry = f"📅 *№{idx}. Покупка {purchase_type}:*\n\n"
         purchase_entry += f"🕒 *Дата:* {purchase_date}\n"
         if points > 0:
@@ -30154,12 +28759,10 @@ def process_delete_store_purchase_select(message, user_id):
         return
 
     try:
-        # Разделяем ввод на список номеров
         purchase_numbers = [num.strip() for num in message.text.split(',')]
         valid_numbers = []
         invalid_numbers = []
 
-        # Проверка валидности номеров
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
         store_purchases = user_data.get('store_purchases', [])
@@ -30182,12 +28785,10 @@ def process_delete_store_purchase_select(message, user_id):
             invalid_str = ", ".join(invalid_numbers)
             bot.send_message(message.chat.id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode="Markdown")
 
-        # Сортировка номеров в обратном порядке для корректного удаления
         valid_numbers.sort(reverse=True)
         users_data = load_users()
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-        # Удаление покупок
         for purchase_number in valid_numbers:
             purchase = store_purchases[purchase_number - 1]
             points = purchase.get('points', 0)
@@ -30197,7 +28798,6 @@ def process_delete_store_purchase_select(message, user_id):
             label = purchase.get('label', 'Неизвестно')
             source = purchase.get('source', 'user')
 
-            # Определяем тип покупки и единицу измерения времени
             purchase_type = "баллы" if points > 0 else "время"
             time_unit = "дней подписки"
             display_duration = f"{days:.2f}"
@@ -30211,7 +28811,6 @@ def process_delete_store_purchase_select(message, user_id):
                 time_unit = "дней подписки"
                 display_duration = f"{days:.2f}"
 
-            # Форматирование чисел: целое без .0, дробное с 2 знаками
             if points > 0:
                 if isinstance(points, int):
                     points_display = f"{points}"
@@ -30224,7 +28823,6 @@ def process_delete_store_purchase_select(message, user_id):
                 else:
                     display_duration = f"{duration_value:.2f}"
 
-            # Удаление баллов
             if points > 0:
                 user_data['referral_points'] = max(0, user_data.get('referral_points', 0) - points)
                 user_data.setdefault('points_history', []).append({
@@ -30235,7 +28833,6 @@ def process_delete_store_purchase_select(message, user_id):
                     'source': 'admin_delete'
                 })
 
-            # Удаление времени подписки
             if days > 0:
                 for plan in user_data['plans'][:]:
                     if plan.get('source') == source and plan.get('plan_name') == 'store_time':
@@ -30251,7 +28848,6 @@ def process_delete_store_purchase_select(message, user_id):
 
             store_purchases.pop(purchase_number - 1)
 
-            # Формирование сообщения об удалении для каждой покупки
             admin_message = f"🚫 Удалена покупка пользователя {username} - `{user_id}`:\n\n"
             admin_message += f"💳 *Тип покупки:* {purchase_type}\n"
             admin_message += f"📅 *Время покупки:* {purchase_date}\n"
@@ -30360,10 +28956,10 @@ def process_add_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower(): 
                 user_id = uid
                 break
 
@@ -30392,13 +28988,11 @@ def process_add_points_amount(message, user_id):
         return
 
     try:
-        # Заменяем запятую на точку для корректной обработки
         input_text = message.text.strip().replace(',', '.')
         points = float(input_text)
         if points <= 0:
             raise ValueError("Количество баллов должно быть положительным!")
 
-        # Форматирование баллов: целое или с 2 знаками после точки
         points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
 
         data = load_payment_data()
@@ -30485,10 +29079,10 @@ def process_view_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@') 
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -30506,7 +29100,6 @@ def process_view_points(message):
     total_earned = sum(entry['points'] for entry in history if entry['action'] == 'earned')
     total_spent = sum(entry['points'] for entry in history if entry['action'] == 'spent')
 
-    # Категории начисления баллов
     earned_daily = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'] == 'Ежедневный вход')
     earned_admin = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Начисление от администратора'))
     earned_gifts = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Подарок от'))
@@ -30516,7 +29109,6 @@ def process_view_points(message):
     earned_top_referrals = sum(entry['points'] for entry in history if entry['action'] == 'earned' and 'Топ-10 рефералов' in entry['reason'])
     earned_purchases = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Покупка подписки'))
 
-    # Категории трат баллов
     spent_gifts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower().startswith('подарок'))
     spent_time = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.']))
     spent_discounts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and '%' in entry['reason'])
@@ -30524,7 +29116,6 @@ def process_view_points(message):
     spent_admin_delete = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'] == 'удаление покупок администратором')
     spent_admin = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower() == 'списание администратором')
 
-    # Вычисление времени для "Подарено времени" и "Получено времени"
     gifted_time_minutes = 0
     received_time_minutes = 0
     for entry in history:
@@ -30642,10 +29233,10 @@ def process_remove_points(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -30682,13 +29273,11 @@ def process_remove_points_amount(message, user_id):
         return
 
     try:
-        # Заменяем запятую на точку для корректной обработки
         input_text = message.text.strip().replace(',', '.')
         points = float(input_text)
         if points <= 0:
             raise ValueError("Количество баллов должно быть положительным!")
 
-        # Форматирование баллов: целое или с 2 знаками после точки
         points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
 
         data = load_payment_data()
@@ -30779,10 +29368,10 @@ def process_view_points_history(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:] 
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -30803,7 +29392,6 @@ def process_view_points_history(message):
     if not username.startswith('@'):
         username = f"@{username}"
 
-    # Функция для форматирования даты (убираем секунды)
     def format_date(date_str):
         return re.sub(r'(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2}):\d{2}', r'\1', date_str)
 
@@ -30904,10 +29492,10 @@ def process_perform_exchange(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:] 
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учетом регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -30924,7 +29512,7 @@ def process_perform_exchange(message):
         manage_exchanges(message)
         return
 
-    exchange_rate = 2  # Фиксированный курс: 1 балл = 2 часа
+    exchange_rate = 2  
 
     username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
     if not username.startswith('@'):
@@ -31253,7 +29841,7 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
         if not username.startswith('@'):
             username = f"@{username}"
 
-        total_minutes = points_needed * 3  # 1 балл = 3 минуты
+        total_minutes = points_needed * 3  
         days = int(total_minutes // (24 * 60))
         remaining_minutes = total_minutes % (24 * 60)
         remaining_hours = remaining_minutes // 60
@@ -31371,10 +29959,10 @@ def process_view_exchanges(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:]  
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@') 
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -31396,19 +29984,15 @@ def process_view_exchanges(message):
     if not username.startswith('@'):
         username = f"@{username}"
 
-    # Форматирование причины обмена
     def format_reason(reason):
         if "Обмен на функцию" in reason:
-            # Пример: "Обмен на функцию 'Погода' (0 дн. 0.0 ч. 15.0 мин.)" или "Обмен на функцию 'Найти транспорт' (15.0 мин.)"
             parts = reason.split(" (")
             function_name = parts[0].split("'")[1].lower()
             duration = parts[1].strip(")")
             if "дн." in duration:
-                # Формат: "0 дн. 0.0 ч. 15.0 мин."
                 components = duration.replace(" дн.", "").replace(" ч.", "").replace(" мин.", "").split()
                 days, hours, minutes = map(float, components) if len(components) == 3 else (0, 0, float(components[0]))
             else:
-                # Формат: "15.0 мин."
                 minutes = float(duration.replace(" мин.", ""))
                 days, hours = 0, 0
             duration_str = ""
@@ -31420,11 +30004,9 @@ def process_view_exchanges(message):
                 duration_str = f"{format_number(minutes)} мин."
             return f"обмен на функцию *{function_name}* ({duration_str})"
         elif "Обмен на" in reason and "скидки" in reason:
-            # Пример: "Обмен на 10.0% скидки"
             discount = float(reason.split(" ")[2].replace("%", ""))
             return f"обмен на {format_number(discount)}% скидки"
         elif "обмен на" in reason.lower():
-            # Пример: "обмен на 0 дн. 4.0 ч."
             parts = reason.split("обмен на ")[1]
             components = parts.replace(" дн.", "").replace(" ч.", "").split()
             days, hours = map(float, components) if len(components) == 2 else (0, float(components[0]))
@@ -31567,7 +30149,7 @@ def process_create_promo_code_category(message, discount, uses):
     applicable_items = []
 
     if message.text == "Все товары":
-        applicable_category = None  # Универсальный промокод
+        applicable_category = None  
     elif message.text == "Все подписки":
         applicable_category = "subscriptions"
     elif message.text == "Весь магазин":
@@ -31745,10 +30327,10 @@ def process_assign_discount(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:]  # Убираем '@' из ввода
+        username = user_input[1:] 
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  # Убираем '@' из username в базе
-            if db_username.lower() == username.lower():  # Сравнение без учета регистра
+            db_username = data['username'].lstrip('@')  
+            if db_username.lower() == username.lower():  
                 user_id = uid
                 break
 
@@ -31819,16 +30401,14 @@ def process_assign_discount_category(message, user_id, discount):
     elif message.text == "Весь магазин":
         applicable_category = "store"
     elif message.text == "Конкретные товары":
-        # Формируем список товаров и подписок
         available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
         items_display_lines = []
         for idx, item in enumerate(available_items, 1):
             label = SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label']
-            # Определяем, является ли элемент подпиской или товаром
             if item in SUBSCRIPTION_PLANS:
-                emoji = "💳"  # Для подписок
+                emoji = "💳"  
             else:
-                emoji = "🛒"  # Для товаров магазина
+                emoji = "🛒"  
             items_display_lines.append(f"{emoji} №{idx}. {label}")
         
         items_display = "💎 Список подписок и товаров:\n\n" + "\n".join(items_display_lines) + "\n\nВведите номера товаров и подписок:"
@@ -32341,7 +30921,6 @@ def process_gift_recipient(message, sender_id):
     recipient_id = None
 
     users_data = load_users()
-    # Формируем отфильтрованный список пользователей
     user_list = []
     filtered_users = []
     for user_id, data in users_data.items():
@@ -32385,12 +30964,10 @@ def process_gift_recipient(message, sender_id):
     sender_username = escape_markdown(users_data.get(sender_id, {}).get('username', f"@{sender_id}"))
     recipient_username = escape_markdown(users_data.get(recipient_id, {}).get('username', f"@{recipient_id}"))
 
-    # Получение доступных баллов отправителя
     data = load_payment_data()
     sender_data = data['subscriptions']['users'].get(sender_id, {})
     sender_points = sender_data.get('referral_points', 0)
 
-    # Получение доступного времени отправителя (только платные планы)
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
         if plan['plan_name'] in ['weekly', 'monthly', 'yearly']
@@ -32450,7 +31027,6 @@ def process_gift_type(message, sender_id, recipient_id):
 
     sender_points = sender_data.get('referral_points', 0)
 
-    # Разрешённые источники для подарка времени
     allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
@@ -32499,7 +31075,7 @@ def process_gift_type(message, sender_id, recipient_id):
             "Введите количество баллов для подарка:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_points_amount, sender_id, recipient_id)
-    else:  # Подарок времени
+    else:  
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Минуты', 'Часы', 'Дни')
         markup.add('Вернуться в управление подарками')
@@ -32539,7 +31115,6 @@ def process_gift_points_amount(message, sender_id, recipient_id):
         raw_sender_username = users_data.get(sender_id, {}).get('username', f"@{sender_id}")
         raw_recipient_username = users_data.get(recipient_id, {}).get('username', f"@{recipient_id}")
 
-        # Проверка наличия достаточного количества баллов
         sender_data = data['subscriptions']['users'].setdefault(sender_id, {
             "plans": [], "total_amount": 0, "username": raw_sender_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
@@ -32548,16 +31123,14 @@ def process_gift_points_amount(message, sender_id, recipient_id):
         if gift_points > available_points:
             raise ValueError(f"Недостаточно баллов! Доступно: {format_number(available_points)}")
 
-        # Обновление данных отправителя
         sender_data['referral_points'] = max(0, sender_data.get('referral_points', 0) - gift_points)
         sender_data['points_history'].append({
             "action": "spent",
             "points": gift_points,
-            "reason": f"подарок {raw_recipient_username} (от админа)",  # Используем raw_recipient_username
+            "reason": f"подарок {raw_recipient_username} (от админа)",  
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
-        # Обновление данных получателя
         recipient_data = data['subscriptions']['users'].setdefault(recipient_id, {
             "plans": [], "total_amount": 0, "username": raw_recipient_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": [], "points_history": []
@@ -32566,13 +31139,12 @@ def process_gift_points_amount(message, sender_id, recipient_id):
         recipient_data['points_history'].append({
             "action": "earned",
             "points": gift_points,
-            "reason": f"подарок от {raw_sender_username} (от админа)",  # Используем raw_sender_username
+            "reason": f"подарок от {raw_sender_username} (от админа)", 
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
         save_payments_data(data)
 
-        # Сообщения для отображения с экранированием
         admin_message = (
             f"✅ Подарок назначен:\n\n"
             f"📤 *Отправитель:* {escape_markdown(raw_sender_username)} (`{sender_id}`)\n"
@@ -32620,7 +31192,6 @@ def process_gift_time_unit(message, sender_id, recipient_id):
     sender_username = escape_markdown(users_data.get(sender_id, {}).get('username', f"@{sender_id}"))
     recipient_username = escape_markdown(users_data.get(recipient_id, {}).get('username', f"@{recipient_id}"))
 
-    # Разрешённые источники для подарка времени
     allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
@@ -32674,7 +31245,7 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
             gift_minutes = amount
         elif unit == 'часы':
             gift_minutes = amount * 60
-        else:  # дни
+        else:  
             gift_minutes = amount * 1440
 
         data = load_payment_data()
@@ -32687,7 +31258,6 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
             "plans": [], "total_amount": 0, "username": raw_sender_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
         })
-        # Разрешённые источники для подарка времени
         allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
         paid_plans = [
             plan for plan in sender_data.get('plans', [])
@@ -32758,13 +31328,13 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
         sender_data['points_history'].append({
             "action": "spent",
             "points": 0,
-            "reason": f"подарок времени {raw_recipient_username}: {gift_description} (от админа)",  # Используем raw_recipient_username
+            "reason": f"подарок времени {raw_recipient_username}: {gift_description} (от админа)",  
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         recipient_data['points_history'].append({
             "action": "earned",
             "points": 0,
-            "reason": f"подарок времени от {raw_sender_username}: {gift_description} (от админа)",  # Используем raw_sender_username
+            "reason": f"подарок времени от {raw_sender_username}: {gift_description} (от админа)", 
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
@@ -32844,11 +31414,9 @@ def view_gifts(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для просмотра истории подарков:", reply_markup=markup)
     bot.register_next_step_handler(message, process_view_gifts)
 
-# Функция для очистки от лишних экранирующих слэшей
 def clean_escaped_text(text):
     return re.sub(r'\\([_*[\]()~`>#+\-=|{}.!])', r'\1', text)
 
-# Функция для склонения слова "баллы"
 def pluralize_points(points):
     if isinstance(points, str):
         try:
@@ -34266,7 +32834,6 @@ def return_admin_to_menu(admin_id):
 @log_user_actions
 @check_subscription
 @check_subscription_chanal
-@rate_limit_with_captcha
 def request_chat_with_admin(message, show_description=True):
     global active_chats
     if active_chats is None:
@@ -34498,7 +33065,7 @@ def start_bot_with_retries(retries=10000000, delay=5):
     attempt = 0
     while attempt < retries:
         try:
-            print(f"Запуск попытки #{attempt + 1}")
+            print(f"Запуск попытки №{attempt + 1}")
             bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120)
         except (ReadTimeout, ConnectionError) as e:
             print(f"Ошибка: {e}. Попытка {attempt + 1} из {retries}")
@@ -34519,10 +33086,7 @@ start_bot_with_retries()
 @track_user_activity
 @check_chat_state
 @check_subscription
-
 @check_subscription_chanal
-@rate_limit_with_captcha
-
 def echo_all(message):
     bot.reply_to(message, message.text)
 
@@ -34546,7 +33110,7 @@ def background_subscription_expiration_check(chat_id):
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=lambda: bot.infinity_polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120), daemon=True)
     bot_thread.start()
-    load_captcha_data()  # Загрузка данных капчи при старте
+    load_captcha_data()  
 
     while True:
         schedule.run_pending()
