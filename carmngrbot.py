@@ -1800,9 +1800,9 @@ def process_successful_payment(message):
 
         elif payload.startswith("time_"):
             duration = item_info["duration"]
-            if monthly_days + duration > 300:
+            if monthly_days + duration > 365:
                 bot.send_message(user_id, (
-                    "⚠️ Вы превысили месячный лимит покупки времени в размере 300 дней! Попробуйте снова в следующем месяце\n"
+                    "⚠️ Вы превысили месячный лимит покупки времени в размере 365 дней! Попробуйте снова в следующем месяце\n"
                 ), parse_mode="Markdown")
                 return
 
@@ -27824,7 +27824,7 @@ def process_view_subscriptions(message):
         manage_system(message)
         return
 
-    plans_summary = "💎 *Список подписок:*\n\n"
+    plans_summary = "💎 *Список подписок:*\n\n\n"
     total_days_left = 0
     total_cost_active = 0
     active_plans = []
@@ -28574,7 +28574,7 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         if purchase_type == 'Баллы':
             if monthly_points + amount > 3000:
                 bot.send_message(message.chat.id, (
-                    "⚠️ Пользователь превысит месячный лимит покупки баллов в размере 3000! Попробуйте меньшее количество..."
+                    "⚠️ Пользователь превысит месячный лимит покупки баллов в размере 3000!\nПопробуйте меньшее количество..."
                 ), parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
                 return
@@ -28606,15 +28606,18 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
             user_message = f"✅ Администратор начислил вам *{display_amount} баллов* из магазина!"
 
         else:
-            if monthly_days + amount > 300:
+            if monthly_days + amount > 365:
                 bot.send_message(message.chat.id, (
-                    "⚠️ Пользователь превысит месячный лимит покупки времени в размере 300 дней! Попробуйте меньшее количество..."
+                    "⚠️ Пользователь превысит месячный лимит покупки времени в размере 365 дней!\nПопробуйте меньшее количество..."
                 ), parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
                 return
 
             latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
             new_end = latest_end + timedelta(days=amount)
+
+            # Определение читаемого имени плана
+            plan_name_rus = "подписка из магазина"
 
             user_data['plans'].append({
                 'plan_name': 'store_time',
@@ -28642,10 +28645,18 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
                 "fictitious_discount": 0
             })
 
-            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} {unit_display} подписки* из магазина!"
+            admin_message = (
+                f"✅ Пользователю {username} - `{user_id}` назначено:\n\n"
+                f"💼 *План подписки:* {plan_name_rus}\n"
+                f"🕒 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"⌛ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}"
+            )
             user_message = (
-                f"✅ Администратор начислил вам *{display_amount} {unit_display} подписки* из магазина!\n"
-                f"⏳ Активно до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
+                f"✅ Администратор назначил вам:\n\n"
+                f"💼 *План подписки:* {plan_name_rus}\n"
+                f"🕒 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"⌛ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
+                f"😊 Приятного использования!"
             )
 
         save_payments_data(data)
@@ -28659,7 +28670,7 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
-        
+
 # ---------- 35.2 Просмотр покупок в магазине ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр покупок' and check_admin_access(message))
@@ -28741,7 +28752,7 @@ def process_view_store_purchases(message):
         manage_store(message)
         return
 
-    purchases_summary = "*Список покупок в магазине:*\n\n"
+    purchases_summary = "💎 *Список покупок в магазине:*\n\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
         days = purchase.get('duration', 0)
@@ -28749,14 +28760,45 @@ def process_view_store_purchases(message):
         purchase_date = purchase.get('purchase_date', 'Неизвестно')
         label = purchase.get('label', 'Неизвестно')
         source = purchase.get('source', 'user')
-        purchases_summary += (
-            f"📅 *Покупка №{idx}:* {label}\n"
-            f"🕒 *Дата:* {purchase_date}\n"
-            f"💰 *Баллы:* {points}\n"
-            f"📆 *Дни подписки:* {days:.2f}\n"
-            f"💸 *Стоимость:* {price:.2f} руб.\n"
-            f"🔗 *Источник:* {'Администратор' if source == 'admin' else 'Пользователь'}\n\n\n"
-        )
+
+        # Определяем тип покупки и единицу измерения времени
+        purchase_type = "баллов" if points > 0 else "времени"
+        time_unit = "дней подписки"
+        display_duration = f"{days:.2f}"
+        if "минут" in label.lower():
+            time_unit = "минут подписки"
+            display_duration = f"{days * 24 * 60:.2f}"
+        elif "часов" in label.lower():
+            time_unit = "часов подписки"
+            display_duration = f"{days * 24:.2f}"
+        else:
+            time_unit = "дней подписки"
+            display_duration = f"{days:.2f}"
+
+        # Форматирование чисел: целое без .0, дробное с 2 знаками
+        if points > 0:
+            if isinstance(points, int):
+                points_display = f"{points}"
+            else:
+                points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
+        if days > 0:
+            duration_value = float(display_duration)
+            if duration_value.is_integer():
+                display_duration = f"{int(duration_value)}"
+            else:
+                display_duration = f"{duration_value:.2f}"
+
+        # Формирование записи о покупке
+        purchase_entry = f"📅 *№{idx}. Покупка {purchase_type}:*\n\n"
+        purchase_entry += f"🕒 *Дата:* {purchase_date}\n"
+        if points > 0:
+            purchase_entry += f"💰 *Баллы:* {points_display}\n"
+        if days > 0:
+            purchase_entry += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
+        purchase_entry += f"💸 *Стоимость:* {price:.2f} руб.\n"
+        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
+
+        purchases_summary += purchase_entry
 
     message_parts = split_message(purchases_summary)
     for part in message_parts:
@@ -28769,8 +28811,8 @@ def process_view_store_purchases(message):
     types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
     total_points = sum(purchase['points'] for purchase in store_purchases)
+    total_points_display = f"{int(total_points)}" if float(total_points).is_integer() else f"{total_points:.2f}"
 
-    # Дней осталось
     if active_plans:
         latest_end = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans)
         time_left = latest_end - current_time
@@ -28781,29 +28823,28 @@ def process_view_store_purchases(message):
     else:
         time_left_str = "0 дней и 00:00 часов"
 
-    # Начало и конец
     start_date = min((datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans), default=current_time) if active_plans else current_time
     end_date = latest_end if active_plans else current_time
     start_date_str = start_date.strftime("%d.%m.%Y в %H:%M")
     end_date_str = end_date.strftime("%d.%m.%Y в %H:%M")
 
-    # Стоимость
     active_purchase_dates = {p['start_date'] for p in active_plans}.union({p['end_date'] for p in active_plans})
     active_cost = sum(purchase['price'] for purchase in store_purchases if purchase['purchase_date'] in active_purchase_dates or purchase['source'] == 'admin')
     total_cost = sum(purchase['price'] for purchase in store_purchases)
+    active_cost_display = f"{int(active_cost)}" if float(active_cost).is_integer() else f"{active_cost:.2f}"
+    total_cost_display = f"{int(total_cost)}" if float(total_cost).is_integer() else f"{total_cost:.2f}"
 
     summary = (
         f"💎 *Итоговая оценка покупок:*\n\n"
         f"💼 *Типы покупок:* {types_str}\n"
-        f"💰 *Всего баллов:* {total_points}\n"
+        f"💰 *Всего баллов:* {total_points_display}\n"
         f"📅 *Дней осталось:* {time_left_str}\n"
         f"🕒 *Начало:* {start_date_str}\n"
         f"⌛ *Конец:* {end_date_str}\n"
-        f"💰 *Общая стоимость активных покупок:* {active_cost:.2f} руб.\n"
-        f"💰 *Общая стоимость всех покупок:* {total_cost:.2f} руб.\n"
+        f"💰 *Общая стоимость активных покупок:* {active_cost_display} руб.\n"
+        f"💰 *Общая стоимость всех покупок:* {total_cost_display} руб.\n"
     )
 
-    # Отправка итоговой оценки отдельным сообщением
     bot.send_message(message.chat.id, summary, parse_mode="Markdown")
 
     manage_store(message)
@@ -28889,7 +28930,7 @@ def process_delete_store_purchase(message):
         manage_store(message)
         return
 
-    purchases_summary = "*Список покупок в магазине:*\n\n\n"
+    purchases_summary = "💎 *Список покупок в магазине:*\n\n\n"
     for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
         days = purchase.get('duration', 0)
@@ -28897,14 +28938,45 @@ def process_delete_store_purchase(message):
         purchase_date = purchase.get('purchase_date', 'Неизвестно')
         label = purchase.get('label', 'Неизвестно')
         source = purchase.get('source', 'user')
-        purchases_summary += (
-            f"📅 *№{idx}. Покупка:* {label}\n"
-            f"🕒 *Дата:* {purchase_date}\n"
-            f"💰 *Баллы:* {points}\n"
-            f"📆 *Дни подписки:* {days:.2f}\n"
-            f"💸 *Стоимость:* {price:.2f} руб.\n"
-            f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
-        )
+
+        # Определяем тип покупки и единицу измерения времени
+        purchase_type = "баллов" if points > 0 else "времени"
+        time_unit = "дней подписки"
+        display_duration = f"{days:.2f}"
+        if "минут" in label.lower():
+            time_unit = "минут подписки"
+            display_duration = f"{days * 24 * 60:.2f}"
+        elif "часов" in label.lower():
+            time_unit = "часов подписки"
+            display_duration = f"{days * 24:.2f}"
+        else:
+            time_unit = "дней подписки"
+            display_duration = f"{days:.2f}"
+
+        # Форматирование чисел: целое без .0, дробное с 2 знаками
+        if points > 0:
+            if isinstance(points, int):
+                points_display = f"{points}"
+            else:
+                points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
+        if days > 0:
+            duration_value = float(display_duration)
+            if duration_value.is_integer():
+                display_duration = f"{int(duration_value)}"
+            else:
+                display_duration = f"{duration_value:.2f}"
+
+        # Формирование записи о покупке
+        purchase_entry = f"📅 *№{idx}. Покупка {purchase_type}:*\n\n"
+        purchase_entry += f"🕒 *Дата:* {purchase_date}\n"
+        if points > 0:
+            purchase_entry += f"💰 *Баллы:* {points_display}\n"
+        if days > 0:
+            purchase_entry += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
+        purchase_entry += f"💸 *Стоимость:* {price:.2f} руб.\n"
+        purchase_entry += f"🔗 *Источник:* {'администратор' if source == 'admin' else 'пользователь'}\n\n\n"
+
+        purchases_summary += purchase_entry
 
     message_parts = split_message(purchases_summary)
     for part in message_parts:
@@ -28917,6 +28989,7 @@ def process_delete_store_purchase(message):
     types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
     total_points = sum(purchase['points'] for purchase in store_purchases)
+    total_points_display = f"{int(total_points)}" if float(total_points).is_integer() else f"{total_points:.2f}"
 
     if active_plans:
         latest_end = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans)
@@ -28936,16 +29009,18 @@ def process_delete_store_purchase(message):
     active_purchase_dates = {p['start_date'] for p in active_plans}.union({p['end_date'] for p in active_plans})
     active_cost = sum(purchase['price'] for purchase in store_purchases if purchase['purchase_date'] in active_purchase_dates or purchase['source'] == 'admin')
     total_cost = sum(purchase['price'] for purchase in store_purchases)
+    active_cost_display = f"{int(active_cost)}" if float(active_cost).is_integer() else f"{active_cost:.2f}"
+    total_cost_display = f"{int(total_cost)}" if float(total_cost).is_integer() else f"{total_cost:.2f}"
 
     summary = (
         f"💎 *Итоговая оценка покупок:*\n\n"
         f"💼 *Типы покупок:* {types_str}\n"
-        f"💰 *Всего баллов:* {total_points}\n"
+        f"💰 *Всего баллов:* {total_points_display}\n"
         f"📅 *Дней осталось:* {time_left_str}\n"
         f"🕒 *Начало:* {start_date_str}\n"
         f"⌛ *Конец:* {end_date_str}\n"
-        f"💰 *Общая стоимость активных покупок:* {active_cost:.2f} руб.\n"
-        f"💰 *Общая стоимость всех покупок:* {total_cost:.2f} руб.\n"
+        f"💰 *Общая стоимость активных покупок:* {active_cost_display} руб.\n"
+        f"💰 *Общая стоимость всех покупок:* {total_cost_display} руб.\n"
     )
 
     bot.send_message(message.chat.id, summary, parse_mode="Markdown")
@@ -28954,7 +29029,7 @@ def process_delete_store_purchase(message):
     markup.add('Вернуться в управление магазином')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите номер покупки для удаления:", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "Введите номера покупок для удаления (через запятую, например: 1,2,4):", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
 
 @text_only_handler
@@ -28970,71 +29045,129 @@ def process_delete_store_purchase_select(message, user_id):
         return
 
     try:
-        purchase_number = int(message.text.strip())
+        # Разделяем ввод на список номеров
+        purchase_numbers = [num.strip() for num in message.text.split(',')]
+        valid_numbers = []
+        invalid_numbers = []
+
+        # Проверка валидности номеров
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
         store_purchases = user_data.get('store_purchases', [])
+        for num in purchase_numbers:
+            try:
+                purchase_number = int(num)
+                if 1 <= purchase_number <= len(store_purchases):
+                    valid_numbers.append(purchase_number)
+                else:
+                    invalid_numbers.append(num)
+            except ValueError:
+                invalid_numbers.append(num)
 
-        if purchase_number < 1 or purchase_number > len(store_purchases):
-            raise ValueError("Неверный номер покупки!")
+        if not valid_numbers:
+            bot.send_message(message.chat.id, "❌ Все введенные номера некорректны! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+            bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
+            return
 
-        purchase = store_purchases[purchase_number - 1]
-        points = purchase.get('points', 0)
-        days = purchase.get('duration', 0)
-        price = purchase.get('price', 0)
-        purchase_date = purchase.get('purchase_date', 'Неизвестно')
-        label = purchase.get('label', 'Неизвестно')
-        source = purchase.get('source', 'user')
+        if invalid_numbers:
+            invalid_str = ", ".join(invalid_numbers)
+            bot.send_message(message.chat.id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode="Markdown")
 
+        # Сортировка номеров в обратном порядке для корректного удаления
+        valid_numbers.sort(reverse=True)
         users_data = load_users()
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-        # Удаление баллов
-        if points > 0:
-            user_data['referral_points'] = max(0, user_data.get('referral_points', 0) - points)
-            user_data.setdefault('points_history', []).append({
-                'action': 'spent',
-                'points': points,
-                'reason': 'удаление покупок администратором',
-                'date': datetime.now().strftime("%d.%m.%Y в %H:%M"),
-                'source': 'admin_delete'
-            })
+        # Удаление покупок
+        for purchase_number in valid_numbers:
+            purchase = store_purchases[purchase_number - 1]
+            points = purchase.get('points', 0)
+            days = purchase.get('duration', 0)
+            price = purchase.get('price', 0)
+            purchase_date = purchase.get('purchase_date', 'Неизвестно')
+            label = purchase.get('label', 'Неизвестно')
+            source = purchase.get('source', 'user')
 
-        # Удаление времени подписки
-        if days > 0:
-            for plan in user_data['plans'][:]:
-                if plan.get('source') == source and plan.get('plan_name') == 'store_time':
-                    if source == 'admin' and plan.get('start_date') == purchase_date:
-                        user_data['plans'].remove(plan)
-                        break
-                    elif source != 'admin' and plan.get('telegram_payment_charge_id') == purchase.get('telegram_payment_charge_id'):
-                        user_data['plans'].remove(plan)
-                        break
+            # Определяем тип покупки и единицу измерения времени
+            purchase_type = "баллы" if points > 0 else "время"
+            time_unit = "дней подписки"
+            display_duration = f"{days:.2f}"
+            if "минут" in label.lower():
+                time_unit = "минут подписки"
+                display_duration = f"{days * 24 * 60:.2f}"
+            elif "часов" in label.lower():
+                time_unit = "часов подписки"
+                display_duration = f"{days * 24:.2f}"
+            else:
+                time_unit = "дней подписки"
+                display_duration = f"{days:.2f}"
 
-        user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - price)
-        data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - price)
+            # Форматирование чисел: целое без .0, дробное с 2 знаками
+            if points > 0:
+                if isinstance(points, int):
+                    points_display = f"{points}"
+                else:
+                    points_display = f"{int(points)}" if points.is_integer() else f"{points:.2f}"
+            if days > 0:
+                duration_value = float(display_duration)
+                if duration_value.is_integer():
+                    display_duration = f"{int(duration_value)}"
+                else:
+                    display_duration = f"{duration_value:.2f}"
 
-        store_purchases.pop(purchase_number - 1)
+            # Удаление баллов
+            if points > 0:
+                user_data['referral_points'] = max(0, user_data.get('referral_points', 0) - points)
+                user_data.setdefault('points_history', []).append({
+                    'action': 'spent',
+                    'points': points,
+                    'reason': 'удаление покупок администратором',
+                    'date': datetime.now().strftime("%d.%m.%Y в %H:%M"),
+                    'source': 'admin_delete'
+                })
+
+            # Удаление времени подписки
+            if days > 0:
+                for plan in user_data['plans'][:]:
+                    if plan.get('source') == source and plan.get('plan_name') == 'store_time':
+                        if source == 'admin' and plan.get('start_date') == purchase_date:
+                            user_data['plans'].remove(plan)
+                            break
+                        elif source != 'admin' and plan.get('telegram_payment_charge_id') == purchase.get('telegram_payment_charge_id'):
+                            user_data['plans'].remove(plan)
+                            break
+
+            user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - price)
+            data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - price)
+
+            store_purchases.pop(purchase_number - 1)
+
+            # Формирование сообщения об удалении для каждой покупки
+            admin_message = f"🚫 Удалена покупка пользователя {username} - `{user_id}`:\n\n"
+            admin_message += f"💳 *Тип покупки:* {purchase_type}\n"
+            admin_message += f"📅 *Время покупки:* {purchase_date}\n"
+            if points > 0:
+                admin_message += f"💰 *Баллы:* {points_display}\n"
+            if days > 0:
+                admin_message += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
+            admin_message += f"💸 *Стоимость:* {price:.2f} руб.\n"
+
+            user_message = "🚫 Администратор удалил вашу покупку:\n\n"
+            user_message += f"💳 *Тип покупки:* {purchase_type}\n"
+            user_message += f"📅 *Время покупки:* {purchase_date}\n"
+            if points > 0:
+                user_message += f"💰 *Баллы:* {points_display}\n"
+            if days > 0:
+                user_message += f"📆 *{time_unit.capitalize()}:* {display_duration}\n"
+            user_message += f"💸 *Стоимость:* {price:.2f} руб.\n"
+
+            bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
+            bot.send_message(user_id, user_message, parse_mode="Markdown")
+
         user_data['store_purchases'] = store_purchases
-
         save_payments_data(data)
-
-        admin_message = (
-            f"🚫 Покупка *{label}* от {purchase_date} "
-            f"(баллы: {points}, дни: {days:.2f}, стоимость: {price:.2f} руб.) "
-            f"пользователя {username} - `{user_id}` удалена!"
-        )
-        user_message = (
-            f"🚫 Администратор удалил вашу покупку *{label}* от {purchase_date} "
-            f"(баллы: {points}, дни: {days:.2f}, стоимость: {price:.2f} руб.)!"
-        )
-        bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
-        bot.send_message(user_id, user_message, parse_mode="Markdown")
         manage_store(message)
 
-    except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
@@ -29405,7 +29538,7 @@ def process_remove_points_amount(message, user_id):
         user_data.setdefault('points_history', []).append({
             'action': 'spent',
             'points': points,
-            'reason': 'Списание администратором',
+            'reason': 'списание администратором',
             'date': datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
