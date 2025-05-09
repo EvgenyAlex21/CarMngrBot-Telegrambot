@@ -1391,7 +1391,7 @@ def process_successful_payment(message):
     payment_info = message.successful_payment
     data = load_payment_data()
     users_data = load_users_data()
-    user_data = data['subscriptions']['users'].setdefault(user_id, {"plans": [], "total_amount": 0, "referral_points": 0})
+    user_data = data['subscriptions']['users'].setdefault(user_id, {"plans": [], "total_amount": 0, "referral_points": 0, "store_purchases": []})
 
     payload = payment_info.invoice_payload
 
@@ -1500,10 +1500,6 @@ def process_successful_payment(message):
             users_data[user_id]['discount'] = discount
             users_data[user_id]['discount_type'] = discount_type
 
-        data['subscriptions']['users'][user_id] = user_data
-        save_payments_data(data)
-        save_users_data(users_data)
-
         bot.send_message(user_id, (
             "🎉 *Спасибо за оплату*!\n\n"
             f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
@@ -1516,19 +1512,21 @@ def process_successful_payment(message):
         item_info = STORE_ITEMS[payload]
         base_price = item_info["base_price"]
         fictitious_discount = item_info["fictitious_discount"]
+        label = item_info["label"]
         user_discount = users_data.get(user_id, {}).get('discount', 0)
         discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
 
         price = max(1, round(base_price * (1 - user_discount / 100) - fictitious_discount, 2))
-
-        today = datetime.now().strftime("%d.%m.%Y")
+        purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
         monthly_key = datetime.now().strftime("%m.%Y")
-        user_data.setdefault('store_purchases', {}).setdefault(today, {'points': 0, 'days': 0})
-        user_data['store_purchases'].setdefault('monthly', {}).setdefault(monthly_key, {'points': 0, 'days': 0})
+
+        # Проверка месячных лимитов
+        monthly_points = sum(p['points'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
+        monthly_days = sum(p['duration'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
 
         if payload.startswith("points_"):
             points = item_info["points"]
-            if user_data['store_purchases']['monthly'][monthly_key]['points'] + points > 3000:
+            if monthly_points + points > 3000:
                 bot.send_message(user_id, (
                     "⚠️ Вы превысили месячный лимит покупки баллов в размере 3000! Попробуйте снова в следующем месяце\n"
                 ), parse_mode="Markdown")
@@ -1538,11 +1536,23 @@ def process_successful_payment(message):
             user_data.setdefault('points_history', []).append({
                 "action": "earned",
                 "points": points,
-                "reason": f"Покупка {item_info['label']}",
-                "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+                "reason": f"Покупка {label}",
+                "date": purchase_date
             })
-            user_data['store_purchases'][today]['points'] += points
-            user_data['store_purchases']['monthly'][monthly_key]['points'] += points
+
+            user_data['store_purchases'].append({
+                "item_key": payload,
+                "label": label,
+                "points": points,
+                "duration": 0,
+                "price": price,
+                "purchase_date": purchase_date,
+                "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
+                "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+                "source": "user",
+                "user_discount": user_discount,
+                "fictitious_discount": fictitious_discount
+            })
 
             bot.send_message(user_id, (
                 f"🎉 *Спасибо за покупку!*\n\n"
@@ -1553,7 +1563,7 @@ def process_successful_payment(message):
 
         elif payload.startswith("time_"):
             duration = item_info["duration"]
-            if user_data['store_purchases']['monthly'][monthly_key]['days'] + duration > 300:
+            if monthly_days + duration > 300:
                 bot.send_message(user_id, (
                     "⚠️ Вы превысили месячный лимит покупки времени в размере 300 дней! Попробуйте снова в следующем месяце\n"
                 ), parse_mode="Markdown")
@@ -1573,8 +1583,20 @@ def process_successful_payment(message):
                 "user_discount": user_discount,
                 "fictitious_discount": fictitious_discount
             })
-            user_data['store_purchases'][today]['days'] += duration
-            user_data['store_purchases']['monthly'][monthly_key]['days'] += duration
+
+            user_data['store_purchases'].append({
+                "item_key": payload,
+                "label": label,
+                "points": 0,
+                "duration": duration,
+                "price": price,
+                "purchase_date": purchase_date,
+                "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
+                "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+                "source": "user",
+                "user_discount": user_discount,
+                "fictitious_discount": fictitious_discount
+            })
 
             bot.send_message(user_id, (
                 f"🎉 *Спасибо за покупку!*\n\n"
@@ -1595,12 +1617,13 @@ def process_successful_payment(message):
             users_data[user_id]['discount'] = 0
             users_data[user_id]['discount_type'] = None
 
-        data['subscriptions']['users'][user_id] = user_data
-        save_payments_data(data)
-        save_users_data(users_data)
-
     else:
         bot.send_message(user_id, "❌ Неизвестный тип платежа! Обратитесь в поддержку...")
+        return
+
+    data['subscriptions']['users'][user_id] = user_data
+    save_payments_data(data)
+    save_users_data(users_data)
 
     markup = create_main_menu()
     bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
@@ -2153,7 +2176,7 @@ STORE_ITEMS = {
         "points": 50
     },
     "points_75": {
-        "base_price": 247.5,
+        "base_price": 247,
         "fictitious_discount": 0,
         "label": "75 баллов",
         "points": 75
@@ -27066,6 +27089,18 @@ def manage_subscriptions(message):
     markup.add(item_back)
     bot.send_message(message.chat.id, "Выберите действие для управления подписками:", reply_markup=markup)
 
+@bot.message_handler(func=lambda message: message.text == "Вернуться в управление подписками")
+# @check_function_state_decorator('Вернуться в управление подписками')
+# @track_usage('Вернуться в управление подписками')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+def return_to_subs(message):
+    manage_subscriptions(message)
+
 def split_message(message, max_length=4096):
     parts = []
     while len(message) > max_length:
@@ -27257,7 +27292,8 @@ def process_custom_plan_unit(message, user_id):
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Вернуться в управление подписками', 'В меню админ-панели')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
     if unit == 'в минутах':
         prompt = "Введите количество минут для подписки (например, 60):"
     elif unit == 'в часах':
@@ -27827,12 +27863,301 @@ def manage_store(message):
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Просмотр покупок', 'Начисление покупки', 'Удаление покупки')
+    markup.add('Начисление покупки', 'Просмотр покупок', 'Удаление покупки')
     markup.add('Вернуться в управление подписками')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления магазином:", reply_markup=markup)
 
-# ---------- 35.1 Просмотр покупок в магазине ----------
+# ---------- 35.1 Начисление покупки в магазине ----------
+
+@bot.message_handler(func=lambda message: message.text == 'Начисление покупки' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def add_store_purchase(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Начисление покупки'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('Вернуться в управление магазином')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер, id или username пользователя для начисления покупки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_store_purchase)
+
+def process_add_store_purchase(message):
+    if message.text == "Вернуться в управление магазином":
+        manage_store(message)
+        return
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    user_input = message.text.strip()
+    user_id = None
+
+    users_data = load_users()
+    if user_input.isdigit():
+        if len(user_input) >= 5:
+            user_id = user_input
+        else:
+            idx = int(user_input)
+            if 1 <= idx <= len(users_data):
+                user_id = list(users_data.keys())[idx - 1]
+    elif user_input.startswith('@'):
+        username = user_input[1:]
+        for user_id, data in users_data.items():
+            if data['username'] == username:
+                break
+        else:
+            user_id = None
+
+    if not user_id:
+        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_add_store_purchase)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Баллы', 'Дни подписки')
+    markup.add('Вернуться в управление магазином')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите тип покупки для начисления:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_store_purchase_type, user_id)
+
+def process_add_store_purchase_type(message, user_id):
+    if message.text == "Вернуться в управление магазином":
+        manage_store(message)
+        return
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    purchase_type = message.text.strip()
+    if purchase_type not in ['Баллы', 'Дни подписки']:
+        bot.send_message(message.chat.id, "Неверный тип покупки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_add_store_purchase_type, user_id)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    if purchase_type == 'Баллы':
+        prompt = "Введите количество баллов для начисления:"
+        markup.add('Вернуться в управление магазином')
+        markup.add('Вернуться в управление подписками')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, prompt, reply_markup=markup)
+        bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, 'days')
+    else:
+        markup.add('В минутах', 'В часах', 'В днях')
+        markup.add('Вернуться в управление магазином')
+        markup.add('Вернуться в управление подписками')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Выберите единицу измерения времени:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_add_store_purchase_unit, user_id)
+
+def process_add_store_purchase_unit(message, user_id):
+    if message.text == "Вернуться в управление магазином":
+        manage_store(message)
+        return
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    unit = message.text.strip()
+    if unit not in ['В минутах', 'В часах', 'В днях']:
+        bot.send_message(message.chat.id, "Неверная единица измерения! Пожалуйста, выберите снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_add_store_purchase_unit, user_id)
+        return
+
+    unit_map = {
+        'В минутах': 'minutes',
+        'В часах': 'hours',
+        'В днях': 'days'
+    }
+    unit_key = unit_map[unit]
+    prompt = f"Введите количество {unit.lower()} для начисления:"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('Вернуться в управление магазином')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, prompt, reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, 'Дни подписки', unit_key)
+
+def process_add_store_purchase_amount(message, user_id, purchase_type, unit='days'):
+    if message.text == "Вернуться в управление магазином":
+        manage_store(message)
+        return
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        input_amount = float(message.text.strip())
+        if input_amount <= 0:
+            raise ValueError("Количество должно быть положительным!")
+
+        # Сохраняем исходное значение для отображения
+        display_amount = f"{input_amount:.0f}" if input_amount.is_integer() else f"{input_amount:.2f}"
+
+        # Конвертация в дни для времени подписки
+        amount = input_amount
+        if purchase_type == 'Дни подписки':
+            if unit == 'minutes':
+                amount = input_amount / (24 * 60)  # Минуты в дни
+            elif unit == 'hours':
+                amount = input_amount / 24  # Часы в дни
+
+        # Форматирование единицы измерения для уведомлений и label
+        unit_display = {
+            'minutes': 'минут',
+            'hours': 'часов',
+            'days': 'дней'
+        }.get(unit, 'дней')
+
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].setdefault(str(user_id), {
+            'plans': [], 'total_amount': 0, 'referral_points': 0, 'store_purchases': []
+        })
+
+        # Проверка и инициализация store_purchases
+        if 'store_purchases' not in user_data:
+            user_data['store_purchases'] = []
+            with open("store_purchases.log", "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now()}: Initialized store_purchases for user {user_id}\n")
+
+        users_data = load_users()
+        username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
+        purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
+        monthly_key = datetime.now().strftime("%m.%Y")
+
+        # Проверка месячных лимитов
+        monthly_points = sum(p['points'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
+        monthly_days = sum(p['duration'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
+
+        if purchase_type == 'Баллы':
+            if monthly_points + amount > 3000:
+                bot.send_message(message.chat.id, (
+                    "⚠️ Пользователь превысит месячный лимит покупки баллов в размере 3000! Попробуйте меньшее количество."
+                ), parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
+                return
+
+            user_data['referral_points'] += amount
+            user_data.setdefault('points_history', []).append({
+                'action': 'earned',
+                'points': amount,
+                'reason': 'Начисление от администратора',
+                'date': purchase_date,
+                'source': 'admin_purchase'
+            })
+
+            user_data['store_purchases'].append({
+                "item_key": "admin_points",
+                "label": f"{display_amount} баллов",
+                "points": amount,
+                "duration": 0,
+                "price": 0,
+                "purchase_date": purchase_date,
+                "telegram_payment_charge_id": None,
+                "provider_payment_charge_id": None,
+                "source": "admin",
+                "user_discount": 0,
+                "fictitious_discount": 0
+            })
+
+            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} баллов* в магазине!"
+            user_message = f"🎉 Администратор начислил вам *{display_amount} баллов* в магазине!"
+
+        else:
+            if monthly_days + amount > 300:
+                bot.send_message(message.chat.id, (
+                    "⚠️ Пользователь превысит месячный лимит покупки времени в размере 300 дней! Попробуйте меньшее количество."
+                ), parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
+                return
+
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
+            new_end = latest_end + timedelta(days=amount)
+
+            user_data['plans'].append({
+                'plan_name': 'store_time',
+                'start_date': latest_end.strftime("%d.%m.%Y в %H:%M"),
+                'end_date': new_end.strftime("%d.%m.%Y в %H:%M"),
+                'price': 0,
+                'telegram_payment_charge_id': None,
+                'provider_payment_charge_id': None,
+                'source': 'admin',
+                'user_discount': 0,
+                'fictitious_discount': 0
+            })
+
+            user_data['store_purchases'].append({
+                "item_key": "admin_time",
+                "label": f"{display_amount} {unit_display} подписки",
+                "points": 0,
+                "duration": amount,
+                "price": 0,
+                "purchase_date": purchase_date,
+                "telegram_payment_charge_id": None,
+                "provider_payment_charge_id": None,
+                "source": "admin",
+                "user_discount": 0,
+                "fictitious_discount": 0
+            })
+
+            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{display_amount} {unit_display} подписки* в магазине!"
+            user_message = (
+                f"🎉 Администратор начислил вам *{display_amount} {unit_display} подписки* в магазине!\n"
+                f"⏳ Активно до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
+            )
+
+        save_payments_data(data)
+        bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
+        bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+        with open("store_purchases.log", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}: Admin added {purchase_type} (input_amount={input_amount}, unit={unit}, duration={amount}) for user {user_id}, store_purchases={user_data['store_purchases'][-1]}\n")
+
+        manage_store(message)
+    except ValueError as e:
+        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Произошла ошибка: {str(e)}. Обратитесь в поддержку.", parse_mode="Markdown")
+        with open("store_purchases.log", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}: Error in process_add_store_purchase_amount for user {user_id}: {str(e)}\n")
+        manage_store(message)
+        
+# ---------- 35.2 Просмотр покупок в магазине ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр покупок' and check_admin_access(message))
 @restricted
@@ -27903,202 +28228,85 @@ def process_view_store_purchases(message):
 
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    store_purchases = user_data.get('store_purchases', {})
+    store_purchases = user_data.get('store_purchases', [])
+    plans = user_data.get('plans', [])
+
     if not store_purchases:
         bot.send_message(message.chat.id, "У пользователя нет покупок в магазине!", parse_mode="Markdown")
         manage_store(message)
         return
 
-    purchases_summary = "*Список покупок в магазине:*\n\n"
-    for date, purchase in store_purchases.items():
-        if date != 'monthly':
-            points = purchase.get('points', 0)
-            days = purchase.get('days', 0)
-            purchases_summary += (
-                f"📅 *Дата:* {date}\n"
-                f"💰 *Баллы:* {points}\n"
-                f"📆 *Дни подписки:* {days}\n\n"
-            )
-
-    monthly_summary = "*Ежемесячные покупки:*\n\n"
-    for month, purchase in store_purchases.get('monthly', {}).items():
+    # Список покупок
+    purchases_summary = "*Список покупок в магазине:*\n\n\n"
+    for idx, purchase in enumerate(store_purchases, start=1):
         points = purchase.get('points', 0)
-        days = purchase.get('days', 0)
-        monthly_summary += (
-            f"📅 *Месяц:* {month}\n"
+        days = purchase.get('duration', 0)
+        price = purchase.get('price', 0)
+        purchase_date = purchase.get('purchase_date', 'Неизвестно')
+        label = purchase.get('label', 'Неизвестно')
+        source = purchase.get('source', 'user')
+        purchases_summary += (
+            f"📅 *№{idx}. Покупка:* {label}\n"
+            f"🕒 *Дата:* {purchase_date}\n"
             f"💰 *Баллы:* {points}\n"
-            f"📆 *Дни подписки:* {days}\n\n"
+            f"📆 *Дни подписки:* {days:.2f}\n"
+            f"💸 *Стоимость:* {price:.2f} руб.\n"
+            f"🔗 *Источник:* {'Администратор' if source == 'admin' else 'Пользователь'}\n\n\n"
         )
 
-    message_parts = split_message(purchases_summary + monthly_summary)
+    # Отправка списка покупок
+    message_parts = split_message(purchases_summary)
     for part in message_parts:
         bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
-    manage_store(message)
+    # Итоговая оценка покупок
+    current_time = datetime.now()
+    active_plans = [p for p in plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > current_time]
+    
+    # Типы покупок
+    purchase_types = [purchase['label'] for purchase in store_purchases]
+    types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
-# ---------- 35.2 Начисление покупки в магазине ----------
+    # Всего баллов
+    total_points = sum(purchase['points'] for purchase in store_purchases)
 
-@bot.message_handler(func=lambda message: message.text == 'Начисление покупки' and check_admin_access(message))
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-def add_store_purchase(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Начисление покупки'):
-        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
-        return
-
-    users_data = load_users()
-    user_list = []
-    for user_id, data in users_data.items():
-        username = escape_markdown(data['username'])
-        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
-        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
-
-    now = datetime.now().strftime("%d.%m.%Y")
-    monthly_key = datetime.now().strftime("%m.%Y")
-
-    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
-    if len(response_message) > 4096:
-        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    # Дней осталось
+    if active_plans:
+        latest_end = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans)
+        time_left = latest_end - current_time
+        days_left = time_left.days
+        hours_left = time_left.seconds // 3600
+        minutes_left = (time_left.seconds % 3600) // 60
+        time_left_str = f"{days_left} дней и {hours_left:02d}:{minutes_left:02d} часов" if days_left >= 0 else "0 дней и 00:00 часов"
     else:
-        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+        time_left_str = "0 дней и 00:00 часов"
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    markup.add('Вернуться в управление магазином', 'Вернуться в управление подписками', 'В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите номер, id или username пользователя для начисления покупки:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_add_store_purchase, now, monthly_key)
+    # Начало и конец
+    start_date = min((datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans), default=current_time) if active_plans else current_time
+    end_date = latest_end if active_plans else current_time
+    start_date_str = start_date.strftime("%d.%m.%Y в %H:%M")
+    end_date_str = end_date.strftime("%d.%m.%Y в %H:%M")
 
-def process_add_store_purchase(message, now, monthly_key):
-    if message.text == "Вернуться в управление магазином":
-        manage_store(message)
-        return
-    if message.text == "Вернуться в управление подписками":
-        manage_subscriptions(message)
-        return
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
+    # Стоимость
+    active_purchase_dates = {p['start_date'] for p in active_plans}.union({p['end_date'] for p in active_plans})
+    active_cost = sum(purchase['price'] for purchase in store_purchases if purchase['purchase_date'] in active_purchase_dates or purchase['source'] == 'admin')
+    total_cost = sum(purchase['price'] for purchase in store_purchases)
 
-    user_input = message.text.strip()
-    user_id = None
+    summary = (
+        f"💎 *Итоговая оценка покупок:*\n\n"
+        f"💼 *Типы покупок:* {types_str}\n"
+        f"💰 *Всего баллов:* {total_points}\n"
+        f"📅 *Дней осталось:* {time_left_str}\n"
+        f"🕒 *Начало:* {start_date_str}\n"
+        f"⌛ *Конец:* {end_date_str}\n"
+        f"💰 *Общая стоимость активных покупок:* {active_cost:.2f} руб.\n"
+        f"💰 *Общая стоимость всех покупок:* {total_cost:.2f} руб.\n"
+    )
 
-    users_data = load_users()
-    if user_input.isdigit():
-        if len(user_input) >= 5:
-            user_id = user_input
-        else:
-            idx = int(user_input)
-            if 1 <= idx <= len(users_data):
-                user_id = list(users_data.keys())[idx - 1]
-    elif user_input.startswith('@'):
-        username = user_input[1:]
-        for user_id, data in users_data.items():
-            if data['username'] == username:
-                break
-        else:
-            user_id = None
+    # Отправка итоговой оценки отдельным сообщением
+    bot.send_message(message.chat.id, summary, parse_mode="Markdown")
 
-    if not user_id:
-        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_add_store_purchase, now, monthly_key)
-        return
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Баллы', 'Дни подписки')
-    markup.add('Вернуться в управление магазином', 'Вернуться в управление подписками', 'В меню админ-панели')
-    bot.send_message(message.chat.id, "Выберите тип покупки для начисления:", reply_markup=markup)
-    bot.register_next_step_handler(message, process_add_store_purchase_type, user_id, now, monthly_key)
-
-def process_add_store_purchase_type(message, user_id, now, monthly_key):
-    if message.text == "Вернуться в управление магазином":
-        manage_store(message)
-        return
-    if message.text == "Вернуться в управление подписками":
-        manage_subscriptions(message)
-        return
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-
-    purchase_type = message.text.strip()
-    if purchase_type not in ['Баллы', 'Дни подписки']:
-        bot.send_message(message.chat.id, "Неверный тип покупки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_add_store_purchase_type, user_id, now, monthly_key)
-        return
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Вернуться в управление магазином', 'Вернуться в управление подписками', 'В меню админ-панели')
-    prompt = "Введите количество баллов для начисления:" if purchase_type == 'Баллы' else "Введите количество дней подписки для начисления:"
-    bot.send_message(message.chat.id, prompt, reply_markup=markup)
-    bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, now, monthly_key)
-
-def process_add_store_purchase_amount(message, user_id, purchase_type, now, monthly_key):
-    if message.text == "Вернуться в управление магазином":
-        manage_store(message)
-        return
-    if message.text == "Вернуться в управление подписками":
-        manage_subscriptions(message)
-        return
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
-        return
-
-    try:
-        amount = float(message.text.strip())
-        if amount <= 0:
-            raise ValueError("Количество должно быть положительным!")
-
-        data = load_payment_data()
-        user_data = data['subscriptions']['users'].setdefault(str(user_id), {
-            'plans': [], 'total_amount': 0, 'referral_points': 0, 'store_purchases': {'monthly': {}}
-        })
-
-        users_data = load_users()
-        username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
-
-        if purchase_type == 'Баллы':
-            user_data['store_purchases'].setdefault(now, {'points': 0, 'days': 0})
-            user_data['store_purchases']['monthly'].setdefault(monthly_key, {'points': 0, 'days': 0})
-            user_data['store_purchases'][now]['points'] += amount
-            user_data['store_purchases']['monthly'][monthly_key]['points'] += amount
-            user_data['referral_points'] += amount  # Убрано ограничение min(..., 100)
-            user_data.setdefault('points_history', []).append({
-                'action': 'earned',
-                'points': amount,
-                'reason': 'Начисление от администратора',
-                'date': now,
-                'source': 'admin_purchase'
-            })
-            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{amount} баллов* в магазине!"
-            user_message = f"🎉 Администратор начислил вам *{amount} баллов* в магазине!"
-        else:
-            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-            new_end = latest_end + timedelta(days=amount)
-            user_data['plans'].append({
-                'plan_name': 'store_purchase',
-                'start_date': latest_end.strftime("%d.%m.%Y в %H:%M"),
-                'end_date': new_end.strftime("%d.%m.%Y в %H:%M"),
-                'price': 0,
-                'source': 'admin'
-            })
-            user_data['store_purchases'].setdefault(now, {'points': 0, 'days': 0})
-            user_data['store_purchases']['monthly'].setdefault(monthly_key, {'points': 0, 'days': 0})
-            user_data['store_purchases'][now]['days'] += amount
-            user_data['store_purchases']['monthly'][monthly_key]['days'] += amount
-            admin_message = f"✅ Пользователю {username} - `{user_id}` начислено *{amount} дней подписки* в магазине!"
-            user_message = f"🎉 Администратор начислил вам *{amount} дней подписки* в магазине!"
-
-        save_payments_data(data)
-        bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
-        bot.send_message(user_id, user_message, parse_mode="Markdown")
-
-        manage_store(message)
-    except ValueError as e:
-        bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, now, monthly_key)
+    manage_store(message)
 
 # ---------- 35.3 Удаление покупки в магазине ----------
 
@@ -28128,7 +28336,9 @@ def delete_store_purchase(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    markup.add('Вернуться в управление магазином', 'Вернуться в управление подписками', 'В меню админ-панели')
+    markup.add('Вернуться в управление магазином')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для удаления покупки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_store_purchase)
 
@@ -28169,35 +28379,93 @@ def process_delete_store_purchase(message):
 
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
-    store_purchases = user_data.get('store_purchases', {})
+    store_purchases = user_data.get('store_purchases', [])
+    plans = user_data.get('plans', [])
+
     if not store_purchases:
         bot.send_message(message.chat.id, "У пользователя нет покупок для удаления!", parse_mode="Markdown")
         manage_store(message)
         return
 
-    purchases_summary = "*Список покупок:*\n\n"
-    purchase_list = []
-    idx = 1
-    for date, purchase in store_purchases.items():
-        if date != 'monthly':
-            points = purchase.get('points', 0)
-            days = purchase.get('days', 0)
-            purchases_summary += (
-                f"📅 *№{idx}. Дата:* {date}\n"
-                f"💰 *Баллы:* {points}\n"
-                f"📆 *Дни подписки:* {days}\n\n"
-            )
-            purchase_list.append((date, points, days))
-            idx += 1
+    # Список покупок (унифицирован с process_view_store_purchases)
+    purchases_summary = "*Список покупок в магазине:*\n\n\n"
+    for idx, purchase in enumerate(store_purchases, start=1):
+        points = purchase.get('points', 0)
+        days = purchase.get('duration', 0)
+        price = purchase.get('price', 0)
+        purchase_date = purchase.get('purchase_date', 'Неизвестно')
+        label = purchase.get('label', 'Неизвестно')
+        source = purchase.get('source', 'user')
+        purchases_summary += (
+            f"📅 *№{idx}. Покупка:* {label}\n"
+            f"🕒 *Дата:* {purchase_date}\n"
+            f"💰 *Баллы:* {points}\n"
+            f"📆 *Дни подписки:* {days:.2f}\n"
+            f"💸 *Стоимость:* {price:.2f} руб.\n"
+            f"🔗 *Источник:* {'Администратор' if source == 'admin' else 'Пользователь'}\n\n\n"
+        )
 
+    # Отправка списка покупок
     message_parts = split_message(purchases_summary)
     for part in message_parts:
         bot.send_message(message.chat.id, part, parse_mode="Markdown")
 
-    bot.send_message(message.chat.id, "Введите номер покупки для удаления:", parse_mode="Markdown")
-    bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id, purchase_list)
+    # Итоговая оценка покупок (как в process_view_store_purchases)
+    current_time = datetime.now()
+    active_plans = [p for p in plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > current_time]
+    
+    # Типы покупок
+    purchase_types = [purchase['label'] for purchase in store_purchases]
+    types_str = ", ".join(purchase_types) if purchase_types else "Нет покупок"
 
-def process_delete_store_purchase_select(message, user_id, purchase_list):
+    # Всего баллов
+    total_points = sum(purchase['points'] for purchase in store_purchases)
+
+    # Дней осталось
+    if active_plans:
+        latest_end = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans)
+        time_left = latest_end - current_time
+        days_left = time_left.days
+        hours_left = time_left.seconds // 3600
+        minutes_left = (time_left.seconds % 3600) // 60
+        time_left_str = f"{days_left} дней и {hours_left:02d}:{minutes_left:02d} часов" if days_left >= 0 else "0 дней и 00:00 часов"
+    else:
+        time_left_str = "0 дней и 00:00 часов"
+
+    # Начало и конец
+    start_date = min((datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans), default=current_time) if active_plans else current_time
+    end_date = latest_end if active_plans else current_time
+    start_date_str = start_date.strftime("%d.%m.%Y в %H:%M")
+    end_date_str = end_date.strftime("%d.%m.%Y в %H:%M")
+
+    # Стоимость
+    active_purchase_dates = {p['start_date'] for p in active_plans}.union({p['end_date'] for p in active_plans})
+    active_cost = sum(purchase['price'] for purchase in store_purchases if purchase['purchase_date'] in active_purchase_dates or purchase['source'] == 'admin')
+    total_cost = sum(purchase['price'] for purchase in store_purchases)
+
+    summary = (
+        f"💎 *Итоговая оценка покупок:*\n\n"
+        f"💼 *Типы покупок:* {types_str}\n"
+        f"💰 *Всего баллов:* {total_points}\n"
+        f"📅 *Дней осталось:* {time_left_str}\n"
+        f"🕒 *Начало:* {start_date_str}\n"
+        f"⌛ *Конец:* {end_date_str}\n"
+        f"💰 *Общая стоимость активных покупок:* {active_cost:.2f} руб.\n"
+        f"💰 *Общая стоимость всех покупок:* {total_cost:.2f} руб.\n"
+    )
+
+    # Отправка итоговой оценки отдельным сообщением
+    bot.send_message(message.chat.id, summary, parse_mode="Markdown")
+
+    # Запрос номера покупки для удаления
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('Вернуться в управление магазином')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер покупки для удаления:", reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
+
+def process_delete_store_purchase_select(message, user_id):
     if message.text == "Вернуться в управление магазином":
         manage_store(message)
         return
@@ -28210,50 +28478,84 @@ def process_delete_store_purchase_select(message, user_id, purchase_list):
 
     try:
         purchase_number = int(message.text.strip())
-        if purchase_number < 1 or purchase_number > len(purchase_list):
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].get(str(user_id), {})
+        store_purchases = user_data.get('store_purchases', [])
+
+        if purchase_number < 1 or purchase_number > len(store_purchases):
             raise ValueError("Неверный номер покупки!")
 
-        date, points, days = purchase_list[purchase_number - 1]
-        data = load_payment_data()
-        user_data = data['subscriptions']['users'][str(user_id)]
+        purchase = store_purchases[purchase_number - 1]
+        points = purchase.get('points', 0)
+        days = purchase.get('duration', 0)
+        price = purchase.get('price', 0)
+        purchase_date = purchase.get('purchase_date', 'Неизвестно')
+        label = purchase.get('label', 'Неизвестно')
+        source = purchase.get('source', 'user')
+
         users_data = load_users()
         username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
+        # Удаление баллов
         if points > 0:
             user_data['referral_points'] = max(0, user_data.get('referral_points', 0) - points)
             user_data.setdefault('points_history', []).append({
                 'action': 'spent',
                 'points': points,
                 'reason': 'Удаление покупки администратором',
-                'date': datetime.now().strftime("%d.%m.%Y в %H:%M")
+                'date': datetime.now().strftime("%d.%m.%Y в %H:%M"),
+                'source': 'admin_delete'
             })
 
+        # Удаление времени подписки
         if days > 0:
             for plan in user_data['plans'][:]:
-                if plan.get('source') == 'admin' and plan.get('plan_name') == 'store_purchase':
-                    plan_end = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-                    plan_duration = (plan_end - datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M")).days
-                    if plan_duration == days:
+                if plan.get('source') == source and plan.get('plan_name') == 'store_time':
+                    if source == 'admin' and plan.get('start_date') == purchase_date:
+                        user_data['plans'].remove(plan)
+                        break
+                    elif source != 'admin' and plan.get('telegram_payment_charge_id') == purchase.get('telegram_payment_charge_id'):
                         user_data['plans'].remove(plan)
                         break
 
-        del user_data['store_purchases'][date]
-        monthly_key = datetime.strptime(date, "%d.%m.%Y").strftime("%m.%Y")
-        if monthly_key in user_data['store_purchases']['monthly']:
-            user_data['store_purchases']['monthly'][monthly_key]['points'] = max(0, user_data['store_purchases']['monthly'][monthly_key].get('points', 0) - points)
-            user_data['store_purchases']['monthly'][monthly_key]['days'] = max(0, user_data['store_purchases']['monthly'][monthly_key].get('days', 0) - days)
+        # Обновление общей суммы
+        user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - price)
+        data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - price)
 
+        # Удаление покупки
+        store_purchases.pop(purchase_number - 1)
+        user_data['store_purchases'] = store_purchases
+
+        # Сохранение данных
         save_payments_data(data)
-        admin_message = f"🚫 Покупка от {date} (баллы: {points}, дни: {days}) пользователя {username} - `{user_id}` удалена!"
-        user_message = f"🚫 Администратор удалил вашу покупку от {date} (баллы: {points}, дни: {days})!"
+
+        # Уведомления
+        admin_message = (
+            f"🚫 Покупка *{label}* от {purchase_date} "
+            f"(баллы: {points}, дни: {days:.2f}, стоимость: {price:.2f} руб.) "
+            f"пользователя {username} - `{user_id}` удалена!"
+        )
+        user_message = (
+            f"🚫 Администратор удалил вашу покупку *{label}* от {purchase_date} "
+            f"(баллы: {points}, дни: {days:.2f}, стоимость: {price:.2f} руб.)!"
+        )
         bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
         bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+        # Логирование
+        with open("store_purchases.log", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}: Admin deleted purchase (label={label}, points={points}, days={days}, price={price}) for user {user_id}\n")
 
         manage_store(message)
     except ValueError as e:
         bot.send_message(message.chat.id, f"❌ {str(e)} Пожалуйста, попробуйте снова", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id, purchase_list)
-
+        bot.register_next_step_handler(message, process_delete_store_purchase_select, user_id)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Произошла ошибка: {str(e)}. Обратитесь в поддержку.", parse_mode="Markdown")
+        with open("store_purchases.log", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}: Error in process_delete_store_purchase_select for user {user_id}: {str(e)}\n")
+        manage_store(message)
+        
 # ---------- 36. УПРАВЛЕНИЕ БАЛЛАМИ ----------
 
 @bot.message_handler(func=lambda message: message.text == 'Управление баллами' and check_admin_access(message))
