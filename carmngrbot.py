@@ -9291,19 +9291,11 @@ def admin_logout(message):
 
 # Показ админ-панели
 def show_admin_panel(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add(
-        'Админ',
-        'Вкл/выкл функций',
-        'Бан',
-        'Оповещения',
-        'Чат',
-        'Файлы',
-        'Статистика',
-        'Диалоги',
-        'Резервная копия',
-        'Выход'
-    )
+    markup = types.ReplyKeyboardMarkup(row_width=3)
+    markup.add('Админ','Бан','Вкл/выкл функций')
+    markup.add('Оповещения','Чат','Диалоги')
+    markup.add('Статистика','Файлы','Резервная копия')
+    markup.add('Выход')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Обработчик для кнопки "В меню админ-панели"
@@ -9481,15 +9473,6 @@ def process_remove_admin(message, root_admin_id):
     else:
         bot.send_message(message.chat.id, "Администратор с таким ID или username не найден.")
 
-# Пример использования прав
-@bot.message_handler(commands=['some_command'])
-def some_command(message):
-    if check_permission(message.chat.id, "some_permission"):
-        bot.send_message(message.chat.id, "Команда выполнена.")
-    else:
-        bot.send_message(message.chat.id, "У вас нет прав на выполнение этой команды.")
-
-
 # (ADMIN 3) ------------------------------------------ "БАН ПОЛЬЗОВАТЕЛЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 # Путь к JSON файлу с админскими сессиями
@@ -9507,7 +9490,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "⚠️ У вас нет *прав доступа* для выполнения этой операции!", parse_mode='Markdown')
         return False
 
 USER_DATA_PATH = 'data base/admin/users.json'
@@ -9517,7 +9500,7 @@ def restricted(func):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         if is_user_blocked(user_id):
-            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode='Markdown')
             return
         if not check_admin_access(message):
             return
@@ -9561,18 +9544,23 @@ def get_user_id_by_username(username):
             return user_id
     return None
 
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
 def list_users(message):
     users_data = load_user_data()
     user_list = []
     for user_id, data in users_data.items():
-        status = " - заблокирован" if data.get('blocked', False) else " - разблокирован"
-        user_list.append(f"№ {len(user_list) + 1}. {data['username']} - {user_id}{status}")
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№ {len(user_list) + 1}. {username} - `{user_id}`{status}")
 
-    response_message = "Список всех пользователей:\n\n" + "\n".join(user_list)
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
     if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
-        bot.send_message(message.chat.id, "Список пользователей слишком большой для отправки в одном сообщении.")
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
     else:
-        bot.send_message(message.chat.id, response_message)
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Заблокировать", "Разблокировать")
@@ -9591,20 +9579,33 @@ def block_user_by_username(message):
         show_admin_panel(message)
         return
 
-    username = message.text.strip().lstrip('@')
-    user_id = get_user_id_by_username(username)
-    if user_id:
-        username, user_id = block_user(user_id)
-        if username and user_id:
-            bot.send_message(message.chat.id, f"Пользователь с USERNAME {username} - USER_ID {user_id} заблокирован!")
-            bot.send_message(user_id, "Ваш аккаунт был заблокирован администратором.")
-            show_admin_panel(message)
+    usernames = [username.strip().lstrip('@') for username in message.text.split(',')]
+    success_users = []
+    failed_users = []
+
+    for username in usernames:
+        user_id = get_user_id_by_username(username)
+        if user_id:
+            username, user_id = block_user(user_id)
+            if username and user_id:
+                success_users.append((username, user_id))
+            else:
+                failed_users.append(username)
         else:
-            bot.send_message(message.chat.id, "Ошибка при блокировке пользователя. Попробуйте снова.")
-            bot.register_next_step_handler(message, block_user_by_username)
-    else:
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден. Попробуйте снова.")
-        bot.register_next_step_handler(message, block_user_by_username)
+            failed_users.append(username)
+
+    if success_users:
+        response_message = "🚫 Пользователи заблокированы!\n\n"
+        for username, user_id in success_users:
+            escaped_username = escape_markdown(username)
+            response_message += f"*USERNAME* - {escaped_username}\n*ID* - `{user_id}`\n\n"
+            bot.send_message(user_id, "🚫 Ваш аккаунт был *заблокирован* администратором!", parse_mode='Markdown')
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    if failed_users:
+        bot.send_message(message.chat.id, f"Ошибка при блокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+
+    show_admin_panel(message)
 
 def block_user_by_id(message):
     # Проверка на мультимедиа и смайлы
@@ -9617,20 +9618,33 @@ def block_user_by_id(message):
         show_admin_panel(message)
         return
 
-    user_id = message.text
-    if user_id.isdigit():
-        user_id = int(user_id)
-        username, user_id = block_user(user_id)
-        if username and user_id:
-            bot.send_message(message.chat.id, f"Пользователь с USER_ID {user_id} - USERNAME {username} заблокирован!")
-            bot.send_message(user_id, "Ваш аккаунт был заблокирован администратором.")
-            show_admin_panel(message)
+    user_ids = [user_id.strip() for user_id in message.text.split(',')]
+    success_users = []
+    failed_users = []
+
+    for user_id in user_ids:
+        if user_id.isdigit():
+            user_id = int(user_id)
+            username, user_id = block_user(user_id)
+            if username and user_id:
+                success_users.append((username, user_id))
+            else:
+                failed_users.append(user_id)
         else:
-            bot.send_message(message.chat.id, "Ошибка при блокировке пользователя. Попробуйте снова.")
-            bot.register_next_step_handler(message, block_user_by_id)
-    else:
-        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
-        bot.register_next_step_handler(message, block_user_by_id)
+            failed_users.append(user_id)
+
+    if success_users:
+        response_message = "🚫 Пользователи заблокированы!\n\n"
+        for username, user_id in success_users:
+            escaped_username = escape_markdown(username)
+            response_message += f"*ID* - `{user_id}`\n*USERNAME* - {escaped_username}\n\n"
+            bot.send_message(user_id, "🚫 Ваш аккаунт был *заблокирован* администратором!", parse_mode='Markdown')
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    if failed_users:
+        bot.send_message(message.chat.id, f"Ошибка при блокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+
+    show_admin_panel(message)
 
 def unblock_user_by_username(message):
     # Проверка на мультимедиа и смайлы
@@ -9643,20 +9657,33 @@ def unblock_user_by_username(message):
         show_admin_panel(message)
         return
 
-    username = message.text.strip().lstrip('@')
-    user_id = get_user_id_by_username(username)
-    if user_id:
-        username, user_id = unblock_user(user_id)
-        if username and user_id:
-            bot.send_message(message.chat.id, f"Пользователь с USERNAME {username} - USER_ID {user_id} разблокирован!")
-            bot.send_message(user_id, "Ваш аккаунт был разблокирован администратором.")
-            show_admin_panel(message)
+    usernames = [username.strip().lstrip('@') for username in message.text.split(',')]
+    success_users = []
+    failed_users = []
+
+    for username in usernames:
+        user_id = get_user_id_by_username(username)
+        if user_id:
+            username, user_id = unblock_user(user_id)
+            if username and user_id:
+                success_users.append((username, user_id))
+            else:
+                failed_users.append(username)
         else:
-            bot.send_message(message.chat.id, "Ошибка при разблокировке пользователя. Попробуйте снова.")
-            bot.register_next_step_handler(message, unblock_user_by_username)
-    else:
-        bot.send_message(message.chat.id, f"Пользователь с никнеймом {username} не найден. Попробуйте снова.")
-        bot.register_next_step_handler(message, unblock_user_by_username)
+            failed_users.append(username)
+
+    if success_users:
+        response_message = "✅ Пользователи разблокированы!\n\n"
+        for username, user_id in success_users:
+            escaped_username = escape_markdown(username)
+            response_message += f"*USERNAME* - {escaped_username}\n*ID* - `{user_id}`\n\n"
+            bot.send_message(user_id, "✅ Ваш аккаунт был *разблокирован* администратором!", parse_mode='Markdown')
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    if failed_users:
+        bot.send_message(message.chat.id, f"Ошибка при разблокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+
+    show_admin_panel(message)
 
 def unblock_user_by_id(message):
     # Проверка на мультимедиа и смайлы
@@ -9669,20 +9696,33 @@ def unblock_user_by_id(message):
         show_admin_panel(message)
         return
 
-    user_id = message.text
-    if user_id.isdigit():
-        user_id = int(user_id)
-        username, user_id = unblock_user(user_id)
-        if username and user_id:
-            bot.send_message(message.chat.id, f"Пользователь с USER_ID {user_id} - USERNAME {username} разблокирован!")
-            bot.send_message(user_id, "Ваш аккаунт был разблокирован администратором.")
-            show_admin_panel(message)
+    user_ids = [user_id.strip() for user_id in message.text.split(',')]
+    success_users = []
+    failed_users = []
+
+    for user_id in user_ids:
+        if user_id.isdigit():
+            user_id = int(user_id)
+            username, user_id = unblock_user(user_id)
+            if username and user_id:
+                success_users.append((username, user_id))
+            else:
+                failed_users.append(user_id)
         else:
-            bot.send_message(message.chat.id, "Ошибка при разблокировке пользователя. Попробуйте снова.")
-            bot.register_next_step_handler(message, unblock_user_by_id)
-    else:
-        bot.send_message(message.chat.id, "Некорректный ID. Попробуйте снова.")
-        bot.register_next_step_handler(message, unblock_user_by_id)
+            failed_users.append(user_id)
+
+    if success_users:
+        response_message = "✅ Пользователи разблокированы!\n\n"
+        for username, user_id in success_users:
+            escaped_username = escape_markdown(username)
+            response_message += f"*ID* - `{user_id}`\n*USERNAME* - {escaped_username}\n\n"
+            bot.send_message(user_id, "✅ Ваш аккаунт был *разблокирован* администратором!", parse_mode='Markdown')
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+
+    if failed_users:
+        bot.send_message(message.chat.id, f"Ошибка при разблокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+
+    show_admin_panel(message)
 
 # Обработка команд админа
 @bot.message_handler(func=lambda message: message.text == 'Бан')
@@ -9709,12 +9749,12 @@ def process_block_method(message):
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите ID пользователя для блокировки:", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите *id* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(message, block_user_by_id)
     elif message.text == "По USERNAME":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите никнейм пользователя для блокировки (например, @username):", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите *username* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(message, block_user_by_username)
     elif message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -9730,12 +9770,12 @@ def process_unblock_method(message):
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите ID пользователя для разблокировки:", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите *id* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(message, unblock_user_by_id)
     elif message.text == "По USERNAME":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите никнейм пользователя для разблокировки (например, @username):", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите *username* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(message, unblock_user_by_username)
     elif message.text == "В меню админ-панели":
         show_admin_panel(message)
