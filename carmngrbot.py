@@ -2962,6 +2962,7 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
     try:
         repair_amount = float(message.text)
         user_data = {
+            "category": selected_category,  # Добавлено поле категории
             "name": repair_name,
             "date": repair_date,
             "amount": repair_amount,
@@ -3102,9 +3103,10 @@ def send_repair_menu(user_id):
     item1 = types.KeyboardButton("Ремонты (месяц)")
     item2 = types.KeyboardButton("Ремонты (год)")
     item3 = types.KeyboardButton("Ремонты (всё время)")
+    item4 = types.KeyboardButton("Ремонты (по категориям)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item1, item2, item3)
+    markup.add(item1, item2, item3, item4)
     markup.add(item_return, item_main_menu)
 
     bot.send_message(user_id, "Выберите вариант просмотра ремонтов:", reply_markup=markup)
@@ -3148,6 +3150,90 @@ def handle_transport_selection_for_repairs(message):
     bot.send_message(user_id, f"Показываю ремонты для транспорта: {selected_transport}")
     send_repair_menu(user_id)
 
+
+@bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
+def view_repairs_by_category(message):
+    user_id = message.from_user.id
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+
+    # Фильтруем ремонты по выбранному транспорту
+    repairs = filter_repairs_by_transport(user_id, repairs)
+
+    # Получаем уникальные категории ремонтов для выбранного транспорта
+    categories = set(repair['category'] for repair in repairs)
+    if not categories:
+        bot.send_message(user_id, "Нет доступных категорий для выбранного транспорта.")
+        send_menu1(user_id)  # Возврат в меню трат и ремонтов
+        return
+
+    category_buttons = [types.KeyboardButton(category) for category in categories]
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(*category_buttons)
+    item_return_to_repairs = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_return_to_main = types.KeyboardButton("В главное меню")
+    markup.add(item_return_to_repairs, item_return_to_main)
+
+    bot.send_message(user_id, "Выберите категорию для просмотра ремонтов:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_repair_category_selection)
+
+# Обработчик выбора категории ремонтов
+def handle_repair_category_selection(message):
+    user_id = message.from_user.id
+    selected_category = message.text
+
+    if selected_category == "Вернуться в меню трат и ремонтов":
+        return_to_menu_2(message)
+        return
+
+    if selected_category == "В главное меню":
+        return_to_menu(message)  # Возврат в главное меню
+        return
+
+    user_data = load_repair_data(user_id)
+    repairs = user_data.get(str(user_id), {}).get("repairs", [])
+
+    # Фильтруем ремонты по выбранному транспорту
+    repairs = filter_repairs_by_transport(user_id, repairs)
+
+    # Проверяем, существует ли выбранная категория
+    if selected_category not in {repair['category'] for repair in repairs}:
+        bot.send_message(user_id, "Выбранная категория не найдена. Пожалуйста, выберите корректную категорию.")
+        view_repairs_by_category(message)  # Запрашиваем повторный ввод категории
+        return
+
+    # Фильтруем ремонты по выбранной категории
+    category_repairs = [repair for repair in repairs if repair['category'] == selected_category]
+
+    total_repairs_amount = 0
+    repair_details = []
+
+    for index, repair in enumerate(category_repairs, start=1):
+        repair_name = repair.get("name", "Без названия")
+        repair_date = repair.get("date", "")
+        repair_amount = float(repair.get("amount", 0))
+        total_repairs_amount += repair_amount
+
+        repair_details.append(
+            f"  №: {index}\n\n"
+            f"    КАТЕГОРИЯ: {selected_category}\n"
+            f"    НАЗВАНИЕ: {repair_name}\n"
+            f"    ДАТА: {repair_date}\n"
+            f"    СУММА: {repair_amount:.2f} ₽\n"
+            f"    ОПИСАНИЕ: {repair.get('description', 'Без описания')}\n"
+        )
+
+    if repair_details:
+        message_text = f"Ремонты в категории '{selected_category}':\n\n" + "\n\n".join(repair_details)
+    else:
+        message_text = f"В категории '{selected_category}' ремонтов не найдено."
+
+    send_message_with_split(user_id, message_text)
+    bot.send_message(user_id, f"Итоговая сумма ремонтов в категории '{selected_category}': {total_repairs_amount:.2f} ₽.")
+
+    # Возвращаем пользователя в меню выбора категорий
+    view_repairs_by_category(message)  # Запрашиваем выбор категории заново
+
 # Обработчик ремонтов за месяц
 @bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
 def view_repairs_by_month(message):
@@ -3162,19 +3248,22 @@ def view_repairs_by_month(message):
 
 def get_repairs_by_month(message):
     user_id = message.from_user.id
-    date = message.text
+    date = message.text.strip()
 
     if "." in date:
         parts = date.split(".")
         if len(parts) == 2:
-            month, year = map(int, parts)
-            if 1 <= month <= 12 and len(str(year)) == 4:
+            month, year = parts
+            if month.isdigit() and year.isdigit() and 1 <= int(month) <= 12 and len(year) == 4:
+                month, year = map(int, parts)
+                
                 user_data = load_repair_data(user_id)
                 repairs = user_data.get(str(user_id), {}).get("repairs", [])
 
                 # Фильтруем ремонты по выбранному транспорту
                 repairs = filter_repairs_by_transport(user_id, repairs)
 
+                total_repairs = 0
                 repair_details = []
 
                 for index, repair in enumerate(repairs, start=1):
@@ -3184,13 +3273,20 @@ def get_repairs_by_month(message):
                         repair_month, repair_year = map(int, repair_date_parts[1:3])
 
                         if repair_month == month and repair_year == year:
+                            amount = float(repair.get("amount", 0))
+                            total_repairs += amount
+
                             repair_name = repair.get("name", "Без названия")
-                            repair_description = repair.get("description", "Без описания")
+                            description = repair.get("description", "")
+                            category = repair.get("category", "Без категории")
+
                             repair_details.append(
                                 f"  №: {index}\n\n"
+                                f"    КАТЕГОРИЯ: {category}\n"
                                 f"    НАЗВАНИЕ: {repair_name}\n"
                                 f"    ДАТА: {repair_date}\n"
-                                f"    ОПИСАНИЕ: {repair_description}\n"
+                                f"    СУММА: {amount} руб.\n"
+                                f"    ОПИСАНИЕ: {description}\n"
                             )
 
                 if repair_details:
@@ -3199,15 +3295,20 @@ def get_repairs_by_month(message):
                     message_text = f"За {date} ремонтов не найдено."
 
                 send_message_with_split(user_id, message_text)
+                bot.send_message(user_id, f"Итоговая сумма ремонтов за {date}: {total_repairs} руб.")
+                send_menu1(user_id)  # Возвращаемся в меню после отображения информации
             else:
                 bot.send_message(user_id, "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ.")
                 bot.register_next_step_handler(message, get_repairs_by_month)
+                return  # Возврат из функции, чтобы не продолжать выполнение
         else:
             bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ.")
             bot.register_next_step_handler(message, get_repairs_by_month)
+            return  # Возврат из функции, чтобы не продолжать выполнение
     else:
         bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ.")
         bot.register_next_step_handler(message, get_repairs_by_month)
+        return  # Возврат из функции, чтобы не продолжать выполнение
 
 # Обработчик ремонтов за год
 @bot.message_handler(func=lambda message: message.text == "Ремонты (год)")
@@ -3228,7 +3329,7 @@ def get_repairs_by_year(message):
     if not year.isdigit() or len(year) != 4:
         bot.send_message(user_id, "Пожалуйста, введите год в формате ГГГГ.")
         bot.register_next_step_handler(message, get_repairs_by_year)
-        return
+        return  # Возврат из функции, чтобы не продолжать выполнение
 
     year = int(year)
     user_data = load_repair_data(user_id)
@@ -3237,6 +3338,7 @@ def get_repairs_by_year(message):
     # Фильтруем ремонты по выбранному транспорту
     repairs = filter_repairs_by_transport(user_id, repairs)
 
+    total_repairs = 0
     repair_details = []
 
     for index, repair in enumerate(repairs, start=1):
@@ -3246,13 +3348,20 @@ def get_repairs_by_year(message):
             if len(date_parts) >= 3:
                 repair_year = int(date_parts[2])
                 if repair_year == year:
+                    amount = float(repair.get("amount", 0))
+                    total_repairs += amount
+
                     repair_name = repair.get("name", "Без названия")
-                    repair_description = repair.get("description", "Без описания")
+                    description = repair.get("description", "")
+                    category = repair.get("category", "Без категории")
+
                     repair_details.append(
                         f"  №: {index}\n\n"
+                        f"    КАТЕГОРИЯ: {category}\n"
                         f"    НАЗВАНИЕ: {repair_name}\n"
                         f"    ДАТА: {repair_date}\n"
-                        f"    ОПИСАНИЕ: {repair_description}\n"
+                        f"    СУММА: {amount} руб.\n"
+                        f"    ОПИСАНИЕ: {description}\n"
                     )
 
     if repair_details:
@@ -3261,6 +3370,10 @@ def get_repairs_by_year(message):
         message_text = f"За {year} год ремонтов не найдено."
 
     send_message_with_split(user_id, message_text)
+    bot.send_message(user_id, f"Итоговая сумма ремонтов за {year} год: {total_repairs} руб.")
+
+    # Возвращаемся в меню после отображения информации
+    send_menu1(user_id)
 
 # Обработчик всех ремонтов
 @bot.message_handler(func=lambda message: message.text == "Ремонты (всё время)")
@@ -3273,26 +3386,37 @@ def view_all_repairs(message):
     # Фильтруем ремонты по выбранному транспорту
     repairs = filter_repairs_by_transport(user_id, repairs)
 
+    total_repairs = 0
     repair_details = []
 
     for index, repair in enumerate(repairs, start=1):
+        amount = float(repair.get("amount", 0))
+        total_repairs += amount
+
         repair_name = repair.get("name", "Без названия")
         repair_date = repair.get("date", "")
-        repair_description = repair.get("description", "Без описания")
+        description = repair.get("description", "")
+        category = repair.get("category", "Без категории")
 
         repair_details.append(
             f"  №: {index}\n\n"
+            f"    КАТЕГОРИЯ: {category}\n"
             f"    НАЗВАНИЕ: {repair_name}\n"
             f"    ДАТА: {repair_date}\n"
-            f"    ОПИСАНИЕ: {repair_description}\n"
+            f"    СУММА: {amount} руб.\n"
+            f"    ОПИСАНИЕ: {description}\n"
         )
 
     if repair_details:
         message_text = "Все ремонты:\n\n" + "\n\n".join(repair_details)
     else:
-        message_text = "Ремонтов не найдено."
+        message_text = "Ремонт не найдено."
 
     send_message_with_split(user_id, message_text)
+    bot.send_message(user_id, f"Итоговая сумма всех ремонтов: {total_repairs} руб.")
+
+    # Возвращаемся в меню после отображения информации
+    send_menu1(user_id)
 
 # (11.9) --------------- КОД ДЛЯ "РЕМОНТОВ" (ОБРАБОТЧИК "УДАЛИТЬ РЕМОНТЫ") ---------------
 
