@@ -21455,14 +21455,19 @@ def get_exchange_rates_message():
         exchange_rates = fetch_exchange_rates_cbr()
         current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
         rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
-        for currency, rate in exchange_rates.items():
-            if currency in CURRENCY_NAMES:
+        
+        for currency in CURRENCY_NAMES:
+            if currency in exchange_rates:
                 name, emoji = CURRENCY_NAMES[currency]
-                rates_message += f"{emoji} *{name}:* {rate:.2f} руб.\n"
+                rates_message += f"{emoji} *{name}:* {exchange_rates[currency]:.2f} руб.\n"
+            else:
+                name, emoji = CURRENCY_NAMES[currency]
+                rates_message += f"{emoji} *{name}:* Н/Д\n"  
+        
         return rates_message
-    except:
-        return None
-
+    except Exception as e:
+        return f"*Ошибка при получении курсов валют:* {str(e)}"
+    
 def load_city_names(file_path):
     city_names = {}
     try:
