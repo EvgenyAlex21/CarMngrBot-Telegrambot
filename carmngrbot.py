@@ -1024,24 +1024,33 @@ def check_subscription(func):
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(user_id, {})
         
+        # Проверяем подписку
         has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
                              for plan in user_data.get('plans', []))
         if has_active_plan:
             return func(message, *args, **kwargs)
         
+        # Проверяем доступ через баллы
+        feature_access = user_data.get('feature_access', {})
+        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
+        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
+        if end_date > datetime.now():
+            return func(message, *args, **kwargs)
+        
+        # Проверяем пробный доступ
         trials = user_data.get('free_feature_trials', {})
         last_trial = datetime.strptime(trials.get(message.text, "01.01.2000 в 00:00"), "%d.%m.%Y в %H:%M")
         if (datetime.now() - last_trial).days >= 7:
             trials[message.text] = datetime.now().strftime("%d.%m.%Y в %H:%M")
             data['subscriptions']['users'].setdefault(user_id, {})['free_feature_trials'] = trials
-            data['subscriptions']['users'][user_id]['trial_granted'] = True  # Флаг пробного доступа
+            data['subscriptions']['users'][user_id]['trial_granted'] = True
             save_payments_data(data)
             bot.send_message(user_id, f"🎁 Бесплатное использование «{message.text}» на один раз!", parse_mode="Markdown")
             return func(message, *args, **kwargs)
         
         bot.send_message(user_id, (
             "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n"
-            "🚀 Оформите подписку или дождитесь окончания 7-дневного лимита бесплатного использования!"
+            "🚀 Оформите подписку, обменяйте баллы (1 балл = 1 час) или дождитесь окончания 7-дневного лимита!"
         ), parse_mode="Markdown")
     return wrapper
 
@@ -1065,27 +1074,34 @@ def restrict_free_users(func):
     def wrapper(message, *args, **kwargs):
         user_id = str(message.from_user.id)
         
-        # Пропускаем функции из FREE_FEATURES
         if message.text in FREE_FEATURES:
             return func(message, *args, **kwargs)
         
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(user_id, {})
         
+        # Проверяем подписку
         has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
                              for plan in user_data.get('plans', []))
-        
         if has_active_plan:
             return func(message, *args, **kwargs)
         
+        # Проверяем доступ через баллы
+        feature_access = user_data.get('feature_access', {})
+        access_end = feature_access.get(message.text, "01.01.2000 в 00:00")
+        end_date = datetime.strptime(access_end, "%d.%m.%Y в %H:%M")
+        if end_date > datetime.now():
+            return func(message, *args, **kwargs)
+        
+        # Проверяем пробный доступ
         if user_data.get('trial_granted', False):
             data['subscriptions']['users'][user_id]['trial_granted'] = False
             save_payments_data(data)
             return func(message, *args, **kwargs)
         
         bot.send_message(message.chat.id, (
-            "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n\n"
-            "🚀 Оформите подписку или дождитесь окончания 7-дневного лимита бесплатного использования!"
+            "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n"
+            "🚀 Оформите подписку, обменяйте баллы (1 балл = 1 час) или дождитесь окончания 7-дневного лимита!"
         ), parse_mode="Markdown")
     return wrapper
 
@@ -2504,12 +2520,24 @@ def exchange_points_handler(message):
         return_to_scores_menu(message)
         return
     
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Обмен на время"), types.KeyboardButton("Обмен на скидку"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-    markup.add(types.KeyboardButton("Вернуться в подписку"))
-    markup.add(types.KeyboardButton("В главное меню"))
+    # Проверяем наличие активной подписки
+    has_subscription = False
+    plans = data['subscriptions']['users'].get(user_id, {}).get('plans', [])
+    now = datetime.now()
+    for plan in plans:
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        if end_date > now:
+            has_subscription = True
+            break
+    
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"))
+    if not has_subscription:
+        markup.add(telebot.types.KeyboardButton("Обмен на функции"))
+    markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+    markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+    markup.add(telebot.types.KeyboardButton("В главное меню"))
     
     total_exchanged = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "spent")
     exchange_rate = 2.4 if total_exchanged >= 100 else 2.0
@@ -2517,14 +2545,15 @@ def exchange_points_handler(message):
     bot.send_message(message.chat.id, (
         f"*Обмен баллов*\n\n"
         f"🎁 *Текущие баллы:* {points}\n\n"
-        "_P.S. вы можете обменять баллы на часы или дни использования:_\n"
-        f"_1 балл = {exchange_rate} часа_\n"
-        "_или на скидку: 5 баллов = 5% (макс. 20%)_\n\n"
+        "_P.S. вы можете обменять баллы на:_\n"
+        f"- Время подписки: 1 балл = {exchange_rate} часа\n"
+        f"- Скидку: 5 баллов = 5% (макс. 20%)\n"
+        f"{'- Доступ к функциям: 1 балл = 1 час (без подписки)' if not has_subscription else ''}\n\n"
         "Выберите опцию:"
     ), reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate)
+    bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
 
-def process_exchange_option(message, points, exchange_rate):
+def process_exchange_option(message, points, exchange_rate, has_subscription):
     if message.text in ["Вернуться в баллы", "Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
         if message.text == "Вернуться в баллы":
             return_to_scores_menu(message)
@@ -2540,11 +2569,11 @@ def process_exchange_option(message, points, exchange_rate):
     data = load_payment_data()
     
     if message.text == "Обмен на время":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-        markup.add(types.KeyboardButton("Вернуться в подписку"))
-        markup.add(types.KeyboardButton("В главное меню"))
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
             f"*Обмен баллов*\n\n"
             f"🎁 *Текущие баллы:* {points}\n\n"
@@ -2554,11 +2583,11 @@ def process_exchange_option(message, points, exchange_rate):
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_points_exchange, exchange_rate)
     elif message.text == "Обмен на скидку":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-        markup.add(types.KeyboardButton("Вернуться в подписку"))
-        markup.add(types.KeyboardButton("В главное меню"))
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
             f"*Обмен баллов*\n\n"
             f"🎁 *Текущие баллы:* {points}\n\n"
@@ -2567,15 +2596,158 @@ def process_exchange_option(message, points, exchange_rate):
             "Введите количество баллов для обмена:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
+    elif message.text == "Обмен на функции" and not has_subscription:
+        paid_features = [
+            "Расход топлива", "Траты и ремонты", "Найти транспорт", "Поиск мест",
+            "Цены на топливо", "Анти-радар", "Коды OBD2", "Калькуляторы", "Прочее"
+        ]
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for feature in paid_features:
+            markup.add(telebot.types.KeyboardButton(feature))
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            f"*Обмен баллов на функции*\n\n"
+            f"🎁 *Текущие баллы:* {points}\n\n"
+            "_P.S. вы можете обменять баллы на доступ к одной функции:_\n"
+            "_1 балл = 1 час_\n\n"
+            "Выберите функцию:"
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_feature_selection, points)
     else:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Обмен на время"), types.KeyboardButton("Обмен на скидку"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-        markup.add(types.KeyboardButton("Вернуться в подписку"))
-        markup.add(types.KeyboardButton("В главное меню"))
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"))
+        if not has_subscription:
+            markup.add(telebot.types.KeyboardButton("Обмен на функции"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, "❌ Выберите одну из предложенных опций!", reply_markup=markup, parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate)
+        bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
+
+def process_feature_selection(message, points):
+    if message.text in ["Вернуться в баллы", "Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        if message.text == "Вернуться в баллы":
+            return_to_scores_menu(message)
+        elif message.text == "Вернуться в реферальную систему":
+            return_to_referral_menu(message)
+        elif message.text == "Вернуться в подписку":
+            payments_function(message)
+        else:
+            return_to_menu(message)
+        return
+    
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    feature = message.text
+    paid_features = [
+        "Расход топлива", "Траты и ремонты", "Найти транспорт", "Поиск мест",
+        "Цены на топливо", "Анти-радар", "Коды OBD2", "Калькуляторы", "Прочее"
+    ]
+    
+    if feature not in paid_features:
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for f in paid_features:
+            markup.add(telebot.types.KeyboardButton(f))
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, "❌ Выберите функцию из списка!", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_feature_selection, points)
+        return
+    
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+    markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+    markup.add(telebot.types.KeyboardButton("В главное меню"))
+    bot.send_message(message.chat.id, (
+        f"*Обмен баллов на функцию '{feature}'*\n\n"
+        f"🎁 *Текущие баллы:* {points}\n\n"
+        "_P.S. вы можете обменять баллы на часы использования:_\n"
+        "_1 балл = 1 час_\n\n"
+        "Введите количество баллов для обмена:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_feature_exchange, feature, points)
+
+def process_feature_exchange(message, feature, points):
+    if message.text in ["Вернуться в баллы", "Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
+        if message.text == "Вернуться в баллы":
+            return_to_scores_menu(message)
+        elif message.text == "Вернуться в реферальную систему":
+            return_to_referral_menu(message)
+        elif message.text == "Вернуться в подписку":
+            payments_function(message)
+        else:
+            return_to_menu(message)
+        return
+    
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    
+    try:
+        exchange_points = float(message.text)
+        if exchange_points < 0.5:
+            raise ValueError("Минимальное количество баллов — 0.5!")
+        if exchange_points > points:
+            raise ValueError("Недостаточно баллов!")
+        if exchange_points % 0.5 != 0:
+            raise ValueError("Баллы должны быть кратны 0.5!")
+        
+        total_hours = exchange_points  # 1 балл = 1 час
+        days = int(total_hours // 24)
+        remaining_hours = total_hours % 24
+        
+        # Проверяем текущий доступ к функции
+        feature_access = data['subscriptions']['users'].get(user_id, {}).get('feature_access', {})
+        current_end = datetime.strptime(feature_access.get(feature, "01.01.2000 в 00:00"), "%d.%m.%Y в %H:%M")
+        latest_end = max(current_end, datetime.now())
+        new_end = latest_end + timedelta(days=days, hours=remaining_hours)
+        
+        # Обновляем баллы и историю
+        data['subscriptions']['users'][user_id]['referral_points'] -= exchange_points
+        data['subscriptions']['users'][user_id].setdefault('points_history', [])
+        data['subscriptions']['users'][user_id]['points_history'].append({
+            "action": "spent",
+            "points": exchange_points,
+            "reason": f"Обмен на функцию '{feature}' ({days} дн. {remaining_hours:.1f} ч.)",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        # Сохраняем доступ к функции
+        data['subscriptions']['users'].setdefault(user_id, {}).setdefault('feature_access', {})
+        data['subscriptions']['users'][user_id]['feature_access'][feature] = new_end.strftime("%d.%m.%Y в %H:%M")
+        
+        save_payments_data(data)
+        
+        result_msg = (
+            f"🎉 *Баллы обменяны!* 🎉\n\n"
+            f"💸 *Потрачено:* {exchange_points} баллов\n"
+            f"✅ *Получено:* доступ к '{feature}' "
+        )
+        if days > 0 and remaining_hours > 0:
+            result_msg += f"на {days} дн. {remaining_hours:.1f} ч.\n"
+        elif days > 0:
+            result_msg += f"на {days} дн.\n"
+        else:
+            result_msg += f"на {remaining_hours:.1f} ч.\n"
+        result_msg += f"⏳ *Активно до:* {new_end.strftime('%d.%m.%Y в %H:%M')}"
+        
+        bot.send_message(message.chat.id, result_msg, parse_mode="Markdown")
+        points_menu(message)
+    
+    except ValueError as e:
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, f"❌ {str(e)}", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_feature_exchange, feature, points)
 
 def process_points_exchange(message, exchange_rate):
     if message.text in ["Вернуться в баллы", "Вернуться в реферальную систему", "Вернуться в подписку", "В главное меню"]:
@@ -2601,7 +2773,7 @@ def process_points_exchange(message, exchange_rate):
             raise ValueError("Недостаточно баллов!")
         if exchange_points % 0.5 != 0:
             raise ValueError("Баллы должны быть кратны 0.5!")
-        if exchange_points > 4380:  # 4380 баллов = 365 дней при курсе 2.4 часа
+        if exchange_points > 4380:
             raise ValueError("Максимальный обмен — 4380 баллов (365 дней)!")
         
         total_hours = exchange_points * exchange_rate
@@ -2622,8 +2794,8 @@ def process_points_exchange(message, exchange_rate):
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         
-        user_data = data['subscriptions']['users'][user_id]
-        user_data['plans'].append({
+        data['subscriptions']['users'].setdefault(user_id, {})
+        data['subscriptions']['users'][user_id].setdefault('plans', []).append({
             "plan_name": "points_bonus",
             "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
             "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
@@ -2649,11 +2821,11 @@ def process_points_exchange(message, exchange_rate):
         points_menu(message)
     
     except ValueError as e:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-        markup.add(types.KeyboardButton("Вернуться в подписку"))
-        markup.add(types.KeyboardButton("В главное меню"))
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, f"❌ {str(e)}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_points_exchange, exchange_rate)
 
@@ -2705,18 +2877,18 @@ def process_discount_exchange(message):
         
         bot.send_message(message.chat.id, (
             f"🎉 *Баллы обменяны!* 🎉\n\n"
-            f"💸 *Potрачено:* {exchange_points} баллов\n"
+            f"💸 *Потрачено:* {exchange_points} баллов\n"
             f"✅ *Получено:* {discount}% скидки\n"
             f"📉 *Текущая скидка:* {users_data[user_id]['discount']}%"
         ), parse_mode="Markdown")
         points_menu(message)
     
     except ValueError as e:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-        markup.add(types.KeyboardButton("Вернуться в подписку"))
-        markup.add(types.KeyboardButton("В главное меню"))
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
+        markup.add(telebot.types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, f"❌ {str(e)}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
 
