@@ -5807,6 +5807,7 @@ def process_next_action(message):
         bot.register_next_step_handler(message, process_next_action)
 
 # Функция для обработки данных по всем видам топлива и их сохранения
+# Обработка данных по всем видам топлива и их сохранение
 def process_city_fuel_data(city_code, selected_fuel_type):
     today = datetime.now().date()
     saved_data = load_saved_data(city_code)
@@ -5819,7 +5820,19 @@ def process_city_fuel_data(city_code, selected_fuel_type):
             # Получаем новые данные
             all_fuel_prices = []
             for fuel_type in fuel_types:
-                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+                try:
+                    fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+                except ValueError:
+                    # Если таблица не найдена, возвращаем последние сохраненные данные
+                    if saved_data:
+                        return [
+                            item for item in saved_data
+                            if item[1].lower() == selected_fuel_type.lower() or
+                            (selected_fuel_type.lower() == "газ" and item[1].lower() == "газ спбт")
+                        ]
+                    # Если данных нет, вызываем ту же ошибку
+                    raise ValueError("Ошибка получения цен: Не найдена таблица с ценами. Попробуйте выбрать другой тип топлива.")
+
                 fuel_prices = remove_duplicate_prices(fuel_prices)
                 all_fuel_prices.extend(fuel_prices)
 
@@ -5831,7 +5844,12 @@ def process_city_fuel_data(city_code, selected_fuel_type):
     if not saved_data:
         all_fuel_prices = []
         for fuel_type in fuel_types:
-            fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+            try:
+                fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
+            except ValueError:
+                # Если таблица не найдена и файла тоже нет, вызываем ту же ошибку
+                raise ValueError("Ошибка получения цен: Не найдена таблица с ценами. Попробуйте выбрать другой тип топлива.")
+
             fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
 
