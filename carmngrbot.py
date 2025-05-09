@@ -22,6 +22,10 @@ import calendar
 from telegram_bot_calendar import DetailedTelegramCalendar
 from datetime import date
 from requests.exceptions import ReadTimeout, ConnectionError
+from scipy.spatial import cKDTree
+import threading
+import csv
+
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -129,6 +133,7 @@ def start(message):
     item5 = types.KeyboardButton("Погода")
     item6 = types.KeyboardButton("Код региона")
     item7 = types.KeyboardButton("Цены на топливо")
+    #item8 = types.KeyboardButton("Анти-радар")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
@@ -5187,8 +5192,7 @@ def handle_location_5(message):
         traceback.print_exc()
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
 
-import telebot
-import threading
+
 import schedule
 import time
 import json
@@ -5424,17 +5428,7 @@ schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
 schedule.every().day.at("20:00").do(send_weather_notifications)
 
-# Функция для запуска расписания в отдельном потоке
-def run_schedule():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)  # Проверка расписания каждую секунду
 
-# Запуск потока для расписания
-schedule_thread = threading.Thread(target=run_schedule)
-schedule_thread.daemon = True
-schedule_thread.start()
-       
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
 @restricted
@@ -5879,8 +5873,6 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже.")
 
 # ЦЕНЫ НА ТОПЛИВО
-
-import threading
 
 # Переменные для состояния пользователя и данных
 user_state = {}
@@ -6329,35 +6321,26 @@ def parse_fuel_prices():
         save_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
-# Функция планировщика
-def schedule_parsing():
+
+# !!!!!!!!!!!!!!!!!!!ЭТО ОБЩИЙ ПЛАНИРОВЩИК ЗАДАЧ!!!!!!!!!!!!!!!!!!!!!
+def schedule_tasks():
     while True:
         now = datetime.now()
-        if now.hour == 23 and now.minute == 00:  # Запуск в 00:00
-            parse_fuel_prices()
+
+        # Проверка для парсинга
+        if now.hour == 0 and now.minute == 0:  # Запуск в 00:00
+            parse_fuel_prices()  # Функция парсинга
             time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
-        time.sleep(60)  # Проверка каждые 60 секунд
 
-# Запуск планировщика в отдельном потоке
-threading.Thread(target=schedule_parsing, daemon=True).start()
+        # Проверка для уведомлений
+        schedule.run_pending()  # Проверка запланированных уведомлений
+        time.sleep(1)  # Проверка каждую секунду
+
+# Запуск объединенного потока
+threading.Thread(target=schedule_tasks, daemon=True).start()
 
 
-# # !!!!!!!!!!!!!!!!!!!ЭТО ОБЩИЙ ПЛАНИРОВЩИК ЗАДАЧ!!!!!!!!!!!!!!!!!!!!!
-# def schedule_tasks():
-#     while True:
-#         now = datetime.now()
-
-#         # Проверка для парсинга
-#         if now.hour == 0 and now.minute == 0:  # Запуск в 00:00
-#             parse_fuel_prices()  # Функция парсинга
-#             time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
-
-#         # Проверка для уведомлений
-#         schedule.run_pending()  # Проверка запланированных уведомлений
-#         time.sleep(1)  # Проверка каждую секунду
-
-# # Запуск объединенного потока
-# threading.Thread(target=schedule_tasks, daemon=True).start()
+# Ваш транспорт
 
 
 # Определение состояний
@@ -6702,6 +6685,167 @@ def view_transport(message):
 @track_user_activity
 def return_to_transport_menu(message):
     manage_transport(message)  # Возвращаем пользователя в меню транспорта
+
+
+# АНТИ-РАДАР (РАЗОБРАТЬСЯ С ГЕОПОЗИЦИЕЙ!!!!!)
+
+
+# # 📂 Загрузка данных о камерах из файла
+# camera_data = []
+# coordinates = []
+# try:
+#     with open('files/milestones.csv', mode='r', encoding='utf-8') as file:
+#         reader = csv.DictReader(file, delimiter=';')
+#         for row in reader:
+#             latitude = float(row['gps_y'])
+#             longitude = float(row['gps_x'])
+#             camera_data.append({
+#                 'id': row['camera_id'],
+#                 'latitude': latitude,
+#                 'longitude': longitude,
+#                 'description': row['camera_place'],
+#             })
+#             coordinates.append((latitude, longitude))
+# except Exception as e:
+#     print(f"Ошибка при загрузке данных о камерах: {e}")
+
+# # 🌳 Создание KD-дерева для поиска ближайших камер
+# camera_tree = cKDTree(coordinates)
+# user_tracking = {}
+
+# @bot.message_handler(func=lambda message: message.text == "Анти-радар")
+# def start_antiradar(message):
+#     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+#     button_geo = telebot.types.KeyboardButton(text="📍 Транслировать геопозицию", request_location=True)
+#     keyboard.add(button_geo)
+#     bot.send_message(message.chat.id, "🔔 Пожалуйста, разрешите доступ к геопозиции для запуска анти-радара. Нажмите кнопку, чтобы начать трансляцию своей геопозиции.", reply_markup=keyboard)
+
+# @bot.message_handler(content_types=['location'])
+# def handle_location(message):
+#     if message.location:
+#         user_id = message.chat.id
+#         user_tracking[user_id] = {
+#             'location': message.location,
+#             'tracking': True,
+#             'last_notified_camera': {},
+#             'notification_ids': [],
+#         }
+
+#         keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+#         button_stop = telebot.types.KeyboardButton(text="Выключить анти-радар")
+#         keyboard.add(button_stop)
+#         bot.send_message(user_id, "✅ Анти-радар активирован. Нажмите кнопку, чтобы отключить.", reply_markup=keyboard)
+
+#         track_user_location(user_id, message.location)
+
+# @bot.message_handler(func=lambda message: message.text == "Выключить анти-радар")
+# def stop_antiradar(message):
+#     user_id = message.chat.id
+#     if user_id in user_tracking:
+#         user_tracking[user_id]['tracking'] = False
+#         bot.send_message(user_id, "🚫 Анти-радар остановлен. Трансляция геопозиции отключена.")
+#     else:
+#         bot.send_message(user_id, "❌ Анти-радар не был запущен.")
+
+# def delete_messages(user_id, message_id):
+#     time.sleep(6)
+#     try:
+#         bot.delete_message(chat_id=user_id, message_id=message_id)
+#     except Exception as e:
+#         print(f"Ошибка при удалении сообщения: {e}")
+
+# MAX_CAMERAS_IN_MESSAGE = 5  # Максимальное количество камер в одном сообщении
+# ALERT_DISTANCE = 150  # Расстояние для уведомления о приближении к камере
+# EXIT_DISTANCE = 50  # Расстояние для уведомления о выходе из зоны камеры
+# IN_ZONE_DISTANCE = 15  # Расстояние, при котором показывается сообщение "в зоне камеры"
+
+# def track_user_location(user_id, initial_location):
+#     def monitor():
+#         last_position = (initial_location.latitude, initial_location.longitude)
+
+#         while user_tracking.get(user_id, {}).get('tracking', False):
+#             user_location = user_tracking[user_id]['location']
+#             user_position = (user_location.latitude, user_location.longitude)
+
+#             distances, indices = camera_tree.query(user_position, k=len(camera_data))
+#             nearest_cameras = []
+#             unique_addresses = set()
+
+#             for i, distance in enumerate(distances[:MAX_CAMERAS_IN_MESSAGE]):
+#                 if distance <= 1000:  # Ограничиваем радиус поиска
+#                     camera = camera_data[indices[i]]
+#                     actual_distance = int(geodesic(user_position, (camera['latitude'], camera['longitude'])).meters)
+#                     camera_address = camera['description']
+
+#                     # Проверяем, нужно ли отправить уведомление
+#                     if camera_address not in user_tracking[user_id]['last_notified_camera']:
+#                         nearest_cameras.append((actual_distance, camera))
+#                         unique_addresses.add(camera_address)
+#                         user_tracking[user_id]['last_notified_camera'][camera_address] = {
+#                             'entered': False,
+#                             'exited': False,
+#                             'in_zone': False
+#                         }
+
+#                     if actual_distance <= ALERT_DISTANCE and not user_tracking[user_id]['last_notified_camera'][camera_address]['entered']:
+#                         notification_message = (
+#                             f"⚠️ Вы приближаетесь к камере!\n\n"
+#                             f"📷 Расстояние - *{actual_distance} м.*\n"
+#                             f"🗺️ *{camera_address}*"
+#                         )
+#                         try:
+#                             sent_message = bot.send_message(user_id, notification_message, parse_mode="Markdown")
+#                             user_tracking[user_id]['notification_ids'].append(sent_message.message_id)
+#                             user_tracking[user_id]['last_notified_camera'][camera_address]['entered'] = True
+#                         except Exception as e:
+#                             print(f"Ошибка при отправке уведомления о приближении: {e}")
+
+#                     if actual_distance <= IN_ZONE_DISTANCE and not user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone']:
+#                         in_zone_message = (
+#                             f"📍 Вы находитесь в зоне действия камеры!\n\n"
+#                             f"🗺️ *{camera_address}*"
+#                         )
+#                         try:
+#                             in_zone_sent = bot.send_message(user_id, in_zone_message, parse_mode="Markdown")
+#                             user_tracking[user_id]['notification_ids'].append(in_zone_sent.message_id)
+#                             user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone'] = True
+#                         except Exception as e:
+#                             print(f"Ошибка при отправке уведомления о зоне действия: {e}")
+
+#                     if actual_distance > EXIT_DISTANCE and user_tracking[user_id]['last_notified_camera'][camera_address]['entered']:
+#                         exit_message = (
+#                             f"🔔 Вы вышли из зоны действия камеры!\n\n"
+#                             f"🗺️ *{camera_address}*"
+#                         )
+#                         try:
+#                             exit_sent_message = bot.send_message(user_id, exit_message, parse_mode="Markdown")
+#                             user_tracking[user_id]['notification_ids'].append(exit_sent_message.message_id)
+#                             user_tracking[user_id]['last_notified_camera'][camera_address]['exited'] = True
+#                         except Exception as e:
+#                             print(f"Ошибка при отправке уведомления о выходе из зоны: {e}")
+
+#             # Формируем текст сообщения о ближайших камерах
+#             message_text = "⚠️ Внимание! Камеры впереди:\n\n"
+#             for distance, camera in nearest_cameras:
+#                 message_text += f"📷 Камера через *{distance} м.*\n🗺️ Адрес: *{camera['description']}*\n\n"
+
+#             # Обновляем сообщение с камерами
+#             if nearest_cameras:
+#                 try:
+#                     if user_tracking[user_id].get('last_camera_message'):
+#                         bot.edit_message_text(chat_id=user_id, message_id=user_tracking[user_id]['last_camera_message'], text=message_text, parse_mode="Markdown")
+#                     else:
+#                         sent_message = bot.send_message(user_id, message_text, parse_mode="Markdown")
+#                         user_tracking[user_id]['last_camera_message'] = sent_message.message_id
+#                 except Exception as e:
+#                     print(f"Ошибка при обновлении сообщения: {e}")
+
+#             time.sleep(3)
+
+#     threading.Thread(target=monitor, daemon=True).start()
+
+
+
 
 
 # АААААААААААААААДДДДДДДДДДДДДДДДДДДММММММММММММММММММММММИИИИИИИИИИИИИИИИИИИИИИИИИИИННННННННННННННН
