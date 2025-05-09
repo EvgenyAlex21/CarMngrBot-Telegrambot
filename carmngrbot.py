@@ -7184,6 +7184,7 @@ def show_admin_panel(message):
         'Чат',
         'Файлы',
         'Статистика',
+        'Диалоги',
         'Резервная копия',
         'Выход'
     )
@@ -7939,6 +7940,37 @@ ADMIN_DB_PATH = 'data base/admin/admin_sessions.json'
 # Переменные для хранения состояния чата
 active_chats = {}
 
+# Пути к файлам
+CHAT_HISTORY_PATH = 'data base/admin/chat_history.json'  # Новый путь для истории переписки
+
+# Загрузка истории чата
+def load_chat_history():
+    if os.path.exists(CHAT_HISTORY_PATH):
+        with open(CHAT_HISTORY_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+# Сохранение сообщения в историю чата
+def save_message_to_history(admin_id, user_id, message_text, message_type):
+    chat_history = load_chat_history()
+    
+    # Создаем уникальный ключ для чата
+    chat_key = f"{admin_id}_{user_id}"
+    if chat_key not in chat_history:
+        chat_history[chat_key] = []
+
+    # Получаем текущее время и форматируем его
+    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+
+    chat_history[chat_key].append({
+        "type": message_type,  # 'admin' или 'user'
+        "text": message_text,
+        "timestamp": timestamp  # Сохраняем дату и время
+    })
+
+    with open(CHAT_HISTORY_PATH, 'w', encoding='utf-8') as file:
+        json.dump(chat_history, file, ensure_ascii=False, indent=4)
+
 # Загрузка базы данных пользователей
 def load_users():
     if os.path.exists(USER_DB_PATH):
@@ -8052,35 +8084,97 @@ def stop_chat(message):
     else:
         bot.send_message(admin_id, "Нет активного чата для завершения.")
 
-# Обработка сообщений для активного чата между администратором и пользователем
+# Изменения в функции handle_chat_messages для сохранения сообщений в историю
 @bot.message_handler(func=lambda message: message.from_user.id in active_user_chats or message.from_user.id in active_admin_chats)
 def handle_chat_messages(message):
     user_id = message.from_user.id
 
     # Игнорируем команды, чтобы они не пересылались в чате
-    if message.text.startswith('/'):
+    if message.text.startswith('/') or message.text.startswith('Стоп'):
         return
 
-    if message.text.startswith('Стоп'):
-        return
-
-    # Если сообщение от администратора и это команда /stop_chat, завершаем чат
-    if message.text.strip() == "Стоп" and user_id in active_admin_chats:
-        stop_chat(message)
-        return
-    
     # Если сообщение от администратора
     if user_id in active_admin_chats:
-        user_id = active_admin_chats[user_id]
-        bot.send_message(user_id, f"Админ: {message.text}")
-        print(f"Сообщение от админа {message.from_user.id} переслано пользователю {user_id}: {message.text}")
+        target_user_id = active_admin_chats[user_id]
+        bot.send_message(target_user_id, f"Админ: {message.text}")
+        save_message_to_history(user_id, target_user_id, message.text, 'admin')  # Сохранение сообщения
+        print(f"Сообщение от админа {user_id} переслано пользователю {target_user_id}: {message.text}")
 
     # Если сообщение от пользователя
     elif user_id in active_user_chats:
-        admin_id = active_user_chats[user_id]
-        bot.send_message(admin_id, f"Пользователь {user_id}: {message.text}")
-        print(f"Сообщение от пользователя {user_id} переслано администратору {admin_id}: {message.text}")
+        target_admin_id = active_user_chats[user_id]
+        bot.send_message(target_admin_id, f"Пользователь {user_id}: {message.text}")
+        save_message_to_history(target_admin_id, user_id, message.text, 'user')  # Сохранение сообщения
+        print(f"Сообщение от пользователя {user_id} переслано администратору {target_admin_id}: {message.text}")
 
+@bot.message_handler(func=lambda message: message.text == 'Диалоги' and message.chat.id in admin_sessions)
+def show_user_dialogs(message):
+    if not is_admin(message.chat.id):
+        bot.send_message(message.chat.id, "У вас нет прав для выполнения этой команды.")
+        return
+
+    # Загружаем пользователей
+    users = load_users()
+    user_ids = list(users.keys())
+
+    # Создаем нумерованный список пользователей
+    user_list = "\n".join(f"{i + 1}. ID: {user_id}" for i, user_id in enumerate(user_ids))
+    bot.send_message(message.chat.id, f"Выберите пользователя:\n{user_list}\nВведите номер пользователя:")
+
+    # Устанавливаем состояние для обработки выбора пользователя
+    active_chats[message.chat.id] = {"state": "select_user", "user_ids": user_ids}
+
+@bot.message_handler(func=lambda message: message.chat.id in active_chats and active_chats[message.chat.id].get("state") == "select_user")
+def handle_user_selection(message):
+    user_ids = active_chats[message.chat.id]["user_ids"]
+
+    try:
+        selected_index = int(message.text) - 1
+        if selected_index < 0 or selected_index >= len(user_ids):
+            raise IndexError  # Если индекс вне диапазона
+
+        selected_user_id = user_ids[selected_index]
+
+        # Загружаем историю чата с выбранным пользователем
+        chat_key = f"{message.chat.id}_{selected_user_id}"
+        chat_history = load_chat_history().get(chat_key, [])
+
+        if not chat_history:
+            bot.send_message(message.chat.id, "История переписки с этим пользователем пуста.")
+            return
+
+        # Создаем информацию о диалоге
+        dialogue_info = f"Диалог от {chat_history[0]['timestamp']}"  # Все сообщения имеют одинаковую временную метку
+        bot.send_message(message.chat.id, f"Выберите диалог:\n1. {dialogue_info}\nВведите номер диалога:")
+
+        # Устанавливаем состояние для обработки выбора диалога
+        active_chats[message.chat.id]["state"] = "select_dialog"
+        active_chats[message.chat.id]["selected_user_id"] = selected_user_id
+        active_chats[message.chat.id]["chat_history"] = chat_history
+
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя.")
+
+@bot.message_handler(func=lambda message: message.chat.id in active_chats and active_chats[message.chat.id].get("state") == "select_dialog")
+def handle_dialog_selection(message):
+    chat_history = active_chats[message.chat.id]["chat_history"]
+    selected_user_id = active_chats[message.chat.id]["selected_user_id"]
+
+    try:
+        selected_index = int(message.text) - 1
+        if selected_index != 0:  # У нас только один диалог, индекс 0
+            raise IndexError  # Если индекс не 0, возвращаем ошибку
+
+        # Форматируем полный текст диалога
+        full_dialogue = "\n".join(
+            f"{entry['timestamp']} - {entry['type']}: {entry['text']}" for entry in chat_history
+        )
+
+        # Отправляем полный текст диалога
+        bot.send_message(message.chat.id, f"Диалог с пользователем ID {selected_user_id}:\n{full_dialogue}")
+
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер диалога.")
 
     
 # Максимальная длина сообщения в Telegram
