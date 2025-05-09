@@ -507,6 +507,14 @@ def process_distance_choice_step(message, distance_km):
     chat_id = message.chat.id
     trip_data[chat_id]["distance"] = distance_km
 
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
     item_input = types.KeyboardButton("Ввести свое расстояние")
@@ -542,7 +550,15 @@ def process_distance_choice_step(message, distance_km):
 
 def process_date_step(message, distance):
     chat_id = message.chat.id
-    # Создаем новую разметку только для выбора даты
+
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_calendar = types.KeyboardButton("Выбрать дату из календаря")
     item_manual = types.KeyboardButton("Ввести дату вручную")
@@ -558,6 +574,15 @@ def process_date_step(message, distance):
 
 def handle_date_selection(message, distance):
     chat_id = message.chat.id
+
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
     if message.text == "Выбрать дату из календаря":
         show_calendar(chat_id)
     elif message.text == "Ввести дату вручную":
@@ -625,7 +650,15 @@ def process_selected_date(message, selected_date):
 def process_manual_date_step(message, distance):
     chat_id = message.chat.id
     date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
+    
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
 
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
     # Разметка только с двумя кнопками
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
