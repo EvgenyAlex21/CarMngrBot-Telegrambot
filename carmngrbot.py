@@ -562,7 +562,7 @@ inactivity_thread.daemon = True
 inactivity_thread.start()
 
 
-# -------- Экстренная остановка ---------
+# ----------------------- ЭКСТРЕННАЯ ОСТАНОВКА ДЛЯ АДМИНА -----------------------
 
 import signal
 
@@ -613,6 +613,565 @@ def confirm_emergency_stop(message):
     else:
         bot.send_message(message.chat.id, "Неверная команда! Пожалуйста, выберите действие")
         bot.register_next_step_handler(message, confirm_emergency_stop)
+
+# ----------------------- Управление подписками ДЛЯ АДМИНА -----------------------
+
+@bot.message_handler(func=lambda message: message.text == 'Управление подписками' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def manage_subscriptions(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Управление подписками'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Добавление подписки', 'Просмотр подписок', 'Удаление подписок', 'Просмотр рефералов и статистики')
+    item_back = types.KeyboardButton("В меню админ-панели")
+    markup.add(item_back)
+    bot.send_message(message.chat.id, "Выберите действие для управления подписками:", reply_markup=markup)
+
+def split_message(message, max_length=4096):
+    """
+    Разбивает сообщение на части, каждая из которых не превышает max_length символов.
+    """
+    parts = []
+    while len(message) > max_length:
+        part = message[:max_length]
+        # Найти последний пробел в части, чтобы не обрезать слово
+        last_space = part.rfind(' ')
+        if last_space != -1:
+            parts.append(part[:last_space])
+            message = message[last_space:]
+        else:
+            parts.append(part)
+            message = message[max_length:]
+    parts.append(message)
+    return parts
+
+@bot.message_handler(func=lambda message: message.text == 'Добавление подписки' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def add_subscription(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Добавление подписки'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    list_users_for_payments_pay(message)
+
+def list_users_for_payments_pay(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    # Создаем клавиатуру с одной кнопкой "В меню админ-панели"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
+    markup.add(types.KeyboardButton('В меню админ-панели'))
+    bot.send_message(message.chat.id, "Введите номер, ID или username пользователя для добавления подписки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_subscription)
+
+def process_add_subscription(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    user_input = message.text.strip()
+    user_id = None
+
+    users_data = load_users()
+    if user_input.isdigit():
+        if len(user_input) >= 5:
+            user_id = user_input
+        else:
+            idx = int(user_input)
+            if 1 <= idx <= len(users_data):
+                user_id = list(users_data.keys())[idx - 1]
+    elif user_input.startswith('@'):
+        username = user_input[1:]
+        for user_id, data in users_data.items():
+            if data['username'] == username:
+                break
+        else:
+            user_id = None
+
+    if not user_id:
+        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_add_subscription)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Неделя', 'Месяц', 'Год')
+    markup.add('Вернуться в управление подписками')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите план подписки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
+
+def process_add_subscription_plan(message, user_id):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    plan_name = message.text.strip().lower()
+    if plan_name not in ['неделя', 'месяц', 'год']:
+        bot.send_message(message.chat.id, "Неверный план подписки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        return
+
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(user_id), {})
+    if 'plans' not in user_data:
+        user_data['plans'] = []
+
+    latest_end_date = datetime.now()
+    for plan in user_data['plans']:
+        plan_end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        if plan_end_date > latest_end_date:
+            latest_end_date = plan_end_date
+
+    if plan_name == 'неделя':
+        new_end_date = latest_end_date + timedelta(days=7)
+        plan_name_eng = 'weekly'
+        plan_name_rus = 'неделя'
+    elif plan_name == 'месяц':
+        new_end_date = latest_end_date + timedelta(days=31)
+        plan_name_eng = 'monthly'
+        plan_name_rus = 'месяц'
+    elif plan_name == 'год':
+        new_end_date = latest_end_date + timedelta(days=365)
+        plan_name_eng = 'yearly'
+        plan_name_rus = 'год'
+
+    new_plan = {
+        "plan_name": plan_name_eng,
+        "start_date": latest_end_date.strftime("%d.%m.%Y в %H:%M"),
+        "end_date": new_end_date.strftime("%d.%m.%Y в %H:%M"),
+        "price": 0,
+        "source": "admin"
+    }
+    user_data['plans'].append(new_plan)
+    data['subscriptions']['users'][str(user_id)] = user_data
+    save_payments_data(data)
+
+    # Загрузка данных пользователей
+    users_data = load_users()
+    username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
+
+    admin_message = f"✅ Пользователю {username} - `{user_id}` назначен план подписки *{plan_name_rus}* с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!"
+    user_message = f"✅ Администратор назначил вам план подписки на *{plan_name_rus}* с *{latest_end_date.strftime('%d.%m.%Y в %H:%M')}* по *{new_end_date.strftime('%d.%m.%Y в %H:%M')}*!\nПриятного пользования! 😊"
+
+    bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
+    bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+    # Возвращаем админа в меню управления подписками
+    manage_subscriptions(message)
+
+@bot.message_handler(func=lambda message: message.text == 'Просмотр подписок' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def view_subscriptions(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Просмотр подписок'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    list_users_for_payments_view(message)
+
+def list_users_for_payments_view(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    # Создаем клавиатуру с одной кнопкой "В меню админ-панели"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
+    markup.add(types.KeyboardButton('В меню админ-панели'))
+    bot.send_message(message.chat.id, "Введите номер, ID или username пользователя для просмотра подписок:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_view_subscriptions)
+
+def process_view_subscriptions(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    user_input = message.text.strip()
+    user_id = None
+
+    if user_input.isdigit():
+        if len(user_input) >= 5:
+            user_id = user_input
+        else:
+            users_data = load_users()
+            user_list = list(users_data.items())
+            if 0 < int(user_input) <= len(user_list):
+                user_id = user_list[int(user_input) - 1][0]
+    elif user_input.startswith('@'):
+        users_data = load_users()
+        for user_id, data in users_data.items():
+            if data['username'] == user_input[1:]:
+                break
+
+    if not user_id:
+        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова")
+        bot.register_next_step_handler(message, process_view_subscriptions)
+        return
+
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(user_id), {})
+    if 'plans' not in user_data:
+        bot.send_message(message.chat.id, "У пользователя нет подписок!")
+        return
+
+    plans_summary = "*Список активных подписок:*\n\n\n"
+    total_days_left = 0
+    total_cost_active = 0
+    for idx, plan in enumerate(user_data['plans'], start=1):
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        remaining_time = end_date - datetime.now()
+        days_left = remaining_time.days
+        hours_left, remainder = divmod(remaining_time.seconds, 3600)
+        minutes_left = remainder // 60
+
+        if plan['plan_name'] == "free":
+            period_type = f"🎁 *№{idx}.* *Пробный период:*"
+            subscription_type = "3 дня бесплатно"
+        elif plan['plan_name'] == "referral_bonus":
+            period_type = f"🎁 *№{idx}.* *Бонусный период:*"
+            subscription_type = "1 день бесплатно"
+        else:
+            period_type = f"💳 *№{idx}.* *Платный период:*"
+            subscription_type = translate_plan_name(plan['plan_name'])
+
+        plans_summary += (
+            f"{period_type}\n\n\n"
+            f"💼 *Тип подписки:* {subscription_type}\n"
+            f"📅 *Дней осталось:* {days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
+            f"🕒 *Начало:* {plan['start_date']}\n"
+            f"⌛ *Конец:* {plan['end_date']}\n"
+            f"💰 *Стоимость подписки:* {plan['price']} руб.\n\n\n"
+        )
+
+        total_days_left += days_left
+        total_cost_active += plan['price']
+
+    # Разбиваем сообщение на части и отправляем их последовательно
+    message_parts = split_message(plans_summary)
+    for part in message_parts:
+        bot.send_message(message.chat.id, part, parse_mode="Markdown")
+
+    # Итоговая подписочная оценка
+    total_amount = user_data.get('total_amount', 0)
+    total_amount_message = (
+        "💎 *Итоговая подписочная оценка:*\n\n\n"
+        f"💼 *Типы подписок:* {', '.join([translate_plan_name(p['plan_name']) for p in user_data['plans']])}\n"
+        f"📅 *Дней осталось:* {total_days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
+        f"🕒 *Начало:* {min(datetime.strptime(p['start_date'], '%d.%m.%Y в %H:%M') for p in user_data['plans']).strftime('%d.%m.%Y в %H:%M')}\n"
+        f"⌛ *Конец:* {max(datetime.strptime(p['end_date'], '%d.%m.%Y в %H:%M') for p in user_data['plans']).strftime('%d.%m.%Y в %H:%M')}\n"
+        f"💰 *Общая стоимость оставшихся подписок:* {total_cost_active} руб.\n"
+        f"💰 *Общая стоимость всех подписок:* {total_amount} руб."
+    )
+    bot.send_message(message.chat.id, total_amount_message, parse_mode="Markdown")
+
+    # Автоматический возврат в управление подписками
+    manage_subscriptions(message)
+
+@bot.message_handler(func=lambda message: message.text == 'Удаление подписок' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def delete_subscription(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удаление подписок'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    list_users_for_payments_del(message)
+
+def list_users_for_payments_del(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    users_data = load_users()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data['username'])
+        status = " - *заблокирован* 🚫" if data.get('blocked', False) else " - *разблокирован* ✅"
+        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`{status}")
+
+    response_message = "📋 Список *всех* пользователей:\n\n\n" + "\n\n".join(user_list)
+    if len(response_message) > 4096:  # Ограничение Telegram по количеству символов в сообщении
+        bot.send_message(message.chat.id, "📜 Список пользователей слишком большой для отправки в одном сообщении!")
+    else:
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    # Создаем клавиатуру с одной кнопкой "В меню админ-панели"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в управление подписками'))
+    markup.add(types.KeyboardButton('В меню админ-панели'))
+    bot.send_message(message.chat.id, "Введите номер, ID или username пользователя для удаления подписки:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_delete_subscription)
+
+def process_delete_subscription(message):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    user_input = message.text.strip()
+    user_id = None
+
+    if user_input.isdigit() and len(user_input) > 5:
+        user_id = user_input
+    else:
+        users_data = load_users()
+        for idx, (uid, data) in enumerate(users_data.items(), start=1):
+            if data['username'] == user_input or str(uid) == user_input or str(idx) == user_input:
+                user_id = uid
+                break
+
+    if not user_id:
+        bot.send_message(message.chat.id, "Пользователь не найден! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_delete_subscription)
+        return
+
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(user_id), {})
+    if 'plans' not in user_data or not user_data['plans']:
+        bot.send_message(message.chat.id, "У пользователя нет подписок для удаления!", parse_mode="Markdown")
+        return
+
+    plans_summary = "*Список активных подписок:*\n\n\n"
+    for idx, plan in enumerate(user_data['plans'], start=1):
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        remaining_time = end_date - datetime.now()
+        days_left = remaining_time.days
+        hours_left, remainder = divmod(remaining_time.seconds, 3600)
+        minutes_left = remainder // 60
+
+        if plan['plan_name'] == "free":
+            period_type = f"🎁 *№{idx}.* *Пробный период:*"
+            subscription_type = "3 дня бесплатно"
+        elif plan['plan_name'] == "referral_bonus":
+            period_type = f"🎁 *№{idx}.* *Бонусный период:*"
+            subscription_type = "1 день бесплатно"
+        else:
+            period_type = f"💳 *№{idx}.* *Платный период:*"
+            subscription_type = translate_plan_name(plan['plan_name'])
+
+        plans_summary += (
+            f"{period_type}\n\n\n"
+            f"💼 *Тип подписки:* {subscription_type}\n"
+            f"📅 *Дней осталось:* {days_left} дней и {hours_left:02}:{minutes_left:02} часов\n"
+            f"🕒 *Начало:* {plan['start_date']}\n"
+            f"⌛ *Конец:* {plan['end_date']}\n"
+            f"💰 *Стоимость подписки:* {plan['price']} руб.\n\n\n"
+        )
+
+    # Разбиваем сообщение на части и отправляем их последовательно
+    message_parts = split_message(plans_summary)
+    for part in message_parts:
+        bot.send_message(message.chat.id, part, parse_mode="Markdown")
+
+    bot.send_message(message.chat.id, "Введите номер подписки для удаления:")
+    bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, user_data['plans'])
+
+def process_delete_subscription_plan(message, user_id, plans):
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        # Разделяем ввод на номера подписок
+        plan_numbers = [int(num.strip()) for num in message.text.strip().split(',')]
+
+        # Проверяем, что все номера корректны
+        for plan_number in plan_numbers:
+            if plan_number < 1 or plan_number > len(plans):
+                raise ValueError("Неверный номер подписки.")
+
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'][str(user_id)]
+
+        # Загрузка данных пользователей
+        users_data = load_users()
+        username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
+
+        # Удаляем выбранные подписки
+        for plan_number in plan_numbers:
+            plan = plans[plan_number - 1]
+
+            # Проверка на пробную подписку
+            if plan['plan_name'] == "free":
+                bot.send_message(message.chat.id, "Невозможно удалить пробную подписку! Пожалуйста, выберите другую подписку", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
+                return
+
+            user_data['plans'].remove(plan)
+            admin_message = f"🚫 План подписки *{translate_plan_name(plan['plan_name'])}* пользователя {username} - `{user_id}`, назначенный с *{plan['start_date']}* по *{plan['end_date']}*, был отменен!"
+            user_message = f"🚫 Ваш план подписки *{translate_plan_name(plan['plan_name'])}*, назначенный с *{plan['start_date']}* по *{plan['end_date']}*, был отменен администратором!"
+
+            bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
+            bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+        save_payments_data(data)
+
+        # Возвращаем админа в меню управления подписками
+        manage_subscriptions(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Неверный номер подписки! Пожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
+
+
+@bot.message_handler(func=lambda message: message.text == 'Просмотр рефералов и статистики' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+def view_referrals_and_stats(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Просмотр рефералов и статистики'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == "Вернуться в управление подписками":
+        manage_subscriptions(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    data = load_payment_data()
+
+    # Проверка наличия данных о рефералах
+    if 'referrals' in data and 'stats' in data['referrals'] and data['referrals']['stats']:
+        referrals_summary = "*Пользователи и их приглашенные:*\n\n"
+        for idx, (user_id, referrals) in enumerate(data['referrals']['stats'].items(), start=1):
+            referrals_summary += f"🎁 *№{idx}.* `{user_id}`: "
+            referrals_summary += ', '.join([f"`{referral}`" for referral in referrals]) + "\n"
+
+        # Разбиваем сообщение на части и отправляем их последовательно
+        message_parts = split_message(referrals_summary)
+        for part in message_parts:
+            bot.send_message(message.chat.id, part, parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, "Данные о рефералах отсутствуют!", parse_mode="Markdown")
+
+    # Проверка наличия данных о подписках
+    if 'subscriptions' in data and 'users' in data['subscriptions'] and data['subscriptions']['users']:
+        total_amounts_summary = "*Общая сумма у каждого пользователя:*\n\n"
+        all_users_total_amount = 0
+        for idx, (user_id, user_data) in enumerate(data['subscriptions']['users'].items(), start=1):
+            total_amount = user_data.get('total_amount', 0)
+            total_amounts_summary += f"👤 *№{idx}.* `{user_id}`: *{total_amount} руб.*\n"
+            all_users_total_amount += total_amount
+
+        total_amounts_summary += f"\n*Итоговая сумма у всех людей:* *{all_users_total_amount} руб.*"
+
+        # Разбиваем сообщение на части и отправляем их последовательно
+        message_parts = split_message(total_amounts_summary)
+        for part in message_parts:
+            bot.send_message(message.chat.id, part, parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, "Данные о подписках отсутствуют!", parse_mode="Markdown")
 
 
 # (3) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ ---------------
@@ -1047,7 +1606,8 @@ def process_successful_payment(message):
         "end_date": new_end_date.strftime("%d.%m.%Y в %H:%M"),
         "price": payment_info.total_amount / 100,  # Цена в рублях
         "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
-        "provider_payment_charge_id": payment_info.provider_payment_charge_id
+        "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+        "source": "user"
     }
     user_data['plans'].append(new_plan)
 
@@ -1074,7 +1634,7 @@ def process_successful_payment(message):
         parse_mode="Markdown"
     )
 
-    return_to_menu(message) 
+    return_to_menu(message)
 
 # Обработчик для команды /buy
 @bot.message_handler(commands=['buy'])
@@ -1517,7 +2077,7 @@ def cancel_subscription(message):
 
     if 'plans' in user_data:
         # Фильтрация всех платных подписок
-        paid_plans = [p for p in user_data['plans'] if p['plan_name'] in ['weekly', 'monthly', 'yearly']]
+        paid_plans = [p for p in user_data['plans'] if p['plan_name'] in ['weekly', 'monthly', 'yearly'] and p['source'] == 'user']
 
         if paid_plans:
             plans_summary = "*Список платных подписок:*\n\n\n"
@@ -1608,6 +2168,13 @@ def process_cancel_subscription(message, user_id, paid_plans):
 
             # Удаляем подписку из списка пользователя
             user_data['plans'].remove(plan)
+
+        # Пересчитываем даты всех последующих подписок
+        for i in range(len(user_data['plans'])):
+            if i > 0:
+                prev_end_date = datetime.strptime(user_data['plans'][i - 1]['end_date'], "%d.%m.%Y в %H:%M")
+                user_data['plans'][i]['start_date'] = prev_end_date.strftime("%d.%m.%Y в %H:%M")
+                user_data['plans'][i]['end_date'] = (prev_end_date + timedelta(days=7)).strftime("%d.%m.%Y в %H:%M")
 
         # Обновляем общую сумму подписок пользователя
         user_data['total_amount'] = max(round(user_data.get('total_amount', 0) - total_refund_amount, 2), 0)
@@ -11846,7 +12413,7 @@ def show_admin_panel(message):
         markup.add('Админ', 'Бан', 'Функции')
         markup.add('Общение', 'Реклама', 'Статистика')
         markup.add('Файлы', 'Резервная копия', 'Редакция')
-        markup.add('Экстренная остановка')
+        markup.add('Управление подписками', 'Экстренная остановка')
         markup.add('Выход')
         bot.send_message(message.chat.id, "Выберите действие из админ-панели:", reply_markup=markup)
 
@@ -12574,7 +13141,7 @@ def process_admin_selection(message):
 
 def get_available_permissions(admin_id):
     all_permissions = [
-        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция", "Экстренная остановка",
+        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция", "Экстренная остановка", "Управление подписками",
         "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль", "Админ: Добавить админа", "Админ: Удалить админа", "Админ: Права доступа", "Админ: Добавить права", "Админ: Удалить права",
         "Бан: Заблокировать", "Бан: Разблокировать", "Бан: Удалить данные", "Бан: Удалить пользователя",
 		"Функции: Включение", "Функции: Выключение",
@@ -12589,6 +13156,7 @@ def get_available_permissions(admin_id):
 		"Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
 		"Редакция: Опубликовать новость", "Редакция: Отредактировать новость", "Редакция: Посмотреть новость", "Редакция: Удалить новость"
 		"Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Отмена остановки"
+        "Управление подписками: Добавление подписки", "Управление подписками: Просмотр подписок", "Управление подписками: Удаление подписок", "Управление подписками: Просмотр рефералов и статистики"
     ]
 
     # Получаем текущие права администратора
@@ -13845,7 +14413,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
 # Обновление данных о пользователе с экранированием username
@@ -14232,7 +14800,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
 # Обработчик для кнопки "Резервная копия"
@@ -19225,7 +19793,7 @@ def request_chat_with_admin(message):
     active_chats[user_id] = {"user_id": user_id, "status": "waiting_for_topic", "awaiting_response": False}
     save_active_chats()
 
-@bot.message_handler(func=lambda message: any(chat_data.get("user_id") == message.from_user.id and chat_data.get("status") == "waiting_for_topic" for chat_data in active_chats.values()))
+@bot.message_handler(func=lambda message: active_chats.get(message.from_user.id, {}).get("status") == "waiting_for_topic")
 #@check_user_blocked
 def handle_chat_topic(message):
     user_id = message.from_user.id
@@ -19250,6 +19818,16 @@ def handle_chat_topic(message):
         return
 
     bot.send_message(user_id, "У вас уже есть запрос на чат к администратору! Ожидайте!")
+
+@bot.message_handler(func=lambda message: True)
+def ignore_message(message):
+    user_id = message.from_user.id
+    # Проверяем, находится ли пользователь в состоянии "waiting_for_topic"
+    if user_id in active_chats and active_chats[user_id].get("status") == "waiting_for_topic":
+        handle_chat_topic(message)
+    else:
+        # Игнорируем сообщение, если пользователь не находится в состоянии "waiting_for_topic"
+        pass
 
 # Команда для администратора для связи с пользователем
 
@@ -19443,7 +20021,7 @@ def return_admin_to_menu(admin_id):
     markup.add('Админ', 'Бан', 'Функции')
     markup.add('Общение', 'Реклама', 'Статистика')
     markup.add('Файлы', 'Резервная копия', 'Редакция')
-    markup.add('Экстренная остановка')
+    markup.add('Управление подписками', 'Экстренная остановка')
     markup.add('Выход')
     bot.send_message(admin_id, "Выберите действие из админ-панели:", reply_markup=markup)
 
@@ -19671,7 +20249,7 @@ def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
 # Общий обработчик для команды "Файлы"
