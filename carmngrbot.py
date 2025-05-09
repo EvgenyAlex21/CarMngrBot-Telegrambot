@@ -545,7 +545,7 @@ def check_inactivity():
                         users[user_id]['first_notification'] = current_time.strftime('%d.%m.%Y в %H:%M:%S')
                         save_users(users)
                         username = user_data.get('username', 'unknown_user')
-                        message = f"⚠️ Уважаемый пользователь, {escape_markdown(username)}, от вас давно не было активности!\nИспользуйте бота или ваши данные будут удалены через 3 месяца!"
+                        message = f"⚠️ Уважаемый пользователь, {escape_markdown(username)}, от вас давно не было активности!\nИспользуйте бота или ваши данные будут удалены через 1 месяц!"
                         bot.send_message(user_id, message, parse_mode="Markdown")
                     else:
                         first_notification = datetime.strptime(first_notification_str, '%d.%m.%Y в %H:%M:%S')
@@ -1751,9 +1751,11 @@ def start(message):
 
         bot.send_message(
             chat_id,
-            "Добро пожаловать в бот @newpidore3qf_bot!\n"
-            "Если вы новый пользователь или не являетесь подписчиком нашего канала, пожалуйста, подпишитесь сейчас:",
-            reply_markup=markup
+            "👋 Добро пожаловать в бот @newpidore3qf_bot!\n\n"
+            "⚠️ Перед началом работы, пожалуйста, ознакомьтесь с функционалом бота, а также с политикой конфиденциальности и пользовательским соглашение! Перейти к документам можно по ссылке: <a href='https://carmngrbot.com.swtest.ru'>Сайт CAR MANAGER</a>!\n\n"
+            "🚀 Если вы новый пользователь или ещё не подписаны на наш канал, рекомендуем подписаться прямо сейчас, чтобы не пропустить важные обновления:",
+            reply_markup=markup,
+            parse_mode="HTML"
         )
         return
 
@@ -1785,11 +1787,11 @@ def start(message):
         "🎉 *Поздравляем!* 🎉\n\n"
         "✨ У вас активирован *пробный период* на *3 дня*! ✨\n\n"
         "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
-        f"🔗 *Ваша реферальная ссылка:*\n[{referral_link}]({referral_link})\n\n"
+        f"🔗 *Ваша реферальная ссылка:*\n<a href='{referral_link}'>{referral_link}</a>\n\n"
         "🤝 *Приглашайте друзей* и получайте *+1 дополнительный день использования* за каждого нового пользователя! 🚀\n\n"
         "Спасибо, что выбираете нас! 😊"
     )
-    bot.send_message(chat_id, combined_message, parse_mode="Markdown")
+    bot.send_message(chat_id, combined_message, parse_mode="HTML")
 
     # Показ основного меню
     markup = create_main_menu()
@@ -3086,29 +3088,29 @@ def get_average_fuel_price_from_files(fuel_type, directory="data base/azs"):
 
 
 def get_average_fuel_prices(city_code='default_city_code'):
-    url = f'https://azsprice.ru/benzin-{city_code}'  # Замените на подходящий URL с использованием city_code
-    
+    url = f'https://azsprice.ru/benzin-{city_code}'
+
     try:
         response = requests.get(url)
         response.raise_for_status()  # Проверка на успешный статус ответа
-        
+
         soup = BeautifulSoup(response.text, 'html.parser')
-        
+
         table = soup.find('table')
         if not table:
             raise ValueError("Не найдена таблица с ценами")
-        
+
         fuel_prices = {}
         rows = table.find_all('tr')
-        
+
         for row in rows[1:]:  # Пропускаем заголовок таблицы
             columns = row.find_all('td')
             if len(columns) < 5:
                 continue
-            
+
             fuel_type = columns[2].text.strip()  # Марка топлива
             today_price = clean_price(columns[3].text.strip())  # Цена на топливо
-            
+
             if today_price:
                 try:
                     price = float(today_price)
@@ -3120,7 +3122,7 @@ def get_average_fuel_prices(city_code='default_city_code'):
 
         average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
         return average_prices
-    
+
     except (requests.RequestException, ValueError) as e:
         return None  # Вернем None в случае ошибки
 
@@ -3193,18 +3195,18 @@ def handle_price_input_choice(message, date, distance, fuel_type):
 
         sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-    
+
     elif message.text == "Использовать актуальную цену":
         # Пытаемся получить цену с сайта
         fuel_prices = get_average_fuel_prices(city_code="cheboksary")
-        
+
         if fuel_prices:  # Если сайт доступен и данные получены
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
             item2 = types.KeyboardButton("В главное меню")
             markup.add(item1)
             markup.add(item2)
-            
+
             if fuel_type.lower() in fuel_prices:  # Если выбранный тип топлива существует
                 price = fuel_prices[fuel_type.lower()]
                 bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price:.2f} руб./л.", reply_markup=markup)
@@ -3213,14 +3215,14 @@ def handle_price_input_choice(message, date, distance, fuel_type):
             else:
                 # Если для выбранного топлива нет данных на сайте, сразу переходим к проверке файлов
                 price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data base/azs")
-                
+
                 if price_from_files:  # Если цена найдена в файлах
                     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
                     item2 = types.KeyboardButton("В главное меню")
                     markup.add(item1)
                     markup.add(item2)
-                    
+
                     bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price_from_files:.2f} руб./л.", reply_markup=markup)
                     sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
                     bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_from_files)
@@ -3233,18 +3235,18 @@ def handle_price_input_choice(message, date, distance, fuel_type):
                     markup.add(item2)
                     sent = bot.send_message(chat_id, f"Для выбранного топлива '{fuel_type}' данных нет. Пожалуйста, введите цену", reply_markup=markup)
                     bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-        
+
         else:  # Если сайт недоступен
             # Получаем цены из файлов
             price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data base/azs")
-            
+
             if price_from_files:
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
                 item2 = types.KeyboardButton("В главное меню")
                 markup.add(item1)
                 markup.add(item2)
-                
+
                 bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price_from_files:.2f} руб./л.", reply_markup=markup)
                 sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
                 bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_from_files)
@@ -3256,7 +3258,7 @@ def handle_price_input_choice(message, date, distance, fuel_type):
                 markup.add(item2)
                 sent = bot.send_message(chat_id, f"Для выбранного топлива '{fuel_type}' данных нет. Пожалуйста, введите цену", reply_markup=markup)
                 bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
-    
+
     elif message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
     elif message.text == "В главное меню":
@@ -12118,7 +12120,7 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     try:
         bot.send_message(admin_id, "✅ Вы стали администратором! Быстрый вход по команде /admin доступен...")
         if initiator_chat_id:
-            bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
+            bot.send_message(initiator_chat_id, f"✅ Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
     except ApiTelegramException as e:
         if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
             print(f"User blocked the bot: {admin_id}")
@@ -12150,7 +12152,7 @@ def remove_admin(admin_id, initiator_chat_id):
             bot.send_message(admin_id, "🚫 Вас удалили из администраторов!")
 
             # Отправляем сообщение инициатору
-            bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(admin_username)} - `{admin_id}` успешно удалён!", parse_mode="Markdown")
+            bot.send_message(initiator_chat_id, f"🚫 Администратор {escape_markdown(admin_username)} - `{admin_id}` успешно удалён!", parse_mode="Markdown")
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
                 print(f"User blocked the bot: {admin_id}")
@@ -12771,7 +12773,7 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
     bot.send_message(admin_id, "✅ Вы стали администратором! Быстрый вход по команде /admin доступен...")
     if initiator_chat_id:
-        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
+        bot.send_message(initiator_chat_id, f"✅ Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
 
 #@check_user_blocked
 
@@ -12794,7 +12796,7 @@ def remove_admin(admin_id, initiator_chat_id):
         bot.send_message(admin_id, "🚫 Вас удалили из администраторов!")
 
         # Отправляем сообщение инициатору
-        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(admin_username)} - `{admin_id}` успешно удалён!", parse_mode="Markdown")
+        bot.send_message(initiator_chat_id, f"🚫 Администратор {escape_markdown(admin_username)} - `{admin_id}` успешно удалён!", parse_mode="Markdown")
     else:
         bot.send_message(initiator_chat_id, f"Администратор с ID `{admin_id}` не найден!", parse_mode="Markdown")
 
