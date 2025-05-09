@@ -101,8 +101,17 @@ def restricted(func):
         return func(message, *args, **kwargs)
     return wrapper
 
+def track_user_activity(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        username = message.from_user.username if message.from_user.username else "Неизвестный пользователь"
+        update_user_activity(user_id, username)  # Обновляем активность пользователя
+        return func(message, *args, **kwargs)
+    return wrapper
+
 @bot.message_handler(commands=['start'])
 @restricted
+@track_user_activity
 def start(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -129,7 +138,8 @@ def start(message):
     bot.send_message(chat_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
 
 # (6) --------------- ОБРАБОТЧИК КОМАНДЫ /MAINMENU ---------------
-
+@restricted
+@track_user_activity
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
 def return_to_menu(message):
@@ -221,6 +231,7 @@ def user_agreement_handler(message):
 
 @bot.message_handler(func=lambda message: message.text == "Расход топлива")
 @restricted
+@track_user_activity
 def handle_fuel_expense(message):
     user_id = message.from_user.id
 
@@ -258,8 +269,10 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
 @restricted
+@track_user_activity
 @bot.message_handler(commands=['restart1'])
 @restricted
+@track_user_activity
 def restart_handler(message):
     chat_id = message.chat.id
     user_id = message.chat.id
@@ -295,6 +308,7 @@ def reset_user_data(user_id):
 # (9.4) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ НАЧАЛЬНОГО МЕСТОПОЛОЖЕНИЯ) ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать расход топлива")
+@track_user_activity
 @restricted
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
@@ -667,6 +681,7 @@ def show_calendar(chat_id, user_code):
 
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func())
 @restricted
+@track_user_activity
 def handle_calendar(call):
     result, key, step = DetailedTelegramCalendar(
         min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), unique_key=call.data
@@ -1265,6 +1280,7 @@ def save_trip_to_excel(user_id, trip):
 
 @bot.message_handler(func=lambda message: message.text == "Сохранить поездку")
 @restricted
+@track_user_activity
 def save_data_handler(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
@@ -1299,8 +1315,10 @@ def save_data_handler(message):
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @restricted
+@track_user_activity
 @bot.message_handler(commands=['mainmenu'])
 @restricted
+@track_user_activity
 def return_to_menu(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data:
@@ -1311,8 +1329,10 @@ def return_to_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
 @restricted
+@track_user_activity
 @bot.message_handler(commands=['restart1'])
 @restricted
+@track_user_activity
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -1329,6 +1349,7 @@ def restart_handler(message):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть поездки")
 @restricted
+@track_user_activity
 def view_trips(message):
     user_id = message.chat.id
     if user_id in user_trip_data:
@@ -1356,6 +1377,7 @@ def view_trips(message):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть в Excel")
 @restricted
+@track_user_activity
 def send_excel_file(message):
     user_id = message.chat.id
     excel_file_path = f"data base/{user_id}_trips.xlsx"
@@ -1368,6 +1390,7 @@ def send_excel_file(message):
 
 @bot.message_handler(func=lambda message: message.text and message.text.startswith(tuple([f"{i}. " for i in range(1, 10)])))
 @restricted
+@track_user_activity
 def show_trip_details(message):
     user_id = message.chat.id
     trips = user_trip_data.get(user_id, [])
@@ -1415,6 +1438,7 @@ def show_trip_details(message):
 # Обработчик для кнопки "Посмотреть другие поездки"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть другие поездки")
 @restricted
+@track_user_activity
 
 def view_other_trips(message):
     view_trips(message)  # Вызываем функцию для повторного отображения списка поездок
@@ -1422,6 +1446,7 @@ def view_other_trips(message):
 # Обработчики для кнопок "Вернуться в меню расчета топлива" и "В главное меню"
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню расчета топлива")
 @restricted
+@track_user_activity
 
 def return_to_fuel_calc_menu(message):
     chat_id = message.chat.id
@@ -1430,6 +1455,7 @@ def return_to_fuel_calc_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @restricted
+@track_user_activity
 def return_to_main_menu(message):
     chat_id = message.chat.id
     return_to_menu(message)  # Ваша функция для возврата в главное меню
@@ -1439,6 +1465,7 @@ def return_to_main_menu(message):
 
 @bot.message_handler(func=lambda message: message.text == "Удалить поездку")
 @restricted
+@track_user_activity
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
@@ -1544,6 +1571,7 @@ def confirm_delete_all(message):
 
 @bot.message_handler(func=lambda message: message.text == "Траты и ремонты")
 @restricted
+@track_user_activity
 def handle_expenses_and_repairs(message):
     user_id = message.from_user.id
 
@@ -1599,8 +1627,10 @@ def send_menu(user_id):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в меню трат и ремонтов")
 @restricted
+@track_user_activity
 @bot.message_handler(commands=['restart2'])
 @restricted
+@track_user_activity
 def return_to_menu_2(message):
     user_id = message.from_user.id
     send_menu(user_id)
@@ -1674,6 +1704,7 @@ def remove_user_category(user_id, category_to_remove):
 # Основная функция для записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
 @restricted
+@track_user_activity
 def record_expense(message):
     user_id = message.from_user.id
 
@@ -1999,6 +2030,7 @@ def save_expense_to_excel(user_id, expense_data):
 # Удаление категории
 @bot.message_handler(func=lambda message: message.text == "Удалить категорию")
 @restricted
+@track_user_activity
 def handle_category_removal(message, brand=None, model=None, year=None):
     user_id = message.from_user.id
     categories = get_user_categories(user_id)
@@ -2132,6 +2164,7 @@ def send_menu1(user_id):
 # Обработчик для просмотра трат
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты")
 @restricted
+@track_user_activity
 def view_expenses(message):
     user_id = message.from_user.id
 
@@ -2171,6 +2204,7 @@ def handle_transport_selection(message):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть траты в EXCEL")
 @restricted
+@track_user_activity
 def send_expenses_excel(message):
     user_id = message.from_user.id
 
@@ -2189,6 +2223,7 @@ def send_expenses_excel(message):
 # Обработчик для просмотра трат по категориям
 @bot.message_handler(func=lambda message: message.text == "Траты (по категориям)")
 @restricted
+@track_user_activity
 def view_expenses_by_category(message):
     user_id = message.from_user.id
     user_data = load_expense_data(user_id)
@@ -2274,6 +2309,7 @@ def handle_category_selection(message):
 # Обработчик трат за месяц
 @bot.message_handler(func=lambda message: message.text == "Траты (месяц)")
 @restricted
+@track_user_activity
 def view_expenses_by_month(message):
     user_id = message.from_user.id
 
@@ -2351,6 +2387,7 @@ def get_expenses_by_month(message):
 # Обработчик трат за год
 @bot.message_handler(func=lambda message: message.text == "Траты (год)")
 @restricted
+@track_user_activity
 def view_expenses_by_year(message):
     user_id = message.from_user.id
 
@@ -2417,6 +2454,7 @@ def get_expenses_by_year(message):
 # Обработчик всех трат
 @bot.message_handler(func=lambda message: message.text == "Траты (всё время)")
 @restricted
+@track_user_activity
 def view_all_expenses(message):
     user_id = message.from_user.id
 
@@ -2471,6 +2509,7 @@ def save_selected_transport(user_id, selected_transport):
 
 @bot.message_handler(func=lambda message: message.text == "Удалить траты")
 @restricted
+@track_user_activity
 def delete_expenses_menu(message):
     user_id = message.from_user.id
 
@@ -2531,6 +2570,7 @@ def handle_transport_selection_for_deletion(message):
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (категория)")
 @restricted
+@track_user_activity
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_transports.get(user_id)  # Получаем транспорт из глобального словаря
@@ -2691,6 +2731,7 @@ def confirm_delete_expense_by_category(message, expenses_to_delete):
 
 @bot.message_handler(func=lambda message: message.text == "Del траты (месяц)")
 @restricted
+@track_user_activity
 def delete_expense_by_month(message):
     user_id = message.from_user.id
 
@@ -2808,6 +2849,7 @@ def confirm_delete_expense_month(message, expenses_to_delete):
 # Удаление трат за год
 @bot.message_handler(func=lambda message: message.text == "Del траты (год)")
 @restricted
+@track_user_activity
 def delete_expense_by_year(message):
     user_id = message.from_user.id
 
@@ -2919,6 +2961,7 @@ def confirm_delete_expense_year(message, expenses_to_delete):
 # Удаление всех трат
 @bot.message_handler(func=lambda message: message.text == "Del траты (всё время)")
 @restricted
+@track_user_activity
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -3252,6 +3295,7 @@ def load_repair_data(user_id):
 
 @bot.message_handler(func=lambda message: message.text == "Записать ремонт")
 @restricted
+@track_user_activity
 def record_repair(message):
     user_id = message.from_user.id
     if contains_media(message):
@@ -3720,6 +3764,7 @@ def send_repair_menu(user_id):
 # Обработчик для просмотра ремонтов
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты")
 @restricted
+@track_user_activity
 def view_repairs(message):
     user_id = message.from_user.id
 
@@ -3760,6 +3805,7 @@ def handle_transport_selection_for_repairs(message):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть ремонты в EXCEL")
 @restricted
+@track_user_activity
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
@@ -3777,6 +3823,7 @@ def send_repairs_excel(message):
 
 @bot.message_handler(func=lambda message: message.text == "Ремонты (по категориям)")
 @restricted
+@track_user_activity
 def view_repairs_by_category(message):
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
@@ -3862,6 +3909,7 @@ def handle_repair_category_selection(message):
 # Обработчик ремонтов за месяц
 @bot.message_handler(func=lambda message: message.text == "Ремонты (месяц)")
 @restricted
+@track_user_activity
 def view_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -3939,6 +3987,7 @@ def get_repairs_by_month(message):
 # Обработчик ремонтов за год
 @bot.message_handler(func=lambda message: message.text == "Ремонты (год)")
 @restricted
+@track_user_activity
 def view_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -4005,6 +4054,7 @@ def get_repairs_by_year(message):
 # Обработчик всех ремонтов
 @bot.message_handler(func=lambda message: message.text == "Ремонты (всё время)")
 @restricted
+@track_user_activity
 def view_all_repairs(message):
     user_id = message.from_user.id
 
@@ -4060,6 +4110,7 @@ def save_selected_repair_transport(user_id, selected_transport):
 
 @bot.message_handler(func=lambda message: message.text == "Удалить ремонты")
 @restricted
+@track_user_activity
 def delete_repairs_menu(message):
     user_id = message.from_user.id
 
@@ -4118,6 +4169,7 @@ def handle_repair_transport_selection_for_deletion(message):
 
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (категория)")
 @restricted
+@track_user_activity
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_repair_transports.get(user_id)
@@ -4242,6 +4294,7 @@ def confirm_delete_repair_by_category(message, repairs_to_delete):
 # Удаление ремонтов за месяц
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (месяц)")
 @restricted
+@track_user_activity
 def delete_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -4338,6 +4391,7 @@ def confirm_delete_repair_month(message, repairs_to_delete):
 # Удаление ремонтов за год
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (год)")
 @restricted
+@track_user_activity
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4425,6 +4479,7 @@ def confirm_delete_repair_year(message, repairs_to_delete):
 # Удаление всех ремонтов
 @bot.message_handler(func=lambda message: message.text == "Del ремонты (всё время)")
 @restricted
+@track_user_activity
 def delete_all_repairs(message):
     user_id = message.from_user.id
 
@@ -4632,6 +4687,7 @@ def shorten_url(original_url):
 # Обработчик для главного меню "Поиск мест"
 @bot.message_handler(func=lambda message: message.text == "Поиск мест")
 @restricted
+@track_user_activity
 def send_welcome(message):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4660,6 +4716,7 @@ def send_welcome(message):
 # Обработчик для выбора категории заново
 @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
 @restricted
+@track_user_activity
 def handle_reset_category(message):
     global selected_category
     selected_category = None
@@ -4670,6 +4727,7 @@ selected_category = None
 # Обработчик для выбора категории
 @bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"})
 @restricted
+@track_user_activity
 def handle_menu_buttons(message):
     global selected_category 
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:  # Включаем "Штрафстоянка"
@@ -4689,6 +4747,7 @@ def handle_menu_buttons(message):
 # Обработчик для получения геолокации
 @bot.message_handler(content_types=['location'])
 @restricted
+@track_user_activity
 def handle_location(message):
     global selected_category, user_locations
     latitude = message.location.latitude
@@ -4876,6 +4935,7 @@ location_data = load_location_data()
 # Обработчик для команды "Найти транспорт"
 @bot.message_handler(func=lambda message: message.text == "Найти транспорт")
 @restricted
+@track_user_activity
 def start_transport_search(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -4939,6 +4999,7 @@ def request_user_location(message):
 # Обработка геопозиции транспорта и пользователя
 @bot.message_handler(content_types=['location'])
 @restricted
+@track_user_activity
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -5008,6 +5069,7 @@ def send_map_link(chat_id, start_location, end_location):
 
 @bot.message_handler(func=lambda message: message.text == "Код региона")
 @restricted
+@track_user_activity
 def handle_start4(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
@@ -5081,6 +5143,7 @@ user_data = {}
 
 @bot.message_handler(func=lambda message: message.text == "Погода")
 @restricted
+@track_user_activity
 def handle_start_5(message):
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -5097,6 +5160,7 @@ def handle_start_5(message):
 
 @bot.message_handler(content_types=['location'])
 @restricted
+@track_user_activity
 def handle_location_5(message):
     try:
         if message.location:
@@ -5124,6 +5188,7 @@ def handle_location_5(message):
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
 @restricted
+@track_user_activity
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
@@ -5680,6 +5745,7 @@ def load_saved_data(city_code):
 # Обработчик команды "Цены на топливо"
 @bot.message_handler(func=lambda message: message.text == "Цены на топливо")
 @restricted
+@track_user_activity
 def fuel_prices_command(message):
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
@@ -6056,6 +6122,7 @@ load_all_transport()
 # Команда для управления транспортом
 @bot.message_handler(func=lambda message: message.text == "Ваш транспорт")
 @restricted
+@track_user_activity
 def manage_transport(message):
     user_id = str(message.chat.id)
     
@@ -6093,6 +6160,7 @@ def create_transport_keyboard():
 
 @bot.message_handler(func=lambda message: message.text == "Добавить транспорт")
 @restricted
+@track_user_activity
 def add_transport(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id): return
@@ -6205,6 +6273,7 @@ def delete_expenses_related_to_transport(user_id, transport):
 
 @bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
 @restricted
+@track_user_activity
 def delete_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6301,6 +6370,7 @@ def get_return_menu_keyboard():
 
 @bot.message_handler(func=lambda message: message.text == "Удалить весь транспорт")
 @restricted
+@track_user_activity
 def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6338,6 +6408,7 @@ def process_delete_all_confirmation(message):
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
 @restricted
+@track_user_activity
 def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -6350,6 +6421,7 @@ def view_transport(message):
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
 @restricted
+@track_user_activity
 def return_to_transport_menu(message):
     manage_transport(message)  # Возвращаем пользователя в меню транспорта
 
