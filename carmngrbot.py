@@ -7338,6 +7338,15 @@ error_codes = load_error_codes()
 # Обработчик нажатия кнопки "OBD2"
 @bot.message_handler(func=lambda message: message.text == "Коды OBD2")
 def obd2_request(message):
+    # Проверка на мультимедийные файлы
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        # Сообщение об ошибке
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        # Повторный запрос на ввод, но без отправки повторного текста
+        msg = bot.send_message(message.chat.id, "Введите код ошибки (или несколько через запятую):")
+        bot.register_next_step_handler(msg, process_error_codes)
+        return
+    
     # Устанавливаем клавиатуру с кнопкой "В главное меню"
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -7348,6 +7357,14 @@ def obd2_request(message):
 
 # Обработка введенных кодов ошибок
 def process_error_codes(message):
+    # Проверка на мультимедийные файлы
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        # Сообщение об ошибке
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        # Не отправляем повторное сообщение, а только регистрируем следующий шаг
+        bot.register_next_step_handler(message, process_error_codes)
+        return
+    
     # Проверка, если пользователь нажал "В главное меню"
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -7359,24 +7376,30 @@ def process_error_codes(message):
     
     for code in codes:
         if code in error_codes:
-            response += f"КОД ОШИБКИ: {code}\nОПИСАНИЕ: {error_codes[code]}\n\n"
+            response += f"🔧 *КОД ОШИБКИ*: {code}\n\n📋 *ОПИСАНИЕ*: {error_codes[code]}\n\n\n"
         else:
-            response += f"КОД ОШИБКИ: {code}\nОПИСАНИЕ: Не найдено\n\n"
-
+            response += f"🔧 *КОД ОШИБКИ*: {code}\n\n❌ *ОПИСАНИЕ*: Не найдено\n\n\n"
     # Отправляем ответ пользователю
-    bot.send_message(message.chat.id, response)
+    bot.send_message(message.chat.id, response, parse_mode='Markdown')
 
     # Кнопки для повторного ввода кода ошибки или возврата в главное меню
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(telebot.types.KeyboardButton("Посмотреть другие ошибки"))
     markup.add(telebot.types.KeyboardButton("В главное меню"))
-    bot.send_message(message.chat.id, "Нажмите 'Посмотреть другие ошибки', чтобы ввести новые коды.", reply_markup=markup)
+    bot.send_message(message.chat.id, "Вы можете посмотреть другие ошибки или вернуться в меню", reply_markup=markup)
 
 # Обработчик кнопки "Посмотреть другие ошибки"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть другие ошибки")
 def another_error_request(message):
-    obd2_request(message)
+    # Проверка на мультимедийные файлы
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        # Сообщение об ошибке
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        # Не отправляем повторное сообщение, а только регистрируем следующий шаг
+        bot.register_next_step_handler(message, process_error_codes)
+        return
 
+    obd2_request(message)
 
 
 
