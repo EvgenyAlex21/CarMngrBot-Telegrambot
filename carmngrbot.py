@@ -5299,6 +5299,13 @@ def get_average_fuel_prices(city_code):
                 fuel_type = entry[1]  # Тип топлива
                 price = entry[2]  # Цена топлива
 
+                # Convert price to float and handle conversion errors
+                try:
+                    price = float(price)  # Ensure price is a float
+                except ValueError:
+                    print(f"Ошибка преобразования цены '{price}' в число.")
+                    continue  # Skip this entry if conversion fails
+
                 if fuel_type not in fuel_prices:
                     fuel_prices[fuel_type] = []
 
@@ -5312,7 +5319,7 @@ def get_average_fuel_prices(city_code):
         return None
 
     # Вычисление средних цен
-    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
+    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items() if prices}
 
     return average_prices
 
@@ -5415,7 +5422,7 @@ def send_weather_notifications():
 schedule.every().day.at("07:30").do(send_weather_notifications)
 schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
-schedule.every().day.at("22:54").do(send_weather_notifications)
+schedule.every().day.at("20:00").do(send_weather_notifications)
 
 # Функция для запуска расписания в отдельном потоке
 def run_schedule():
@@ -5435,7 +5442,12 @@ schedule_thread.start()
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
-    coords = user_data.get(chat_id)
+    user_locations = load_user_locations()  # Загрузите пользовательские местоположения
+    coords = user_locations.get(str(chat_id))  # Получите координаты для текущего пользователя
+
+    if coords is None:
+        bot.send_message(chat_id, "Не удалось получить координаты. Пожалуйста, отправьте местоположение еще раз.")
+        return
 
     if period == 'вернуться назад':
         user_data.pop(chat_id, None)
@@ -5451,8 +5463,6 @@ def handle_period_5(message):
             send_forecast_weekly(chat_id, coords, FORECAST_URL, 8)
         elif period == 'месяц':
             send_forecast_monthly(chat_id, coords, FORECAST_URL, 31)
-    else:
-        bot.send_message(chat_id, "Не удалось получить координаты. Пожалуйста, отправьте местоположение еще раз.")
 
 def send_weather(chat_id, coords, url):
     try:
@@ -6330,6 +6340,24 @@ def schedule_parsing():
 
 # Запуск планировщика в отдельном потоке
 threading.Thread(target=schedule_parsing, daemon=True).start()
+
+
+# # !!!!!!!!!!!!!!!!!!!ЭТО ОБЩИЙ ПЛАНИРОВЩИК ЗАДАЧ!!!!!!!!!!!!!!!!!!!!!
+# def schedule_tasks():
+#     while True:
+#         now = datetime.now()
+
+#         # Проверка для парсинга
+#         if now.hour == 0 and now.minute == 0:  # Запуск в 00:00
+#             parse_fuel_prices()  # Функция парсинга
+#             time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
+
+#         # Проверка для уведомлений
+#         schedule.run_pending()  # Проверка запланированных уведомлений
+#         time.sleep(1)  # Проверка каждую секунду
+
+# # Запуск объединенного потока
+# threading.Thread(target=schedule_tasks, daemon=True).start()
 
 
 # Определение состояний
