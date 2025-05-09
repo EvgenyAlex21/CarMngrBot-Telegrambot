@@ -1427,7 +1427,7 @@ def return_to_subscription(message):
 SUBSCRIPTION_PLANS = {
     "weekly_subscription_7": {
         "base_price": 149,
-        "fictitious_discount": 50,
+        "fictitious_discount": 0,
         "label": "Неделя",
         "duration": 7
     },
@@ -1461,46 +1461,79 @@ def send_subscription_options(message):
     data = load_payment_data()
     users_data = load_users_data()
     user_discount = users_data.get(user_id, {}).get('discount', 0)
-    applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
-    applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
+    applicable_category = users_data.get(user_id, {}).get('applicable_category')
+    applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
     markup = InlineKeyboardMarkup()
 
-    # Определяем строку применимости только если есть скидка
-    applicability_str = ""
-    if user_discount > 0:  # Показываем применимость только если есть скидка
-        applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
-                            "все подписки" if applicable_category == "subscriptions" else 
-                            "весь магазин" if applicable_category == "store" else 
-                            ", ".join([SUBSCRIPTION_PLANS.get(item, {'label': item})['label'].lower() for item in applicable_items if item in SUBSCRIPTION_PLANS]))
-        applicability_str = f" (применимо к: {applicability_str})"
+    # Проверяем, применима ли скидка к подпискам
+    discount_applicable_to_subscriptions = (
+        applicable_category == "subscriptions" or  # Скидка для всех подписок
+        any(item in SUBSCRIPTION_PLANS for item in applicable_items) or  # Или для конкретной подписки
+        (applicable_category is None and not applicable_items)  # Или для всех товаров (подписки + магазин)
+    )
 
-    discount_info = ""
+    # Формируем строку пользовательской скидки
+    display_discount = user_discount if discount_applicable_to_subscriptions else 0
+    applicability_str = ""
+    if discount_applicable_to_subscriptions and user_discount > 0:
+        if applicable_category == "subscriptions":
+            applicability_str = " (применимо к: все подписки)"
+        elif applicable_category == "store":
+            applicability_str = " (применимо к: весь магазин)"
+        elif applicable_category is None and not applicable_items:
+            applicability_str = " (применимо к: все товары)"
+        else:
+            applicable_labels = []
+            for item in applicable_items:
+                if item in SUBSCRIPTION_PLANS:
+                    label = SUBSCRIPTION_PLANS[item]['label'].lower()
+                    applicable_labels.append(f"{label} в подписках")
+                elif item in STORE_ITEMS:
+                    label = STORE_ITEMS[item]['label']
+                    applicable_labels.append(f"{label} в магазине")
+                else:
+                    applicable_labels.append(item)
+            applicability_str = f" (применимо к: {', '.join(applicable_labels)})"
+    discount_info_text = f"🎁 *Ваша скидка:* {display_discount}%{applicability_str}\n"
+
+    # Формируем информацию об акционных скидках
+    fictitious_discount_text = ""
+    has_fictitious_discount = False
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
         base_price = plan_info["base_price"]
-        fictitious_discount = plan_info["fictitious_discount"]
-        label = plan_info["label"].lower()  # Приводим название плана к нижнему регистру
+        fictitious_discount = plan_info.get("fictitious_discount", 0)
+        label = plan_info["label"].lower()
 
-        # Проверяем, применима ли скидка
-        discount_applicable = (applicable_category is None or 
-                              applicable_category == "subscriptions" or 
-                              plan_key in applicable_items)
+        # Проверяем, применима ли скидка к конкретному плану
+        discount_applicable = (
+            applicable_category == "subscriptions" or
+            (applicable_category is None and not applicable_items) or
+            plan_key in applicable_items
+        )
         discounted_price = base_price * (1 - (user_discount / 100 if discount_applicable else 0))
         final_price = max(1, round(discounted_price - fictitious_discount, 2))
 
-        # Добавляем информацию об акционной скидке для текущего плана, если она есть
         if fictitious_discount > 0:
-            discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
+            fictitious_discount_text += f"🎁 *Акционная скидка* (применимо к: {label}): {fictitious_discount:.2f} ₽\n"
+            has_fictitious_discount = True
 
         button_text = f"💳 {label} ({final_price:.2f} ₽)"
         markup.add(InlineKeyboardButton(button_text, callback_data=plan_key))
 
+    # Если акционных скидок нет, отображаем одну строку
+    if not has_fictitious_discount:
+        fictitious_discount_text = "🎁 *Акционная скидка:* 0.00 ₽\n"
+
+    # Добавляем дополнительный перенос строки после акционных скидок
+    fictitious_discount_text += "\n"
+
     bot.send_message(user_id, (
         "Выберите период подписки:\n\n"
-        f"🎁 *Ваша скидка:* {user_discount}%{applicability_str}\n"
-        f"{discount_info}\n"  # Добавляем информацию об акционных скидках
-        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"  # Названия в нижнем регистре
+        f"{discount_info_text}"
+        f"{fictitious_discount_text}"
+        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"
         "📌 *Месяц*: полный доступ ко всем функциям на продолжительный период!\n"
-        "📌 *Год*: экономия и долгосрочный доступ ко всем функциям бота!"
+        "📌 *Год*: экономия и долгосрочный доступ ко всем функциям бота!\n"
     ), reply_markup=markup, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1527,9 +1560,10 @@ def send_subscription_invoice(call):
     applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
 
     # Проверяем, применима ли скидка
-    discount_applicable = (applicable_category is None or 
-                          applicable_category == "subscriptions" or 
-                          plan_key in applicable_items)
+    discount_applicable = (
+        applicable_category == "subscriptions" or  # Скидка для всех подписок
+        plan_key in applicable_items              # Или для конкретной подписки
+    )
     user_discount = user_discount if discount_applicable else 0
 
     # Если скидка 100%, предоставляем подписку без оплаты
@@ -1676,11 +1710,12 @@ def process_successful_payment(message):
         plan_duration = plan_info["duration"]
 
         user_discount = users_data.get(user_id, {}).get('discount', 0)
-        applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
-        applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
-        discount_applicable = (applicable_category is None or 
-                              applicable_category == "subscriptions" or 
-                              plan_key in applicable_items)
+        applicable_category = users_data.get(user_id, {}).get('applicable_category')  # Исправляем источник данных
+        applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
+        discount_applicable = (
+            applicable_category == "subscriptions" or 
+            plan_key in applicable_items
+        )
         user_discount = user_discount if discount_applicable else 0
         discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
 
@@ -1791,11 +1826,12 @@ def process_successful_payment(message):
         fictitious_discount = item_info["fictitious_discount"]
         label = item_info["label"]
         user_discount = users_data.get(user_id, {}).get('discount', 0)
-        applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
-        applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
-        discount_applicable = (applicable_category is None or 
-                              applicable_category == "store" or 
-                              payload in applicable_items)
+        applicable_category = users_data.get(user_id, {}).get('applicable_category')  # Исправляем источник данных
+        applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
+        discount_applicable = (
+            applicable_category == "store" or 
+            payload in applicable_items
+        )
         user_discount = user_discount if discount_applicable else 0
         discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
 
@@ -2458,35 +2494,63 @@ def send_store_options(message):
     applicable_category = users_data.get(user_id, {}).get('applicable_category')
     applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
 
-    # Отладочная информация
-    print(f"send_store_options - User ID: {user_id}, User Discount: {user_discount}, Applicable Items: {applicable_items}, Applicable Category: {applicable_category}")
+    # Проверяем, применима ли скидка к магазину
+    discount_applicable_to_store = (
+        applicable_category == "store" or  # Скидка для всего магазина
+        any(item in STORE_ITEMS for item in applicable_items) or  # Или для конкретного товара магазина
+        (applicable_category is None and not applicable_items)  # Или для всех товаров (подписки + магазин)
+    )
 
-    # Определяем строку применимости только если есть скидка
+    # Формируем строку пользовательской скидки
+    display_discount = user_discount if discount_applicable_to_store else 0
     applicability_str = ""
-    if user_discount > 0:
-        applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
-                            "все подписки" if applicable_category == "subscriptions" else 
-                            "весь магазин" if applicable_category == "store" else 
-                            ", ".join([STORE_ITEMS.get(item, {'label': item})['label'] for item in applicable_items if item in STORE_ITEMS]))
-        applicability_str = f" (применимо к: {applicability_str})"
+    if discount_applicable_to_store and user_discount > 0:
+        if applicable_category == "subscriptions":
+            applicability_str = " (применимо к: все подписки)"
+        elif applicable_category == "store":
+            applicability_str = " (применимо к: весь магазин)"
+        elif applicable_category is None and not applicable_items:
+            applicability_str = " (применимо к: все товары)"
+        else:
+            applicable_labels = []
+            for item in applicable_items:
+                if item in SUBSCRIPTION_PLANS:
+                    label = SUBSCRIPTION_PLANS[item]['label'].lower()
+                    applicable_labels.append(f"{label} в подписках")
+                elif item in STORE_ITEMS:
+                    label = STORE_ITEMS[item]['label']
+                    applicable_labels.append(f"{label} в магазине")
+                else:
+                    applicable_labels.append(item)
+            applicability_str = f" (применимо к: {', '.join(applicable_labels)})"
+    discount_info_text = f"🎁 *Ваша скидка*: {display_discount}%{applicability_str}\n"
 
-    # Собираем информацию об акционных скидках для пакетов баллов
+    # Формируем информацию об акционных скидках
+    fictitious_discount_text = ""
+    has_fictitious_discount = False
+
     points_items = {k: v for k, v in STORE_ITEMS.items() if k.startswith("points_")}
-    points_discount_info = ""
     for item_key, item_info in points_items.items():
-        fictitious_discount = item_info["fictitious_discount"]
+        fictitious_discount = item_info.get("fictitious_discount", 0)
         label = item_info["label"]
         if fictitious_discount > 0:
-            points_discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
+            fictitious_discount_text += f"🎁 *Акционная скидка* (применимо к: {label}): {fictitious_discount:.2f} ₽\n"
+            has_fictitious_discount = True
 
-    # Собираем информацию об акционных скидках для пакетов времени
     time_items = {k: v for k, v in STORE_ITEMS.items() if k.startswith("time_")}
-    time_discount_info = ""
     for item_key, item_info in time_items.items():
-        fictitious_discount = item_info["fictitious_discount"]
+        fictitious_discount = item_info.get("fictitious_discount", 0)
         label = item_info["label"]
         if fictitious_discount > 0:
-            time_discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
+            fictitious_discount_text += f"🎁 *Акционная скидка* (применимо к: {label}): {fictitious_discount:.2f} ₽\n"
+            has_fictitious_discount = True
+
+    # Если акционных скидок нет, отображаем одну строку
+    if not has_fictitious_discount:
+        fictitious_discount_text = "🎁 *Акционная скидка*: 0.00 ₽\n"
+
+    # Добавляем дополнительный перенос строки после акционных скидок
+    fictitious_discount_text += "\n"
 
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📍 Пакеты баллов", callback_data="noop"))
@@ -2497,12 +2561,16 @@ def send_store_options(message):
     for left_key, right_key in zip(points_left, points_right):
         left_item = STORE_ITEMS[left_key]
         right_item = STORE_ITEMS[right_key]
-        left_discount_applicable = (applicable_category is None or 
-                                   applicable_category == "store" or 
-                                   left_key in applicable_items)
-        right_discount_applicable = (applicable_category is None or 
-                                    applicable_category == "store" or 
-                                    right_key in applicable_items)
+        left_discount_applicable = (
+            applicable_category == "store" or
+            (applicable_category is None and not applicable_items) or
+            left_key in applicable_items
+        )
+        right_discount_applicable = (
+            applicable_category == "store" or
+            (applicable_category is None and not applicable_items) or
+            right_key in applicable_items
+        )
         left_price = max(1, round(left_item["base_price"] * (1 - (user_discount / 100 if left_discount_applicable else 0)), 2))
         right_price = max(1, round(right_item["base_price"] * (1 - (user_discount / 100 if right_discount_applicable else 0)), 2))
         left_button = InlineKeyboardButton(f"💰 {left_item['label']} ({left_price:.2f} ₽)", callback_data=left_key)
@@ -2520,17 +2588,21 @@ def send_store_options(message):
         if i < len(time_left):
             left_key = time_left[i]
             left_item = STORE_ITEMS[left_key]
-            left_discount_applicable = (applicable_category is None or 
-                                       applicable_category == "store" or 
-                                       left_key in applicable_items)
+            left_discount_applicable = (
+                applicable_category == "store" or
+                (applicable_category is None and not applicable_items) or
+                left_key in applicable_items
+            )
             left_price = max(1, round(left_item["base_price"] * (1 - (user_discount / 100 if left_discount_applicable else 0)), 2))
             left_button = InlineKeyboardButton(f"⏰ {left_item['label']} ({left_price:.2f} ₽)", callback_data=left_key)
         if i < len(time_right):
             right_key = time_right[i]
             right_item = STORE_ITEMS[right_key]
-            right_discount_applicable = (applicable_category is None or 
-                                        applicable_category == "store" or 
-                                        right_key in applicable_items)
+            right_discount_applicable = (
+                applicable_category == "store" or
+                (applicable_category is None and not applicable_items) or
+                right_key in applicable_items
+            )
             right_price = max(1, round(right_item["base_price"] * (1 - (user_discount / 100 if right_discount_applicable else 0)), 2))
             right_button = InlineKeyboardButton(f"⏰ {right_item['label']} ({right_price:.2f} ₽)", callback_data=right_key)
         if left_button and right_button:
@@ -2540,14 +2612,13 @@ def send_store_options(message):
 
     bot.send_message(user_id, (
         "🏪 *Магазин баллов и времени*\n\n"
-        f"🎁 *Ваша скидка*: {user_discount}%{applicability_str}\n"
-        f"{points_discount_info}\n"
+        f"{discount_info_text}"
+        f"{fictitious_discount_text}"
         "📍 *Пакеты баллов*:\n"
         "Покупайте баллы для обмена на время, скидки или подарки друзьям!\n"
-        f"{time_discount_info}\n"
         "⏳ *Пакеты времени*:\n"
         "Добавьте дни к вашей подписке для полного доступа к функциям!\n\n"
-        "Выберите товар:"
+        "Выберите товар:\n"
     ), reply_markup=markup, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -2577,9 +2648,10 @@ def send_store_invoice(call):
     print(f"send_store_invoice - User ID: {user_id}, Item Key: {item_key}, User Discount: {user_discount}, Applicable Items: {applicable_items}, Applicable Category: {applicable_category}")
 
     # Проверяем, применима ли скидка
-    discount_applicable = (applicable_category is None or 
-                          applicable_category == "store" or 
-                          item_key in applicable_items)
+    discount_applicable = (
+        applicable_category == "store" or  # Скидка для всего магазина
+        item_key in applicable_items      # Или для конкретного товара из applicable_items
+    )
     
     # Если скидка применима, но user_discount равен 0, логируем проблему
     if discount_applicable and user_discount == 0:
@@ -4131,10 +4203,26 @@ def process_promo_code(message):
     discount = promo['discount']
     applicable_category = promo.get('applicable_category')
     applicable_items = promo.get('applicable_items', [])
-    applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
-                        "все подписки" if applicable_category == "subscriptions" else 
-                        "весь магазин" if applicable_category == "store" else 
-                        ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] for item in applicable_items]))
+
+    # Формируем строку применимости с уточнением "в магазине" или "в подписках"
+    if applicable_category is None and not applicable_items:
+        applicability_str = "все товары"
+    elif applicable_category == "subscriptions":
+        applicability_str = "все подписки"
+    elif applicable_category == "store":
+        applicability_str = "весь магазин"
+    else:
+        applicable_labels = []
+        for item in applicable_items:
+            if item in SUBSCRIPTION_PLANS:
+                label = SUBSCRIPTION_PLANS[item]['label'].lower()
+                applicable_labels.append(f"{label} в подписках")
+            elif item in STORE_ITEMS:
+                label = STORE_ITEMS[item]['label']
+                applicable_labels.append(f"{label} в магазине")
+            else:
+                applicable_labels.append(item)  # На случай, если item не найден
+        applicability_str = ", ".join(applicable_labels)
 
     # Сохраняем скидку в data['subscriptions']['users']
     data['subscriptions']['users'].setdefault(user_id, {})['discount'] = discount
