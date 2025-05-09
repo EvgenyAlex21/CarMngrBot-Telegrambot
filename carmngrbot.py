@@ -10438,8 +10438,8 @@ def view_others(message):
 # --------------------------------------------------------------------------------------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Калькуляторы")
-# @check_function_state_decorator('Калькуляторы')
-# @track_usage('Калькуляторы')
+@check_function_state_decorator('Калькуляторы')
+@track_usage('Калькуляторы')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -10450,26 +10450,12 @@ def view_calculators(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Алкоголь', 'Автокредит', 'Налог') 
     markup.add('Растаможка', 'ОСАГО', 'Шины') 
-    markup.add('Документы') 
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите калькулятор для рассчетов:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text == "Документы")
-# @check_function_state_decorator('Документы')
-# @track_usage('Документы')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-def view_documents(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('ДКП', 'Доверенность') 
-    markup.add('В главное меню')
-    bot.send_message(message.chat.id, "Выберите документ для формирования:", reply_markup=markup)
-
 @bot.message_handler(func=lambda message: message.text == "Вернуться в калькуляторы")
+@check_function_state_decorator('Вернуться в калькуляторы')
+@track_usage('Вернуться в калькуляторы')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -10485,6 +10471,8 @@ def return_to_calculators(message):
 # ---------- n. АЛКОГОЛЬ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Алкоголь")
+@check_function_state_decorator('Алкоголь')
+@track_usage('Алкоголь')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -10571,6 +10559,14 @@ load_alko_data()
 load_user_history_alko()
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать алкоголь")
+@check_function_state_decorator('Рассчитать алкоголь')
+@track_usage('Рассчитать алкоголь')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_alcohol_calculation(message):
     if not alko_data.get('drinks'):
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -11142,6 +11138,14 @@ def save_calculation_to_history(chat_id, promille):
 # ---------- n.n АЛКОГОЛЬ (ПРОСМОТР АЛКОГОЛЯ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр алкоголя")
+@check_function_state_decorator('Просмотр алкоголя')
+@track_usage('Просмотр алкоголя')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -11240,6 +11244,14 @@ def process_view_selection(message):
 # ---------- n.n АЛКОГОЛЬ (УДАЛЕНИЕ АЛКОГОЛЯ) ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление алкоголя")
+@check_function_state_decorator('Удаление алкоголя')
+@track_usage('Удаление алкоголя')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -11325,10 +11337,17 @@ def process_delete_selection(message):
         bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
         view_alc_calc(message)
 
-
 # -------------------- РАСТАМОЖКА --------------
 
 @bot.message_handler(func=lambda message: message.text == "Растаможка")
+@check_function_state_decorator('Растаможка')
+@track_usage('Растаможка')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def view_rastamozka_calc(message):
     global stored_message
     stored_message = message
@@ -11435,6 +11454,14 @@ load_rastamozka_data()
 load_user_history_rastamozka()
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать растаможку")
+@check_function_state_decorator('Рассчитать растаможку')
+@track_usage('Рассчитать растаможку')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_customs_calculation(message):
     if not rastamozka_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -12033,6 +12060,14 @@ def save_calculation_to_history(user_id, total_cost):
 # ---------- ПРОСМОТР РАСТАМОЖЕК ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр растаможек")
+@check_function_state_decorator('Просмотр растаможек')
+@track_usage('Просмотр растаможек')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -12147,6 +12182,14 @@ def process_view_rastamozka_selection(message):
 # ---------- УДАЛЕНИЕ РАСТАМОЖЕК ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление растаможек")
+@check_function_state_decorator('Удаление растаможек')
+@track_usage('Удаление растаможек')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_rastamozka(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -12236,6 +12279,14 @@ def process_delete_rastamozka_selection(message):
 # ---------- РАСЕТ ОСАГО ----------
 
 @bot.message_handler(func=lambda message: message.text == "ОСАГО")
+@check_function_state_decorator('ОСАГО')
+@track_usage('ОСАГО')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def view_osago_calc(message):
     global stored_message
     stored_message = message
@@ -12310,6 +12361,14 @@ load_user_history_osago()
 
 # Start OSAGO calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать ОСАГО")
+@check_function_state_decorator('Рассчитать ОСАГО')
+@track_usage('Рассчитать ОСАГО')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_osago_calculation(message):
     if not osago_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -13009,6 +13068,14 @@ def save_calculation_to_history(user_id, min_cost, max_cost):
 # ---------- ПРОСМОТР ОСАГО ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр ОСАГО")
+@check_function_state_decorator('Просмотр ОСАГО')
+@track_usage('Просмотр ОСАГО')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -13175,6 +13242,14 @@ def process_view_osago_selection(message):
 # ---------- УДАЛЕНИЕ ОСАГО ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление ОСАГО")
+@check_function_state_decorator('Удаление ОСАГО')
+@track_usage('Удаление ОСАГО')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_osago(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -13269,6 +13344,14 @@ def process_delete_osago_selection(message):
 # ---------- РАСЧЕТ АВТОКРЕДИТА ----------
 
 @bot.message_handler(func=lambda message: message.text == "Автокредит")
+@check_function_state_decorator('Автокредит')
+@track_usage('Автокредит')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def view_autokredit_calc(message):
     description = (
         "ℹ️ *Краткая справка по расчету автокредита*\n\n"
@@ -13334,6 +13417,14 @@ ensure_path_and_file(KREDIT_USERS_PATH)
 load_user_history_kredit()
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать автокредит")
+@check_function_state_decorator('Рассчитать автокредит')
+@track_usage('Рассчитать автокредит')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_car_loan_calculation(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -14022,6 +14113,14 @@ def save_calculation_to_history(user_id, principal, total_interest, total_paymen
 # ---------- ПРОСМОТР АВТОКРЕДИТОВ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр автокредитов")
+@check_function_state_decorator('Просмотр автокредитов')
+@track_usage('Просмотр автокредитов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14154,6 +14253,14 @@ def process_view_autokredit_selection(message):
 # ---------- УДАЛЕНИЕ АВТОКРЕДИТОВ ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление автокредитов")
+@check_function_state_decorator('Удаление автокредитов')
+@track_usage('Удаление автокредитов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_autokredit(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14254,6 +14361,14 @@ def process_delete_autokredit_selection(message):
 # ---------- РАСЧЕТ ШИН ----------
 
 @bot.message_handler(func=lambda message: message.text == "Шины")
+@check_function_state_decorator('Шины')
+@track_usage('Шины')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def view_tire_calc(message):
     description = (
         "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
@@ -14313,6 +14428,14 @@ load_user_history_tires()
 
 # Обработчик команды "Рассчитать шины"
 @bot.message_handler(func=lambda message: message.text == "Рассчитать шины")
+@check_function_state_decorator('Рассчитать шины')
+@track_usage('Рассчитать шины')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_tire_calculation(message):
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
@@ -14754,6 +14877,14 @@ def save_calculation_to_history(user_id, data, current_diameter, new_diameter, d
 # ---------- ПРОСМОТР РАСЧЕТОВ ШИН ----------
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр шин")
+@check_function_state_decorator('Просмотр шин')
+@track_usage('Просмотр шин')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -14938,6 +15069,14 @@ def process_view_tire_selection(message):
 # ---------- УДАЛЕНИЕ РАСЧЕТОВ ШИН ----------
 
 @bot.message_handler(func=lambda message: message.text == "Удаление шин")
+@check_function_state_decorator('Удаление шин')
+@track_usage('Удаление шин')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_tire_calc(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15129,6 +15268,14 @@ load_tax_rates(2025)  # Загружаем данные за 2025 год по у
 
 # Обработчик команды "Налог"
 @bot.message_handler(func=lambda message: message.text == "Налог")
+@check_function_state_decorator('Налог')
+@track_usage('Налог')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def view_nalog_calc(message):
     global stored_message
     stored_message = message
@@ -15155,6 +15302,14 @@ def view_nalog_calc(message):
 
 # Start tax calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
+@check_function_state_decorator('Рассчитать налог')
+@track_usage('Рассчитать налог')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def start_tax_calculation(message):
     if not nalog_data:
         bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
@@ -15620,6 +15775,14 @@ def calculate_tax(message):
 # Просмотр расчетов
 
 @bot.message_handler(func=lambda message: message.text == "Просмотр налогов")
+@check_function_state_decorator('Просмотр налогов')
+@track_usage('Просмотр налогов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_view_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15739,6 +15902,14 @@ def process_view_nalog_selection(message):
 
 # Удаление расчетов
 @bot.message_handler(func=lambda message: message.text == "Удаление налогов")
+@check_function_state_decorator('Удаление налогов')
+@track_usage('Удаление налогов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
 def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history or not user_history[user_id]['calculations']:
@@ -15826,6 +15997,7 @@ def process_delete_nalog_selection(message):
     except Exception as e:
         bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
         view_nalog_calc(message)
+
 
 
 
@@ -18392,12 +18564,12 @@ function_states = load_function_states()
 new_functions = {
     "Общее меню": [
         "Подписка на бота", "Расход топлива", "Траты и ремонты", "Ваш транспорт", "Найти транспорт", "Поиск мест",
-        "Погода", "Цены на топливо", "Код", "Анти-радар", "Напоминания", "Коды OBD2", "Прочее", "Сайт"
+        "Погода", "Цены на топливо", "Код", "Анти-радар", "Напоминания", "Коды OBD2", "Прочее", "Сайт", "Калькуляторы"
     ],
     "Кнопки": [
         "Вернуться в подписку", "В главное меню", "Вернуться в меню расчета топлива", "Вернуться в меню трат и ремонтов",
         "Выбрать категорию заново", "Вернуться в меню напоминаний", "Посмотреть другие ошибки",
-        "Вернуться в ваш транспорт", "еще новости"
+        "Вернуться в ваш транспорт", "еще новости", "Вернуться в калькуляторы"
     ],
     "Подписка на бота": [
         "Купить подписку", "Отменить подписку", "Посмотреть подписку", "История подписок", "Реферальная система"
@@ -18442,10 +18614,15 @@ new_functions = {
         "Сегодня", "Завтра", "Неделя", "Месяц", "Другое место"
     ],
     "Меню напоминаний": [
-        "Добавить напоминание", "Посмотреть напоминания", "Активные", "Истекшие", 'Один раз (активные)', 'Ежедневно (активные)', 'Еженедельно (активные)', 'Ежемесячно (активные)', 'Один раз (истекшие)', 'Ежедневно (истекшие)', 'Еженедельно (истекшие)', 'Ежемесячно (истекшие)'
+        "Добавить напоминание", "Посмотреть напоминания", "Активные", "Истекшие", 'Один раз (активные)', 
+        'Ежедневно (активные)', 'Еженедельно (активные)', 'Ежемесячно (активные)', 'Один раз (истекшие)', 
+        'Ежедневно (истекшие)', 'Еженедельно (истекшие)', 'Ежемесячно (истекшие)'
     ],
     "Меню удаления напоминаний": [
-        "Удалить напоминание", "Удалить все напоминания",  'Del Активные', 'Del Истекшие', 'Del Один раз (активные)', 'Del Ежедневно (активные)', 'Del Еженедельно (активные)', 'Del Ежемесячно (активные)', 'Del Один раз (истекшие)', 'Del Ежедневно (истекшие)', 'Del Еженедельно (истекшие)', 'Del Ежемесячно (истекшие)'
+        "Удалить напоминание", "Удалить все напоминания", 'Del Активные', 'Del Истекшие', 'Del Один раз (активные)', 
+        'Del Ежедневно (активные)', 'Del Еженедельно (активные)', 'Del Ежемесячно (активные)', 
+        'Del Один раз (истекшие)', 'Del Ежедневно (истекшие)', 'Del Еженедельно (истекшие)', 
+        'Del Ежемесячно (истекшие)'
     ],
     "Другие функции": [
         "Выключить анти-радар", "Функция для обработки локации"
@@ -18464,6 +18641,14 @@ new_functions = {
     ],
     "Уведомления": [
         "Выключить погоду", "Включить погоду", "Выключить цены", "Включить цены", "Выключить все", "Включить все"
+    ],
+    "Калькуляторы": [
+        "Вернуться в калькуляторы", "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя",
+        "Растаможка", "Рассчитать растаможку", "Просмотр растаможек", "Удаление растаможек",
+        "ОСАГО", "Рассчитать ОСАГО", "Просмотр ОСАГО", "Удаление ОСАГО",
+        "Автокредит", "Рассчитать автокредит", "Просмотр автокредитов", "Удаление автокредитов",
+        "Шины", "Рассчитать шины", "Просмотр шин", "Удаление шин",
+        "Налог", "Рассчитать налог", "Просмотр налогов", "Удаление налогов"
     ]
 }
 
