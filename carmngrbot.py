@@ -3431,6 +3431,7 @@ def handle_period_5(message):
 
 def send_weather(chat_id, coords, url):
     try:
+        # Запрос текущей погоды
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
@@ -3447,6 +3448,7 @@ def send_weather(chat_id, coords, url):
             wind_speed = data['wind']['speed']
             description = translate_weather_description(data['weather'][0]['description'])
 
+            # Отправка текущей погоды
             message = (
                 f"Погода сейчас:\n"
                 f"Температура: {temperature}°C\n"
@@ -3456,14 +3458,68 @@ def send_weather(chat_id, coords, url):
                 f"Скорость ветра: {wind_speed} м/с\n"
                 f"Описание погоды: {description}\n"
             )
-
             bot.send_message(chat_id, message)
+
+            # Запрос прогноза погоды на оставшуюся часть дня
+            send_forecast_remaining_day(chat_id, coords, FORECAST_URL)
+
         else:
             bot.send_message(chat_id, "Не удалось получить текущую погоду.")
     except Exception as e:
         print(f"Ошибка при отправке текущей погоды: {e}")
         traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды. Попробуйте позже.")
+
+def send_forecast_remaining_day(chat_id, coords, url):
+    try:
+        params = {
+            'lat': coords['latitude'],
+            'lon': coords['longitude'],
+            'appid': API_KEY,
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecasts = data['list']
+
+            now = datetime.now()
+            message = "Прогноз на оставшуюся часть дня:\n"
+
+            for forecast in forecasts:
+                date_time = datetime.strptime(forecast['dt_txt'], "%Y-%m-%d %H:%M:%S")
+                
+                # Фильтрация прогнозов только на текущий день и время до 23:59
+                if now <= date_time <= now.replace(hour=23, minute=59, second=59):
+                    formatted_date = date_time.strftime("%H:%M")
+                    temperature = round(forecast['main']['temp'] - 273.15)
+                    feels_like = round(forecast['main']['feels_like'] - 273.15)
+                    humidity = forecast['main']['humidity']
+                    pressure = forecast['main']['pressure']
+                    wind_speed = forecast['wind']['speed']
+                    description = translate_weather_description(forecast['weather'][0]['description'])
+
+                    message += (
+                        f"{formatted_date}:\n"
+                        f"Температура: {temperature}°C\n"
+                        f"Ощущается как: {feels_like}°C\n"
+                        f"Влажность: {humidity}%\n"
+                        f"Давление: {pressure} мм рт. ст\n"
+                        f"Скорость ветра: {wind_speed} м/с\n"
+                        f"Описание погоды: {description}\n\n"
+                    )
+
+            message_chunks = [message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(message), MAX_MESSAGE_LENGTH)]
+
+            for chunk in message_chunks:
+                bot.send_message(chat_id, chunk)
+
+        else:
+            bot.send_message(chat_id, "Не удалось получить прогноз на оставшийся день.")
+    except Exception as e:
+        print(f"Ошибка при отправке прогноза на оставшийся день: {e}")
+        traceback.print_exc()
+        bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на оставшийся день. Попробуйте позже.")
 
 # (15.6) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПЕРЕВОДА) ---------------
 
