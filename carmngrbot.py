@@ -29,7 +29,9 @@ import shutil
 import hashlib
 from statistics import mean
 from functools import wraps
-
+import schedule
+import threading
+from datetime import timedelta
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -211,12 +213,232 @@ def track_usage(func_name):
     return decorator
 
 
+# Настройка логирования для файла
+file_logger = logging.getLogger('fileLogger')
+file_logger.setLevel(logging.DEBUG)
+file_handler = logging.FileHandler('bot_logs.log', encoding='utf-8')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_logger.addHandler(file_handler)
+
+# Настройка логирования для консоли
+console_logger = logging.getLogger('consoleLogger')
+console_logger.setLevel(logging.ERROR)  # Устанавливаем уровень ERROR, чтобы выводить только ошибки в консоль
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+console_logger.addHandler(console_handler)
+
+# Функция для записи логов в JSON файл
+def log_to_json(user_id, log_entry):
+    log_dir = "data base/log"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{user_id}_log.json")
+
+    if os.path.exists(log_file):
+        with open(log_file, 'r', encoding='utf-8') as file:
+            logs = json.load(file)
+    else:
+        logs = []
+
+    logs.append(log_entry)
+
+    with open(log_file, 'w', encoding='utf-8') as file:
+        json.dump(logs, file, ensure_ascii=False, indent=4)
+
+# Функция для очистки логов и переноса ошибок
+def clear_logs_and_transfer_errors():
+    log_dir = "data base/log"
+    error_log_file = os.path.join(log_dir, "errors_log.json")
+
+    # Загружаем существующие ошибки из errors_log.json
+    if os.path.exists(error_log_file):
+        with open(error_log_file, 'r', encoding='utf-8') as file:
+            errors = json.load(file)
+    else:
+        errors = []
+
+    for filename in os.listdir(log_dir):
+        if filename.endswith("_log.json") and filename != "errors_log.json":
+            file_path = os.path.join(log_dir, filename)
+            with open(file_path, 'r', encoding='utf-8') as file:
+                logs = json.load(file)
+
+            # Переносим ошибки в errors_log.json
+            for log in logs:
+                if log.get("level") == "ERROR":
+                    errors.append(log)
+
+            # Очищаем содержимое файла
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump([], file, ensure_ascii=False, indent=4)
+
+    # Сохраняем ошибки в errors_log.json
+    with open(error_log_file, 'w', encoding='utf-8') as file:
+        json.dump(errors, file, ensure_ascii=False, indent=4)
+
+# Функция для удаления старых ошибок из errors_log.json
+def remove_old_errors():
+    log_dir = "data base/log"
+    error_log_file = os.path.join(log_dir, "errors_log.json")
+
+    # Загружаем существующие ошибки из errors_log.json
+    if os.path.exists(error_log_file):
+        with open(error_log_file, 'r', encoding='utf-8') as file:
+            errors = json.load(file)
+    else:
+        errors = []
+
+    # Удаляем ошибки, которые не повторялись в течение 7 дней
+    current_time = datetime.now()
+    errors = [error for error in errors if (current_time - datetime.strptime(error["timestamp"], '%d.%m.%Y в %H:%M:%S')) <= timedelta(days=7)]
+
+    # Сохраняем обновленные ошибки в errors_log.json
+    with open(error_log_file, 'w', encoding='utf-8') as file:
+        json.dump(errors, file, ensure_ascii=False, indent=4)
+
+# Продвинутый декоратор для логирования действий пользователя и бота
+def log_user_actions(func):
+    @wraps(func)
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        username = message.from_user.username if message.from_user.username else "Неизвестный пользователь"
+        first_name = message.from_user.first_name if message.from_user.first_name else ""
+        last_name = message.from_user.last_name if message.from_user.last_name else ""
+        message_text = message.text if message.text else "Нет текста"
+        command = func.__name__
+        chat_id = message.chat.id
+        message_id = message.message_id
+        message_type = "text" if message.text else "media"
+        context = message_text  # Записываем текст сообщения пользователя в контекст
+        language_code = message.from_user.language_code if hasattr(message.from_user, 'language_code') else "Неизвестный язык"
+        chat_type = message.chat.type
+        location = message.location if message.location else "Нет геолокации"
+
+        start_time = time.time()
+
+        try:
+            result = func(message, *args, **kwargs)
+            execution_time = time.time() - start_time
+            log_entry = {
+                "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
+                "level": "INFO",
+                "event_type": "User Action",
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "message_text": message_text,
+                "command": command,
+                "result": "Success",
+                "execution_time": f"{execution_time:.2f} sec",
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "message_type": message_type,
+                "context": context,
+                "language_code": language_code,
+                "chat_type": chat_type,
+                "location": location,
+                "bot_info": {
+                    "version": "1.0",
+                    "bot_id": "7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE"
+                }
+            }
+            file_logger.info(f"User {user_id} executed command {command} successfully in {execution_time:.2f} sec.")
+        except Exception as e:
+            execution_time = time.time() - start_time
+            error_details_more = traceback.format_exc().splitlines()
+            log_entry = {
+                "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
+                "level": "ERROR",
+                "event_type": "User Action",
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "message_text": message_text,
+                "command": command,
+                "result": "Error",
+                "execution_time": f"{execution_time:.2f} sec",
+                "error_details": str(e),
+                "error_details_more": error_details_more,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "message_type": message_type,
+                "context": context,
+                "language_code": language_code,
+                "chat_type": chat_type,
+                "location": location,
+                "bot_info": {
+                    "version": "1.0",
+                    "bot_id": "7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE"
+                }
+            }
+            file_logger.error(f"User {user_id} encountered an error while executing command {command} in {execution_time:.2f} sec: {e}")
+            console_logger.error(f"User {user_id} encountered an error while executing command {command} in {execution_time:.2f} sec: {e}")
+            raise
+        finally:
+            log_to_json(user_id, log_entry)
+
+        # Логирование ответа бота
+        bot_log_entry = {
+            "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
+            "level": "INFO",
+            "event_type": "Bot Action",
+            "user_id": user_id,
+            "username": "bot",
+            "first_name": "",
+            "last_name": "",
+            "message_text": message_text,
+            "command": command,
+            "result": "Success",
+            "execution_time": f"{execution_time:.2f} sec",
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "message_type": message_type,
+            "context": context,
+            "language_code": language_code,
+            "chat_type": chat_type,
+            "location": location,
+            "bot_info": {
+                "version": "1.0",
+                "bot_id": "7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE"
+            }
+        }
+        log_to_json(user_id, bot_log_entry)
+
+        return result
+    return wrapper
+
+# Функция для запуска задачи удаления старых ошибок каждую неделю
+def run_weekly_task():
+    while True:
+        remove_old_errors()
+        time.sleep(7 * 24 * 60 * 60)  # Спим 7 дней
+
+# Запуск задачи очистки логов и переноса ошибок каждый день в 00:00
+schedule.every().day.at("00:00").do(clear_logs_and_transfer_errors)
+
+# Функция для запуска запланированных задач
+def run_scheduled_tasks():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+# Запуск запланированных задач в отдельном потоке
+scheduler_thread = threading.Thread(target=run_scheduled_tasks)
+scheduler_thread.start()
+
+# Запуск задачи удаления старых ошибок каждую неделю в отдельном потоке
+weekly_task_thread = threading.Thread(target=run_weekly_task)
+weekly_task_thread.start()
+
+
 # Старт
 
 @bot.message_handler(commands=['start'])
 @restricted
 @track_user_activity
 @check_chat_state
+@log_user_actions
 def start(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -253,6 +475,7 @@ def start(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
+@log_user_actions
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
 def return_to_menu(message):
@@ -285,6 +508,7 @@ def send_website_file(message):
 @check_chat_state
 @check_function_state_decorator('Расход топлива')
 @track_usage('Расход топлива')  # Добавление отслеживания статистики
+@log_user_actions
 def handle_fuel_expense(message):
 
     user_id = message.from_user.id
@@ -513,7 +737,7 @@ def process_start_location_step(message):
     sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_end_location_step)
 
-
+@log_user_actions
 def process_end_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -583,7 +807,7 @@ def process_end_location_step(message):
     sent = bot.send_message(chat_id, "Выберите вариант:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
-
+@log_user_actions
 def process_custom_distance_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -624,7 +848,7 @@ def process_custom_distance_step(message):
         sent = bot.send_message(chat_id, "Пожалуйста, введите корректное число для расстояния.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_custom_distance_step)
 
-
+@log_user_actions
 def process_distance_choice_step(message, distance_km):
     chat_id = message.chat.id
     trip_data[chat_id]["distance"] = distance_km
@@ -664,6 +888,7 @@ def process_distance_choice_step(message, distance_km):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите один из вариантов.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
+@log_user_actions
 def process_date_step(message, distance):
     chat_id = message.chat.id
     user_code = trip_data[chat_id].get("user_code", "ru")  # Задаем код по умолчанию
@@ -11790,6 +12015,7 @@ total_users = set()  # Множество для хранения уникаль
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
 USER_DATA_FILE = 'data base/admin/users.json'
 STATS_FILE = 'data base/admin/stats.json'
+ERRORS_LOG_FILE = 'data base/log/errors_log.json'
 
 # Загрузка админских сессий из JSON файла
 def load_admin_sessions():
@@ -11963,7 +12189,7 @@ def get_peak_usage_time():
 
 # Получить версию бота
 def get_bot_version():
-    return "1.92.0"  # Пример версии
+    return "1.0"  # Пример версии
 
 # Получить аптайм бота
 def get_uptime():
@@ -11974,16 +12200,34 @@ def get_uptime():
     minutes = (seconds % 3600) // 60
     return f"{days} дней, {hours}:{minutes} часов"
 
+# Загрузка ошибок из файла
+def load_errors():
+    with open(ERRORS_LOG_FILE, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+# Формирование нумерованного списка ошибок
+def get_error_list():
+    errors = load_errors()
+    error_list = []
+    for index, error in enumerate(errors, start=1):
+        error_details = error.get('error_details', '')
+        error_details_more = "\n".join(error.get('error_details_more', []))
+        error_list.append(f"🛑 ОШИБКА №{index} 🛑\n\n{error_details}\n\n{error_details_more}")
+    return error_list
+
 # Создание кнопок для подменю
 def create_submenu_buttons():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons = [
         types.KeyboardButton("Пользователи"),
-        types.KeyboardButton("Версия и аптайм"),
         types.KeyboardButton("Использование функций"),
+        types.KeyboardButton("Список ошибок"),
+        types.KeyboardButton("Версия и аптайм"),
         types.KeyboardButton("В меню админ-панели")
     ]
-    markup.add(*buttons)
+    markup.row(buttons[0], buttons[1])
+    markup.row(buttons[2], buttons[3])
+    markup.row(buttons[4])
     return markup
 
 # Обработчик команды "Статистика"
@@ -11999,7 +12243,7 @@ def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
-@bot.message_handler(func=lambda message: message.text in ["Пользователи", "Версия и аптайм", "Использование функций", "В меню админ-панели"])
+@bot.message_handler(func=lambda message: message.text in ["Пользователи", "Версия и аптайм", "Использование функций", "Список ошибок", "В меню админ-панели"])
 def handle_submenu_buttons(message):
     if not check_admin_access(message):
         return
@@ -12011,9 +12255,9 @@ def handle_submenu_buttons(message):
             f"*🌐 Пользователи онлайн:* {online_count}\n"
             f"*👥 Всего пользователей:* {total_count}\n\n"
             f"*📅 Пользователи за день:* {users_today}\n"
-            f"*📅 Пользователи за неделю:* {users_week}\n"
-            f"*📅 Пользователи за месяц:* {users_month}\n"
-            f"*📅 Пользователи за год:* {users_year}\n\n\n"
+            f"📅 Пользователи за неделю:* {users_week}\n"
+            f"📅 Пользователи за месяц:* {users_month}\n"
+            f"📅 Пользователи за год:* {users_year}\n\n\n"
         )
         if active_user_list:
             response_message += f"*🌐 Пользователи онлайн:*\n\n"
@@ -12047,10 +12291,32 @@ def handle_submenu_buttons(message):
             "\n".join([f"{key}: {value}" for key, value in stats_all.items()])
         )
         bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+    elif message.text == "Список ошибок":
+        error_list = get_error_list()
+        if not error_list:
+            bot.send_message(message.chat.id, "Данные не найдены! Активные ошибки не обнаружены!", parse_mode='Markdown')
+        else:
+            full_message = "\n\n".join(error_list)
+            if len(full_message) > 4096:
+                parts = [full_message[i:i + 4096] for i in range(0, len(full_message), 4096)]
+                for part in parts:
+                    bot.send_message(message.chat.id, part, parse_mode='Markdown')
+            else:
+                bot.send_message(message.chat.id, full_message, parse_mode='Markdown')
     elif message.text == "В меню админ-панели":
         bot.send_message(message.chat.id, "Выберите категорию статистики:", reply_markup=create_submenu_buttons())
 
-        
+# Формирование нумерованного списка ошибок
+def get_error_list():
+    errors = load_errors()
+    error_list = []
+    for index, error in enumerate(errors, start=1):
+        error_details = error.get('error_details', '')
+        error_details_more = "\n".join(error.get('error_details_more', []))
+        error_list.append(f"🛑 *ОШИБКА №{index}* 🛑\n\n{error_details}\n\n{error_details_more}")
+    return error_list
+
+
 # (ADMIN 5) ------------------------------------------ "РЕЗЕРВНАЯ КОПИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 import zipfile
