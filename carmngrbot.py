@@ -1894,11 +1894,6 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 import os
 
-import os
-from openpyxl import Workbook, load_workbook
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, Alignment
-
 def save_expense_to_excel(user_id, expense_data):
     # Путь к Excel-файлу пользователя
     excel_path = os.path.join("data base", "expense", "excel", f"{user_id}_expenses.xlsx")
@@ -2620,6 +2615,8 @@ def confirm_delete_expense_by_category(message, expenses_to_delete):
                 # Передаем selected_transport при вызове функции
                 save_expense_data(user_id, {str(user_id): user_data}, selected_transport)
                 
+                update_excel_file(user_id)
+
                 bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' успешно удалена.")
             else:
                 bot.send_message(user_id, "Неверный выбор. Попробуйте снова.")
@@ -2747,6 +2744,8 @@ def confirm_delete_expense_month(message, expenses_to_delete):
                 selected_transport = selected_transports.get(user_id)
                 save_expense_data(user_id, {str(user_id): user_data}, selected_transport) 
 
+                update_excel_file(user_id)
+
                 bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' удалена успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите трату из списка.")
@@ -2853,6 +2852,8 @@ def confirm_delete_expense_year(message, expenses_to_delete):
                 selected_transport = selected_transports.get(user_id)
                 save_expense_data(user_id, {str(user_id): user_data}, selected_transport) 
 
+                update_excel_file(user_id)
+
                 bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' удалена успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите трату из списка.")
@@ -2927,6 +2928,8 @@ def confirm_delete_all_expenses(message):
         user_data["expenses"] = expenses_to_keep
         save_expense_data(user_id, {str(user_id): user_data}, selected_transport)
 
+        update_excel_file(user_id)
+
         # Сообщение об успешном удалении
         bot.send_message(user_id, f"Все траты для транспорта '{selected_brand} {selected_model} {selected_year}' успешно удалены.")
     else:
@@ -2935,79 +2938,204 @@ def confirm_delete_all_expenses(message):
     send_menu(user_id)
 
 
+import os
 import pandas as pd
-from openpyxl import load_workbook
+import openpyxl
+
+def delete_expense(user_id, deleted_expense):
+    # Удаляем трату из базы данных
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    expenses = user_data.get("expenses", [])
+
+    # Удаляем трату из списка расходов
+    expenses = [expense for expense in expenses if not (
+        expense["transport"]["brand"] == deleted_expense["transport"]["brand"] and
+        expense["transport"]["model"] == deleted_expense["transport"]["model"] and
+        expense["transport"]["year"] == deleted_expense["transport"]["year"] and
+        expense["category"] == deleted_expense["category"] and
+        expense["name"] == deleted_expense["name"] and
+        expense["date"] == deleted_expense["date"] and
+        expense["amount"] == deleted_expense["amount"] and
+        expense["description"] == deleted_expense["description"]
+    )]
+
+    # Обновляем данные пользователя
+    user_data["expenses"] = expenses
+    save_expense_data(user_id, user_data)
+
+    # Обновляем Excel файл
+    update_excel_file(user_id)
 
 def update_excel_file(user_id):
     user_data = load_expense_data(user_id).get(str(user_id), {})
     expenses = user_data.get("expenses", [])
-    
-    # Определите путь к Excel файлу
-    excel_file_path = f'data base/expense/excel/{user_id}_expenses.xlsx'
-    
-    # Если файл не существует, создаем новый
+
+    # Путь к Excel файлу пользователя
+    excel_file_path = f"data base/expense/excel/{user_id}_expenses.xlsx"
+
+    # Проверяем, существует ли файл
     if not os.path.exists(excel_file_path):
         workbook = openpyxl.Workbook()
-        sheet = workbook.active
-        sheet.title = "Expenses"
-        # Создание заголовков
-        headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
-        sheet.append(headers)
+        workbook.remove(workbook.active)
         workbook.save(excel_file_path)
-    
+
     # Открываем существующий файл
-    workbook = openpyxl.load_workbook(excel_file_path)
-    sheet = workbook.active
-    
-    # Удаляем все данные в листе, кроме заголовков
-    for row in sheet.iter_rows(min_row=2, max_col=6, max_row=sheet.max_row):
-        for cell in row:
-            cell.value = None
-    
-    # Заполняем Excel файл новыми данными
+    workbook = load_workbook(excel_file_path)
+
+    # Обновление общего листа (Summary)
+    summary_sheet = workbook["Summary"] if "Summary" in workbook.sheetnames else workbook.create_sheet("Summary")
+    headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+
+    # Очистка всех данных на листе Summary (кроме заголовков)
+    if summary_sheet.max_row > 1:
+        summary_sheet.delete_rows(2, summary_sheet.max_row)
+
+    # Добавляем заголовки, если они еще не добавлены
+    if summary_sheet.max_row == 0:  # Если лист пустой
+        summary_sheet.append(headers)
+        for cell in summary_sheet[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+    # Заполняем общий лист новыми данными
     for expense in expenses:
-        transport = expense.get("transport", {})
-        row = [
-            f"{transport.get('brand', 'Без названия')} {transport.get('model', 'Без названия')} {transport.get('year', 'Неизвестно')}",
-            expense.get("category"),
-            expense.get("name"),
-            expense.get("date"),
-            expense.get("amount"),
-            expense.get("description"),
+        transport = expense["transport"]
+        row_data = [
+            f"{transport['brand']} {transport['model']} {transport['year']}",
+            expense["category"],
+            expense["name"],
+            expense["date"],
+            expense["amount"],
+            expense["description"],
         ]
-        sheet.append(row)
-    
+        summary_sheet.append(row_data)
+
+    # Обновление индивидуальных листов для каждого транспорта
+    unique_transports = set((exp["transport"]["brand"], exp["transport"]["model"], exp["transport"]["year"]) for exp in expenses)
+
+    # Удаляем старые листы для уникальных транспортов
+    for sheet_name in workbook.sheetnames:
+        if sheet_name != "Summary" and (sheet_name.split('_')[0], sheet_name.split('_')[1], sheet_name.split('_')[2]) not in unique_transports:
+            del workbook[sheet_name]
+
+    for brand, model, year in unique_transports:
+        sheet_name = f"{brand}_{model}_{year}"
+        if sheet_name not in workbook.sheetnames:
+            transport_sheet = workbook.create_sheet(sheet_name)
+            transport_sheet.append(headers)
+            for cell in transport_sheet[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+        else:
+            transport_sheet = workbook[sheet_name]
+            # Очистка всех данных на листе транспорта, кроме заголовков
+            if transport_sheet.max_row > 1:
+                transport_sheet.delete_rows(2, transport_sheet.max_row)
+
+        # Заполняем траты для этого транспорта
+        for expense in expenses:
+            if (expense["transport"]["brand"], expense["transport"]["model"], expense["transport"]["year"]) == (brand, model, year):
+                row_data = [
+                    f"{brand} {model} {year}",
+                    expense["category"],
+                    expense["name"],
+                    expense["date"],
+                    expense["amount"],
+                    expense["description"],
+                ]
+                transport_sheet.append(row_data)
+
+    # Автоподгонка столбцов
+    for sheet in workbook.sheetnames:
+        current_sheet = workbook[sheet]
+        for col in current_sheet.columns:
+            max_length = max(len(str(cell.value)) for cell in col)
+            current_sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+
+    # Сохраняем изменения
     workbook.save(excel_file_path)
-
-import openpyxl
-import os
-
-def update_excel_after_deletion(user_id, brand, model, year):
-    # Путь к Excel-файлу пользователя
-    file_path = f"data base/expense/excel/{user_id}_expenses.xlsx"
-    
-    # Проверяем, существует ли файл
-    if not os.path.exists(file_path):
-        return
-
-    # Открываем Excel-файл
-    workbook = openpyxl.load_workbook(file_path)
-
-    # Имя листа для выбранного транспорта
-    sheet_name = f"{brand}_{model}_{year}"
-    
-    # Проверяем, существует ли лист для выбранного транспорта
-    if sheet_name in workbook.sheetnames:
-        sheet = workbook[sheet_name]
-        
-        # Очищаем лист, оставляя только заголовки
-        for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row):
-            for cell in row:
-                cell.value = None
-
-    # Сохраняем изменения и закрываем файл
-    workbook.save(file_path)
     workbook.close()
+
+# def update_excel_after_deletion(user_id):
+#     # Путь к файлу Excel пользователя
+#     file_path = f"data base/expense/excel/{user_id}_expenses.xlsx"
+    
+#     # Проверяем, существует ли файл
+#     if not os.path.exists(file_path):
+#         return
+
+#     # Открываем файл Excel
+#     workbook = openpyxl.load_workbook(file_path)
+
+#     # Обновляем общий лист
+#     summary_sheet = workbook["Expenses"]
+    
+#     # Получаем текущие данные о тратах из базы
+#     user_data = load_expense_data(user_id).get(str(user_id), {})
+#     expenses = user_data.get("expenses", [])
+    
+#     # Очищаем общий лист
+#     for row in summary_sheet.iter_rows(min_row=2, max_row=summary_sheet.max_row):
+#         for cell in row:
+#             cell.value = None
+
+#     # Заполняем общий лист оставшимися расходами
+#     for expense in expenses:
+#         transport = expense.get("transport", {})
+#         row = [
+#             f"{transport.get('brand', 'Без названия')} {transport.get('model', 'Без названия')} {transport.get('year', 'Неизвестно')}",
+#             expense.get("category"),
+#             expense.get("name"),
+#             expense.get("date"),
+#             expense.get("amount"),
+#             expense.get("description"),
+#         ]
+#         summary_sheet.append(row)
+
+#     # Проверяем и обновляем индивидуальные листы для каждого уникального транспорта
+#     # Собираем расходы для каждого транспорта в отдельные списки
+#     transport_expenses = {}
+#     for expense in expenses:
+#         transport = expense.get("transport", {})
+#         brand = transport.get('brand', 'Без названия')
+#         model = transport.get('model', 'Без названия')
+#         year = transport.get('year', 'Неизвестно')
+#         sheet_name = f"{brand}_{model}_{year}"
+        
+#         # Добавляем расход в соответствующий список транспорта
+#         if sheet_name not in transport_expenses:
+#             transport_expenses[sheet_name] = []
+#         transport_expenses[sheet_name].append(expense)
+
+#     # Очищаем и перезаписываем листы для каждого транспорта
+#     for sheet_name, expenses_list in transport_expenses.items():
+#         # Если лист для транспорта существует, очищаем его
+#         if sheet_name in workbook.sheetnames:
+#             transport_sheet = workbook[sheet_name]
+#             for row in transport_sheet.iter_rows(min_row=2, max_row=transport_sheet.max_row):
+#                 for cell in row:
+#                     cell.value = None
+#         else:
+#             # Если листа нет, создаем его и добавляем заголовки
+#             transport_sheet = workbook.create_sheet(title=sheet_name)
+#             headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
+#             transport_sheet.append(headers)
+        
+#         # Заполняем лист траты для текущего транспорта
+#         for expense in expenses_list:
+#             transport = expense.get("transport", {})
+#             row = [
+#                 f"{transport.get('brand', 'Без названия')} {transport.get('model', 'Без названия')} {transport.get('year', 'Неизвестно')}",
+#                 expense.get("category"),
+#                 expense.get("name"),
+#                 expense.get("date"),
+#                 expense.get("amount"),
+#                 expense.get("description"),
+#             ]
+#             transport_sheet.append(row)
+
+#     workbook.save(file_path)
+#     workbook.close()
 
 # (11) --------------- КОД ДЛЯ "РЕМОНТОВ" ---------------
 
