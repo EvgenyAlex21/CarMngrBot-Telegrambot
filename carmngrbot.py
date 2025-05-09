@@ -2019,7 +2019,6 @@ def send_message_with_split(user_id, message_text):
 
 selected_transport_dict = {}
 
-
 # Функция для фильтрации трат по транспорту
 def filter_expenses_by_transport(user_id, expenses):
     selected_transport = selected_transport_dict.get(user_id)
@@ -2037,15 +2036,13 @@ def send_message_with_split(user_id, message_text):
 # Функция для отправки меню
 def send_menu1(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Траты (месяц)")
-    item2 = types.KeyboardButton("Траты (год)")
-    item3 = types.KeyboardButton("Траты (всё время)")
-    item4 = types.KeyboardButton("Траты (на заправки)")
-    item5 = types.KeyboardButton("Траты (на штрафы)")
-    item6 = types.KeyboardButton("Траты (на парковки)")
+    item1 = types.KeyboardButton("Траты (по категориям)")
+    item2 = types.KeyboardButton("Траты (месяц)")
+    item3 = types.KeyboardButton("Траты (год)")
+    item4 = types.KeyboardButton("Траты (всё время)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item1, item2, item3, item4, item5, item6)
+    markup.add(item1, item2, item3, item4)
     markup.add(item_return, item_main_menu)
 
     bot.send_message(user_id, "Выберите вариант просмотра трат:", reply_markup=markup)
@@ -2089,6 +2086,90 @@ def handle_transport_selection(message):
     bot.send_message(user_id, f"Показываю траты для транспорта: {selected_transport}")
     send_menu1(user_id)
 
+# Обработчик для просмотра трат по категориям
+@bot.message_handler(func=lambda message: message.text == "Траты (по категориям)")
+def view_expenses_by_category(message):
+    user_id = message.from_user.id
+    user_data = load_expense_data(user_id)
+    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+
+    # Фильтруем траты по выбранному транспорту
+    expenses = filter_expenses_by_transport(user_id, expenses)
+
+    # Получаем уникальные категории трат для выбранного транспорта
+    categories = set(expense['category'] for expense in expenses)
+    if not categories:
+        bot.send_message(user_id, "Нет доступных категорий для выбранного транспорта.")
+        send_menu1(user_id)  # Возврат в меню трат и ремонтов
+        return
+
+    category_buttons = [types.KeyboardButton(category) for category in categories]
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(*category_buttons)
+    item_return_to_expenses = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_return_to_main = types.KeyboardButton("В главное меню")
+    markup.add(item_return_to_expenses, item_return_to_main)
+
+    bot.send_message(user_id, "Выберите категорию для просмотра трат:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_category_selection)
+
+# Обработчик выбора категории
+def handle_category_selection(message):
+    user_id = message.from_user.id
+    selected_category = message.text
+
+    if selected_category == "Вернуться в меню трат и ремонтов":
+        return_to_menu_2(message)
+        return
+
+    if selected_category == "В главное меню":
+        return_to_menu(message)  # Возврат в главное меню
+        return
+
+    user_data = load_expense_data(user_id)
+    expenses = user_data.get(str(user_id), {}).get("expenses", [])
+
+    # Фильтруем траты по выбранному транспорту
+    expenses = filter_expenses_by_transport(user_id, expenses)
+
+    # Проверяем, существует ли выбранная категория
+    if selected_category not in {expense['category'] for expense in expenses}:
+        bot.send_message(user_id, "Выбранная категория не найдена. Пожалуйста, выберите корректную категорию.")
+        view_expenses_by_category(message)  # Запрашиваем повторный ввод категории
+        return
+
+    # Фильтруем траты по выбранной категории
+    category_expenses = [expense for expense in expenses if expense['category'] == selected_category]
+
+    total_expenses = 0
+    expense_details = []
+
+    for index, expense in enumerate(category_expenses, start=1):
+        expense_name = expense.get("name", "Без названия")
+        expense_date = expense.get("date", "")
+        amount = float(expense.get("amount", 0))
+        total_expenses += amount
+
+        expense_details.append(
+            f"  №: {index}\n\n"
+            f"    КАТЕГОРИЯ: {selected_category}\n"
+            f"    НАЗВАНИЕ: {expense_name}\n"
+            f"    ДАТА: {expense_date}\n"
+            f"    СУММА: {amount} руб.\n"
+            f"    ОПИСАНИЕ: {expense.get('description', 'Без описания')}\n"
+        )
+
+    if expense_details:
+        message_text = f"Траты в категории '{selected_category}':\n\n" + "\n\n".join(expense_details)
+    else:
+        message_text = f"В категории '{selected_category}' трат не найдено."
+
+    send_message_with_split(user_id, message_text)
+    bot.send_message(user_id, f"Итоговая сумма трат в категории '{selected_category}': {total_expenses} руб.")
+
+    # Возвращаем пользователя в меню выбора категорий
+    view_expenses_by_category(message)  # Запрашиваем выбор категории заново
+
 # Обработчик трат за месяц
 @bot.message_handler(func=lambda message: message.text == "Траты (месяц)")
 def view_expenses_by_month(message):
@@ -2103,13 +2184,15 @@ def view_expenses_by_month(message):
 
 def get_expenses_by_month(message):
     user_id = message.from_user.id
-    date = message.text
+    date = message.text.strip()
 
     if "." in date:
         parts = date.split(".")
         if len(parts) == 2:
-            month, year = map(int, parts)
-            if 1 <= month <= 12 and len(str(year)) == 4:
+            month, year = parts
+            if month.isdigit() and year.isdigit() and 1 <= int(month) <= 12 and len(year) == 4:
+                month, year = map(int, parts)
+                
                 user_data = load_expense_data(user_id)
                 expenses = user_data.get(str(user_id), {}).get("expenses", [])
 
@@ -2130,11 +2213,16 @@ def get_expenses_by_month(message):
                             total_expenses += amount
 
                             expense_name = expense.get("name", "Без названия")
+                            description = expense.get("description", "")
+                            category = expense.get("category", "Без категории")
+
                             expense_details.append(
                                 f"  №: {index}\n\n"
+                                f"    КАТЕГОРИЯ: {category}\n"
                                 f"    НАЗВАНИЕ: {expense_name}\n"
                                 f"    ДАТА: {expense_date}\n"
                                 f"    СУММА: {amount} руб.\n"
+                                f"    ОПИСАНИЕ: {description}\n"
                             )
 
                 if expense_details:
@@ -2144,15 +2232,19 @@ def get_expenses_by_month(message):
 
                 send_message_with_split(user_id, message_text)
                 bot.send_message(user_id, f"Итоговая сумма трат за {date}: {total_expenses} руб.")
+                send_menu1(user_id)  # Возвращаемся в меню после отображения информации
             else:
                 bot.send_message(user_id, "Пожалуйста, введите корректный месяц и год в формате ММ.ГГГГ.")
                 bot.register_next_step_handler(message, get_expenses_by_month)
+                return  # Возврат из функции, чтобы не продолжать выполнение
         else:
             bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ.")
             bot.register_next_step_handler(message, get_expenses_by_month)
+            return  # Возврат из функции, чтобы не продолжать выполнение
     else:
         bot.send_message(user_id, "Пожалуйста, введите дату в формате ММ.ГГГГ.")
         bot.register_next_step_handler(message, get_expenses_by_month)
+        return  # Возврат из функции, чтобы не продолжать выполнение
 
 # Обработчик трат за год
 @bot.message_handler(func=lambda message: message.text == "Траты (год)")
@@ -2173,7 +2265,7 @@ def get_expenses_by_year(message):
     if not year.isdigit() or len(year) != 4:
         bot.send_message(user_id, "Пожалуйста, введите год в формате ГГГГ.")
         bot.register_next_step_handler(message, get_expenses_by_year)
-        return
+        return  # Возврат из функции, чтобы не продолжать выполнение
 
     year = int(year)
     user_data = load_expense_data(user_id)
@@ -2196,11 +2288,16 @@ def get_expenses_by_year(message):
                     total_expenses += amount
 
                     expense_name = expense.get("name", "Без названия")
+                    description = expense.get("description", "")
+                    category = expense.get("category", "Без категории")
+
                     expense_details.append(
                         f"  №: {index}\n\n"
+                        f"    КАТЕГОРИЯ: {category}\n"
                         f"    НАЗВАНИЕ: {expense_name}\n"
                         f"    ДАТА: {expense_date}\n"
                         f"    СУММА: {amount} руб.\n"
+                        f"    ОПИСАНИЕ: {description}\n"
                     )
 
     if expense_details:
@@ -2210,6 +2307,9 @@ def get_expenses_by_year(message):
 
     send_message_with_split(user_id, message_text)
     bot.send_message(user_id, f"Итоговая сумма трат за {year} год: {total_expenses} руб.")
+
+    # Возвращаемся в меню после отображения информации
+    send_menu1(user_id)
 
 # Обработчик всех трат
 @bot.message_handler(func=lambda message: message.text == "Траты (всё время)")
@@ -2231,12 +2331,16 @@ def view_all_expenses(message):
 
         expense_name = expense.get("name", "Без названия")
         expense_date = expense.get("date", "")
+        description = expense.get("description", "")
+        category = expense.get("category", "Без категории")
 
         expense_details.append(
             f"  №: {index}\n\n"
+            f"    КАТЕГОРИЯ: {category}\n"
             f"    НАЗВАНИЕ: {expense_name}\n"
             f"    ДАТА: {expense_date}\n"
             f"    СУММА: {amount} руб.\n"
+            f"    ОПИСАНИЕ: {description}\n"
         )
 
     if expense_details:
@@ -2247,116 +2351,8 @@ def view_all_expenses(message):
     send_message_with_split(user_id, message_text)
     bot.send_message(user_id, f"Итоговая сумма всех трат: {total_expenses} руб.")
 
-# Обработчик трат на заправки
-@bot.message_handler(func=lambda message: message.text == "Траты (на заправки)")
-def view_fuel_expenses(message):
-    user_id = message.from_user.id
-
-    user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
-
-    # Фильтруем траты по выбранному транспорту
-    expenses = filter_expenses_by_transport(user_id, expenses)
-
-    total_expenses = 0
-    expense_details = []
-
-    for index, expense in enumerate(expenses, start=1):
-        if "заправка" in expense.get("name", "").lower():
-            amount = float(expense.get("amount", 0))
-            total_expenses += amount
-
-            expense_name = expense.get("name", "Без названия")
-            expense_date = expense.get("date", "")
-
-            expense_details.append(
-                f"  №: {index}\n\n"
-                f"    НАЗВАНИЕ: {expense_name}\n"
-                f"    ДАТА: {expense_date}\n"
-                f"    СУММА: {amount} руб.\n"
-            )
-
-    if expense_details:
-        message_text = "Траты на заправки:\n\n" + "\n\n".join(expense_details)
-    else:
-        message_text = "Трат на заправки не найдено."
-
-    send_message_with_split(user_id, message_text)
-    bot.send_message(user_id, f"Итоговая сумма трат на заправки: {total_expenses} руб.")
-
-# Обработчик трат на штрафы
-@bot.message_handler(func=lambda message: message.text == "Траты (на штрафы)")
-def view_fine_expenses(message):
-    user_id = message.from_user.id
-
-    user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
-
-    # Фильтруем траты по выбранному транспорту
-    expenses = filter_expenses_by_transport(user_id, expenses)
-
-    total_expenses = 0
-    expense_details = []
-
-    for index, expense in enumerate(expenses, start=1):
-        if "штраф" in expense.get("name", "").lower():
-            amount = float(expense.get("amount", 0))
-            total_expenses += amount
-
-            expense_name = expense.get("name", "Без названия")
-            expense_date = expense.get("date", "")
-
-            expense_details.append(
-                f"  №: {index}\n\n"
-                f"    НАЗВАНИЕ: {expense_name}\n"
-                f"    ДАТА: {expense_date}\n"
-                f"    СУММА: {amount} руб.\n"
-            )
-
-    if expense_details:
-        message_text = "Траты на штрафы:\n\n" + "\n\n".join(expense_details)
-    else:
-        message_text = "Трат на штрафы не найдено."
-
-    send_message_with_split(user_id, message_text)
-    bot.send_message(user_id, f"Итоговая сумма трат на штрафы: {total_expenses} руб.")
-
-# Обработчик трат на парковки
-@bot.message_handler(func=lambda message: message.text == "Траты (на парковки)")
-def view_parking_expenses(message):
-    user_id = message.from_user.id
-
-    user_data = load_expense_data(user_id)
-    expenses = user_data.get(str(user_id), {}).get("expenses", [])
-
-    # Фильтруем траты по выбранному транспорту
-    expenses = filter_expenses_by_transport(user_id, expenses)
-
-    total_expenses = 0
-    expense_details = []
-
-    for index, expense in enumerate(expenses, start=1):
-        if "парковка" in expense.get("name", "").lower():
-            amount = float(expense.get("amount", 0))
-            total_expenses += amount
-
-            expense_name = expense.get("name", "Без названия")
-            expense_date = expense.get("date", "")
-
-            expense_details.append(
-                f"  №: {index}\n\n"
-                f"    НАЗВАНИЕ: {expense_name}\n"
-                f"    ДАТА: {expense_date}\n"
-                f"    СУММА: {amount} руб.\n"
-            )
-
-    if expense_details:
-        message_text = "Траты на парковки:\n\n" + "\n\n".join(expense_details)
-    else:
-        message_text = "Трат на парковки не найдено."
-
-    send_message_with_split(user_id, message_text)
-    bot.send_message(user_id, f"Итоговая сумма трат на парковки: {total_expenses} руб.")
+    # Возвращаемся в меню после отображения информации
+    send_menu1(user_id)
 
 # (10.18) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "УДАЛИТЬ ТРАТЫ") ---------------
 
