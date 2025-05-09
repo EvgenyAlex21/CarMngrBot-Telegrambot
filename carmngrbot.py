@@ -5720,16 +5720,6 @@ def handle_location_5(message):
             latitude = message.location.latitude
             longitude = message.location.longitude
 
-            # Получение названия города по координатам
-            city_name = get_city_name(latitude, longitude)
-
-            # Сохранение координат и названия города
-            save_user_location(message.chat.id, latitude, longitude, city_name)
-    #try:
-        if message.location:
-            latitude = message.location.latitude
-            longitude = message.location.longitude
-
             # Сохраняем координаты пользователя
             save_user_location(message.chat.id, latitude, longitude, None)  # city_code пока None
 
@@ -5751,6 +5741,8 @@ def handle_location_5(message):
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
 
 
+import telebot
+import threading
 import schedule
 import time
 import json
@@ -5809,13 +5801,12 @@ def get_city_name(latitude, longitude):
             'lat': latitude,
             'lon': longitude,
             'format': 'json',
-            'accept-language': 'ru'  # Добавлено для получения названия города на русском
+            'accept-language': 'ru'
         }
         response = requests.get(geocode_url, params=params)
         data = response.json()
 
         if response.status_code == 200:
-            # Получаем название города на русском языке
             city = data.get("address", {}).get("city", None)
             return city if city else f"неизвестное место ({latitude}, {longitude})"
         else:
@@ -5827,10 +5818,9 @@ def get_city_name(latitude, longitude):
 
 def get_current_weather(coords):
     try:
-        # Получаем название города по координатам
+        # Получаем название города
         city_name = get_city_name(coords['latitude'], coords['longitude'])
 
-        # Получение данных о погоде
         params = {
             'lat': coords['latitude'],
             'lon': coords['longitude'],
@@ -5839,8 +5829,9 @@ def get_current_weather(coords):
             'lang': 'ru'
         }
         response = requests.get(WEATHER_URL, params=params, timeout=30)
+        
         data = response.json()
-
+        
         if response.status_code == 200:
             temperature = round(data['main']['temp'])
             feels_like = round(data['main']['feels_like'])
@@ -5851,17 +5842,18 @@ def get_current_weather(coords):
 
             current_time = datetime.now().strftime("%H:%M")
             current_date = datetime.now().strftime("%d.%m.%Y")
-
+            
+            # Формируем сообщение
             return (
-                f"*Вам пришло новое уведомление!*🔔\n\n"
+                f"*Вам пришло новое уведомление!*🔔\n\n\n"
                 f"*Погода на {current_date} в {current_time}*:\n"
-                f"*(г. {city_name}, {coords['latitude']}, {coords['longitude']})*\n\n"
+                f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
                 f"🌡️ *Температура:* {temperature}°C\n"
                 f"🌬️ *Ощущается как:* {feels_like}°C\n"
                 f"💧 *Влажность:* {humidity}%\n"
                 f"〽️ *Давление:* {pressure} мм рт. ст.\n"
                 f"💨 *Скорость ветра:* {wind_speed} м/с\n"
-                f"☁️ *Описание:* {description}\n"
+                f"☁️ *Описание:* {description}\n\n"
             )
         else:
             print(f"Ошибка запроса погоды: код {response.status_code}, сообщение: {data.get('message', 'Нет описания ошибки')}")
@@ -5887,12 +5879,11 @@ def get_average_fuel_prices(city_code):
                 fuel_type = entry[1]  # Тип топлива
                 price = entry[2]  # Цена топлива
 
-                # Convert price to float and handle conversion errors
                 try:
-                    price = float(price)  # Ensure price is a float
+                    price = float(price)  # Преобразуем цену в число (если это возможно)
                 except ValueError:
-                    print(f"Ошибка преобразования цены '{price}' в число.")
-                    continue  # Skip this entry if conversion fails
+                    print(f"Ошибка преобразования цены для {fuel_type}: {price}")
+                    continue  # Пропускаем этот элемент, если цена не может быть преобразована
 
                 if fuel_type not in fuel_prices:
                     fuel_prices[fuel_type] = []
@@ -5907,7 +5898,7 @@ def get_average_fuel_prices(city_code):
         return None
 
     # Вычисление средних цен
-    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items() if prices}
+    average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
 
     return average_prices
 
@@ -5929,90 +5920,38 @@ def load_city_names(file_path):
     return city_names
 
 
-# def send_weather_notifications():
-#     user_locations = load_user_locations()
-#     city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
-    
-#     for chat_id, coords in user_locations.items():
-#         weather_message = get_current_weather(coords)
-        
-#         if weather_message:
-#             city_code = coords.get('city_code')
-#             city_name = city_names.get(city_code, city_code)  # Получаем название города
-#             average_prices = get_average_fuel_prices(city_code)
-
-#              # Получаем текущую дату и время
-#             current_time = datetime.now().strftime("%d.%m.%Y в %H:%M") 
-
-#             fuel_prices_message = ""
-#             if average_prices:
-#                 fuel_prices_message = "\n*Актуальные цены на топливо (город {}) на дату {}:*\n\n".format(city_name, current_time)
-#                 for fuel_type, price in average_prices.items():
-#                     fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
-
-#             try:
-#                 bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
-#             except Exception as e:
-#                 print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
-#                 traceback.print_exc()
-
 def send_weather_notifications():
     user_locations = load_user_locations()
-    city_names = load_city_names('files/combined_cities.txt')  # Загрузка названий городов
+    city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
     
     for chat_id, coords in user_locations.items():
-        # Проверяем, есть ли у пользователя координаты и/или код города
-        has_coordinates = coords.get('latitude') is not None and coords.get('longitude') is not None
-        city_code = coords.get('city_code')
-        has_city = bool(city_code)
+        weather_message = get_current_weather(coords)
         
-        # Определяем, какое уведомление отправить
-        weather_message = None
-        fuel_prices_message = None
-        
-        # Если есть координаты, отправляем уведомление с погодой
-        if has_coordinates:
-            weather_message = get_current_weather(coords)
-        
-        # Если есть город, отправляем уведомление с ценами на топливо
-        if has_city:
+        if weather_message:
+            city_code = coords.get('city_code')
             city_name = city_names.get(city_code, city_code)  # Получаем название города
             average_prices = get_average_fuel_prices(city_code)
-            
-            # Получаем текущую дату и время
-            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-            
+
+             # Получаем текущую дату и время
+            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M") 
+
+            fuel_prices_message = ""
             if average_prices:
                 fuel_prices_message = "\n*Актуальные цены на топливо (г. {}) на дату {}:*\n\n".format(city_name, current_time)
                 for fuel_type, price in average_prices.items():
                     fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
-        
-        # Отправляем уведомление в зависимости от данных пользователя
-        try:
-            if has_coordinates and has_city:
-                # Пользователь 3 — отправляем полное уведомление (погода и цены на топливо)
-                message = (weather_message or "") + (fuel_prices_message or "")
-                bot.send_message(chat_id, message, parse_mode="Markdown")
-            elif has_coordinates and not has_city:
-                # Пользователь 1 — отправляем только уведомление с погодой
-                if weather_message:
-                    bot.send_message(chat_id, weather_message, parse_mode="Markdown")
-            elif has_city and not has_coordinates:
-                # Пользователь 2 — отправляем только уведомление с ценами на топливо
-                if fuel_prices_message:
-                    bot.send_message(chat_id, fuel_prices_message, parse_mode="Markdown")
-            # Пользователь 4 (без координат и города) не получает уведомления
-        except Exception as e:
-            print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
-            traceback.print_exc()
+
+            try:
+                bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
+            except Exception as e:
+                print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
+                traceback.print_exc()
 
 # Настройка расписания для отправки уведомлений
 schedule.every().day.at("07:30").do(send_weather_notifications)
 schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
 schedule.every().day.at("20:00").do(send_weather_notifications)
-
-
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
 @restricted
@@ -6458,14 +6397,18 @@ def send_forecast_monthly(chat_id, coords, url, days=31):
 
 # ЦЕНЫ НА ТОПЛИВО
 
+import threading
+
 # Переменные для состояния пользователя и данных
 user_state = {}
 user_data = {}
 
+# Создаём необходимые папки
 os.makedirs(os.path.join('data base', 'azs'), exist_ok=True)
+os.makedirs(os.path.join('data base', 'cityforprice'), exist_ok=True)
 
 # Путь к файлу для сохранения данных
-DATA_FILE_PATH = os.path.join('data base', 'city_for_the_price.json')
+DATA_FILE_PATH = os.path.join('data base', 'cityforprice', 'city_for_the_price.json')
 
 # Функция для загрузки данных пользователей
 def load_citys_users_data():
@@ -6576,11 +6519,6 @@ def load_saved_data(city_code):
 @restricted
 @track_user_activity
 def fuel_prices_command(message):
-
-    if not function_states['Цены на топливо']:
-        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
-        return  # Завершаем выполнение функции, если функция деактивирована
-
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
     user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
@@ -6609,6 +6547,10 @@ def fuel_prices_command(message):
 def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
 
     if user_state.get(chat_id) != "choosing_city":
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
@@ -6912,21 +6854,25 @@ def parse_fuel_prices():
 
 
 # !!!!!!!!!!!!!!!!!!!ЭТО ОБЩИЙ ПЛАНИРОВЩИК ЗАДАЧ!!!!!!!!!!!!!!!!!!!!!
+# Общий планировщик задач с объединенной логикой для уведомлений и парсинга
 def schedule_tasks():
     while True:
         now = datetime.now()
-
-        # Проверка для парсинга
-        if now.hour == 0 and now.minute == 0:  # Запуск в 00:00
-            parse_fuel_prices()  # Функция парсинга
+        
+        # Запуск функции парсинга цен на топливо в 00:00
+        if now.hour == 0 and now.minute == 0:
+            parse_fuel_prices()
             time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
 
-        # Проверка для уведомлений
-        schedule.run_pending()  # Проверка запланированных уведомлений
-        time.sleep(1)  # Проверка каждую секунду
+        # Проверка запланированных уведомлений (запускает все задачи, добавленные в schedule)
+        schedule.run_pending()
+        
+        # Ожидание перед следующей проверкой расписания
+        time.sleep(1)
 
 # Запуск объединенного потока
 threading.Thread(target=schedule_tasks, daemon=True).start()
+
 
 
 # Ваш транспорт
