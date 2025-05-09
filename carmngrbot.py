@@ -502,7 +502,7 @@ captcha_data = {}
 
 def save_captcha_data():
     try:
-        with open(r'data base\admin\captcha_data.json', 'w', encoding='utf-8') as f:
+        with open(r'data base/admin/captcha_data.json', 'w', encoding='utf-8') as f:
             json.dump(captcha_data, f)
     except Exception as e:
         pass
@@ -510,8 +510,8 @@ def save_captcha_data():
 def load_captcha_data():
     global captcha_data
     try:
-        if os.path.exists(r'data base\admin\captcha_data.json') and os.path.getsize(r'data base\admin\captcha_data.json') > 0:
-            with open(r'data base\admin\captcha_data.json', 'r', encoding='utf-8') as f:
+        if os.path.exists(r'data base/admin/captcha_data.json') and os.path.getsize(r'data base/admin/captcha_data.json') > 0:
+            with open(r'data base/admin/captcha_data.json', 'r', encoding='utf-8') as f:
                 captcha_data = json.load(f)
         else:
             captcha_data = {}
@@ -5079,25 +5079,52 @@ def fetch_exchange_rates_cbr():
     url = 'https://www.cbr-xml-daily.ru/daily_json.js'
     try:
         response = requests.get(url)
+        response.raise_for_status()
         data = response.json()
         rates = data['Valute']
         return {
-            'USD': rates['USD']['Value'], 
-            'EUR': rates['EUR']['Value'],  
-            'GBP': rates['GBP']['Value'],  
-            'CHF': rates['CHF']['Value'],  
-            'JPY': rates['JPY']['Value'] / 100,  
-            'CNY': rates['CNY']['Value'] / 10,  
-            'AUD': rates['AUD']['Value'],  
-            'CAD': rates['CAD']['Value'],  
-            'BYN': rates['BYN']['Value'],  
-            'KRW': rates['KRW']['Value'] / 1000,  
-            'SGD': rates['SGD']['Value'],  
-            'NZD': rates['NZD']['Value'],  
-            'RUB': 1  
+            'USD': rates['USD']['Value'],
+            'EUR': rates['EUR']['Value'],
+            'GBP': rates['GBP']['Value'],
+            'CHF': rates['CHF']['Value'],
+            'JPY': rates['JPY']['Value'] / 100,
+            'CNY': rates['CNY']['Value'] / 10,
+            'AUD': rates['AUD']['Value'],
+            'CAD': rates['CAD']['Value'],
+            'BYN': rates['BYN']['Value'],
+            'KRW': rates['KRW']['Value'] / 1000,
+            'SGD': rates['SGD']['Value'],
+            'NZD': rates['NZD']['Value'],
+            'RUB': 1
         }
-    except Exception as e:
-        print(f"Ошибка при запросе курсов валют ЦБ РФ: {e}")
+    except Exception:
+        return fetch_exchange_rates_moex()
+
+def fetch_exchange_rates_moex():
+    url = 'https://iss.moex.com/iss/statistics/engines/futures/markets/indicativerates.json'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        rates = data['securities']['data']
+        exchange_rates = get_default_rates()
+        for rate in rates:
+            currency_pair = rate[0]
+            value = rate[2]
+            if currency_pair == 'USD/RUB':
+                exchange_rates['USD'] = value
+            elif currency_pair == 'EUR/RUB':
+                exchange_rates['EUR'] = value
+            elif currency_pair == 'GBP/RUB':
+                exchange_rates['GBP'] = value
+            elif currency_pair == 'CHF/RUB':
+                exchange_rates['CHF'] = value
+            elif currency_pair == 'JPY/RUB':
+                exchange_rates['JPY'] = value / 100
+            elif currency_pair == 'CNY/RUB':
+                exchange_rates['CNY'] = value / 10
+        return exchange_rates
+    except Exception:
         return get_default_rates()
 
 def get_default_rates():
@@ -5118,11 +5145,11 @@ def get_default_rates():
     }
 
 CURRENCY_NAMES = {
-    'USD': ('Доллар США', '💵'),
-    'EUR': ('Евро', '💶'),
-    'GBP': ('Британский фунт', '💷'),
+    'USD': ('Доллар США', '🇺🇸'),
+    'EUR': ('Евро', '🇪🇺'),
+    'GBP': ('Британский фунт', '🇬🇧'),
     'CHF': ('Швейцарский франк', '🇨🇭'),
-    'JPY': ('Японская иена', '💴'),
+    'JPY': ('Японская иена', '🇯🇵'),
     'CNY': ('Китайский юань', '🇨🇳'),
     'AUD': ('Австралийский доллар', '🇦🇺'),
     'CAD': ('Канадский доллар', '🇨🇦'),
@@ -5134,11 +5161,24 @@ CURRENCY_NAMES = {
 }
 
 @bot.message_handler(func=lambda message: message.text == "Курсы валют")
+@check_function_state_decorator('Курсы валют')
+@track_usage('Курсы валют')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
 def view_exchange_rates(message):
+
+    initialize_user_notifications(message.chat.id)
+
     exchange_rates = fetch_exchange_rates_cbr()
 
     current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-
     rates_message = f"📊 *Актуальные курсы валют на {current_time}*\n\n"
     for currency, rate in exchange_rates.items():
         if currency in CURRENCY_NAMES:
@@ -11881,7 +11921,7 @@ def parse_fuel_prices():
         save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
-# ---------- 16. УВЕДОМЛЕНИЯ ПОГОДА + ЦЕНЫ НА ТОПЛИВО ----------
+# ---------- 16. УВЕДОМЛЕНИЯ ПОГОДА + ЦЕНЫ НА ТОПЛИВО + КУРСЫ ВАЛЮТ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
@@ -11893,27 +11933,39 @@ def ensure_directory_exists(file_path):
 
 def initialize_user_notifications(chat_id):
     ensure_directory_exists(NOTIFICATIONS_PATH)
-    
+
     try:
         with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
             notifications = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         notifications = {}
 
-    if str(chat_id) not in notifications:
-        notifications[str(chat_id)] = {
+    str_chat_id = str(chat_id)
+    if str_chat_id not in notifications:
+        notifications[str_chat_id] = {
             "latitude": None,
             "longitude": None,
             "city_code": None,
             "notifications": {
                 "weather": True,
-                "fuel_prices": True
+                "fuel_prices": True,
+                "exchange_rates": True 
             }
         }
-        
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(notifications, f, ensure_ascii=False, indent=4)
-    
+    else:
+        if "notifications" not in notifications[str_chat_id]:
+            notifications[str_chat_id]["notifications"] = {
+                "weather": True,
+                "fuel_prices": True,
+                "exchange_rates": True  
+            }
+        else:
+            if "exchange_rates" not in notifications[str_chat_id]["notifications"]:
+                notifications[str_chat_id]["notifications"]["exchange_rates"] = True
+
+    with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(notifications, f, ensure_ascii=False, indent=4)
+
     return notifications
 
 def save_user_location(chat_id, latitude, longitude, city_code):
@@ -11963,16 +12015,22 @@ def toggle_notification(chat_id, notification_type):
 
 def get_notification_status(chat_id):
     notifications = load_user_locations()
-    return notifications.get(str(chat_id), {}).get("notifications", {"weather": True, "fuel_prices": True})
+    return notifications.get(str(chat_id), {}).get("notifications", {
+        "weather": True, 
+        "fuel_prices": True, 
+        "exchange_rates": True
+    })
 
 def get_notification_status_message(chat_id):
     status = get_notification_status(chat_id)
     weather_status = "включены" if status.get("weather", True) else "выключены"
     fuel_status = "включены" if status.get("fuel_prices", True) else "выключены"
+    exchange_status = "включены" if status.get("exchange_rates", True) else "выключены"
     
     return f"📬 Текущий статус уведомлений:\n\n" \
            f"🌤️ Погода: {weather_status}\n" \
-           f"⛽ Цены на топливо: {fuel_status}\n\n"
+           f"⛽ Цены на топливо: {fuel_status}\n" \
+           f"💱 Курсы валют: {exchange_status}\n\n"
 
 @bot.message_handler(func=lambda message: message.text == "Уведомления")
 def toggle_notifications_handler(message, show_description=True):
@@ -11982,9 +12040,11 @@ def toggle_notifications_handler(message, show_description=True):
 
     weather_button_text = "Выключить погоду" if notification_status.get("weather") else "Включить погоду"
     fuel_button_text = "Выключить цены" if notification_status.get("fuel_prices") else "Включить цены"
+    exchange_button_text = "Выключить курсы" if notification_status.get("exchange_rates") else "Включить курсы"
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(types.KeyboardButton(weather_button_text), types.KeyboardButton(fuel_button_text))
+    markup.add(types.KeyboardButton(exchange_button_text))
     markup.add(types.KeyboardButton("Выключить все" if any(notification_status.values()) else "Включить все"))
     markup.add(types.KeyboardButton("В главное меню"))
 
@@ -12005,7 +12065,12 @@ def toggle_notifications_handler(message, show_description=True):
     bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
                     reply_markup=markup, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
+@bot.message_handler(func=lambda message: message.text in [
+    "Включить погоду", "Выключить погоду", 
+    "Включить цены", "Выключить цены", 
+    "Включить курсы", "Выключить курсы", 
+    "Включить все", "Выключить все"
+])
 def handle_notification_toggle(message):
     chat_id = message.chat.id
     notification_messages = []
@@ -12022,17 +12087,25 @@ def handle_notification_toggle(message):
     elif message.text == "Выключить цены":
         new_status = toggle_notification(chat_id, "fuel_prices")
         notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить курсы":
+        new_status = toggle_notification(chat_id, "exchange_rates")
+        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить курсы":
+        new_status = toggle_notification(chat_id, "exchange_rates")
+        notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
     elif message.text == "Включить все":
         weather_status = toggle_notification(chat_id, "weather")
         fuel_status = toggle_notification(chat_id, "fuel_prices")
-        if weather_status or fuel_status:
+        exchange_status = toggle_notification(chat_id, "exchange_rates")
+        if weather_status or fuel_status or exchange_status:
             notification_messages.append("📬 Все уведомления включены!")
         else:
             notification_messages.append("📬 Все уведомления уже включены!")
     elif message.text == "Выключить все":
         weather_status = toggle_notification(chat_id, "weather")
         fuel_status = toggle_notification(chat_id, "fuel_prices")
-        if not weather_status and not fuel_status:
+        exchange_status = toggle_notification(chat_id, "exchange_rates")
+        if not weather_status and not fuel_status and not exchange_status:
             notification_messages.append("📬 Все уведомления выключены!")
         else:
             notification_messages.append("📬 Все уведомления уже выключены!")
@@ -12042,7 +12115,12 @@ def handle_notification_toggle(message):
 
     toggle_notifications_handler(message, show_description=False)
 
-@bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
+@bot.message_handler(func=lambda message: message.text in [
+    "Включить погоду", "Выключить погоду", 
+    "Включить цены", "Выключить цены", 
+    "Включить курсы", "Выключить курсы", 
+    "Включить все", "Выключить все"
+])
 @restricted
 @track_user_activity
 @check_chat_state
@@ -12061,12 +12139,18 @@ def handle_notification_toggle(message):
         toggle_notification(chat_id, "fuel_prices")
     elif message.text == "Выключить цены":
         toggle_notification(chat_id, "fuel_prices")
+    elif message.text == "Включить курсы":
+        toggle_notification(chat_id, "exchange_rates")
+    elif message.text == "Выключить курсы":
+        toggle_notification(chat_id, "exchange_rates")
     elif message.text == "Включить все":
         toggle_notification(chat_id, "weather")
         toggle_notification(chat_id, "fuel_prices")
+        toggle_notification(chat_id, "exchange_rates")
     elif message.text == "Выключить все":
         toggle_notification(chat_id, "weather")
         toggle_notification(chat_id, "fuel_prices")
+        toggle_notification(chat_id, "exchange_rates")
 
     toggle_notifications_handler(message, show_description=False)
 
@@ -12138,7 +12222,6 @@ def get_current_weather(coords):
             current_date = datetime.now().strftime("%d.%m.%Y")
 
             return (
-                f"🔔 *Вам пришло новое уведомление!*\n\n"
                 f"*Погода на {current_date} в {current_time}*:\n"
                 f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
                 f"🌡️ *Температура:* {temperature}°C\n"
@@ -12176,15 +12259,25 @@ def get_average_fuel_prices(city_code):
                 fuel_prices[fuel_type].append(price)
 
     except FileNotFoundError:
-        pass
         return None
     except json.JSONDecodeError:
-        pass
         return None
 
     average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
-
     return average_prices
+
+def get_exchange_rates_message():
+    try:
+        exchange_rates = fetch_exchange_rates_cbr()
+        current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+        rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
+        for currency, rate in exchange_rates.items():
+            if currency in CURRENCY_NAMES:
+                name, emoji = CURRENCY_NAMES[currency]
+                rates_message += f"{emoji} *{name}:* {rate:.2f} руб.\n"
+        return rates_message
+    except:
+        return None
 
 def load_city_names(file_path):
     city_names = {}
@@ -12230,7 +12323,6 @@ def send_weather_notifications():
         if notification_status.get("weather"):
             weather_message = get_current_weather(coords)
             if weather_message:
-                weather_message = weather_message.replace("🔔 *Вам пришло новое уведомление!*\n\n", "")
                 messages.append(weather_message)
 
         if notification_status.get("fuel_prices"):
@@ -12254,6 +12346,11 @@ def send_weather_notifications():
 
                 messages.append(fuel_prices_message)
 
+        if notification_status.get("exchange_rates"):
+            exchange_message = get_exchange_rates_message()
+            if exchange_message:
+                messages.append(exchange_message)
+
         if messages:
             try:
                 final_message = "🔔 *Вам пришло новое уведомление!*\n\n" + "\n".join(messages)
@@ -12271,14 +12368,12 @@ schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
 schedule.every().day.at("20:00").do(send_weather_notifications)
 
-# Общий планировщик задач с объединенной логикой для уведомлений и парсинга
 def schedule_tasks():
     while True:
         now = datetime.now()
-        # Запуск функции парсинга цен на топливо в 00:00
         if now.hour == 0 and now.minute == 0:
             parse_fuel_prices()
-            time.sleep(60 * 5)  # Ожидание 5 минут перед следующим городом
+            time.sleep(60 * 5)
         schedule.run_pending()
         time.sleep(300)
 
