@@ -37,91 +37,6 @@ from datetime import timedelta
 
 bot = telebot.TeleBot("7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE")
 
-# (3) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ ---------------
-
-# (3.1) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ПОЕЗДКИ) ---------------
-
-def save_data(user_id): 
-    if user_id in user_trip_data:
-        folder_path = "data base\\trip"  # или используйте прямой слэш "data base/trip"
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-
-        with open(os.path.join(folder_path, f"{user_id}_trip_data.json"), "w") as json_file:
-            json.dump(user_trip_data[user_id], json_file)
-
-# Псевдоданные - просто для примера
-# В реальном случае данные приходят из пользовательского ввода или другого источника
-user_trip_data = {}
-
-# Функция для добавления поездки
-def add_trip(user_id, trip):
-    if user_id not in user_trip_data:
-        user_trip_data[user_id] = []
-    user_trip_data[user_id].append(trip)
-
-# Функция для сохранения данных
-def save_trip_data(user_id):
-    folder_path = "data base\\trip"
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-
-    # Сохраняем данные поездок для конкретного пользователя
-    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
-    with open(file_path, "w", encoding='utf-8') as json_file:
-        json.dump(user_trip_data.get(user_id, []), json_file, ensure_ascii=False, indent=4)
-
-
-# Данные поездок для всех пользователей
-user_trip_data = {}
-
-# Путь к папке с данными
-folder_path = "data base\\trip"
-
-# Функция для загрузки данных для одного пользователя
-def load_trip_data(user_id):
-    folder_path = "data base\\trip"
-    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, "r", encoding='utf-8') as json_file:
-                return json.load(json_file)
-        except UnicodeDecodeError:
-            with open(file_path, "r", encoding='windows-1251') as json_file:
-                data = json.load(json_file)
-            with open(file_path, "w", encoding='utf-8') as json_file:
-                json.dump(data, json_file, ensure_ascii=False, indent=4)
-            return data
-    else:
-        return []  # Если данных нет, возвращаем пустой список
-
-
-# Функция для загрузки данных для всех пользователей
-def load_all_user_data():
-    folder_path = "data base\\trip"
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)  # Если папка не существует, создаем её
-    for filename in os.listdir(folder_path):
-        if filename.endswith("_trip_data.json"):
-            user_id = filename.split("_")[0]  # Извлекаем user_id из имени файла
-            user_trip_data[user_id] = load_trip_data(user_id)  # Загружаем данные для пользователя
-
-# Функция для добавления поездки
-def add_trip(user_id, trip):
-    if user_id not in user_trip_data:
-        user_trip_data[user_id] = []
-    user_trip_data[user_id].append(trip)
-
-# Функция для сохранения данных всех пользователей при выходе
-def save_all_trip_data():
-    for user_id in user_trip_data:
-        save_trip_data(user_id)
-
-# Загружаем все данные при старте бота
-load_all_user_data()
-
-
-
 # (4) --------------- ЗАГРУЗКА ТЕКСТОВОГО ФАЙЛА С РЕГИОНАМИ ---------------
 
 regions = {}
@@ -146,12 +61,12 @@ def restricted(func):
 
         # Проверка по ID
         if is_user_blocked(user_id):
-            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
             return
 
         # Проверка по username
         if username and is_user_blocked(get_user_id_by_username(username)):
-            bot.send_message(message.chat.id, "Вы заблокированы и не можете выполнять это действие.")
+            bot.send_message(message.chat.id, "🚫 Вы *заблокированы* и не можете выполнять это действие!", parse_mode="Markdown")
             return
         
         return func(message, *args, **kwargs)
@@ -168,17 +83,30 @@ def track_user_activity(func):
     return wrapper
 
 # Декоратор для проверки состояния чата
+
+# Глобальная переменная для хранения истории сообщений
+message_history = {}
+
+# Декоратор для проверки состояния чата
 def check_chat_state(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
+        global active_chats  # Убедимся, что используем глобальную переменную
         user_id = message.from_user.id
-        if user_id in active_chats and active_chats[user_id]["status"] == "pending":
-            # Проверка, что сообщение действительно от пользователя, который должен ответить на запрос
-            if message.text.lower() not in ["принять", "отклонить"]:
-                bot.send_message(user_id, "Пожалуйста, выберите *Принять* или *Отклонить*", parse_mode="Markdown")
+
+        # Проверяем, есть ли у пользователя активный запрос на чат
+        if user_id in active_chats and active_chats[user_id].get("awaiting_response", False):
+            if message.text.strip().lower() not in ["принять", "отклонить"]:
+                bot.send_message(user_id, "Пожалуйста, выберите *ПРИНЯТЬ* или *ОТКЛОНИТЬ*", parse_mode="Markdown")
                 return
+
         return func(message, *args, **kwargs)
     return wrapper
+
+
+# Функция для сохранения последнего сообщения от бота
+def save_last_bot_message(user_id, message_text):
+    message_history[user_id] = {"last_bot_message": message_text}
 
 # Декоратор для проверки состояния функции
 
@@ -194,7 +122,7 @@ def check_function_state_decorator(function_name):
             if check_function_state(function_name):
                 return func(message, *args, **kwargs)
             else:
-                bot.send_message(message.chat.id, f"Функция *{function_name.lower()}* временно недоступна", parse_mode="Markdown")
+                bot.send_message(message.chat.id, f"Функция *{function_name.lower()}* временно недоступна!", parse_mode="Markdown")
         return wrapped
     return decorator
 
@@ -207,10 +135,12 @@ def track_usage(func_name):
             current_date = datetime.now().strftime('%d.%m.%Y')
 
             if current_date not in statistics:
-                statistics[current_date] = {}
-            if func_name not in statistics[current_date]:
-                statistics[current_date][func_name] = 0
-            statistics[current_date][func_name] += 1
+                statistics[current_date] = {'users': set(), 'functions': {}}
+            if 'functions' not in statistics[current_date]:
+                statistics[current_date]['functions'] = {}
+            if func_name not in statistics[current_date]['functions']:
+                statistics[current_date]['functions'][func_name] = 0
+            statistics[current_date]['functions'][func_name] += 1
 
             save_statistics(statistics)
             return func(*args, **kwargs)
@@ -310,25 +240,33 @@ def remove_old_errors():
 def log_user_actions(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
-        user_id = message.from_user.id
-        username = message.from_user.username if message.from_user.username else "Неизвестный пользователь"
-        first_name = message.from_user.first_name if message.from_user.first_name else ""
-        last_name = message.from_user.last_name if message.from_user.last_name else ""
-        message_text = message.text if message.text else "Нет текста"
-        command = func.__name__
-        chat_id = message.chat.id
-        message_id = message.message_id
-        message_type = "text" if message.text else "media"
-        context = message_text  # Записываем текст сообщения пользователя в контекст
-        language_code = message.from_user.language_code if hasattr(message.from_user, 'language_code') else "Неизвестный язык"
-        chat_type = message.chat.type
-        location = message.location if message.location else "Нет геолокации"
-
-        start_time = time.time()
+        # Проверяем корректность объекта message
+        if not hasattr(message, 'from_user') or not hasattr(message, 'chat'):
+            file_logger.error(f"Invalid message type: {type(message)}. Message: {message}")
+            console_logger.error(f"Invalid message type: {type(message)}. Message: {message}")
+            return  # Выходим, если сообщение некорректно
 
         try:
+            user_id = message.from_user.id
+            username = message.from_user.username if message.from_user.username else "Неизвестный пользователь"
+            first_name = message.from_user.first_name if message.from_user.first_name else ""
+            last_name = message.from_user.last_name if message.from_user.last_name else ""
+            message_text = message.text if hasattr(message, 'text') and message.text else "Нет текста"
+            command = func.__name__
+            chat_id = message.chat.id
+            message_id = message.message_id
+            message_type = "text" if hasattr(message, 'text') and message.text else "media"
+            context = message_text
+            language_code = message.from_user.language_code if hasattr(message.from_user, 'language_code') else "Неизвестный язык"
+            chat_type = message.chat.type if hasattr(message.chat, 'type') else "Неизвестный тип"
+            location = message.location if hasattr(message, 'location') and message.location else "Нет геолокации"
+
+            start_time = time.time()
+
+            # Выполняем основную функцию
             result = func(message, *args, **kwargs)
             execution_time = time.time() - start_time
+
             log_entry = {
                 "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
                 "level": "INFO",
@@ -361,60 +299,34 @@ def log_user_actions(func):
                 "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
                 "level": "ERROR",
                 "event_type": "User Action",
-                "user_id": user_id,
-                "username": username,
-                "first_name": first_name,
-                "last_name": last_name,
-                "message_text": message_text,
+                "user_id": "Unknown" if 'user_id' not in locals() else user_id,
+                "username": "Unknown" if 'username' not in locals() else username,
+                "first_name": "Unknown" if 'first_name' not in locals() else first_name,
+                "last_name": "Unknown" if 'last_name' not in locals() else last_name,
+                "message_text": "Unknown" if 'message_text' not in locals() else message_text,
                 "command": command,
                 "result": "Error",
                 "execution_time": f"{execution_time:.2f} sec",
                 "error_details": str(e),
                 "error_details_more": error_details_more,
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "message_type": message_type,
-                "context": context,
-                "language_code": language_code,
-                "chat_type": chat_type,
-                "location": location,
+                "chat_id": "Unknown" if 'chat_id' not in locals() else chat_id,
+                "message_id": "Unknown" if 'message_id' not in locals() else message_id,
+                "message_type": "Unknown" if 'message_type' not in locals() else message_type,
+                "context": "Unknown" if 'context' not in locals() else context,
+                "language_code": "Unknown" if 'language_code' not in locals() else language_code,
+                "chat_type": "Unknown" if 'chat_type' not in locals() else chat_type,
+                "location": "Unknown" if 'location' not in locals() else location,
                 "bot_info": {
                     "version": "1.0",
                     "bot_id": "7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE"
                 }
             }
-            file_logger.error(f"User {user_id} encountered an error while executing command {command} in {execution_time:.2f} sec: {e}")
-            console_logger.error(f"User {user_id} encountered an error while executing command {command} in {execution_time:.2f} sec: {e}")
+            file_logger.error(f"Error while executing command {command}: {e}")
+            console_logger.error(f"Error while executing command {command}: {e}")
             raise
         finally:
-            log_to_json(user_id, log_entry)
-
-        # Логирование ответа бота
-        bot_log_entry = {
-            "timestamp": datetime.now().strftime('%d.%m.%Y в %H:%M:%S'),
-            "level": "INFO",
-            "event_type": "Bot Action",
-            "user_id": user_id,
-            "username": "bot",
-            "first_name": "",
-            "last_name": "",
-            "message_text": message_text,
-            "command": command,
-            "result": "Success",
-            "execution_time": f"{execution_time:.2f} sec",
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "message_type": message_type,
-            "context": context,
-            "language_code": language_code,
-            "chat_type": chat_type,
-            "location": location,
-            "bot_info": {
-                "version": "1.0",
-                "bot_id": "7519948621:AAGPoPBJrnL8-vZepAYvTmm18TipvvmLUoE"
-            }
-        }
-        log_to_json(user_id, bot_log_entry)
+            # Сохраняем логи в JSON
+            log_to_json(user_id if 'user_id' in locals() else "Unknown", log_entry)
 
         return result
     return wrapper
@@ -484,13 +396,99 @@ def check_user_blocked(func):
     return wrapper
 
 
+# (3) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ ---------------
+
+# (3.1) --------------- СОХРАНЕНИЯ И ЗАГРУЗКА ДАННЫХ ПОЛЬЗОВАТЕЛЯ (ПОЕЗДКИ) ---------------
+
+def save_data(user_id): 
+    if user_id in user_trip_data:
+        folder_path = "data base\\trip"  # или используйте прямой слэш "data base/trip"
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+
+        with open(os.path.join(folder_path, f"{user_id}_trip_data.json"), "w") as json_file:
+            json.dump(user_trip_data[user_id], json_file)
+
+# Псевдоданные - просто для примера
+# В реальном случае данные приходят из пользовательского ввода или другого источника
+user_trip_data = {}
+
+# Функция для добавления поездки
+#@log_user_actions
+def add_trip(user_id, trip):
+    if user_id not in user_trip_data:
+        user_trip_data[user_id] = []
+    user_trip_data[user_id].append(trip)
+
+# Функция для сохранения данных
+def save_trip_data(user_id):
+    folder_path = "data base\\trip"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    # Сохраняем данные поездок для конкретного пользователя
+    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
+    with open(file_path, "w", encoding='utf-8') as json_file:
+        json.dump(user_trip_data.get(user_id, []), json_file, ensure_ascii=False, indent=4)
+
+
+# Данные поездок для всех пользователей
+user_trip_data = {}
+
+# Путь к папке с данными
+folder_path = "data base\\trip"
+
+# Функция для загрузки данных для одного пользователя
+def load_trip_data(user_id):
+    folder_path = "data base\\trip"
+    file_path = os.path.join(folder_path, f"{user_id}_trip_data.json")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding='utf-8') as json_file:
+                return json.load(json_file)
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding='windows-1251') as json_file:
+                data = json.load(json_file)
+            with open(file_path, "w", encoding='utf-8') as json_file:
+                json.dump(data, json_file, ensure_ascii=False, indent=4)
+            return data
+    else:
+        return []  # Если данных нет, возвращаем пустой список
+
+
+# Функция для загрузки данных для всех пользователей
+def load_all_user_data():
+    folder_path = "data base\\trip"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)  # Если папка не существует, создаем её
+    for filename in os.listdir(folder_path):
+        if filename.endswith("_trip_data.json"):
+            user_id = filename.split("_")[0]  # Извлекаем user_id из имени файла
+            user_trip_data[user_id] = load_trip_data(user_id)  # Загружаем данные для пользователя
+
+# Функция для добавления поездки
+#@log_user_actions
+def add_trip(user_id, trip):
+    if user_id not in user_trip_data:
+        user_trip_data[user_id] = []
+    user_trip_data[user_id].append(trip)
+
+# Функция для сохранения данных всех пользователей при выходе
+def save_all_trip_data():
+    for user_id in user_trip_data:
+        save_trip_data(user_id)
+
+# Загружаем все данные при старте бота
+load_all_user_data()
+
+
 # Старт
 
 @bot.message_handler(commands=['start'])
 @restricted
 @track_user_activity
 @check_chat_state
-@log_user_actions
+#@log_user_actions
 def start(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -520,14 +518,14 @@ def start(message):
     markup.add(item9, item10)
     markup.add(item11)
 
-    bot.send_message(chat_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
+    bot.send_message(chat_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
 
 # (6) --------------- ОБРАБОТЧИК КОМАНДЫ /MAINMENU ---------------
 @restricted
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
-@log_user_actions
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
 def return_to_menu(message):
@@ -541,6 +539,8 @@ def return_to_menu(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Сайт')
+@track_usage('Сайт')  # Добавление отслеживания статистики
+#@log_user_actions
 def send_website_file(message):
     # Отправка гиперссылки на сайт
     bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")  # http://carmngrbot.com.swtest.ru/ # https://goo.su/5htqWmk
@@ -560,7 +560,7 @@ def send_website_file(message):
 @check_chat_state
 @check_function_state_decorator('Расход топлива')
 @track_usage('Расход топлива')  # Добавление отслеживания статистики
-@log_user_actions
+#@log_user_actions
 def handle_fuel_expense(message):
 
     user_id = message.from_user.id
@@ -603,6 +603,7 @@ date_pattern = r"^\d{2}.\d{2}.\d{4}$"
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Вернуться в меню расчета топлива')
+#@log_user_actions
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -615,6 +616,7 @@ def restart_handler(message):
     # Возвращаемся в меню
     reset_and_start_over(message.chat.id)
 
+#@log_user_actions
 def reset_and_start_over(chat_id):
     # Отправляем новое меню пользователю
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -635,6 +637,7 @@ save_all_trip_data()
 
 # (9.3) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ЗАГРУЗКА ДАННЫХ ПРИ /restart1) ---------------
 
+#@log_user_actions
 def reset_user_data(user_id):
     if user_id not in user_trip_data:
         user_trip_data[user_id] = load_trip_data(user_id)
@@ -648,6 +651,8 @@ def reset_user_data(user_id):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Рассчитать расход топлива')
+@track_usage('Рассчитать расход топлива')  # Добавление отслеживания статистики
+#@log_user_actions
 def calculate_fuel_cost_handler(message):
     chat_id = message.chat.id
 
@@ -665,7 +670,7 @@ def calculate_fuel_cost_handler(message):
 
     bot.register_next_step_handler(sent, process_start_location_step)
 	
-
+#@log_user_actions
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -727,7 +732,7 @@ def process_start_location_step(message):
     sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_end_location_step)
 
-
+#@log_user_actions
 def process_start_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -789,7 +794,7 @@ def process_start_location_step(message):
     sent = bot.send_message(chat_id, "Введите конечное местоположение или отправьте геолокацию:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_end_location_step)
 
-@log_user_actions
+#@log_user_actions
 def process_end_location_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -859,7 +864,7 @@ def process_end_location_step(message):
     sent = bot.send_message(chat_id, "Выберите вариант ввода расстояния:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
-@log_user_actions
+#@log_user_actions
 def process_custom_distance_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -900,7 +905,7 @@ def process_custom_distance_step(message):
         sent = bot.send_message(chat_id, "Пожалуйста, введите корректное число для расстояния.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_custom_distance_step)
 
-@log_user_actions
+#@log_user_actions
 def process_distance_choice_step(message, distance_km):
     chat_id = message.chat.id
     trip_data[chat_id]["distance"] = distance_km
@@ -940,7 +945,7 @@ def process_distance_choice_step(message, distance_km):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите один из вариантов.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_distance_choice_step, distance_km)
 
-@log_user_actions
+#@log_user_actions
 def process_date_step(message, distance):
     chat_id = message.chat.id
     user_code = trip_data[chat_id].get("user_code", "ru")  # Задаем код по умолчанию
@@ -987,6 +992,7 @@ def process_date_step(message, distance):
         sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_date_step, distance)
 
+#@log_user_actions
 def process_date_input_step(message, distance):
     chat_id = message.chat.id
     date_input = message.text.strip()  # Получаем введенную дату
@@ -1001,6 +1007,7 @@ def process_date_input_step(message, distance):
         bot.send_message(chat_id, "Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ")
         bot.register_next_step_handler(message, process_date_input_step, distance)
 
+#@log_user_actions
 def handle_date_selection(message, distance):
     chat_id = message.chat.id
     user_code = trip_data[chat_id].get("user_code", "ru")  # Задаем код по умолчанию
@@ -1036,6 +1043,7 @@ def handle_date_selection(message, distance):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите корректный вариант.")
         bot.register_next_step_handler(sent, handle_date_selection, distance)
 
+#@log_user_actions
 def show_calendar(chat_id, user_code):
     # Inline-календарь с использованием кода пользователя
     calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale=user_code).build()
@@ -1051,6 +1059,7 @@ def show_calendar(chat_id, user_code):
     bot.send_message(chat_id, "Календарь:", reply_markup=markup)
     bot.send_message(chat_id, "Выберите дату", reply_markup=calendar)
 
+#@log_user_actions
 @bot.callback_query_handler(func=DetailedTelegramCalendar.func())
 @restricted
 @track_user_activity
@@ -1073,7 +1082,7 @@ def handle_calendar(call):
         # Переходим к следующему шагу
         process_selected_date(call.message, selected_date)
 
-
+#@log_user_actions
 def process_selected_date(message, selected_date):
     chat_id = message.chat.id
     distance_km = trip_data[chat_id].get("distance")  # Получаем расстояние
@@ -1084,7 +1093,7 @@ def process_selected_date(message, selected_date):
 
     show_fuel_types(chat_id, selected_date, distance_km)
 
-
+#@log_user_actions
 def process_manual_date_step(message, distance):
     chat_id = message.chat.id
     date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
@@ -1126,97 +1135,7 @@ def process_manual_date_step(message, distance):
         sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ", reply_markup=markup)
         bot.register_next_step_handler(sent, process_manual_date_step, distance)
 
-def show_calendar(chat_id, user_code):
-    # Inline-календарь с использованием кода пользователя
-    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale=user_code).build()
-
-    # Обычная клавиатура для кнопок навигации
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    markup.add(item1)
-    markup.add(item2)
-
-    # Отправляем сообщение с навигацией и календарем
-    bot.send_message(chat_id, "Календарь:", reply_markup=markup)
-    bot.send_message(chat_id, "Выберите дату", reply_markup=calendar)
-
-@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
-@restricted
-@track_user_activity
-def handle_calendar(call):
-    result, key, step = DetailedTelegramCalendar(
-        min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), unique_key=call.data
-    ).process(call.data)
-
-    if not result and key:
-        bot.edit_message_text(f"Выберите {step}",
-                              call.message.chat.id,
-                              call.message.message_id,
-                              reply_markup=key)
-    elif result:
-        selected_date = result.strftime('%d.%m.%Y')
-        bot.edit_message_text(f"Вы выбрали дату: {selected_date}",
-                              call.message.chat.id,
-                              call.message.message_id)
-
-        # Переходим к следующему шагу
-        process_selected_date(call.message, selected_date)
-
-
-def process_selected_date(message, selected_date):
-    chat_id = message.chat.id
-    distance_km = trip_data[chat_id].get("distance")  # Получаем расстояние
-
-    if distance_km is None:
-        bot.send_message(chat_id, "Расстояние не было задано. Пожалуйста, попробуйте снова.")
-        return
-
-    show_fuel_types(chat_id, selected_date, distance_km)
-
-
-def process_manual_date_step(message, distance):
-    chat_id = message.chat.id
-    date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
-    
-    if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(chat_id)
-        return
-
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-    
-    # Разметка только с двумя кнопками
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    markup.add(item1)
-    markup.add(item2)
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_manual_date_step, distance)
-        return
-
-    if re.match(date_pattern, message.text):
-        day, month, year = map(int, message.text.split('.'))
-        if 2000 <= year <= 3000:  # Проверка корректности года
-            try:
-                datetime(year, month, day)  # Проверка правильности даты
-                bot.send_message(chat_id, f"Вы выбрали дату: {message.text}", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
-                show_fuel_types(chat_id, message.text, distance)
-            except ValueError:
-                sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату.", reply_markup=markup)
-                bot.register_next_step_handler(sent, process_manual_date_step, distance)
-        else:
-            sent = bot.send_message(chat_id, "Год должен быть в диапазоне от 2000 г. до 3000 г.", reply_markup=markup)
-            bot.register_next_step_handler(sent, process_manual_date_step, distance)
-    else:
-        sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ", reply_markup=markup)
-        bot.register_next_step_handler(sent, process_manual_date_step, distance)
-
-
+#@log_user_actions
 def show_fuel_types(chat_id, date, distance):
     # Создаём клавиатуру с типами топлива и дополнительными кнопками
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -1235,7 +1154,7 @@ def show_fuel_types(chat_id, date, distance):
     sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_fuel_type, date, distance)
 
-
+#@log_user_actions
 def clean_price(price):
     # Удаляем все символы, кроме цифр и точек
     cleaned_price = re.sub(r'[^\d.]', '', price)
@@ -1252,6 +1171,7 @@ fuel_type_mapping = {
     "газ": "Газ СПБТ",
 }
 
+#@log_user_actions
 def get_average_fuel_price_from_files(fuel_type, directory="data base/azs"):
     fuel_prices = []
 
@@ -1293,7 +1213,7 @@ def get_average_fuel_price_from_files(fuel_type, directory="data base/azs"):
     else:
         return None
 
-
+#@log_user_actions
 def get_average_fuel_prices(city_code='default_city_code'):
     url = f'https://azsprice.ru/benzin-{city_code}'  # Замените на подходящий URL с использованием city_code
     
@@ -1333,7 +1253,7 @@ def get_average_fuel_prices(city_code='default_city_code'):
     except (requests.RequestException, ValueError) as e:
         return None  # Вернем None в случае ошибки
 
-
+#@log_user_actions
 def process_fuel_type(message, date, distance):
     if message is None:
         return  # Проверка на None
@@ -1389,7 +1309,7 @@ def process_fuel_type(message, date, distance):
     sent = bot.send_message(chat_id, "Выберите вариант ввода цены топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, actual_fuel_type)
 
-
+#@log_user_actions
 def handle_price_input_choice(message, date, distance, fuel_type):
     chat_id = message.chat.id
 
@@ -1474,7 +1394,7 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов")
         bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, fuel_type)
 
-
+#@log_user_actions
 def process_price_per_liter_step(message, date, distance, fuel_type):
     chat_id = message.chat.id
 
@@ -1515,6 +1435,7 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
 
 # (9.11) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ ПАССАЖИРОВ ) ---------------
 
+#@log_user_actions
 def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_liter):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
@@ -1541,6 +1462,7 @@ def process_fuel_consumption_step(message, date, distance, fuel_type, price_per_
 
 # (9.12) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ДЛЯ РАСЧЕТА) ---------------
 
+#@log_user_actions
 def process_passengers_step(message, date, distance, fuel_type, price_per_liter, fuel_consumption):
     chat_id = message.chat.id
     if message.text == "Вернуться в меню расчета топлива":
@@ -1603,6 +1525,7 @@ def process_passengers_step(message, date, distance, fuel_type, price_per_liter,
 
 # (9.13) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ИТОГОВАЯ ИНФОРМАЦИЯ) ---------------
 
+#@log_user_actions
 def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, distance, price_per_liter, fuel_consumption, passengers):
     fuel_spent = (distance / 100) * fuel_consumption 
 
@@ -1651,7 +1574,7 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
 
     bot.send_message(chat_id, summary_message, reply_markup=markup, parse_mode="Markdown")
 
-
+#@log_user_actions
 def update_excel_file(user_id):
     # Путь к папке с файлами Excel
     folder_path = "data base/trip/excel"
@@ -1766,6 +1689,7 @@ def save_trip_to_excel(user_id, trip):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Сохранить поездку')
+@track_usage('Сохранить поездку')  # Добавление отслеживания статистики
 def save_data_handler(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
@@ -1804,6 +1728,7 @@ def save_data_handler(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
+#@log_user_actions
 def return_to_menu(message):
     user_id = message.chat.id
     if user_id in temporary_trip_data:
@@ -1817,6 +1742,7 @@ def return_to_menu(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Вернуться в меню расчета топлива')
+#@log_user_actions
 def restart_handler(message):
     user_id = message.chat.id
 
@@ -1842,6 +1768,8 @@ def restart_handler(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть поездки')
+@track_usage('Посмотреть поездки')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_trips(message):
     user_id = message.chat.id
     trips = load_trip_data(user_id)  # Загрузим поездки из базы данных
@@ -1878,6 +1806,8 @@ def view_trips(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть в Excel')
+@track_usage('Посмотреть в Excel')  # Добавление отслеживания статистики
+#@log_user_actions
 def send_excel_file(message):
     user_id = message.chat.id
     excel_file_path = f"data base/trip/excel/{user_id}_trips.xlsx"
@@ -1892,6 +1822,7 @@ def send_excel_file(message):
 @restricted
 @track_user_activity
 @check_chat_state
+#@log_user_actions
 def show_trip_details(message):
     user_id = message.chat.id
     trips = load_trip_data(user_id)  # Загружаем поездки для пользователя
@@ -1956,6 +1887,7 @@ def show_trip_details(message):
 @check_chat_state
 @check_function_state_decorator('Посмотреть другие поездки')
 
+#@log_user_actions
 def view_other_trips(message):
     view_trips(message)  # Вызываем функцию для повторного отображения списка поездок
 
@@ -1966,6 +1898,7 @@ def view_other_trips(message):
 # @check_chat_state
 # @check_function_state_decorator('Вернуться в меню расчета топлива')
 
+# #@log_user_actions
 # def return_to_fuel_calc_menu(message):
 #     chat_id = message.chat.id
 #     reset_and_start_over(chat_id)  # Ваша функция для сброса и возвращения в меню расчета топлива
@@ -1976,6 +1909,7 @@ def view_other_trips(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
+#@log_user_actions
 def return_to_main_menu(message):
     chat_id = message.chat.id
     return_to_menu(message)  # Ваша функция для возврата в главное меню
@@ -1988,6 +1922,8 @@ def return_to_main_menu(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить поездку')
+@track_usage('Удалить поездку')  # Добавление отслеживания статистики
+#@log_user_actions
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
@@ -2019,6 +1955,7 @@ def ask_for_trip_to_delete(message):
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок!")
 
+#@log_user_actions
 def confirm_trip_deletion(message):
     user_id = message.chat.id
 
@@ -2065,6 +2002,7 @@ def confirm_trip_deletion(message):
     reset_and_start_over(user_id)
 
 # Функция для подтверждения удаления всех поездок
+#@log_user_actions
 def confirm_delete_all(message):
     user_id = message.chat.id
     
@@ -2121,6 +2059,7 @@ def confirm_delete_all(message):
 @check_chat_state
 @check_function_state_decorator('Траты и ремонты')
 @track_usage('Траты и ремонты')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_expenses_and_repairs(message):
 
     user_id = message.from_user.id
@@ -2149,6 +2088,7 @@ def handle_expenses_and_repairs(message):
 
 # (10.3) --------------- КОД ДЛЯ "ТРАТ" (ПРОВЕРКА НА МУЛЬТИМЕДИЮ) ---------------
 
+#@log_user_actions
 def contains_media(message):
     return (message.photo or message.video or message.document or message.animation or
             message.sticker or message.location or message.audio or message.contact or
@@ -2156,6 +2096,7 @@ def contains_media(message):
 
 # (10.4) --------------- КОД ДЛЯ "ТРАТ" (ВОЗВРАТ В МЕНЮ) ---------------
 
+#@log_user_actions
 def send_menu(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Записать трату")
@@ -2181,6 +2122,7 @@ def send_menu(user_id):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Вернуться в меню трат и ремонтов')
+#@log_user_actions
 def return_to_menu_2(message):
     user_id = message.from_user.id
     send_menu(user_id)
@@ -2226,13 +2168,14 @@ def load_expense_data(user_id):
     
     return data
 
-
+#@log_user_actions
 def get_user_categories(user_id):
     data = load_expense_data(user_id)
     default_categories = ["Без категории", "АЗС", "Мойка", "Парковка", "Платная дорога", "Страховка", "Штрафы"]
     user_categories = data.get("user_categories", [])
     return default_categories + user_categories
 
+#@log_user_actions
 def add_user_category(user_id, new_category):
     data = load_expense_data(user_id)
     
@@ -2245,12 +2188,14 @@ def add_user_category(user_id, new_category):
     # Сохраняем обновленные данные
     save_expense_data(user_id, data)  # Теперь данные категорий будут сохранены
 
+#@log_user_actions
 def remove_user_category(user_id, category_to_remove, selected_transport=""):
     data = load_expense_data(user_id)
     if "user_categories" in data and category_to_remove in data["user_categories"]:
         data["user_categories"].remove(category_to_remove)
         save_expense_data(user_id, data, selected_transport)
 
+#@log_user_actions
 def get_user_transport_keyboard(user_id):
     transports = user_transport.get(str(user_id), [])  # Приведение к строке для совместимости
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -2272,6 +2217,8 @@ def get_user_transport_keyboard(user_id):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Записать трату')
+@track_usage('Записать трату')  # Добавление отслеживания статистики
+#@log_user_actions
 def record_expense(message):
     user_id = message.from_user.id
 
@@ -2288,6 +2235,7 @@ def record_expense(message):
     bot.send_message(user_id, "Выберите транспорт для записи траты:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_expense)
 
+#@log_user_actions
 def handle_transport_selection_for_expense(message):
     user_id = message.from_user.id
 
@@ -2325,6 +2273,7 @@ def handle_transport_selection_for_expense(message):
     process_category_selection(user_id, brand, model, license_plate)
 
 # Основной процесс выбора категории для записи траты
+#@log_user_actions
 def process_category_selection(user_id, brand, model, license_plate, prompt_message=None):
     categories = get_user_categories(user_id)
 
@@ -2358,6 +2307,7 @@ def process_category_selection(user_id, brand, model, license_plate, prompt_mess
         bot.register_next_step_handler(prompt_message, get_expense_category, brand, model, license_plate)
 
 # Обработка выбора категории для траты
+#@log_user_actions
 def get_expense_category(message, brand, model, license_plate):
     user_id = message.from_user.id
     
@@ -2418,6 +2368,7 @@ def get_expense_category(message, brand, model, license_plate):
         bot.register_next_step_handler(message, get_expense_category, brand, model, license_plate)
 
 # Добавление новой категории для трат
+#@log_user_actions
 def add_new_category(message, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2458,6 +2409,7 @@ def add_new_category(message, brand, model, license_plate):
     bot.send_message(user_id, f"Категория *{new_category}* успешно добавлена!", parse_mode="Markdown")
     process_category_selection(user_id, brand, model, license_plate)
 
+#@log_user_actions
 def proceed_to_expense_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -2470,6 +2422,7 @@ def proceed_to_expense_name(message, selected_category, brand, model, license_pl
     bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, license_plate)
 
 # Обработчик для ввода названия траты
+#@log_user_actions
 def get_expense_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2498,6 +2451,7 @@ def get_expense_name(message, selected_category, brand, model, license_plate):
     bot.send_message(user_id, "Введите описание траты или пропустите этот шаг:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, license_plate)
 
+#@log_user_actions
 def get_expense_description(message, selected_category, expense_name, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2525,6 +2479,7 @@ def get_expense_description(message, selected_category, expense_name, brand, mod
     bot.send_message(user_id, "Введите дату траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, license_plate)
 
+#@log_user_actions
 def get_expense_date(message, selected_category, expense_name, description, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2570,7 +2525,8 @@ def get_expense_date(message, selected_category, expense_name, description, bran
     
     bot.send_message(user_id, "Введите сумму траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, license_plate)
-    
+
+#@log_user_actions    
 def get_expense_amount(message, selected_category, expense_name, description, expense_date, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2649,6 +2605,7 @@ def save_expense_to_excel(user_id, expense_data):
         headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
         
         # Вспомогательная функция для настройки листов
+        #@log_user_actions
         def setup_sheet(sheet):
             if sheet.max_row == 1:
                 sheet.append(headers)
@@ -2686,6 +2643,8 @@ def save_expense_to_excel(user_id, expense_data):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить категорию')
+@track_usage('Удалить категорию')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_category_removal(message, brand=None, model=None, license_plate=None):
     user_id = message.from_user.id
     categories = get_user_categories(user_id)
@@ -2708,6 +2667,7 @@ def handle_category_removal(message, brand=None, model=None, license_plate=None)
     bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, remove_selected_category, brand, model, license_plate)
 
+#@log_user_actions
 def remove_selected_category(message, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -2759,7 +2719,7 @@ def remove_selected_category(message, brand, model, license_plate):
 
     return process_category_selection(user_id, brand, model, license_plate)
 
-
+#@log_user_actions
 def is_numeric(s):
     if s is not None:
         try:
@@ -2771,6 +2731,7 @@ def is_numeric(s):
 
 # (10.9) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "ПОСМОТРЕТЬ ТРАТЫ") ---------------
 
+#@log_user_actions
 def create_transport_options_markup():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_add_transport = types.KeyboardButton("Добавить транспорт")
@@ -2781,6 +2742,7 @@ def create_transport_options_markup():
     markup.add(item_main)
     return markup
 
+#@log_user_actions
 def ask_add_transport(message):
     user_id = message.from_user.id
 
@@ -2801,6 +2763,7 @@ def ask_add_transport(message):
 
 MAX_MESSAGE_LENGTH = 4096 
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     if len(message_text) <= MAX_MESSAGE_LENGTH:
         bot.send_message(user_id, message_text)
@@ -2814,6 +2777,7 @@ def send_message_with_split(user_id, message_text):
 selected_transport_dict = {}
 
 # Функция для фильтрации трат по транспорту
+#@log_user_actions
 def filter_expenses_by_transport(user_id, expenses):
     selected_transport = selected_transport_dict.get(user_id)
     if not selected_transport:
@@ -2824,10 +2788,12 @@ def filter_expenses_by_transport(user_id, expenses):
     return filtered_expenses
 
 # Функция для отправки сообщений, если сообщение длинное
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     bot.send_message(user_id, message_text, parse_mode="Markdown")
 
 # Функция для отправки меню
+#@log_user_actions
 def send_menu1(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Траты (по категориям)")
@@ -2851,6 +2817,8 @@ def send_menu1(user_id):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть траты')
+@track_usage('Посмотреть траты')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_expenses(message):
     user_id = message.from_user.id
 
@@ -2886,6 +2854,7 @@ def view_expenses(message):
     bot.register_next_step_handler(message, handle_transport_selection)
 
 # Обработчик выбора транспорта
+#@log_user_actions
 def handle_transport_selection(message):
     user_id = message.from_user.id
     selected_transport = message.text
@@ -2910,6 +2879,8 @@ def handle_transport_selection(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть траты в EXCEL')
+@track_usage('Посмотреть траты в EXCEL')  # Добавление отслеживания статистики
+#@log_user_actions
 def send_expenses_excel(message):
     user_id = message.from_user.id
 
@@ -2931,6 +2902,8 @@ def send_expenses_excel(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Траты (по категориям)')
+@track_usage('Траты (по категориям)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_expenses_by_category(message):
     user_id = message.from_user.id
     user_data = load_expense_data(user_id)
@@ -2958,6 +2931,7 @@ def view_expenses_by_category(message):
     bot.register_next_step_handler(message, handle_category_selection)
 
 # Обработчик выбора категории
+#@log_user_actions
 def handle_category_selection(message):
     user_id = message.from_user.id
     selected_category = message.text
@@ -3035,6 +3009,8 @@ def handle_category_selection(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Траты (месяц)')
+@track_usage('Траты (месяц)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_expenses_by_month(message):
     user_id = message.from_user.id
 
@@ -3047,6 +3023,7 @@ def view_expenses_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра трат за этот период:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expenses_by_month)
 
+#@log_user_actions
 def get_expenses_by_month(message):
     user_id = message.from_user.id
     date = message.text.strip() if message.text else None
@@ -3144,6 +3121,8 @@ def get_expenses_by_month(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Траты (год)')
+@track_usage('Траты (год)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_expenses_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -3156,6 +3135,7 @@ def view_expenses_by_license_plate(message):
     bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра трат за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expenses_by_license_plate)
 
+#@log_user_actions
 def get_expenses_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -3248,6 +3228,8 @@ def get_expenses_by_license_plate(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Траты (все время)')
+@track_usage('Траты (все время)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_all_expenses(message):
     user_id = message.from_user.id
 
@@ -3305,6 +3287,8 @@ def save_selected_transport(user_id, selected_transport):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить траты')
+@track_usage('Удалить траты')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_expenses_menu(message):
     user_id = message.from_user.id
 
@@ -3347,6 +3331,7 @@ def delete_expenses_menu(message):
     bot.send_message(user_id, "Выберите транспорт для удаления трат:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_deletion)
 
+#@log_user_actions
 def handle_transport_selection_for_deletion(message):
     user_id = message.from_user.id
     selected_transport = message.text.strip()
@@ -3384,6 +3369,7 @@ expenses_to_delete_dict = {}
 
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_long_message(user_id, text):
     # Разбиваем текст на части, если он слишком длинный
     while len(text) > MAX_MESSAGE_LENGTH:
@@ -3399,6 +3385,8 @@ def send_long_message(user_id, text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del траты (категория)')
+@track_usage('Del траты (категория)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_expenses_by_category(message):
     user_id = message.from_user.id
 
@@ -3442,6 +3430,7 @@ selected_categories = {}
 
 user_expenses_to_delete = {}
 
+#@log_user_actions
 def handle_category_selection_for_deletion(message):
     user_id = message.from_user.id
 
@@ -3516,7 +3505,7 @@ def handle_category_selection_for_deletion(message):
     # Переход к следующему шагу (запрос номера траты для удаления)
     bot.register_next_step_handler(message, delete_expense_confirmation)
 
-
+#@log_user_actions
 def delete_expense_confirmation(message):
     user_id = message.from_user.id
 
@@ -3585,6 +3574,7 @@ def delete_expense_confirmation(message):
 
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_long_message(user_id, text):
     # Разбиваем текст на части, если он слишком длинный
     while len(text) > MAX_MESSAGE_LENGTH:
@@ -3600,6 +3590,8 @@ def send_long_message(user_id, text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del траты (месяц)')
+@track_usage('Del траты (месяц)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_expense_by_month(message):
     user_id = message.from_user.id
 
@@ -3611,6 +3603,7 @@ def delete_expense_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления трат за этот месяц:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_expenses_by_month)
 
+#@log_user_actions
 def delete_expenses_by_month(message):
     user_id = message.from_user.id
     month_year = message.text.strip() if message.text else None
@@ -3704,6 +3697,7 @@ def delete_expenses_by_month(message):
         bot.send_message(user_id, f"Нет трат для удаления за *{month_year}* месяц", parse_mode="Markdown")
         send_menu(user_id)
 
+#@log_user_actions
 def confirm_delete_expense_month(message):
     user_id = message.from_user.id
 
@@ -3775,6 +3769,7 @@ def confirm_delete_expense_month(message):
 # Удаление трат за год
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_long_message(user_id, text):
     # Разбиваем текст на части, если он слишком длинный
     while len(text) > MAX_MESSAGE_LENGTH:
@@ -3790,6 +3785,8 @@ def send_long_message(user_id, text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del траты (год)')
+@track_usage('Del траты (год)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_expense_by_license_plate(message):
     user_id = message.from_user.id
 
@@ -3801,6 +3798,7 @@ def delete_expense_by_license_plate(message):
     bot.send_message(user_id, "Введите год (ГГГГ) для удаления трат за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_expenses_by_license_plate)
 
+#@log_user_actions
 def delete_expenses_by_license_plate(message):
     user_id = message.from_user.id
     license_plate = message.text.strip() if message.text else None  # Проверяем наличие текста
@@ -3888,6 +3886,7 @@ def delete_expenses_by_license_plate(message):
         bot.send_message(user_id, f"За *{license_plate}* год трат не найдено для удаления", parse_mode="Markdown")
         send_menu(user_id)
 
+#@log_user_actions
 def confirm_delete_expense_license_plate(message):
     user_id = message.from_user.id
 
@@ -3952,6 +3951,8 @@ def confirm_delete_expense_license_plate(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del траты (все время)')
+@track_usage('Del траты (все время)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_all_expenses_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -3968,6 +3969,7 @@ def delete_all_expenses_for_selected_transport(message):
                     reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, confirm_delete_all_expenses)
 
+#@log_user_actions
 def confirm_delete_all_expenses(message):
     user_id = message.from_user.id
 
@@ -4054,6 +4056,7 @@ import os
 import pandas as pd
 import openpyxl
 
+#@log_user_actions
 def delete_expense(user_id, deleted_expense):
     # Удаляем трату из базы данных
     user_data = load_expense_data(user_id).get(str(user_id), {})
@@ -4078,6 +4081,7 @@ def delete_expense(user_id, deleted_expense):
     # Обновляем Excel файл
     update_excel_file(user_id)
 
+#@log_user_actions
 def update_excel_file(user_id):
     user_data = load_expense_data(user_id).get(str(user_id), {})
     expenses = user_data.get("expenses", [])
@@ -4222,13 +4226,14 @@ def load_repair_data(user_id):
         data = {"user_categories": [], "selected_transport": ""}  # Обеспечиваем наличие пустого списка категорий
     return data
 
-
+#@log_user_actions
 def get_user_repair_categories(user_id):
     data = load_repair_data(user_id)
     system_categories = ["Без категории", "ТО", "Ремонт", "Запчасть", "Диагностика", "Электрика", "Кузов"]
     user_categories = data.get("user_categories", [])
     return system_categories + user_categories
 
+#@log_user_actions
 def add_repair_category(user_id, new_category):
     data = load_repair_data(user_id)
     if "user_categories" not in data:
@@ -4237,6 +4242,7 @@ def add_repair_category(user_id, new_category):
         data["user_categories"].append(new_category)
     save_repair_data(user_id, data)
 
+#@log_user_actions
 def remove_repair_category(user_id, category_to_remove):
     data = load_repair_data(user_id)
     if "user_categories" in data and category_to_remove in data["user_categories"]:
@@ -4248,6 +4254,8 @@ def remove_repair_category(user_id, category_to_remove):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Записать ремонт')
+@track_usage('Записать ремонт')  # Добавление отслеживания статистики
+#@log_user_actions
 def record_repair(message):
     user_id = message.from_user.id
     if contains_media(message):
@@ -4262,6 +4270,7 @@ def record_repair(message):
     bot.send_message(user_id, "Выберите транспорт для записи ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_repair)
 
+#@log_user_actions
 def handle_transport_selection_for_repair(message):
     user_id = message.from_user.id
 
@@ -4300,6 +4309,7 @@ def handle_transport_selection_for_repair(message):
 
 from functools import partial
 
+#@log_user_actions
 def process_category_selection_repair(user_id, brand, model, license_plate):
     categories = get_user_repair_categories(user_id)
 
@@ -4331,6 +4341,7 @@ def process_category_selection_repair(user_id, brand, model, license_plate):
     # Используем partial для передачи дополнительных параметров
     bot.register_next_step_handler(prompt_message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
 
+#@log_user_actions
 def get_repair_category(message, brand, model, license_plate):
     user_id = message.from_user.id
     selected_index = message.text.strip() if message.text else ""
@@ -4379,6 +4390,7 @@ def get_repair_category(message, brand, model, license_plate):
         bot.send_message(user_id, "Пожалуйста, введите номер категории")
         bot.register_next_step_handler(message, partial(get_repair_category, brand=brand, model=model, license_plate=license_plate))
 
+#@log_user_actions
 def add_new_repair_category(message, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -4424,6 +4436,7 @@ def add_new_repair_category(message, brand, model, license_plate):
 
     process_category_selection_repair(user_id, brand, model, license_plate)
 
+#@log_user_actions
 def handle_repair_category_removal(message, brand, model, license_plate):
     user_id = message.from_user.id
     categories = get_user_repair_categories(user_id)
@@ -4467,6 +4480,7 @@ def handle_repair_category_removal(message, brand, model, license_plate):
 
     bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
 
+#@log_user_actions
 def remove_repair_category(message, categories, system_categories, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -4525,6 +4539,7 @@ def remove_repair_category(message, categories, system_categories, brand, model,
         # Ждем повторного ввода
         bot.register_next_step_handler(message, remove_repair_category, categories, system_categories, brand, model, license_plate)
 
+#@log_user_actions
 def proceed_to_repair_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -4536,6 +4551,7 @@ def proceed_to_repair_name(message, selected_category, brand, model, license_pla
     bot.send_message(user_id, "Введите название ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_name, selected_category, brand, model, license_plate)
 
+#@log_user_actions
 def get_repair_name(message, selected_category, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -4576,6 +4592,7 @@ def get_repair_name(message, selected_category, brand, model, license_plate):
     bot.send_message(user_id, "Введите описание ремонта или пропустите этот шаг:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_description, selected_category, repair_name, brand, model, license_plate)
 
+#@log_user_actions
 def get_repair_description(message, selected_category, repair_name, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -4616,11 +4633,13 @@ def get_repair_description(message, selected_category, repair_name, brand, model
     bot.send_message(user_id, "Введите дату ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_date, selected_category, repair_name, repair_description, brand, model, license_plate)
 
+#@log_user_actions
 def is_valid_date(date_str):
     # Проверяем формат даты: ДД.ММ.ГГГГ
     pattern = r'^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(2000|20[01][0-9]|202[0-9]|203[0-9]|[2-9][0-9]{3})$'
     return bool(re.match(pattern, date_str))
 
+#@log_user_actions
 def get_repair_date(message, selected_category, repair_name, repair_description, brand, model, license_plate):
     user_id = message.from_user.id
 
@@ -4803,7 +4822,6 @@ def save_repair_data_final(message, selected_category, repair_name, repair_descr
             )
         )
 
-
 def save_repair_to_excel(user_id, repair_data):
     # Путь к Excel-файлу пользователя для ремонта
     excel_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
@@ -4835,6 +4853,7 @@ def save_repair_to_excel(user_id, repair_data):
         headers = ["Транспорт", "Категория", "Название", "Дата", "Сумма", "Описание"]
         
         # Вспомогательная функция для настройки листов
+        #@log_user_actions
         def setup_sheet(sheet):
             if sheet.max_row == 1:
                 sheet.append(headers)
@@ -4872,6 +4891,7 @@ def save_repair_to_excel(user_id, repair_data):
 selected_repair_transport_dict = {}
 
 # Функция для фильтрации ремонтов по транспорту
+#@log_user_actions
 def filter_repairs_by_transport(user_id, repairs):
     selected_transport = selected_repair_transport_dict.get(user_id)
     
@@ -4887,10 +4907,12 @@ def filter_repairs_by_transport(user_id, repairs):
     return filtered_repairs
 
 # Функция для отправки сообщений с разделением на части (общая)
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     bot.send_message(user_id, message_text, parse_mode="Markdown")
 
 # Функция для отправки меню для ремонта
+#@log_user_actions
 def send_repair_menu(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Ремонты (месяц)")
@@ -4914,6 +4936,8 @@ def send_repair_menu(user_id):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть ремонты')
+@track_usage('Посмотреть ремонты')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_repairs(message):
     user_id = message.from_user.id
 
@@ -4946,6 +4970,7 @@ def view_repairs(message):
     bot.register_next_step_handler(message, handle_transport_selection_for_repairs)
 
 # Обработчик выбора транспорта для ремонта
+#@log_user_actions
 def handle_transport_selection_for_repairs(message):
     user_id = message.from_user.id
     selected_transport = message.text
@@ -4978,6 +5003,8 @@ def handle_transport_selection_for_repairs(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть ремонты в EXCEL')
+@track_usage('Посмотреть ремонты в EXCEL')  # Добавление отслеживания статистики
+#@log_user_actions
 def send_repairs_excel(message):
     user_id = message.from_user.id
 
@@ -4995,6 +5022,7 @@ def send_repairs_excel(message):
 
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если превышена максимальная длина."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5009,6 +5037,7 @@ def send_message_with_split(user_id, message_text):
 
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если превышена максимальная длина."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5026,6 +5055,8 @@ def send_message_with_split(user_id, message_text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Ремонты (по категориям)')
+@track_usage('Ремонты (по категориям)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_repairs_by_category(message):
     user_id = message.from_user.id
     user_data = load_repair_data(user_id)
@@ -5054,6 +5085,7 @@ def view_repairs_by_category(message):
     bot.register_next_step_handler(message, handle_repair_category_selection)
 
 # Обработчик выбора категории ремонтов
+#@log_user_actions
 def handle_repair_category_selection(message):
     user_id = message.from_user.id
     selected_category = message.text.strip().lower()  # Преобразуем выбранную категорию в нижний регистр
@@ -5124,6 +5156,7 @@ def handle_repair_category_selection(message):
 # Обработчик ремонтов за месяц
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если превышена максимальная длина."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5141,6 +5174,8 @@ def send_message_with_split(user_id, message_text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Ремонты (месяц)')
+@track_usage('Ремонты (месяц)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_repairs_by_month(message):
     user_id = message.from_user.id
 
@@ -5153,7 +5188,7 @@ def view_repairs_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для просмотра ремонтов за этот период:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_month)
 
-
+#@log_user_actions
 def get_repairs_by_month(message):
     user_id = message.from_user.id
     date = message.text.strip() if message.text else None
@@ -5248,6 +5283,7 @@ def get_repairs_by_month(message):
 # Обработчик ремонтов за год
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если превышена максимальная длина."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5265,6 +5301,8 @@ def send_message_with_split(user_id, message_text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Ремонты (год)')
+@track_usage('Ремонты (год)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -5277,6 +5315,7 @@ def view_repairs_by_year(message):
     bot.send_message(user_id, "Введите год в формате (ГГГГ) для просмотра ремонтов за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repairs_by_year)
 
+#@log_user_actions
 def get_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -5366,6 +5405,7 @@ def get_repairs_by_year(message):
 # Обработчик всех ремонтов
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_message_with_split(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если превышена максимальная длина."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5383,6 +5423,8 @@ def send_message_with_split(user_id, message_text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Ремонты (все время)')
+@track_usage('Ремонты (все время)')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_all_repairs(message):
     user_id = message.from_user.id
 
@@ -5427,8 +5469,6 @@ def view_all_repairs(message):
 
 selected_repair_transports = {}
 
-
-
 # Сохранение выбранного транспорта для ремонтов
 def save_selected_repair_transport(user_id, selected_transport):
     user_data = load_repair_data(user_id).get(str(user_id), {})
@@ -5440,6 +5480,8 @@ def save_selected_repair_transport(user_id, selected_transport):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить ремонты')
+@track_usage('Удалить ремонты')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_repairs_menu(message):
     user_id = message.from_user.id
 
@@ -5474,7 +5516,7 @@ def delete_repairs_menu(message):
     bot.send_message(user_id, "Выберите транспорт для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_repair_transport_selection_for_deletion)
 
-
+#@log_user_actions
 def handle_repair_transport_selection_for_deletion(message):
     user_id = message.from_user.id
     selected_transport = message.text.strip()
@@ -5515,6 +5557,8 @@ user_repairs_to_delete = {}
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del ремонты (категория)')
+@track_usage('Del ремонты (категория)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_repairs_by_category(message):
     user_id = message.from_user.id
     selected_transport = selected_repair_transports.get(user_id)
@@ -5550,7 +5594,7 @@ def delete_repairs_by_category(message):
     bot.send_message(user_id, "Выберите категорию для удаления ремонтов:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_repair_category_selection_for_deletion)
 
-
+#@log_user_actions
 def handle_repair_category_selection_for_deletion(message):
     user_id = message.from_user.id
     selected_category = message.text.strip()
@@ -5606,7 +5650,7 @@ def handle_repair_category_selection_for_deletion(message):
 
     bot.register_next_step_handler(message, delete_repair_confirmation)
 
-
+#@log_user_actions
 def delete_repair_confirmation(message):
     user_id = message.from_user.id
 
@@ -5652,6 +5696,8 @@ def delete_repair_confirmation(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del ремонты (месяц)')
+@track_usage('Del ремонты (месяц)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_repair_by_month(message):
     user_id = message.from_user.id
 
@@ -5663,6 +5709,7 @@ def delete_repair_by_month(message):
     bot.send_message(user_id, "Введите месяц и год (ММ.ГГГГ) для удаления ремонтов за этот месяц:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_month_handler)
 
+#@log_user_actions
 def delete_repairs_by_month_handler(message):
     user_id = message.from_user.id
     month_year = message.text.strip() if message.text else None
@@ -5753,6 +5800,7 @@ def delete_repairs_by_month_handler(message):
         bot.send_message(user_id, f"Нет ремонтов для удаления за *{month_year}* месяц", parse_mode="Markdown")
         send_menu(user_id)
 
+#@log_user_actions
 def confirm_delete_repair_month(message):
     user_id = message.from_user.id
 
@@ -5801,6 +5849,7 @@ def confirm_delete_repair_month(message):
 # Удаление ремонтов за год
 MAX_MESSAGE_LENGTH = 4096
 
+#@log_user_actions
 def send_long_message(user_id, message_text):
     """Отправляет сообщение пользователю, разбивая на части, если оно слишком длинное."""
     if len(message_text) <= MAX_MESSAGE_LENGTH:
@@ -5818,6 +5867,8 @@ def send_long_message(user_id, message_text):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del ремонты (год)')
+@track_usage('Del ремонты (год)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_repairs_by_year(message):
     user_id = message.from_user.id
 
@@ -5829,6 +5880,7 @@ def delete_repairs_by_year(message):
     bot.send_message(user_id, "Введите год (ГГГГ) для удаления ремонтов за этот год:", reply_markup=markup)
     bot.register_next_step_handler(message, delete_repairs_by_year_handler)
 
+#@log_user_actions
 def delete_repairs_by_year_handler(message):
     user_id = message.from_user.id
     year = message.text.strip() if message.text else None
@@ -5916,6 +5968,7 @@ def delete_repairs_by_year_handler(message):
         bot.send_message(user_id, f"За *{year}* год ремонтов не найдено для удаления", parse_mode="Markdown")
         send_menu(user_id)
 
+#@log_user_actions
 def confirm_delete_repair(message):
     user_id = message.from_user.id
 
@@ -5968,6 +6021,8 @@ def confirm_delete_repair(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Del ремонты (все время)')
+@track_usage('Del ремонты (все время)')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_all_repairs_for_selected_transport(message):
     user_id = message.from_user.id
 
@@ -5984,7 +6039,7 @@ def delete_all_repairs_for_selected_transport(message):
                      reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, confirm_delete_all_repairs)
     
-
+#@log_user_actions
 def confirm_delete_all_repairs(message):
     user_id = message.from_user.id
 
@@ -6059,6 +6114,7 @@ def confirm_delete_all_repairs(message):
 
     send_menu(user_id)
 
+#@log_user_actions
 def delete_repairs(user_id, deleted_repair):
     # Удаляем ремонт из базы данных
     user_data = load_repair_data(user_id).get(str(user_id), {})
@@ -6083,6 +6139,7 @@ def delete_repairs(user_id, deleted_repair):
     # Обновляем Excel файл
     update_repairs_excel_file(user_id)
 
+#@log_user_actions
 def update_repairs_excel_file(user_id):
     user_data = load_repair_data(user_id).get(str(user_id), {})
     repairs = user_data.get("repairs", [])
@@ -6184,6 +6241,7 @@ geolocator = Nominatim(user_agent="geo_bot")
 user_locations = {}
 
 # Функция для генерации ссылки на Yandex.Карты
+#@log_user_actions
 def get_yandex_maps_search_url(latitude, longitude, query):
     base_url = "https://yandex.ru/maps/?"
     search_params = {
@@ -6196,6 +6254,7 @@ def get_yandex_maps_search_url(latitude, longitude, query):
     return f"{base_url}{query_string}"
 
 # Функция для сокращения URL
+#@log_user_actions
 def shorten_url(original_url):
     endpoint = 'https://clck.ru/--'
     response = requests.get(endpoint, params={'url': original_url})
@@ -6208,6 +6267,7 @@ def shorten_url(original_url):
 @check_chat_state
 @check_function_state_decorator('Поиск мест')
 @track_usage('Поиск мест')  # Добавление отслеживания статистики
+#@log_user_actions
 def send_welcome(message):
 
     user_id = message.chat.id
@@ -6240,6 +6300,7 @@ def send_welcome(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Выбрать категорию заново')
+#@log_user_actions
 def handle_reset_category(message):
     global selected_category
     selected_category = None
@@ -6260,6 +6321,15 @@ selected_category = None
 @check_function_state_decorator('ГИБДД')
 @check_function_state_decorator('Комиссары')
 @check_function_state_decorator('Штрафстоянка')
+@track_usage('АЗС')
+@track_usage('Автомойки')
+@track_usage('Автосервисы')
+@track_usage('Парковки')
+@track_usage('Эвакуация')
+@track_usage('ГИБДД')
+@track_usage('Комиссары')
+@track_usage('Штрафстоянка')
+#@log_user_actions
 def handle_menu_buttons(message):
     global selected_category 
     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:  # Включаем "Штрафстоянка"
@@ -6282,6 +6352,8 @@ def handle_menu_buttons(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Функция для обработки локации')
+@track_usage('Функция для обработки локации')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_location(message):
     global selected_category  # Указываем, что selected_category является глобальной переменной
     user_id = message.chat.id
@@ -6342,11 +6414,13 @@ def handle_location(message):
 
 # user_locations = {}
 
+# #@log_user_actions
 # def calculate_distance(origin, destination):
 #     return geodesic(origin, destination).kilometers
 
 # # (12.2) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (СОКРАЩЕНИЕ ССЫЛОК) ---------------
 
+# #@log_user_actions
 # def shorten_url(original_url):
 #     endpoint = 'https://clck.ru/--'
 #     response = requests.get(endpoint, params={'url': original_url})
@@ -6354,6 +6428,7 @@ def handle_location(message):
 
 # # (12.3) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АЗС) ---------------
 
+# #@log_user_actions
 # def get_nearby_fuel_stations(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6378,6 +6453,7 @@ def handle_location(message):
 
 # # (12.4) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОМОЙКИ) ---------------
 
+# #@log_user_actions
 # def get_nearby_car_washes(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6402,6 +6478,7 @@ def handle_location(message):
 
 # # (12.5) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОСЕРВИС) ---------------
 
+# #@log_user_actions
 # def get_nearby_auto_services(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6427,6 +6504,7 @@ def handle_location(message):
 
 # # (12.6) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ПАРКОВКИ) ---------------
 
+# #@log_user_actions
 # def get_nearby_parking(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6451,6 +6529,7 @@ def handle_location(message):
 
 # # (12.7) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ЭВАКУАТОР) ---------------
 
+# #@log_user_actions
 # def get_nearby_evacuation_services(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6475,6 +6554,7 @@ def handle_location(message):
 
 # # (12.8) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ГИБДД) ---------------
 
+# #@log_user_actions
 # def get_nearby_gibdd_mreo(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6499,6 +6579,7 @@ def handle_location(message):
 
 # # (12.9) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (КОМИССАРЫ) ---------------
 
+# #@log_user_actions
 # def get_nearby_accident_commissioner(latitude, longitude, user_coordinates):
 #     api_url = "https://search-maps.yandex.ru/v1/"
 #     params = {
@@ -6528,6 +6609,7 @@ def handle_location(message):
 # @track_user_activity
 # @check_chat_state
 # @track_usage('Поиск мест')  # Добавление отслеживания статистики
+# #@log_user_actions
 # def send_welcome(message):
 #     user_id = message.chat.id
 #     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6554,6 +6636,7 @@ def handle_location(message):
 # @restricted
 # @track_user_activity
 # @check_chat_state
+# #@log_user_actions
 # def handle_reset_category(message):
 #     global selected_category
 #     selected_category = None
@@ -6567,6 +6650,7 @@ def handle_location(message):
 # @restricted
 # @track_user_activity
 # @check_chat_state
+# #@log_user_actions
 # def handle_menu_buttons(message):
 #     global selected_category 
 #     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"}:
@@ -6590,6 +6674,8 @@ def handle_location(message):
 # @track_user_activity
 # @check_chat_state
 # @check_function_state_decorator('Функция для обработки локации')
+# @track_usage('Функция для обработки локации')  # Добавление отслеживания статистики
+# #@log_user_actions
 # def handle_location(message):
 #     global selected_category, selected_location, user_locations
 #     latitude = message.location.latitude
@@ -6676,6 +6762,7 @@ def save_location_data(location_data):
     with open(os.path.join(folder_path, "location_data.json"), "w") as json_file:
         json.dump(location_data, json_file, indent=4)
 
+
 def load_location_data():
     try:
         with open(os.path.join("data base/findtransport", "location_data.json"), "r") as file:
@@ -6694,6 +6781,7 @@ location_data = load_location_data()
 @check_chat_state
 @check_function_state_decorator('Найти транспорт')
 @track_usage('Найти транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def start_transport_search(message):
 
     global location_data
@@ -6713,6 +6801,7 @@ def start_transport_search(message):
         start_new_transport_search(message)
 
 # Функция для начала нового поиска транспорта
+#@log_user_actions
 def start_new_transport_search(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -6724,6 +6813,7 @@ def start_new_transport_search(message):
     request_transport_location(message)
 
 # Функция для запроса геопозиции транспорта
+#@log_user_actions
 def request_transport_location(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
@@ -6735,6 +6825,7 @@ def request_transport_location(message):
     bot.register_next_step_handler(message, handle_car_location)
 
 # Обработка ответа на предложение продолжить или начать заново
+#@log_user_actions
 def continue_or_restart(message):
     if message.text == "Продолжить":
         # После продолжения вернем кнопки для отправки геопозиции
@@ -6745,6 +6836,7 @@ def continue_or_restart(message):
         return_to_menu(message)
 
 # Функция для запроса геопозиции пользователя
+#@log_user_actions
 def request_user_location(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
@@ -6761,6 +6853,8 @@ def request_user_location(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Функция для обработки локации')
+@track_usage('Функция для обработки локации')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
@@ -6812,15 +6906,17 @@ def handle_car_location(message):
             handle_location_error(message)
 
 # Функция обработки ошибки при получении геопозиции
+#@log_user_actions
 def handle_location_error(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию. Попробуйте еще раз.")
+    bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию. Попробуйте еще раз")
     bot.register_next_step_handler(message, handle_car_location)
 
 # Отправка карты с маршрутом
+#@log_user_actions
 def send_map_link(chat_id, start_location, end_location):
     map_url = f"https://yandex.ru/maps/?rtext={end_location['latitude']},{end_location['longitude']}~{start_location['latitude']},{start_location['longitude']}&rtt=pd"
     short_url = shorten_url(map_url)
@@ -6830,6 +6926,7 @@ def send_map_link(chat_id, start_location, end_location):
 
 ALLOWED_LETTERS = "АВЕКМНОРСТУХABEKMHOPCTYX"  # Допустимые буквы для российских госномеров
 
+#@log_user_actions
 def is_valid_car_number(car_number):
     """
     Проверяет, соответствует ли введенный госномер формату:
@@ -6845,6 +6942,7 @@ def is_valid_car_number(car_number):
 @check_chat_state
 @check_function_state_decorator('Код региона')
 @track_usage('Код региона')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_start4(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6857,6 +6955,7 @@ def handle_start4(message):
     )
     bot.register_next_step_handler(message, process_input)
 
+#@log_user_actions
 def process_input(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -6912,6 +7011,7 @@ def process_input(message):
     bot.send_message(message.chat.id, "Вы можете ввести еще или выйти в главное меню")
     bot.register_next_step_handler(message, handle_action_after_response)
 
+#@log_user_actions
 def handle_action_after_response(message):
     if message.text == "Ввести еще":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6953,6 +7053,7 @@ user_data = {}
 @check_chat_state
 @check_function_state_decorator('Погода')
 @track_usage('Погода')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_start_5(message):
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6972,6 +7073,8 @@ def handle_start_5(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Функция для обработки локации')
+@track_usage('Функция для обработки локации')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_location_5(message):
     try:
         if message.location:
@@ -7051,6 +7154,7 @@ def load_user_locations():
 
 import traceback
 
+#@log_user_actions
 def get_city_name(latitude, longitude):
     try:
         geocode_url = "https://eu1.locationiq.com/v1/reverse.php"
@@ -7074,6 +7178,7 @@ def get_city_name(latitude, longitude):
         print(f"Произошла ошибка при запросе названия города: {e}")
         return None
 
+#@log_user_actions
 def get_current_weather(coords):
     try:
         # Получаем название города
@@ -7125,6 +7230,7 @@ def get_current_weather(coords):
         traceback.print_exc()
     return None
 
+#@log_user_actions
 def get_average_fuel_prices(city_code):
     fuel_prices = {}
     file_path = f'data base/azs/{city_code}_table_azs_data.json'
@@ -7177,7 +7283,7 @@ def load_city_names(file_path):
     
     return city_names
 
-
+#@log_user_actions
 def send_weather_notifications():
     user_locations = load_user_locations()
     city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
@@ -7220,6 +7326,12 @@ schedule.every().day.at("20:00").do(send_weather_notifications)
 @check_function_state_decorator('Неделя')
 @check_function_state_decorator('Месяц')
 @check_function_state_decorator('Другое место')
+@track_usage('Сегодня')
+@track_usage('Завтра')
+@track_usage('Неделя')
+@track_usage('Месяц')
+@track_usage('Другое место')
+#@log_user_actions
 def handle_period_5(message):
     period = message.text.lower()
     chat_id = message.chat.id
@@ -7249,6 +7361,7 @@ def handle_period_5(message):
         elif period == 'месяц':
             send_forecast_monthly(chat_id, coords, FORECAST_URL, 31)
 
+#@log_user_actions
 def send_weather(chat_id, coords, url):
     try:
         # Запрос текущей погоды
@@ -7290,6 +7403,7 @@ def send_weather(chat_id, coords, url):
         traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе текущей погоды. Попробуйте позже")
 
+#@log_user_actions
 def send_forecast_remaining_day(chat_id, coords, url):
     try:
         params = {
@@ -7345,6 +7459,7 @@ def send_forecast_remaining_day(chat_id, coords, url):
 
 # (15.6) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПЕРЕВОДА) ---------------
 
+#@log_user_actions
 def translate_weather_description(english_description):
     translation_dict = {
         'clear sky': 'ясное небо',
@@ -7367,6 +7482,7 @@ def translate_weather_description(english_description):
 
 # (15.7) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ОТПРАВКИ ПРОГНОЗА) ---------------
 
+#@log_user_actions
 def send_forecast(chat_id, coords, url, days=1):
     try:
         params = {
@@ -7415,6 +7531,7 @@ def send_forecast(chat_id, coords, url, days=1):
 # (15.8) --------------- КОД ДЛЯ "ПОГОДЫ" (ФУНКЦИЯ ПОГОДЫ НА ЗАВТРА) ---------------
 
 # ---------- ПРОГНОЗ НА ЗАВТРА -----------
+#@log_user_actions
 def send_forecast_daily(chat_id, coords, url, days_ahead):
     try:
         params = {
@@ -7457,6 +7574,7 @@ def send_forecast_daily(chat_id, coords, url, days_ahead):
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на завтра. Попробуйте позже")
 
 # Функция для отправки почасового прогноза на завтра
+#@log_user_actions
 def send_hourly_forecast_tomorrow(chat_id, coords, url):
     try:
         params = {
@@ -7518,6 +7636,7 @@ def send_hourly_forecast_tomorrow(chat_id, coords, url):
 from datetime import datetime, timedelta
 from collections import defaultdict
 
+#@log_user_actions
 def send_forecast_weekly(chat_id, coords, url, retries=3):
     try:
         params = {
@@ -7599,6 +7718,7 @@ import requests
 from datetime import datetime, timedelta
 import traceback
 
+#@log_user_actions
 def send_forecast_monthly(chat_id, coords, url, days=31):
     try:
         params = {
@@ -7691,6 +7811,7 @@ def save_citys_users_data():
 load_citys_users_data()
 
 # Функция для создания имени файла на основе города и даты
+#@log_user_actions
 def create_filename(city_code, date):
     date_str = date.strftime('%d_%m_%Y')
     return f"{city_code}_table_azs_data_{date_str}.json"
@@ -7733,6 +7854,7 @@ def load_cities():
 cities_dict = load_cities()
 
 # Функция для получения кода города на английском по его названию на русском
+#@log_user_actions
 def get_city_code(city_name):
     # Здесь не нужно дополнительно приводить к нижнему регистру, так как он уже приведен в load_cities
     return cities_dict.get(city_name.lower())  # Приводим введённое название города к нижнему регистру
@@ -7742,7 +7864,9 @@ def get_city_code(city_name):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_function_state_decorator('Цены на топливо')
 @track_usage('Цены на топливо')  # Добавление отслеживания статистики
+#@log_user_actions
 def fuel_prices_command(message):
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
@@ -7768,6 +7892,7 @@ def fuel_prices_command(message):
     bot.register_next_step_handler(message, process_city_selection)
 
 # Обработчик выбора города
+#@log_user_actions
 def process_city_selection(message):
     chat_id = message.chat.id
     str_chat_id = str(chat_id)
@@ -7811,7 +7936,7 @@ def process_city_selection(message):
         site_type = "default_site_type"  # Определите значение site_type
         show_fuel_price_menu(chat_id, city_code, site_type)
     else:
-        bot.send_message(chat_id, "Город не найден. Пожалуйста, попробуйте еще раз.")
+        bot.send_message(chat_id, "Город не найден. Пожалуйста, Попробуйте еще раз")
 
         # Создаем клавиатуру
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)  # row_width=3 — города в строку
@@ -7830,6 +7955,7 @@ def process_city_selection(message):
         bot.register_next_step_handler(message, process_city_selection)
 
 # Функция для обновления списка последних городов
+#@log_user_actions
 def update_recent_cities(chat_id, city_name):
     # Убедитесь, что данные о пользователе существуют
     if chat_id not in user_data:
@@ -7856,6 +7982,7 @@ def update_recent_cities(chat_id, city_name):
 fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
 
 # Функция для создания клавиатуры с типами топлива
+#@log_user_actions
 def show_fuel_price_menu(chat_id, city_code, site_type):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 
@@ -8062,6 +8189,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         show_fuel_price_menu(chat_id, city_code, site_type)
 
 # Обработчик следующих действий (посмотреть другое топливо или выбрать другой город)
+#@log_user_actions
 def process_next_action(message):
     chat_id = message.chat.id
     text = message.text.strip().lower()
@@ -8095,6 +8223,7 @@ def process_next_action(message):
         bot.register_next_step_handler(message, process_next_action)
 
 # Функция для обработки данных по всем видам топлива и их сохранения
+#@log_user_actions
 def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel_types):
     today = datetime.now().date()
     saved_data = load_saved_data(city_code)
@@ -8166,6 +8295,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
     return remove_duplicate_prices(filtered_prices)
 
 # Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
+#@log_user_actions
 def remove_duplicate_prices(fuel_prices):
     unique_prices = {}
     for brand, fuel_type, price in fuel_prices:
@@ -8176,6 +8306,7 @@ def remove_duplicate_prices(fuel_prices):
     return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
 
 # Функция для парсинга данных с сайта
+#@log_user_actions
 def get_fuel_prices_from_site(selected_fuel_type, city_code, site_type):
     if site_type == "azcprice":
         print(f"Парсинг данных с сайта AZCPRICE для города {city_code}")
@@ -8251,6 +8382,7 @@ def get_fuel_prices_from_site(selected_fuel_type, city_code, site_type):
 # __________________________________________________ЕСЛИ САЙТ НЕ РАБОТАЕТ (ЗАКОМЕНТИРОВАНО)__________________________________________________
 
 # # Функция для парсинга данных с сайта
+# #@log_user_actions
 # def get_fuel_prices_from_site(selected_fuel_type, city_code, site_type):
 #     if site_type == "azcprice":
 #         print(f"Парсинг данных с сайта AZCPRICE для города {city_code}")
@@ -8299,11 +8431,13 @@ def get_fuel_prices_from_site(selected_fuel_type, city_code, site_type):
 #         raise ValueError("Неизвестный тип сайта")
 
 # Функция для очистки цены
+#@log_user_actions
 def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
     return cleaned_price
 
 # Функция для проверки обновления и парсинга данных
+#@log_user_actions
 def parse_fuel_prices():
     cities_to_parse = os.listdir(os.path.join('data base', 'azs'))  # Список городов для парсинга
     for city_code in cities_to_parse:
@@ -8362,6 +8496,7 @@ def parse_fuel_prices():
 # load_citys_users_data()
 
 # # Функция для создания имени файла на основе города и даты
+# #@log_user_actions
 # def create_filename(city_code, date):
 #     date_str = date.strftime('%d_%m_%Y')
 #     city_info = cities_dict.get(city_code.lower())
@@ -8454,6 +8589,7 @@ def parse_fuel_prices():
 
 
 # # Функция для получения кода города на английском по его названию на русском
+# #@log_user_actions
 # def get_city_code(region_name):
 #     region_name_lower = region_name.lower()  # Приводим ввод пользователя к нижнему регистру
 #     city_info = cities_dict.get(region_name_lower)
@@ -8487,7 +8623,9 @@ def parse_fuel_prices():
 # @restricted
 # @track_user_activity
 # @check_chat_state
+# @check_function_state_decorator('Цены на топливо')
 # @track_usage('Цены на топливо')  # Добавление отслеживания статистики
+# #@log_user_actions
 # def fuel_prices_command(message):
 #     chat_id = message.chat.id
 #     load_citys_users_data()  # Загружаем данные перед использованием
@@ -8513,6 +8651,7 @@ def parse_fuel_prices():
 #     bot.register_next_step_handler(message, process_city_selection)
 
 # # Обработчик выбора города
+# #@log_user_actions
 # def process_city_selection(message):
 #     chat_id = message.chat.id
 #     str_chat_id = str(chat_id)
@@ -8559,7 +8698,7 @@ def parse_fuel_prices():
 #         # Показываем меню с ценами на топливо
 #         show_fuel_price_menu(chat_id, city_code, site_type)
 #     else:
-#         bot.send_message(chat_id, "Регион не найден. Пожалуйста, попробуйте еще раз.")
+#         bot.send_message(chat_id, "Регион не найден. Пожалуйста, Попробуйте еще раз")
 
 #         # Создаем клавиатуру
 #         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)  # row_width=3 — регионы в строку
@@ -8579,6 +8718,7 @@ def parse_fuel_prices():
 
 
 # # Функция для обновления списка последних городов
+# #@log_user_actions
 # def update_recent_cities(chat_id, region_name):
 #     # Убедитесь, что данные о пользователе существуют
 #     if chat_id not in user_data:
@@ -8605,6 +8745,7 @@ def parse_fuel_prices():
 # fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
 
 # # Функция для создания клавиатуры с типами топлива
+# #@log_user_actions
 # def show_fuel_price_menu(chat_id, city_code, site_type):
 #     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 
@@ -8618,6 +8759,7 @@ def parse_fuel_prices():
 #     bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
 
 # # Обработчик выбора топлива
+# #@log_user_actions
 # def process_fuel_price_selection(message, city_code, site_type):
 #     chat_id = message.chat.id
 
@@ -8725,6 +8867,7 @@ def parse_fuel_prices():
 #         show_fuel_price_menu(chat_id, city_code, site_type)
 
 # # Обработчик следующих действий (посмотреть другое топливо или выбрать другой город)
+# #@log_user_actions
 # def process_next_action(message):
 #     chat_id = message.chat.id
 #     text = message.text.strip().lower()
@@ -8758,6 +8901,7 @@ def parse_fuel_prices():
 #         bot.register_next_step_handler(message, process_next_action)
 
 # # Функция для обработки данных по всем видам топлива и их сохранения
+# #@log_user_actions
 # def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel_types):
 #     print(f"Обработка данных для city_code: {city_code}")
 #     city_info = None
@@ -8833,9 +8977,8 @@ def parse_fuel_prices():
 #     return remove_duplicate_prices(filtered_prices)
 
 
-
-
 # # Обновлённая функция для удаления дублирующихся цен для каждой АЗС и каждого типа топлива
+# #@log_user_actions
 # def remove_duplicate_prices(fuel_prices):
 #     unique_prices = {}
 #     for brand, fuel_type, price in fuel_prices:
@@ -8846,6 +8989,7 @@ def parse_fuel_prices():
 #     return [(brand, fuel_type, price) for (brand, fuel_type), price in unique_prices.items()]
 
 # # Функция для парсинга данных с сайта
+# #@log_user_actions
 # def get_fuel_prices_from_site(city_code, site_type):
 #     if site_type == 'region':
 #         base_url = f'https://russiabase.ru/prices?region={city_code}&page='
@@ -8916,13 +9060,14 @@ def parse_fuel_prices():
 # #     print(f"Ошибка: {e}")
 
 
-
 # # Функция для очистки цены
+# #@log_user_actions
 # def clean_price(price):
 #     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
 #     return cleaned_price
 
 # # Функция для проверки обновления и парсинга данных
+# #@log_user_actions
 # def parse_fuel_prices():
 #     cities_to_parse = os.listdir(os.path.join('data base', 'azs'))  # Список городов для парсинга
 #     for city_code in cities_to_parse:
@@ -9018,6 +9163,8 @@ load_all_transport()
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Ваш транспорт')
+@track_usage('Ваш транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def manage_transport(message):
     user_id = str(message.chat.id)
     
@@ -9034,6 +9181,7 @@ def manage_transport(message):
     bot.send_message(user_id, "Выберите действие для транспорта:", reply_markup=keyboard)
 
 # Функция для проверки наличия мультимедийных файлов
+#@log_user_actions
 def check_media(message, user_id, next_step_handler=None, *args):
     if (message.photo or message.video or message.document or message.animation or 
         message.sticker or message.location or message.audio or 
@@ -9045,6 +9193,7 @@ def check_media(message, user_id, next_step_handler=None, *args):
     return False
 
 # Функция для создания новой клавиатуры
+#@log_user_actions
 def create_transport_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     item_main_menu = types.KeyboardButton("В главное меню")
@@ -9058,16 +9207,20 @@ def create_transport_keyboard():
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Добавить транспорт')
+@track_usage('Добавить транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def add_transport(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id): return
     bot.send_message(user_id, "Введите марку транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_brand)
 
+#@log_user_actions
 def format_brand_model(text):
     """Приводит марку и модель к формату 'Первое слово с большой буквы, остальное с маленькой'."""
     return " ".join(word.capitalize() for word in text.split())
 
+#@log_user_actions
 def process_brand(message):
     user_id = str(message.chat.id)
     if check_media(message, user_id, process_brand): return
@@ -9085,6 +9238,7 @@ def process_brand(message):
     bot.send_message(user_id, "Введите модель транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_model, brand)
 
+#@log_user_actions
 def process_model(message, brand):
     user_id = str(message.chat.id)
     if check_media(message, user_id, process_model, brand): return
@@ -9102,6 +9256,7 @@ def process_model(message, brand):
     bot.send_message(user_id, "Введите год транспорта:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_year, brand, model)
 
+#@log_user_actions
 def process_year(message, brand, model):
     user_id = str(message.chat.id)
     if check_media(message, user_id, process_year, brand, model): return
@@ -9127,6 +9282,7 @@ def process_year(message, brand, model):
     bot.send_message(user_id, "Введите госномер:", reply_markup=create_transport_keyboard())
     bot.register_next_step_handler(message, process_license_plate, brand, model, year)
 
+#@log_user_actions
 def process_license_plate(message, brand, model, year):
     user_id = str(message.chat.id)
     if check_media(message, user_id, process_license_plate, brand, model, year): 
@@ -9169,6 +9325,7 @@ def process_license_plate(message, brand, model, year):
     # Переход в меню "Ваш транспорт"
     manage_transport(message)
 
+#@log_user_actions
 def delete_expenses_related_to_transport(user_id, transport, selected_transport=""):
     expenses_data = load_expense_data(user_id)
     if user_id in expenses_data:
@@ -9183,6 +9340,7 @@ def delete_expenses_related_to_transport(user_id, transport, selected_transport=
         expenses_data[user_id]['expenses'] = updated_expenses
         save_expense_data(user_id, expenses_data, selected_transport)
 
+#@log_user_actions
 def delete_repairs_related_to_transport(user_id, transport):
     repair_data = load_repair_data(user_id)
     if user_id in repair_data:
@@ -9203,6 +9361,8 @@ def delete_repairs_related_to_transport(user_id, transport):
 # @track_user_activity
 # @check_chat_state
 # @check_function_state_decorator('Изменить транспорт')
+# @track_usage('Изменить транспорт')  # Добавление отслеживания статистики
+# #@log_user_actions
 # def edit_transport(message):
 #     user_id = str(message.chat.id)
 #     if user_id not in user_transport or not user_transport[user_id]:
@@ -9215,6 +9375,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 #     bot.send_message(user_id, f"Выберите номер транспорта для изменения:\n\n{response}", reply_markup=create_transport_keyboard())
 #     bot.register_next_step_handler(message, select_transport_for_editing)
 
+# #@log_user_actions
 # def select_transport_for_editing(message):
 #     user_id = str(message.chat.id)
 #     try:
@@ -9228,6 +9389,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 #         bot.send_message(user_id, "Ошибка! Введите корректный номер транспорта.", reply_markup=create_transport_keyboard())
 #         bot.register_next_step_handler(message, select_transport_for_editing)
 
+# #@log_user_actions
 # def edit_transport_field(message, index):
 #     user_id = str(message.chat.id)
 #     field = message.text.lower()
@@ -9240,6 +9402,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 #     bot.send_message(user_id, f"Введите новое значение для поля '{field.capitalize()}':", reply_markup=create_transport_keyboard())
 #     bot.register_next_step_handler(message, update_transport_field, index, valid_fields[field])
 
+# #@log_user_actions
 # def update_transport_field(message, index, field):
 #     user_id = str(message.chat.id)
 #     new_value = message.text.strip()
@@ -9283,6 +9446,7 @@ def delete_repairs_related_to_transport(user_id, transport):
 #     # Обновление данных о тратах и ремонтах
 #     update_expense_repair_data(user_id, user_transport[user_id][index])
 
+# #@log_user_actions
 # def update_expense_repair_data(user_id, updated_transport):
 #     # Обновляем данные в расходах
 #     expense_data = load_expense_data(user_id)
@@ -9303,6 +9467,8 @@ def delete_repairs_related_to_transport(user_id, transport):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить транспорт')
+@track_usage('Удалить транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -9325,6 +9491,7 @@ def delete_transport(message):
     else:
         bot.send_message(user_id, "У вас нет добавленного транспорта!")
 
+#@log_user_actions
 def process_transport_selection(message):
     user_id = str(message.chat.id)
     selected_transport = message.text.strip()
@@ -9366,6 +9533,7 @@ def process_transport_selection(message):
     else:
         bot.send_message(user_id, "У вас нет добавленного транспорта!")
 
+#@log_user_actions
 def process_confirmation(message, transport_to_delete):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
@@ -9398,6 +9566,7 @@ def process_confirmation(message, transport_to_delete):
         bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
         bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
 
+#@log_user_actions
 def process_delete_all_confirmation(message):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
@@ -9434,6 +9603,7 @@ def process_delete_all_confirmation(message):
         bot.register_next_step_handler(message, process_delete_all_confirmation)
 
 # Функция для создания клавиатуры с кнопками возврата
+#@log_user_actions
 def get_return_menu_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     item_main_menu = types.KeyboardButton("В главное меню")
@@ -9447,6 +9617,8 @@ def get_return_menu_keyboard():
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить весь транспорт')
+@track_usage('Удалить весь транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -9463,6 +9635,7 @@ def delete_all_transports(message):
     else:
         bot.send_message(user_id, "У вас нет добавленного транспорта!")
 
+#@log_user_actions
 def process_delete_all_confirmation(message):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
@@ -9503,6 +9676,8 @@ def process_delete_all_confirmation(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть транспорт')
+@track_usage('Посмотреть транспорт')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
@@ -9527,6 +9702,7 @@ def view_transport(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Вернуться в ваш транспорт')
+#@log_user_actions
 def return_to_transport_menu(message):
     manage_transport(message)  # Возвращаем пользователя в меню транспорта
 
@@ -9564,6 +9740,7 @@ user_tracking = {}
 @check_chat_state
 @check_function_state_decorator('Анти-радар')
 @track_usage('Анти-радар')  # Добавление отслеживания статистики
+#@log_user_actions
 def start_antiradar(message):
     user_id = message.chat.id
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False}
@@ -9589,6 +9766,8 @@ def start_antiradar(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Функция для обработки локации')
+@track_usage('Функция для обработки локации')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_antiradar_location(message):
     user_id = message.chat.id
     
@@ -9618,6 +9797,8 @@ def handle_antiradar_location(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Выключить анти-радар')
+@track_usage('Выключить анти-радар')  # Добавление отслеживания статистики
+#@log_user_actions
 def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
@@ -9648,6 +9829,7 @@ EXIT_DISTANCE = 50  # Расстояние для уведомления о вы
 IN_ZONE_DISTANCE = 15  # Расстояние, при котором показывается сообщение "в зоне камеры"
 
 def track_user_location(user_id, initial_location):
+    #@log_user_actions
     def monitor():
         while user_tracking.get(user_id, {}).get('tracking', False):
             user_location = user_tracking[user_id]['location']
@@ -9770,6 +9952,7 @@ def save_data(data):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Вернуться в меню напоминаний')
+#@log_user_actions
 def return_to_reminders_menu(message):
     reminders_menu(message)
 
@@ -9779,6 +9962,7 @@ def return_to_reminders_menu(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('В главное меню')
+#@log_user_actions
 def return_to_main_menu(message):
     start(message)
 
@@ -9832,6 +10016,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @check_chat_state
 @check_function_state_decorator('Напоминания')
 @track_usage('Напоминания')
+#@log_user_actions
 def reminders_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Добавить напоминание', 'Посмотреть напоминания', 'Удалить напоминание')
@@ -9844,6 +10029,8 @@ def reminders_menu(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Добавить напоминание')
+@track_usage('Добавить напоминание')  # Добавление отслеживания статистики
+#@log_user_actions
 def add_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -9851,6 +10038,7 @@ def add_reminder(message):
     msg = bot.send_message(message.chat.id, "Введите название напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_title_step)
 
+#@log_user_actions
 def process_title_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -9883,6 +10071,7 @@ def process_title_step(message):
     msg = bot.send_message(message.chat.id, "Выберите тип напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_type_step)
 
+#@log_user_actions
 def process_type_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -9917,6 +10106,7 @@ def process_type_step(message):
     msg = bot.send_message(message.chat.id, "Введите дату напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_date_step_for_repairs)
 
+#@log_user_actions
 def process_date_step_for_repairs(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -9966,6 +10156,7 @@ def process_date_step_for_repairs(message):
     msg = bot.send_message(message.chat.id, "Введите время напоминания:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_time_step)
 
+#@log_user_actions
 def process_time_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10024,6 +10215,8 @@ def process_time_step(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть напоминания')
+@track_usage('Посмотреть напоминания')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Активные', 'Истекшие')
@@ -10037,6 +10230,8 @@ def view_reminders(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Активные')
+@track_usage('Активные')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (активные)', 'Ежедневно (активные)')
@@ -10051,6 +10246,8 @@ def view_active_reminders(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Истекшие')
+@track_usage('Истекшие')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Один раз (истекшие)', 'Ежедневно (истекшие)')
@@ -10065,6 +10262,15 @@ def view_expired_reminders(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_function_state_decorator('Один раз (активные)')
+@check_function_state_decorator('Ежедневно (активные)')
+@check_function_state_decorator('Еженедельно (активные)')
+@check_function_state_decorator('Ежемесячно (активные)')
+@track_usage('Один раз (активные)')
+@track_usage('Ежедневно (активные)')
+@track_usage('Еженедельно (активные)')
+@track_usage('Ежемесячно (активные)')
+#@log_user_actions
 def view_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10110,6 +10316,15 @@ def view_active_reminders_by_type(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_function_state_decorator('Один раз (истекшие)')
+@check_function_state_decorator('Ежедневно (истекшие)')
+@check_function_state_decorator('Еженедельно (истекшие)')
+@check_function_state_decorator('Ежемесячно (истекшие)')
+@track_usage('Один раз (истекшие)')
+@track_usage('Ежедневно (истекшие)')
+@track_usage('Еженедельно (истекшие)')
+@track_usage('Ежемесячно (истекшие)')
+#@log_user_actions
 def view_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10146,6 +10361,8 @@ def view_expired_reminders_by_type(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить напоминание')
+@track_usage('Удалить напоминание')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Del Активные', 'Del Истекшие')
@@ -10159,7 +10376,9 @@ def delete_reminder(message):
 @restricted
 @track_user_activity
 @check_chat_state
-#@check_function_state_decorator('Del Активные')
+@check_function_state_decorator('Del Активные')
+@track_usage('Del Активные')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_active_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (активные)', 'Del Ежедневно (активные)')
@@ -10173,7 +10392,9 @@ def delete_active_reminders(message):
 @restricted
 @track_user_activity
 @check_chat_state
-#@check_function_state_decorator('Del Истекшие')
+@check_function_state_decorator('Del Истекшие')
+@track_usage('Del Истекшие')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_expired_reminders(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Del Один раз (истекшие)', 'Del Ежедневно (истекшие)')
@@ -10187,6 +10408,15 @@ def delete_expired_reminders(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_function_state_decorator('Del Один раз (активные)')
+@check_function_state_decorator('Del Ежедневно (активные)')
+@check_function_state_decorator('Del Еженедельно (активные)')
+@check_function_state_decorator('Del Ежемесячно (активные)')
+@track_usage('Del Один раз (активные)')
+@track_usage('Del Ежедневно (активные)')
+@track_usage('Del Еженедельно (активные)')
+@track_usage('Del Ежемесячно (активные)')
+#@log_user_actions
 def delete_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10235,6 +10465,15 @@ def delete_active_reminders_by_type(message):
 @restricted
 @track_user_activity
 @check_chat_state
+@check_function_state_decorator('Del Один раз (истекшие)')
+@check_function_state_decorator('Del Ежедневно (истекшие)')
+@check_function_state_decorator('Del Еженедельно (истекшие)')
+@check_function_state_decorator('Del Ежемесячно (истекшие)')
+@track_usage('Del Один раз (истекшие)')
+@track_usage('Del Ежедневно (истекшие)')
+@track_usage('Del Еженедельно (истекшие)')
+@track_usage('Del Ежемесячно (истекшие)')
+#@log_user_actions
 def delete_expired_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10278,6 +10517,7 @@ def delete_expired_reminders_by_type(message):
     bot.send_message(message.chat.id, "Введите номер для удаления напоминания:", reply_markup=markup)
     bot.register_next_step_handler(message, confirm_delete_expired_step)
 
+#@log_user_actions
 def confirm_delete_active_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10311,6 +10551,7 @@ def confirm_delete_active_step(message):
         bot.send_message(message.chat.id, "Неверный номер напоминания. Пожалуйста, введите правильный номер")
         bot.register_next_step_handler(message, confirm_delete_active_step)
 
+#@log_user_actions
 def confirm_delete_expired_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10350,6 +10591,8 @@ def confirm_delete_expired_step(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить все напоминания')
+@track_usage('Удалить все напоминания')  # Добавление отслеживания статистики
+#@log_user_actions
 def delete_all_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
@@ -10359,6 +10602,7 @@ def delete_all_reminders(message):
 
     bot.register_next_step_handler(message, confirm_delete_all_step)
 
+#@log_user_actions
 def confirm_delete_all_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -10421,6 +10665,7 @@ error_codes = load_error_codes()
 @check_chat_state
 @check_function_state_decorator('Коды OBD2')
 @track_usage('Коды OBD2')  # Добавление отслеживания статистики
+#@log_user_actions
 def obd2_request(message):
     # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -10440,6 +10685,7 @@ def obd2_request(message):
     bot.register_next_step_handler(msg, process_error_codes)
 
 # Обработка введенных кодов ошибок
+#@log_user_actions
 def process_error_codes(message):
     # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -10478,6 +10724,7 @@ def process_error_codes(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Посмотреть другие ошибки')
+#@log_user_actions
 def another_error_request(message):
     # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -10500,8 +10747,8 @@ def another_error_request(message):
 
 # (ADMIN 3) --------------------------------- " ФУНКЦИЯ "АДМИН" " ---------------------------------------------
 
-ADMIN_USERNAME = "Alex21"
-ADMIN_PASSWORD = "Lox21!"
+ADMIN_USERNAME = "EvgenyAlex21"
+ADMIN_PASSWORD = "HH1515az!"
 
 admin_sessions = set()
 
@@ -10531,7 +10778,6 @@ def load_admin_data():
         "login_password_hash": ""
     }
 
-
 def save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins=None):
     with open(ADMIN_SESSIONS_PATH, 'w', encoding='utf-8') as file:
         json.dump({
@@ -10555,9 +10801,11 @@ login_password_hash = data["login_password_hash"]
 login_password_hash = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
 
 # Функция для получения хеша
+#@log_user_actions
 def get_login_password_hash():
     return hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
 
+#@log_user_actions
 def update_login_password(chat_id, new_username=None, new_password=None):
     global admins_data, login_password_hash
 
@@ -10629,6 +10877,7 @@ def verify_login_password_hash():
 verify_login_password_hash()
 
 # Функция изменения логина и пароля
+#@log_user_actions
 def change_admin_credentials(new_username=None, new_password=None):
     global ADMIN_USERNAME, ADMIN_PASSWORD, login_password_hash
     
@@ -10650,10 +10899,11 @@ def change_admin_credentials(new_username=None, new_password=None):
     save_admin_data(admin_sessions, admins_data, login_password_hash)
 
 # Функции управления администраторами. Добавление администратора
+#@log_user_actions
 def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     admin_id = str(admin_id)
     if permissions is None:
-        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"]  # Права по умолчанию
+        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль", "Статистика", "Пользователи", "Использование функций", "Список ошибок", "Версия и аптайм"]  # Права по умолчанию
     user_data = {
         "user_id": admin_id,
         "first_name": " ",
@@ -10666,12 +10916,11 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     admins_data[admin_id] = user_data
     admin_sessions.append(admin_id)  # Добавляем в текущие сессии
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
-    bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
+    bot.send_message(admin_id, "✅ Вы стали администратором! Быстрый вход по команде /admin доступен...")
     if initiator_chat_id:
-        bot.send_message(initiator_chat_id, f"Администратор {username} - {admin_id} успешно добавлен.")
+        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
 
-
-
+#@log_user_actions
 def remove_admin(admin_id, initiator_chat_id):
     admin_id = str(admin_id)
     if admin_id in admins_data:
@@ -10688,18 +10937,19 @@ def remove_admin(admin_id, initiator_chat_id):
         save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
 
         # Отправляем сообщение удалённому администратору
-        bot.send_message(admin_id, "Вас удалили из администраторов.")
+        bot.send_message(admin_id, "🚫 Вас удалили из администраторов!")
 
         # Отправляем сообщение инициатору
-        bot.send_message(initiator_chat_id, f"Администратор {admin_username} - {admin_id} успешно удалён.")
+        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(admin_username)} - {admin_id} успешно удалён!")
     else:
         bot.send_message(initiator_chat_id, f"Администратор с ID {admin_id} не найден.")
 
-
+#@log_user_actions
 def check_permission(admin_id, permission):
     return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
 
 # Функция для получения данных о пользователе Telegram
+#@log_user_actions
 def get_user_data(message):
     user = message.from_user
     return {
@@ -10711,6 +10961,7 @@ def get_user_data(message):
     }
 
 # Функция обновления данных администратора в базе
+#@log_user_actions
 def update_admin_data(user_data):
     admin_id = str(user_data["user_id"])
     
@@ -10737,6 +10988,7 @@ def update_admin_data(user_data):
 # Функция для обработки входа в админ-панель
 @bot.message_handler(commands=['admin'])
 @check_chat_state
+#@log_user_actions
 def handle_admin_login(message):
     global credentials_changed
     user_data = get_user_data(message)
@@ -10761,7 +11013,7 @@ def handle_admin_login(message):
         if is_new_admin(admin_id):
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add('Смена данных входа')
-            bot.send_message(message.chat.id, "Вы новый администратор. Пожалуйста, смените данные входа:", reply_markup=markup)
+            bot.send_message(message.chat.id, "Вы новый администратор! Пожалуйста, смените данные входа:", reply_markup=markup)
             bot.register_next_step_handler(message, handle_change_credentials)
         else:
             # Предлагаем авторизоваться заново
@@ -10771,10 +11023,11 @@ def handle_admin_login(message):
             bot.send_message(message.chat.id, "Введите логин:", reply_markup=markup)
             bot.register_next_step_handler(message, verify_username)
 
-
+#@log_user_actions
 def is_new_admin(admin_id):
     return admins_data.get(admin_id, {}).get("is_new", False)
 
+#@log_user_actions
 def process_login_choice(message):
     global credentials_changed
     user_id = str(message.chat.id)
@@ -10789,7 +11042,7 @@ def process_login_choice(message):
             if is_new_admin(user_id):
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 markup.add('Смена данных входа')
-                bot.send_message(message.chat.id, "Вы новый администратор. Пожалуйста, смените данные входа:", reply_markup=markup)
+                bot.send_message(message.chat.id, "Вы новый администратор! Пожалуйста, смените данные входа:", reply_markup=markup)
                 bot.register_next_step_handler(message, handle_change_credentials)
             else:
                 session_data = admins_data.get(user_id, {})
@@ -10808,6 +11061,7 @@ def process_login_choice(message):
         bot.send_message(message.chat.id, "Неверный выбор. Попробуйте снова.")
         handle_admin_login(message)
 
+#@log_user_actions
 def verify_username(message):
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -10826,6 +11080,7 @@ def verify_username(message):
     bot.send_message(message.chat.id, "Введите пароль:", reply_markup=markup)
     bot.register_next_step_handler(message, verify_password, username)
 
+#@log_user_actions
 def verify_password(message, username):
     global credentials_changed
 
@@ -10851,7 +11106,8 @@ def verify_password(message, username):
         user_data = get_user_data(message)
         update_admin_data(user_data)
 
-        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
+        session_data = admins_data.get(admin_id, {})
+        bot.send_message(message.chat.id, f"Добро пожаловать в админ-панель, {session_data.get('username', 'Админ')}!")
         show_admin_panel(message)
 
         # Сбрасываем флаг изменения данных входа
@@ -10869,8 +11125,23 @@ def verify_password(message, username):
         user_data = get_user_data(message)
         update_admin_data(user_data)
 
-        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
+        session_data = admins_data.get(admin_id, {})
+        bot.send_message(message.chat.id, f"Добро пожаловать в админ-панель, {session_data.get('username', 'Админ')}!")
         show_admin_panel(message)
+
+        # Сбрасываем флаг изменения данных входа
+        credentials_changed = False
+
+    # Проверяем индивидуальный хеш
+    admin_hash = admins_data.get(admin_id, {}).get("login_password_hash_for_user_id", "")
+    if generate_login_password_hash(username, password) == admin_hash:
+        # Добавляем админа в активные сессии
+        admin_sessions.append(admin_id)
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+        # Обновляем данные администратора в базе
+        user_data = get_user_data(message)
+        update_admin_data(user_data)
 
         # Сбрасываем флаг изменения данных входа
         credentials_changed = False
@@ -10880,20 +11151,22 @@ def verify_password(message, username):
 
 # Функция выхода из админ-панели
 @bot.message_handler(func=lambda message: message.text == 'Выход' and str(message.chat.id) in admin_sessions)
+#@log_user_actions
 def admin_logout(message):
     # Админ-сессия сохраняется, просто информируем о выходе
-    bot.send_message(message.chat.id, "Вы вышли из админ-панели. Быстрый вход сохранен.")
+    bot.send_message(message.chat.id, "Вы вышли из админ-панели!\nБыстрый вход сохранен")
     return_to_menu(message)
 
 # (ADMIN 2) ---------------------------------------------- "МЕНЮ ДЛЯ АДМИН-ПАНЕЛИ" ------------------------------------------------
 
 # Показ админ-панели
+#@log_user_actions
 def show_admin_panel(message):
     admin_id = str(message.chat.id)
     if is_new_admin(admin_id):
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Смена данных входа')
-        bot.send_message(message.chat.id, "Вы новый администратор. Пожалуйста, смените данные входа:", reply_markup=markup)
+        bot.send_message(message.chat.id, "Вы новый администратор! Пожалуйста, смените данные входа:", reply_markup=markup)
         bot.register_next_step_handler(message, handle_change_credentials)
     else:
         markup = types.ReplyKeyboardMarkup(row_width=3)
@@ -10905,6 +11178,7 @@ def show_admin_panel(message):
 
 # Обработчик для кнопки "В меню админ-панели"
 @bot.message_handler(func=lambda message: message.text == 'В меню админ-панели')
+#@log_user_actions
 def handle_return_to_admin_panel(message):
     show_admin_panel(message)
 
@@ -10912,6 +11186,7 @@ def handle_return_to_admin_panel(message):
 # (ADMIN 3) --------------------------------- " ФУНКЦИЯ "АДМИН" " --------------------------------------------- 
 
 # Функция для получения идентификатора корневого администратора
+#@log_user_actions
 def get_root_admin_id():
     if admins_data:
         # Возвращаем первый ключ из словаря admins_data
@@ -10919,10 +11194,11 @@ def get_root_admin_id():
     return None
 
 # Функция для проверки, является ли пользователь корневым администратором
+#@log_user_actions
 def is_root_admin(admin_id):
     return admin_id == get_root_admin_id()
 
-
+#@log_user_actions
 def check_permission(admin_id, permission):
     if is_root_admin(admin_id):
         return True  # Корневой администратор имеет доступ ко всем функциям
@@ -10930,6 +11206,7 @@ def check_permission(admin_id, permission):
 
 
 # Функция для проверки логина на соответствие требованиям
+#@log_user_actions
 def is_valid_username(username):
     if len(username) < 3:
         return False, "Логин должен содержать не менее 3 символов."
@@ -10942,6 +11219,7 @@ def is_valid_username(username):
     return True, ""
 
 # Функция для проверки пароля на соответствие требованиям
+#@log_user_actions
 def is_valid_password(password):
     if len(password) < 8:
         return False, "Пароль должен содержать не менее 8 символов."
@@ -10955,12 +11233,13 @@ def is_valid_password(password):
         return False, "Пароль должен содержать хотя бы один специальный символ."
     return True, ""
 
-@bot.message_handler(func=lambda message: message.text == 'Админ')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Админ' and check_admin_access(message))
 def show_settings_menu(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Админ'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
@@ -10970,10 +11249,12 @@ def show_settings_menu(message):
     bot.send_message(message.chat.id, "Выберите настройку:", reply_markup=markup)
 
 # Функция для генерации хеша логина и пароля
+#@log_user_actions
 def generate_login_password_hash(username, password):
     return hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
 
 # Функция для изменения данных входа для конкретного admin_id
+#@log_user_actions
 def update_admin_login_credentials(message, admin_id, new_username=None, new_password=None):
     global credentials_changed
     admin_id = str(admin_id)
@@ -10997,25 +11278,26 @@ def update_admin_login_credentials(message, admin_id, new_username=None, new_pas
     admins_data[admin_id]["login_password_hash_for_user_id"] = current_password_hash
     admins_data[admin_id]["is_new"] = False  # Сбрасываем флаг нового администратора
     save_admin_data(admin_sessions, admins_data, login_password_hash)
-    bot.send_message(admin_id, "Данные входа успешно обновлены.")
+    bot.send_message(admin_id, "Данные входа успешно обновлены!")
 
     # Устанавливаем флаг изменения данных входа
     credentials_changed = True
 
     # Перенаправляем админа в главное меню и просим авторизоваться заново
-    bot.send_message(admin_id, "Данные входа изменены. Пожалуйста, авторизуйтесь заново, используя команду /admin.")
+    bot.send_message(admin_id, "Данные входа изменены!\n\nПожалуйста, авторизуйтесь заново, используя команду /admin")
     return_to_menu(message)
 
 
 # Обработчики смены логина и пароля
-@bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and str(message.chat.id) in admin_sessions)
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Смена данных входа' and check_admin_access(message))
 def handle_change_credentials(message):
     global credentials_changed
     admin_id = str(message.chat.id)
     admin_data = admins_data.get(admin_id, {})
 
     if not check_permission(admin_id, 'Смена данных входа'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     # Проверка, есть ли у админа логин и пароль
@@ -11028,17 +11310,19 @@ def handle_change_credentials(message):
     bot.send_message(message.chat.id, "Выберите, что хотите изменить:", reply_markup=markup)
 
 
-@bot.message_handler(func=lambda message: message.text == 'Сменить пароль')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Сменить пароль' and check_admin_access(message))
 def handle_change_password(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Сменить пароль'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
     password_requirements = (
-        "Введите новый пароль 🔒\n\n"
+        "🔒 Введите новый пароль\n\n"
         "Требования к паролю:\n"
         "- 🔢 Не менее 8 символов\n"
         "- 🔡 Хотя бы одна заглавная буква\n"
@@ -11049,6 +11333,7 @@ def handle_change_password(message):
     bot.send_message(message.chat.id, password_requirements, reply_markup=markup)
     bot.register_next_step_handler(message, process_new_password)
 
+#@log_user_actions
 def is_password_unique(new_password):
     # Проверяем, используется ли новый пароль в данный момент
     for admin_data in admins_data.values():
@@ -11058,6 +11343,7 @@ def is_password_unique(new_password):
             return False
     return True
 
+#@log_user_actions
 def process_new_password(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -11082,18 +11368,29 @@ def process_new_password(message):
 
     update_admin_login_credentials(message, message.chat.id, new_password=new_password)
 
-@bot.message_handler(func=lambda message: message.text == 'Сменить логин и пароль')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Сменить логин и пароль' and check_admin_access(message))
 def handle_change_login_and_password(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Сменить логин и пароль'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите новый логин:", reply_markup=markup)
+    login_requirements = (
+        "🔒 Введите новый логин\n\n"
+        "Требования к логину:\n"
+        "- 🔢 Не менее 3 символов\n"
+        "- 🔡 Хотя бы одна заглавная буква\n"
+        "- 🔠 Хотя бы одна строчная буква\n"
+        "- 🔢 Хотя бы одна цифра"
+    )
+    bot.send_message(message.chat.id, login_requirements, reply_markup=markup)
     bot.register_next_step_handler(message, process_new_login_and_password_step1)
 
+#@log_user_actions
 def process_new_login_and_password_step1(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -11106,11 +11403,11 @@ def process_new_login_and_password_step1(message):
     new_login = message.text
     is_valid, error_message = is_valid_username(new_login)
     if not is_valid:
-        bot.send_message(message.chat.id, f"Ошибка: {error_message}. Попробуйте снова.")
+        bot.send_message(message.chat.id, f"Ошибка: {error_message}. Попробуйте снова")
         bot.register_next_step_handler(message, process_new_login_and_password_step1)
         return
     if any(admin.get("admins_username") == new_login for admin in admins_data.values()):
-        bot.send_message(message.chat.id, "Логин уже существует. Попробуйте другой.")
+        bot.send_message(message.chat.id, "Логин уже существует. Попробуйте другой")
         bot.register_next_step_handler(message, process_new_login_and_password_step1)
         return
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -11127,6 +11424,7 @@ def process_new_login_and_password_step1(message):
     bot.send_message(message.chat.id, password_requirements, reply_markup=markup)
     bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
 
+#@log_user_actions
 def process_new_login_and_password_step2(message, new_login):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
@@ -11145,17 +11443,19 @@ def process_new_login_and_password_step2(message, new_login):
         return
 
     if not is_password_unique(new_password):
-        bot.send_message(message.chat.id, "Ошибка: Этот пароль уже используется. Попробуйте другой.")
+        bot.send_message(message.chat.id, "Ошибка: Этот пароль уже используется. Попробуйте другой")
         bot.register_next_step_handler(message, process_new_login_and_password_step2, new_login)
         return
 
     update_admin_login_credentials(message, message.chat.id, new_username=new_login, new_password=new_password)
-    
+
+#@log_user_actions    
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 # Функция для отображения списка администраторов для удаления
+#@log_user_actions
 def list_admins_for_removal(message):
     admin_list = []
     for admin_id, data in admins_data.items():
@@ -11171,8 +11471,9 @@ def list_admins_for_removal(message):
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для удаления (через запятую):", reply_markup=markup)
+    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для удаления:", reply_markup=markup)
 
+#@log_user_actions
 def list_removed_admins(message):
     removed_admin_list = []
     for admin_id, data in removed_admins.items():
@@ -11188,12 +11489,13 @@ def list_removed_admins(message):
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для добавления (через запятую):", reply_markup=markup)
+    bot.send_message(message.chat.id, "Введите номера, ID или username администраторов для добавления:", reply_markup=markup)
 
+#@log_user_actions
 def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     admin_id = str(admin_id)
     if permissions is None:
-        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"]  # Права по умолчанию
+        permissions = ["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль", "Статистика", "Пользователи", "Использование функций", "Список ошибок", "Версия и аптайм"]  # Права по умолчанию
     user_data = {
         "user_id": admin_id,
         "first_name": " ",
@@ -11206,12 +11508,11 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
     admins_data[admin_id] = user_data
     admin_sessions.append(admin_id)  # Добавляем в текущие сессии
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
-    bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
+    bot.send_message(admin_id, "✅ Вы стали администратором! Быстрый вход по команде /admin доступен...")
     if initiator_chat_id:
-        bot.send_message(initiator_chat_id, f"Администратор {username} - {admin_id} успешно добавлен.")
+        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(username)} - `{admin_id}` успешно добавлен!", parse_mode="Markdown")
 
-
-
+#@log_user_actions
 def remove_admin(admin_id, initiator_chat_id):
     admin_id = str(admin_id)
     if admin_id in admins_data:
@@ -11228,22 +11529,24 @@ def remove_admin(admin_id, initiator_chat_id):
         save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
 
         # Отправляем сообщение удалённому администратору
-        bot.send_message(admin_id, "Вас удалили из администраторов.")
+        bot.send_message(admin_id, "🚫 Вас удалили из администраторов!")
 
         # Отправляем сообщение инициатору
-        bot.send_message(initiator_chat_id, f"Администратор {admin_username} - {admin_id} успешно удалён.")
+        bot.send_message(initiator_chat_id, f"Администратор {escape_markdown(admin_username)} - `{admin_id}` успешно удалён!", parse_mode="Markdown")
     else:
-        bot.send_message(initiator_chat_id, f"Администратор с ID {admin_id} не найден.")
+        bot.send_message(initiator_chat_id, f"Администратор с ID `{admin_id}` не найден!", parse_mode="Markdown")
 
-
+#@log_user_actions
 def check_permission(admin_id, permission):
     if is_root_admin(admin_id):
         return True  # Корневой администратор имеет доступ ко всем функциям
     return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
 
+#@log_user_actions
 def is_root_admin(admin_id):
     return admin_id == get_root_admin_id()
 
+#@log_user_actions
 def get_root_admin_id():
     if admins_data:
         # Возвращаем первый ключ из словаря admins_data
@@ -11261,17 +11564,18 @@ def load_users_data():
 # Загрузка данных из users.json
 users_data = load_users_data()
 
-@bot.message_handler(func=lambda message: message.text == 'Удалить админа' and str(message.chat.id) in admin_sessions)
+@bot.message_handler(func=lambda message: message.text == 'Удалить админа' and check_admin_access(message))
+#@log_user_actions
 def handle_remove_admin(message):
     # Проверяем, является ли текущий пользователь корневым администратором
     root_admin_id = get_root_admin_id()  # Первый ID в списке `admins_data`
     if str(message.chat.id) != root_admin_id:
-        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может удалять администраторов.")
+        bot.send_message(message.chat.id, "⛔️ Недостаточно прав! Только корневой администратор может удалять администраторов!")
         return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить админа'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     list_admins_for_removal(message)
@@ -11288,10 +11592,12 @@ def load_admin_sessions_data():
 # Загрузка данных из admin_sessions.json
 admin_sessions_data = load_admin_sessions_data()
 
+#@log_user_actions
 def process_remove_admin(message, root_admin_id, initiator_chat_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
+
     input_data = message.text.strip()
     admin_ids = []
 
@@ -11299,32 +11605,33 @@ def process_remove_admin(message, root_admin_id, initiator_chat_id):
     parts = input_data.split(',')
     for part in parts:
         part = part.strip()
-        if part.startswith('№'):
-            # Если ввод является номером из списка
-            index = int(part[1:]) - 1
+        if part.isdigit() and len(part) < 5:  # Если ввод - число меньше 5 символов, это номер из списка
+            index = int(part) - 1  # Номера в списке начинаются с 1
             if 0 <= index < len(admins_data):
                 admin_id = list(admins_data.keys())[index]
                 admin_ids.append(admin_id)
-        elif part.isdigit():
-            # Если ввод является ID
+            else:
+                bot.send_message(message.chat.id, f"Такого администратора с *номером* `{part}` не существует! Попробуйте еще раз", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
+                return
+        elif part.isdigit():  # Если ввод - это ID
             admin_id = part
-            if admin_id not in admin_sessions:  # Используем admin_sessions как список
-                bot.send_message(message.chat.id, f"Такого администратора не существует {admin_id}! Попробуйте еще раз.")
+            if admin_id not in admins_data:
+                bot.send_message(message.chat.id, f"Такого администратора с *ID* `{admin_id}` не существует! Попробуйте еще раз", parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
                 return
             admin_ids.append(admin_id)
-        else:
-            # Если ввод является username
+        else:  # Если ввод - это username
             username = part
-            user_id = next(
+            admin_id = next(
                 (user_id for user_id, data in admins_data.items() if data.get("username") == username),
                 None
             )
-            if not user_id:
-                bot.send_message(message.chat.id, f"Такого администратора не существует {username}! Попробуйте еще раз.")
+            if not admin_id:
+                bot.send_message(message.chat.id, f"Такого администратора с *username* {escape_markdown(username)} не существует! Попробуйте еще раз", parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
                 return
-            admin_ids.append(user_id)
+            admin_ids.append(admin_id)
 
     for admin_id in admin_ids:
         if str(message.chat.id) == admin_id:
@@ -11335,29 +11642,59 @@ def process_remove_admin(message, root_admin_id, initiator_chat_id):
             continue
         remove_admin(admin_id, initiator_chat_id)
 
-    show_admin_panel(message)
+    show_settings_menu(message)
 
-
-@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and str(message.chat.id) in admin_sessions)
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Добавить админа' and check_admin_access(message))
 def handle_add_admin(message):
     # Проверяем, является ли текущий пользователь корневым администратором
     root_admin_id = get_root_admin_id()  # Первый ID в списке `admins_data`
     if str(message.chat.id) != root_admin_id:
-        bot.send_message(message.chat.id, "Недостаточно прав. Только корневой администратор может добавлять администраторов.")
+        bot.send_message(message.chat.id, "⛔️ Недостаточно прав! Только корневой администратор может добавлять администраторов!")
         return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Добавить админа'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
-    list_removed_admins(message)
+    # Выводим список пользователей
+    users_data = load_users_data()
+    user_list = []
+    for user_id, data in users_data.items():
+        username = escape_markdown(data.get('username', 'Неизвестный пользователь'))
+        user_list.append(f"№{len(user_list) + 1}. {username} - `{user_id}`")
+
+    if user_list:
+        response_message = "📋 Список *пользователей*:\n\n\n" + "\n\n".join(user_list)
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    # Выводим список удалённых администраторов
+    if removed_admins:
+        removed_admin_list = []
+        for admin_id, data in removed_admins.items():
+            username = escape_markdown(data['username'])
+            removed_admin_list.append(f"№{len(removed_admin_list) + 1}. {username} - `{admin_id}`")
+
+        response_message = "📋 Список *удалённых администраторов*:\n\n" + "\n".join(removed_admin_list)
+        bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
+
+    # Сообщение для добавления
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню админ-панели')
+    bot.send_message(
+        message.chat.id,
+        "Введите номера, ID или username пользователей или удалённых администраторов для добавления:",
+        reply_markup=markup
+    )
     bot.register_next_step_handler(message, process_add_admin, root_admin_id, message.chat.id)
 
+#@log_user_actions
 def process_add_admin(message, root_admin_id, initiator_chat_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
+
     input_data = message.text.strip()
     admin_ids = []
 
@@ -11365,29 +11702,30 @@ def process_add_admin(message, root_admin_id, initiator_chat_id):
     parts = input_data.split(',')
     for part in parts:
         part = part.strip()
-        if part.startswith('№'):
-            # Если ввод является номером из списка
-            index = int(part[1:]) - 1
-            if 0 <= index < len(removed_admins):
-                admin_id = list(removed_admins.keys())[index]
-                admin_ids.append(admin_id)
-        elif part.isdigit():
-            # Если ввод является ID
-            admin_id = part
-            if admin_id not in users_data:
-                bot.send_message(message.chat.id, f"Такого пользователя не существует {admin_id}! Попробуйте еще раз.")
+        if part.isdigit() and len(part) < 5:  # Если ввод - число меньше 5 символов, это номер из списка
+            index = int(part) - 1  # Номера в списке начинаются с 1
+            if 0 <= index < len(users_data):
+                user_id = list(users_data.keys())[index]
+                admin_ids.append(user_id)
+            else:
+                bot.send_message(message.chat.id, f"Такого пользователя с *номером* `{part}` не существует! Попробуйте еще раз", parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_admin, root_admin_id, initiator_chat_id)
                 return
-            admin_ids.append(admin_id)
-        else:
-            # Если ввод является username
+        elif part.isdigit():  # Если ввод - это ID
+            user_id = part
+            if user_id not in users_data and user_id not in removed_admins:
+                bot.send_message(message.chat.id, f"Такого пользователя с *ID* `{user_id}` не существует! Попробуйте еще раз", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_add_admin, root_admin_id, initiator_chat_id)
+                return
+            admin_ids.append(user_id)
+        else:  # Если ввод - это username
             username = part
             user_id = next(
                 (user_id for user_id, data in users_data.items() if data.get("username") == username),
                 None
             )
             if not user_id:
-                bot.send_message(message.chat.id, f"Такого пользователя не существует {username}! Попробуйте еще раз.")
+                bot.send_message(message.chat.id, f"Такого пользователя с *username* {escape_markdown(username)} не существует! Попробуйте еще раз", parse_mode="Markdown")
                 bot.register_next_step_handler(message, process_add_admin, root_admin_id, initiator_chat_id)
                 return
             admin_ids.append(user_id)
@@ -11395,19 +11733,18 @@ def process_add_admin(message, root_admin_id, initiator_chat_id):
     for admin_id in admin_ids:
         if admin_id in admins_data:
             username = users_data.get(admin_id, {}).get("username", "Неизвестный пользователь")
-            bot.send_message(message.chat.id, f"Администратор с {username} - {admin_id} уже существует.")
+            bot.send_message(message.chat.id, f"Администратор с {escape_markdown(username)} - `{admin_id}` уже существует!", parse_mode="Markdown")
             continue
         username = users_data[admin_id]["username"]
-        add_admin(admin_id, username, permissions=["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль"], initiator_chat_id=initiator_chat_id)
+        add_admin(admin_id, username, permissions=["Админ", "Смена данных входа", "Сменить пароль", "Сменить логин и пароль", "Статистика", "Пользователи", "Использование функций", "Список ошибок", "Версия и аптайм"], initiator_chat_id=initiator_chat_id)
         del removed_admins[admin_id]
 
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
-    show_admin_panel(message)
-
-
+    show_settings_menu(message)
 
 
 # Функция для проверки прав доступа
+#@log_user_actions
 def check_permission(admin_id, permission):
     if is_root_admin(admin_id):
         return True  # Корневой администратор имеет доступ ко всем функциям
@@ -11422,11 +11759,13 @@ def check_permission(admin_id, permission):
     return False
 
 # Функция для экранирования специальных символов Markdown
+#@log_user_actions
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 # Функция для отображения списка администраторов
+#@log_user_actions
 def list_admins(message):
     admin_list = []
     for admin_id, data in admins_data.items():
@@ -11436,66 +11775,94 @@ def list_admins(message):
         admin_list.append(f"№{len(admin_list) + 1}. {escaped_username} - `{admin_id}`")
 
     if admin_list:
-        response_message = "📋 Список администраторов:\n\n" + "\n\n".join(admin_list)
+        response_message = "📋 Список администраторов:\n\n\n" + "\n\n".join(admin_list)
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Вернуться в админ')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите номер администратора для просмотра его прав:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Введите номер, ID или username администратора для просмотра его прав:", reply_markup=markup)
     bot.register_next_step_handler(message, process_admin_selection)
 
 # Функция для обработки выбора администратора
+#@log_user_actions
 def process_admin_selection(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_admin_selection)
         return
 
+    if message.text == "Вернуться в админ":
+        show_settings_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    try:
-        admin_number = int(message.text.strip())
-        if admin_number < 1 or admin_number > len(admins_data):
-            raise ValueError
+    input_data = message.text.strip()
 
-        admin_id = list(admins_data.keys())[admin_number - 1]
+    # Проверяем ввод: номер администратора, ID или имя пользователя
+    try:
+        if input_data.isdigit() and len(input_data) < 5:  # Если длина ID меньше 5 символов, это номер из списка
+            admin_number = int(input_data)
+            if admin_number < 1 or admin_number > len(admins_data):
+                raise ValueError
+            admin_id = list(admins_data.keys())[admin_number - 1]
+        elif input_data.isdigit():  # Если ввод длиннее 5 символов, это ID
+            admin_id = input_data
+            if admin_id not in admins_data:
+                bot.send_message(message.chat.id, f"Такого администратора с ID `{admin_id}` не существует. Попробуйте снова.", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_admin_selection)
+                return
+        else:  # Если ввод - это username
+            admin_id = next((key for key, data in admins_data.items() if data.get('username') == input_data), None)
+            if not admin_id:
+                bot.send_message(message.chat.id, f"Такого администратора с именем пользователя `{input_data}` не существует. Попробуйте снова.", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_admin_selection)
+                return
+
         admin_data = admins_data[admin_id]
         permissions = admin_data.get("permissions", [])
 
         if is_root_admin(admin_id):
             bot.send_message(message.chat.id, "*Корневой администратор* обладает *всеми правами*!", parse_mode="Markdown")
-            show_admin_panel(message)
+            show_settings_menu(message)
             return
 
         # Экранируем имя пользователя
         escaped_username = escape_markdown(admin_data['username'])
-        permissions_list = format_permissions_with_headers(permissions)
+        permissions_list = format_permissions_with_headers(permissions)  # Форматирование списка прав с нумерацией
         bot.send_message(message.chat.id, f"Текущие права администратора {escaped_username} - `{admin_id}`:\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add('Добавить права', 'Удалить права')
+        markup.add('Вернуться в админ')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
         bot.register_next_step_handler(message, process_permission_action, admin_id)
+
     except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверный номер администратора. Пожалуйста, попробуйте снова")
+        bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер, ID или имя администратора.")
         bot.register_next_step_handler(message, process_admin_selection)
 
-
+#@log_user_actions
 def get_available_permissions(admin_id):
     all_permissions = [
-        "Админ", "Бан", "Функции", "Общение", "Статистика", "Файлы", "Резервная копия",
-        "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль",
-        "Админ: Удалить админа", "Админ: Добавить админа", "Бан: Заблокировать", "Бан: Разблокировать",
-        "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
-        "Функции: Включение", "Функции: Выключение", "Оповещения: По времени", "Оповещения: Отправить по времени",
-        "Оповещения: Активные", "Оповещения: Остановленные", "Оповещения: Всем", "Оповещения: Отправить сообщение",
-        "Оповещения: Отправленные", "Оповещения: Удалить отправленные", "Оповещения: Отдельно",
-        "Общение: Чат", "Общение: Запросы", "Общение: Диалоги", "Общение: Просмотр диалогов",
-        "Общение: Удалить диалоги", "Общение: Удалить диалог", "Общение: Удалить все диалоги",
-        "Просмотр файлов: Поиск файлов по ID", "Просмотр файлов: Замена файлов"
+        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция",
+        "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль", "Админ: Добавить админа", "Админ: Удалить админа", "Админ: Права доступа", "Админ: Добавить права", "Админ: Удалить права",
+        "Бан: Заблокировать", "Бан: Разблокировать", "Бан: Удалить данные", "Бан: Удалить пользователя",
+		"Функции: Включение", "Функции: Выключение",
+        "Общение: Чат", "Общение: Запросы", "Общение: Оповещения", "Общение: Диалоги", 
+		"Общение: По времени", "Общение: Отправить по времени", "Общение: Просмотр (по времени)", "Общение: Удалить (по времени)", 
+		"Общение: Всем", "Общение: Отправить сообщение", "Общение: Отправленные", "Общение: Удалить отправленные", 
+		"Общение: Отдельно", "Общение: Отправить отдельно", "Общение: Посмотреть отдельно", "Общение: Удалить отдельно", 
+		"Общение: Просмотр диалогов", "Общение: Удалить диалоги", "Общение: Удалить диалог", "Общение: Удалить все диалоги",
+		"Реклама: Запросы на рекламу", "Реклама: Удалить рекламу",
+		"Статистика: Пользователи", "Статистика: Использование функций", "Статистика: Список ошибок", "Статистика: Версия и аптайм",
+		"Файлы: Просмотр файлов", "Файлы: Поиск файлов по ID", "Файлы: Добавить файлы", "Файлы: Замена файлов", "Файлы: Удалить файлы",
+		"Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
+		"Редакция: Опубликовать новость", "Редакция: Отредактировать новость", "Редакция: Посмотреть новость", "Редакция: Удалить новость"
     ]
 
     # Получаем текущие права администратора
@@ -11512,9 +11879,9 @@ def get_available_permissions(admin_id):
     available_permissions = [perm for perm in all_permissions if perm.split(':')[-1].strip() not in unique_permissions]
     return available_permissions
 
-
+#@log_user_actions
 def format_permissions_with_headers(permissions):
-    main_functions = ['Админ', 'Бан', 'Функции', 'Общение', 'Статистика', 'Файлы', 'Резервная копия', 'Просмотр файлов']
+    main_functions = ["Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция"]
     formatted_permissions = []
     counter = 1
 
@@ -11545,36 +11912,63 @@ def format_permissions_with_headers(permissions):
 
     return "\n".join(formatted_permissions)
 
+#@log_user_actions
+def format_permissions_as_list(permissions):
+    formatted_permissions = []
+    counter = 1
+
+    for perm in permissions:
+        formatted_permissions.append(f"№{counter}. {perm}")
+        counter += 1
+
+    return "\n".join(formatted_permissions)
 
 # Функция для обработки выбора действия с правами
+#@log_user_actions
 def process_permission_action(message, admin_id):
+    if message.text == "Вернуться в админ":
+        show_settings_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     if message.text == 'Добавить права':
+        if not check_permission(str(message.chat.id), 'Добавить права'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         available_permissions = get_available_permissions(admin_id)
         permissions_list = format_permissions_with_headers(available_permissions)
         bot.send_message(message.chat.id, f"*Доступные* права для *добавления*:\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Вернуться в админ')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, "Введите номера прав через запятую для *добавления*:", parse_mode="Markdown", reply_markup=markup)
         bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
 
     elif message.text == 'Удалить права':
+        if not check_permission(str(message.chat.id), 'Удалить права'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         current_permissions = admins_data[admin_id].get("permissions", [])
-        permissions_list = format_permissions_with_headers(current_permissions)
+        permissions_list = format_permissions_as_list(current_permissions)
         bot.send_message(message.chat.id, f"*Текущие права* администратора:\n\n{permissions_list}", parse_mode="Markdown")
 
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Вернуться в админ')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, "Введите номера прав через запятую для *удаления*:", parse_mode="Markdown", reply_markup=markup)
         bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
 
+
 # Функция для форматирования списка прав с основными функциями
+#@log_user_actions
 def format_permissions_with_main_functions(permissions):
-    main_functions = ['Админ', 'Бан', 'Функции', 'Общение', 'Статистика', 'Файлы', 'Резервная копия']
+    main_functions = ["Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция"]
     formatted_permissions = []
     counter = 1
 
@@ -11597,10 +11991,15 @@ def format_permissions_with_main_functions(permissions):
     return "\n".join(formatted_permissions)
 
 # Функция для обработки добавления прав
+#@log_user_actions
 def process_add_permissions(message, admin_id, available_permissions):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
+        return
+
+    if message.text == "Вернуться в админ":
+        show_settings_menu(message)
         return
 
     if message.text == "В меню админ-панели":
@@ -11635,8 +12034,8 @@ def process_add_permissions(message, admin_id, available_permissions):
             escaped_permissions_to_add = [escape_markdown(permission.lower()) for permission in permissions_to_add]
 
             bot.send_message(message.chat.id, f"Права для админа {escaped_username} - `{admin_id}` обновлены!", parse_mode="Markdown")
-            bot.send_message(admin_id, f"Ваши права были *изменены*!\n\n*Добавлены* новые права: {', '.join(escaped_permissions_to_add)}", parse_mode="Markdown")
-            show_admin_panel(message)
+            bot.send_message(admin_id, f"⚠️ Ваши права были *изменены*!\n\n➕ *Добавлены* новые права: _{', '.join(escaped_permissions_to_add)}_", parse_mode="Markdown")
+            show_settings_menu(message)
         else:
             bot.send_message(message.chat.id, "Неверные номера прав! Попробуйте снова")
             bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
@@ -11645,11 +12044,15 @@ def process_add_permissions(message, admin_id, available_permissions):
         bot.send_message(message.chat.id, "Неверные номера прав! Попробуйте снова")
         bot.register_next_step_handler(message, process_add_permissions, admin_id, available_permissions)
 
-# Функция для обработки удаления прав
+#@log_user_actions
 def process_remove_permissions(message, admin_id, current_permissions):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+        return
+
+    if message.text == "Вернуться в админ":
+        show_settings_menu(message)
         return
 
     if message.text == "В меню админ-панели":
@@ -11657,39 +12060,43 @@ def process_remove_permissions(message, admin_id, current_permissions):
         return
 
     try:
+        # Обработка введенных номеров
         permission_numbers = [int(num.strip()) - 1 for num in message.text.split(',')]
-        permissions_to_remove = []
 
-        for num in permission_numbers:
-            if 0 <= num < len(current_permissions):
-                permissions_to_remove.append(current_permissions[num])
-            else:
-                bot.send_message(message.chat.id, f"Неверный номер права: *{num + 1}*. Попробуйте снова", parse_mode="Markdown")
-                bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
-                return
-
-        if permissions_to_remove:
-            admins_data[admin_id]["permissions"] = [perm for perm in current_permissions if perm not in permissions_to_remove]
-            save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
-
-            admin_data = admins_data[admin_id]
-            # Экранируем имя пользователя
-            escaped_username = escape_markdown(admin_data['username'])
-            # Преобразуем удаляемые права в нижний регистр и экранируем их
-            escaped_permissions_to_remove = [escape_markdown(permission.lower()) for permission in permissions_to_remove]
-
-            bot.send_message(message.chat.id, f"Права для админа {escaped_username} - `{admin_id}` обновлены!", parse_mode="Markdown")
-            bot.send_message(admin_id, f"Ваши права были *изменены*!\n\n*Удалены* права: {', '.join(escaped_permissions_to_remove)}", parse_mode="Markdown")
-            show_admin_panel(message)
-        else:
-            bot.send_message(message.chat.id, "Неверные номера прав. Попробуйте снова")
+        # Проверка номеров
+        if any(num < 0 or num >= len(current_permissions) for num in permission_numbers):
+            bot.send_message(message.chat.id, "Ошибка: Один или несколько номеров прав некорректны! Попробуйте снова", parse_mode="Markdown")
             bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+            return
 
-    except (ValueError, IndexError):
-        bot.send_message(message.chat.id, "Неверные номера прав. Попробуйте снова")
+        # Определяем права для удаления
+        permissions_to_remove = [current_permissions[num] for num in permission_numbers]
+
+        # Удаляем права из текущих
+        updated_permissions = [perm for perm in current_permissions if perm not in permissions_to_remove]
+
+        # Сохраняем изменения
+        admins_data[admin_id]["permissions"] = updated_permissions
+        save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
+
+        # Уведомляем пользователя
+        escaped_username = escape_markdown(admins_data[admin_id]['username'])
+        escaped_removed = ', '.join(escape_markdown(perm.lower()) for perm in permissions_to_remove)
+
+        bot.send_message(message.chat.id, f"✅ Права для администратора {escaped_username} - `{admin_id}` обновлены!", parse_mode="Markdown")
+        bot.send_message(admin_id, f"⚠️ Ваши права были *изменены*!\n\n❌ *Удалены* права: _{escaped_removed}_", parse_mode="Markdown")
+
+        show_settings_menu(message)
+
+    except ValueError:
+        bot.send_message(message.chat.id, "Ошибка: Введите номера прав через запятую", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
+
 
 # Функция для форматирования списка прав
+#@log_user_actions
 def format_permissions(permissions):
     formatted_permissions = []
     counter = 1
@@ -11701,11 +12108,13 @@ def format_permissions(permissions):
     return "\n".join(formatted_permissions)
 
 # Обработчик для команды "Права доступа"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Права доступа' and str(message.chat.id) in admin_sessions)
 def handle_permissions(message):
+
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Админ'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+    if not check_permission(admin_id, 'Права доступа'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     list_admins(message)
@@ -11763,10 +12172,12 @@ def load_user_data():
             return json.load(file)
     return {}
 
+#@log_user_actions
 def is_user_blocked(user_id):
     users_data = load_user_data()
     return users_data.get(str(user_id), {}).get('blocked', False)
 
+#@log_user_actions
 def block_user(user_id):
     users_data = load_user_data()
     if str(user_id) in users_data:
@@ -11775,6 +12186,7 @@ def block_user(user_id):
         return users_data[str(user_id)]['username'], user_id
     return None, None
 
+#@log_user_actions
 def unblock_user(user_id):
     users_data = load_user_data()
     if str(user_id) in users_data:
@@ -11783,6 +12195,7 @@ def unblock_user(user_id):
         return users_data[str(user_id)]['username'], user_id
     return None, None
 
+#@log_user_actions
 def get_user_id_by_username(username):
     users_data = load_user_data()
     for user_id, data in users_data.items():
@@ -11790,10 +12203,19 @@ def get_user_id_by_username(username):
             return user_id
     return None
 
+#@log_user_actions
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
+#@log_user_actions
+def get_root_admin():
+    with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    root_admin_id = data['admin_sessions'][0]
+    return root_admin_id
+
+#@log_user_actions
 def list_users_for_ban(message):
     users_data = load_user_data()
     user_list = []
@@ -11815,85 +12237,132 @@ def list_users_for_ban(message):
     bot.send_message(message.chat.id, "Выберите действие для пользователя:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_ban_action)
 
+#@log_user_actions
 def choose_ban_action(message):
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
 
     if message.text == "Заблокировать":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Заблокировать'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         choose_block_method(message)
+
     elif message.text == "Разблокировать":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Разблокировать'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         choose_unblock_method(message)
+
     elif message.text == "Удалить данные":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Удалить данные'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         delete_user_data(message)
+
     elif message.text == "Удалить пользователя":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Удалить пользователя'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         delete_user(message)
+
+    elif message.text == "Вернуться в бан":
+        ban_user_prompt(message)       
+
     elif message.text == "В меню админ-панели":
         show_admin_panel(message)
 
+
+#@log_user_actions
 def choose_block_method(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("По ID", "По USERNAME")
+    markup.add("Вернуться в бан")
     markup.add("В меню админ-панели")
     bot.send_message(message.chat.id, "Выберите способ блокировки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_block_method)
 
+#@log_user_actions
 def process_block_method(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Заблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add("Вернуться в бан")
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *id* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Введите *id* пользователей для блокировки:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, block_user_by_id)
     elif message.text == "По USERNAME":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add("Вернуться в бан")
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *username* пользователей для блокировки (через запятую):", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Введите *username* пользователей для блокировки:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, block_user_by_username)
+    elif message.text == "Вернуться в бан":
+        ban_user_prompt(message)       
     elif message.text == "В меню админ-панели":
         show_admin_panel(message)
 
+#@log_user_actions
 def choose_unblock_method(message):
+    
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Разблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("По ID", "По USERNAME")
+    markup.add("Вернуться в бан")
     markup.add("В меню админ-панели")
     bot.send_message(message.chat.id, "Выберите способ разблокировки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_unblock_method)
 
+#@log_user_actions
 def process_unblock_method(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Разблокировать'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if message.text == "По ID":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add("Вернуться в бан")
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *id* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Введите *id* пользователей для разблокировки:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, unblock_user_by_id)
     elif message.text == "По USERNAME":
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add("Вернуться в бан")
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Введите *username* пользователей для разблокировки (через запятую):", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Введите *username* пользователей для разблокировки:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, unblock_user_by_username)
+    elif message.text == "Вернуться в бан":
+        ban_user_prompt(message)       
     elif message.text == "В меню админ-панели":
         show_admin_panel(message)
 
+#@log_user_actions
 def block_user_by_username(message):
     # Проверка на мультимедиа и смайлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -11901,6 +12370,10 @@ def block_user_by_username(message):
         bot.register_next_step_handler(message, block_user_by_username)
         return
 
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -11908,15 +12381,28 @@ def block_user_by_username(message):
     usernames = [username.strip().lstrip('@') for username in message.text.split(',')]
     success_users = []
     failed_users = []
+    already_blocked_users = []
+
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
 
     for username in usernames:
         user_id = get_user_id_by_username(username)
         if user_id:
-            username, user_id = block_user(user_id)
-            if username and user_id:
-                success_users.append((username, user_id))
-            else:
+            if str(user_id) == root_admin_id:
                 failed_users.append(username)
+                continue
+            if str(user_id) == admin_id:
+                failed_users.append(username)
+                continue
+            if is_user_blocked(user_id):
+                already_blocked_users.append(username)
+            else:
+                username, user_id = block_user(user_id)
+                if username and user_id:
+                    success_users.append((username, user_id))
+                else:
+                    failed_users.append(username)
         else:
             failed_users.append(username)
 
@@ -11929,10 +12415,20 @@ def block_user_by_username(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     if failed_users:
-        bot.send_message(message.chat.id, f"Ошибка при блокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+        failed_users_message = f"Ошибка при блокировке пользователей: {', '.join([f'@{escape_markdown(username)}' for username in failed_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, failed_users_message, parse_mode="Markdown")
 
-    show_admin_panel(message)
+    if already_blocked_users:
+        already_blocked_users_message = f"Пользователи уже заблокированы: {', '.join([f'@{escape_markdown(username)}' for username in already_blocked_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, already_blocked_users_message, parse_mode="Markdown")
 
+    if failed_users or already_blocked_users:
+        bot.register_next_step_handler(message, block_user_by_username)
+        return
+
+    ban_user_prompt(message)
+
+#@log_user_actions
 def block_user_by_id(message):
     # Проверка на мультимедиа и смайлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -11940,6 +12436,10 @@ def block_user_by_id(message):
         bot.register_next_step_handler(message, block_user_by_id)
         return
 
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -11947,15 +12447,28 @@ def block_user_by_id(message):
     user_ids = [user_id.strip() for user_id in message.text.split(',')]
     success_users = []
     failed_users = []
+    already_blocked_users = []
+
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
 
     for user_id in user_ids:
         if user_id.isdigit():
             user_id = int(user_id)
-            username, user_id = block_user(user_id)
-            if username and user_id:
-                success_users.append((username, user_id))
-            else:
+            if str(user_id) == root_admin_id:
                 failed_users.append(user_id)
+                continue
+            if str(user_id) == admin_id:
+                failed_users.append(user_id)
+                continue
+            if is_user_blocked(user_id):
+                already_blocked_users.append(user_id)
+            else:
+                username, user_id = block_user(user_id)
+                if username and user_id:
+                    success_users.append((username, user_id))
+                else:
+                    failed_users.append(user_id)
         else:
             failed_users.append(user_id)
 
@@ -11968,15 +12481,29 @@ def block_user_by_id(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     if failed_users:
-        bot.send_message(message.chat.id, f"Ошибка при блокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+        failed_users_message = f"Ошибка при блокировке пользователей: {', '.join([f'`{user_id}`' for user_id in failed_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, failed_users_message, parse_mode="Markdown")
 
-    show_admin_panel(message)
+    if already_blocked_users:
+        already_blocked_users_message = f"Пользователи уже заблокированы: {', '.join([f'`{user_id}`' for user_id in already_blocked_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, already_blocked_users_message, parse_mode="Markdown")
 
+    if failed_users or already_blocked_users:
+        bot.register_next_step_handler(message, block_user_by_id)
+        return
+
+    ban_user_prompt(message)
+
+#@log_user_actions
 def unblock_user_by_username(message):
     # Проверка на мультимедиа и смайлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, unblock_user_by_username)
+        return
+
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
         return
 
     if message.text == "В меню админ-панели":
@@ -11986,15 +12513,28 @@ def unblock_user_by_username(message):
     usernames = [username.strip().lstrip('@') for username in message.text.split(',')]
     success_users = []
     failed_users = []
+    already_unblocked_users = []
+
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
 
     for username in usernames:
         user_id = get_user_id_by_username(username)
         if user_id:
-            username, user_id = unblock_user(user_id)
-            if username and user_id:
-                success_users.append((username, user_id))
-            else:
+            if str(user_id) == root_admin_id:
                 failed_users.append(username)
+                continue
+            if str(user_id) == admin_id:
+                failed_users.append(username)
+                continue
+            if not is_user_blocked(user_id):
+                already_unblocked_users.append(username)
+            else:
+                username, user_id = unblock_user(user_id)
+                if username and user_id:
+                    success_users.append((username, user_id))
+                else:
+                    failed_users.append(username)
         else:
             failed_users.append(username)
 
@@ -12007,15 +12547,29 @@ def unblock_user_by_username(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     if failed_users:
-        bot.send_message(message.chat.id, f"Ошибка при разблокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+        failed_users_message = f"Ошибка при разблокировке пользователей: {', '.join([f'@{escape_markdown(username)}' for username in failed_users])}. Попробуйте снова"
+        bot.send_message(message.chat.id, failed_users_message, parse_mode="Markdown")
 
-    show_admin_panel(message)
+    if already_unblocked_users:
+        already_unblocked_users_message = f"Пользователи уже разблокированы: {', '.join([f'@{escape_markdown(username)}' for username in already_unblocked_users])}. Попробуйте снова"
+        bot.send_message(message.chat.id, already_unblocked_users_message, parse_mode="Markdown")
 
+    if failed_users or already_unblocked_users:
+        bot.register_next_step_handler(message, unblock_user_by_username)
+        return
+
+    ban_user_prompt(message)
+
+#@log_user_actions
 def unblock_user_by_id(message):
     # Проверка на мультимедиа и смайлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, unblock_user_by_id)
+        return
+
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
         return
 
     if message.text == "В меню админ-панели":
@@ -12025,15 +12579,28 @@ def unblock_user_by_id(message):
     user_ids = [user_id.strip() for user_id in message.text.split(',')]
     success_users = []
     failed_users = []
+    already_unblocked_users = []
+
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
 
     for user_id in user_ids:
         if user_id.isdigit():
             user_id = int(user_id)
-            username, user_id = unblock_user(user_id)
-            if username and user_id:
-                success_users.append((username, user_id))
-            else:
+            if str(user_id) == root_admin_id:
                 failed_users.append(user_id)
+                continue
+            if str(user_id) == admin_id:
+                failed_users.append(user_id)
+                continue
+            if not is_user_blocked(user_id):
+                already_unblocked_users.append(user_id)
+            else:
+                username, user_id = unblock_user(user_id)
+                if username and user_id:
+                    success_users.append((username, user_id))
+                else:
+                    failed_users.append(user_id)
         else:
             failed_users.append(user_id)
 
@@ -12046,24 +12613,52 @@ def unblock_user_by_id(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     if failed_users:
-        bot.send_message(message.chat.id, f"Ошибка при разблокировке пользователей: {', '.join(failed_users)}. Попробуйте снова")
+        failed_users_message = f"Ошибка при разблокировке пользователей: {', '.join([f'`{user_id}`' for user_id in failed_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, failed_users_message, parse_mode="Markdown")
 
-    show_admin_panel(message)
+    if already_unblocked_users:
+        already_unblocked_users_message = f"Пользователи уже разблокированы: {', '.join([f'`{user_id}`' for user_id in already_unblocked_users])}! Попробуйте снова"
+        bot.send_message(message.chat.id, already_unblocked_users_message, parse_mode="Markdown")
+
+    if failed_users or already_unblocked_users:
+        bot.register_next_step_handler(message, unblock_user_by_id)
+        return
+
+    ban_user_prompt(message)
+
 
 # Обработка команд админа
-@bot.message_handler(func=lambda message: message.text == 'Бан')
-@restricted
+@bot.message_handler(func=lambda message: message.text == 'Бан' and check_admin_access(message))
+#@log_user_actions
 def ban_user_prompt(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Бан'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     list_users_for_ban(message)
 
+#@log_user_actions
 def delete_user_data_by_id(message, user_id):
     if not os.path.exists(USER_DATA_PATH):
-        bot.send_message(message.chat.id, "База данных пользователей не существует.")
+        bot.send_message(message.chat.id, "База данных пользователей не существует!")
         return
 
     users_data = load_user_data()
     if str(user_id) not in users_data:
-        bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` не найден.")
+        bot.send_message(message.chat.id, f"Пользователь с *ID* `{user_id}` не найден!", parse_mode="Markdown")
+        return
+
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
+
+    if str(user_id) == root_admin_id:
+        bot.send_message(message.chat.id, f"Ошибка при удалении данных пользователя с *ID* `{user_id}`: Нельзя удалить данные корневого администратора!", parse_mode="Markdown")
+        return
+
+    if str(user_id) == admin_id:
+        bot.send_message(message.chat.id, f"Ошибка при удалении данных пользователя с *ID* `{user_id}`: Нельзя удалить данные самого себя!", parse_mode="Markdown")
         return
 
     for root, dirs, files in os.walk(BASE_DIR):
@@ -12137,94 +12732,237 @@ def delete_user_data_by_id(message, user_id):
     users_data.pop(str(user_id), None)
     save_user_data(users_data)
 
+#@log_user_actions
 def delete_user_from_users_db(message, user_id=None, username=None):
     if not os.path.exists(USER_DATA_PATH):
-        bot.send_message(message.chat.id, "База данных пользователей не существует.")
+        bot.send_message(message.chat.id, "База данных пользователей не существует!")
         return
 
     try:
         with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
             users_data = json.load(file)
     except json.JSONDecodeError:
-        bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные.")
+        bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные!")
         return
     except UnicodeDecodeError:
         try:
             with open(USER_DATA_PATH, 'r', encoding='windows-1251') as file:
                 users_data = json.load(file)
         except json.JSONDecodeError:
-            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные.")
+            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректные данные!")
             return
         except UnicodeDecodeError:
-            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректную кодировку.")
+            bot.send_message(message.chat.id, f"Файл {USER_DATA_PATH} содержит некорректную кодировку!")
             return
 
     if user_id:
         if str(user_id) not in users_data:
-            bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` не найден.")
+            bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` не найден!", parse_mode="Markdown")
             return
         users_data.pop(str(user_id), None)
     elif username:
-        username = username.lstrip('@')
+        username = username.lstrip('@')  # Убираем @ перед сравнением
         found = False
-        for user_id, data in list(users_data.items()):
-            if data.get('username') == username:
+        for user_id, data in users_data.items():
+            if data.get('username') == f"@{username}":  # Сравниваем с @ в базе данных
                 users_data.pop(user_id, None)
                 found = True
                 break
         if not found:
-            bot.send_message(message.chat.id, f"Пользователь с username `@{username}` не найден.")
+            bot.send_message(message.chat.id, f"Пользователь с *username* @{username} не найден!", parse_mode="Markdown")
             return
 
     with open(USER_DATA_PATH, 'w', encoding='utf-8') as file:
         json.dump(users_data, file, ensure_ascii=False, indent=4)
 
+#@log_user_actions
 def delete_user_data(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add("Вернуться в бан")
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите *id* пользователя для удаления данных:", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "Введите *username* или *id*  пользователя для удаления данных:", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_delete_user_data)
 
+#@log_user_actions
 def process_delete_user_data(message):
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    user_id = message.text.strip()
-    if user_id.isdigit():
-        user_id = int(user_id)
-        delete_user_data_by_id(message, user_id)
-        bot.send_message(message.chat.id, f"Данные пользователя с ID `{user_id}` успешно удалены.", parse_mode="Markdown")
-    else:
-        bot.send_message(message.chat.id, "Неверный формат ID. Пожалуйста, введите корректный ID.")
+    user_inputs = message.text.strip().split(',')
 
-    show_admin_panel(message)
+    # Load user data if database exists
+    if not os.path.exists(USER_DATA_PATH):
+        bot.send_message(message.chat.id, "База данных пользователей не существует!")
+        return
 
+    users_data = load_user_data()
+
+    for user_input in user_inputs:
+        user_input = user_input.strip()
+
+        # Determine if the input is an ID or username
+        user_id = None
+        if user_input.isdigit():
+            user_id = int(user_input)
+        else:
+            for user_data in users_data.values():
+                if 'username' in user_data and user_data['username'] == user_input:
+                    user_id = user_data['user_id']
+                    break
+
+        if user_id is None:
+            bot.send_message(message.chat.id, f"Пользователь с таким *username* или *id* не найден: {user_input}!", parse_mode="Markdown")
+            continue
+
+        # Check access rights
+        admin_id = str(message.chat.id)
+        root_admin_id = get_root_admin()
+
+        if str(user_id) == root_admin_id:
+            bot.send_message(message.chat.id, f"Ошибка: нельзя удалить данные корневого администратора {escape_markdown(user_input)} - `{user_id}`!", parse_mode="Markdown")
+            continue
+
+        if str(user_id) == admin_id:
+            bot.send_message(message.chat.id, f"Ошибка: нельзя удалить данные самого себя {escape_markdown(user_input)} - `{user_id}`!", parse_mode="Markdown")
+            continue
+
+        # Delete user data
+        for root, dirs, files in os.walk(BASE_DIR):
+            for file in files:
+                if file.endswith('.json'):
+                    file_path = os.path.join(root, file)
+
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        try:
+                            with open(file_path, 'r', encoding='windows-1251') as f:
+                                data = json.load(f)
+                        except Exception as e:
+                            continue
+
+                    if isinstance(data, dict) and str(user_id) in data:
+                        data.pop(str(user_id), None)
+                    elif isinstance(data, list):
+                        data = [item for item in data if item != str(user_id)]
+
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=4)
+
+        # Update user data in users.json
+        username = users_data[str(user_id)]['username']
+        users_data.pop(str(user_id), None)
+        save_user_data(users_data)
+
+        bot.send_message(message.chat.id, f"Данные пользователя {escape_markdown(username)} - `{user_id}` успешно удалены!", parse_mode="Markdown")
+
+    ban_user_prompt(message)
+
+#@log_user_actions
 def delete_user(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add("Вернуться в бан")
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите *id* или *username* пользователя для удаления:", reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_delete_user)
 
+#@log_user_actions
 def process_delete_user(message):
+    if message.text == "Вернуться в бан":
+        ban_user_prompt(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    user_input = message.text.strip()
-    if user_input.isdigit():
-        user_id = int(user_input)
-        delete_user_from_users_db(message, user_id=user_id)
-        bot.send_message(message.chat.id, f"Пользователь с ID `{user_id}` успешно удален.", parse_mode="Markdown")
-    else:
-        username = user_input.lstrip('@')
-        delete_user_from_users_db(message, username=username)
-        bot.send_message(message.chat.id, f"Пользователь с username `@{username}` успешно удален.", parse_mode="Markdown")
+    user_inputs = message.text.split(",")  # Разделяем введенные значения по запятой
+    user_inputs = [input.strip() for input in user_inputs]  # Убираем пробелы
 
-    show_admin_panel(message)
+    root_admin_id = get_root_admin()
+    admin_id = str(message.chat.id)
+
+    for user_input in user_inputs:
+        if user_input.isdigit():  # Если введен ID
+            user_id = int(user_input)
+            if str(user_id) == root_admin_id:
+                bot.send_message(
+                    message.chat.id,
+                    f"Ошибка: пользователь с *ID* `{user_id}` является корневым администратором и не может быть удален!",
+                    parse_mode="Markdown"
+                )
+                continue
+            if str(user_id) == admin_id:
+                bot.send_message(
+                    message.chat.id,
+                    f"Ошибка: вы не можете удалить самого себя по ID: `{user_id}`!",
+                    parse_mode="Markdown"
+                )
+                continue
+
+            # Проверяем, существует ли пользователь с таким ID
+            users_data = load_user_data()
+            if str(user_id) not in users_data:
+                bot.send_message(
+                    message.chat.id,
+                    f"Пользователь с *ID* `{user_id}` не найден! Попробуйте снова ввести верный *id* или *username*",
+                    parse_mode="Markdown"
+                )
+                # Ожидаем новый ввод
+                bot.register_next_step_handler(message, process_delete_user)
+                return
+
+            delete_user_from_users_db(message, user_id=user_id)
+            bot.send_message(
+                message.chat.id,
+                f"Пользователь с *ID* `{user_id}` успешно удален!",
+                parse_mode="Markdown"
+            )
+        else:  # Если введено имя пользователя
+            username = user_input.lstrip('@')
+            escaped_username = escape_markdown(username)  # Экранируем username
+            user_id = get_user_id_by_username(username)
+            if str(user_id) == root_admin_id:
+                bot.send_message(
+                    message.chat.id,
+                    f"Ошибка: пользователь с *username* @{escaped_username} является корневым администратором и не может быть удален!",
+                    parse_mode="Markdown"
+                )
+                continue
+            if str(user_id) == admin_id:
+                bot.send_message(
+                    message.chat.id,
+                    f"Ошибка: вы не можете удалить самого себя по @{escaped_username}!",
+                    parse_mode="Markdown"
+                )
+                continue
+            if user_id is None:
+                bot.send_message(
+                    message.chat.id,
+                    f"Пользователь с *username* @{escaped_username} не найден! Попробуйте снова ввести верный *id* или *username*",
+                    parse_mode="Markdown"
+                )
+                # Ожидаем новый ввод
+                bot.register_next_step_handler(message, process_delete_user)
+                return
+
+            delete_user_from_users_db(message, username=username)
+            bot.send_message(
+                message.chat.id,
+                f"Пользователь с *username* @{escaped_username} успешно удален!",
+                parse_mode="Markdown"
+            )
+
+    # После успешного удаления пользователя, возвращаем в ban_user_prompt(message)
+    ban_user_prompt(message)
 
 # (ADMIN 4) ------------------------------------------ "СТАТИСТИКА ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
-
 
 # Глобальные переменные для отслеживания пользователей
 active_users = {}  # Словарь для отслеживания времени последней активности пользователей
@@ -12260,16 +12998,17 @@ def load_statistics():
     try:
         with open(STATS_FILE, 'r', encoding='utf-8') as file:
             data = json.load(file)
-            return {date: {'users': set(data[date]['users'])} for date in data}
+            return {date: {'users': set(data[date]['users']), 'functions': data[date].get('functions', {})} for date in data}
     except FileNotFoundError:
         return {}
 
 # Сохранение статистики в файл
 def save_statistics(data):
     with open(STATS_FILE, 'w', encoding='utf-8') as file:
-        json.dump({date: {'users': list(data[date]['users'])} for date in data}, file, indent=4, ensure_ascii=False)
+        json.dump({date: {'users': list(data[date]['users']), 'functions': data[date]['functions']} for date in data}, file, indent=4, ensure_ascii=False)
 
 # Проверка прав администратора
+#@log_user_actions
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -12279,15 +13018,16 @@ def check_admin_access(message):
         return False
 
 # Обновление данных о пользователе с экранированием username
-def update_user_activity(user_id, username=None, first_name="", last_name="", phone=""):
+#@log_user_actions
+def update_user_activity(user_id, username=None, first_name="", last_name="", phone="", function_name=None):
     active_users[user_id] = datetime.now()
     total_users.add(user_id)
 
     user_data = load_user_data()
-    current_time = datetime.now().strftime('%d-%m-%Y %H:%M:%S')  # Формат времени
+    current_time = datetime.now().strftime('%d.%m.%Y в %H:%M:%S')  # Формат времени
 
     if user_id in user_data:
-        user_data[user_id]['username'] = escape_markdown(f"@{username}") if username else ""
+        user_data[user_id]['username'] = f"@{username}" if username else ""
         user_data[user_id]['first_name'] = first_name
         user_data[user_id]['last_name'] = last_name
         user_data[user_id]['phone'] = phone
@@ -12297,7 +13037,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             'user_id': user_id,
             'first_name': first_name,
             'last_name': last_name,
-            'username': escape_markdown(f"@{username}") if username else "",
+            'username': f"@{username}" if username else "",
             'phone': phone,
             'last_active': current_time,
             'blocked': False,
@@ -12311,46 +13051,66 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
     statistics = load_statistics()
     today = datetime.now().strftime('%d.%m.%Y')
     if today not in statistics:
-        statistics[today] = {'users': set()}
+        statistics[today] = {'users': set(), 'functions': {}}
     statistics[today]['users'].add(user_id)
+    if function_name:
+        if function_name not in statistics[today]['functions']:
+            statistics[today]['functions'][function_name] = 0
+        statistics[today]['functions'][function_name] += 1
     save_statistics(statistics)
 
+    
 # Проверить, активен ли пользователь
+#@log_user_actions
 def is_user_active(last_active):
     try:
-        last_active_time = datetime.strptime(last_active, '%d-%m-%Y %H:%M:%S')
+        last_active_time = datetime.strptime(last_active, '%d.%m.%Y в %H:%M:%S')
     except ValueError:
         return False
     return (datetime.now() - last_active_time).total_seconds() < 1 * 60  # 5 минут
 
 # Получение статистики за определённый период
+#@log_user_actions
 def get_aggregated_statistics(period='all'):
     statistics = load_statistics()
     today = datetime.now()
-    result = defaultdict(int)
+    user_result = defaultdict(int)
+    function_result = defaultdict(int)
 
     for date_str, usage in statistics.items():
         record_date = datetime.strptime(date_str, '%d.%m.%Y')
 
         if period == 'day' and record_date.date() == today.date():
-            for func_name, count in usage.items():
-                result[func_name] += count
+            user_result['users'] += len(usage['users'])
+            if 'functions' in usage:
+                for func_name, count in usage['functions'].items():
+                    function_result[func_name] += count
         elif period == 'week' and today - timedelta(days=today.weekday()) <= record_date <= today:
-            for func_name, count in usage.items():
-                result[func_name] += count
+            user_result['users'] += len(usage['users'])
+            if 'functions' in usage:
+                for func_name, count in usage['functions'].items():
+                    function_result[func_name] += count
         elif period == 'month' and record_date.year == today.year and record_date.month == today.month:
-            for func_name, count in usage.items():
-                result[func_name] += count
+            user_result['users'] += len(usage['users'])
+            if 'functions' in usage:
+                for func_name, count in usage['functions'].items():
+                    function_result[func_name] += count
         elif period == 'year' and record_date.year == today.year:
-            for func_name, count in usage.items():
-                result[func_name] += count
+            user_result['users'] += len(usage['users'])
+            if 'functions' in usage:
+                for func_name, count in usage['functions'].items():
+                    function_result[func_name] += count
         elif period == 'all':
-            for func_name, count in usage.items():
-                result[func_name] += count
+            user_result['users'] += len(usage['users'])
+            if 'functions' in usage:
+                for func_name, count in usage['functions'].items():
+                    function_result[func_name] += count
 
-    return dict(result)
+    return dict(user_result), dict(function_result)
+
 
 # Получить статистику пользователей
+#@log_user_actions
 def get_statistics():
     users_data = load_user_data()
     online_users = len([user for user in users_data.values() if is_user_active(user["last_active"]) and not user['blocked']])
@@ -12369,31 +13129,42 @@ def get_statistics():
 
     return online_users, total_users, users_today, users_week, users_month, users_year
 
+
+# Функция для экранирования специальных символов Markdown
+#@log_user_actions
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
 # Получить список активных пользователей
+#@log_user_actions
 def list_active_users():
     users_data = load_user_data()
     active_users = [
-        f"{index + 1}) {user_id}: {user.get('username', 'Неизвестный')}"
+        f"{index + 1}) {user_id}: {escape_markdown(user.get('username', 'Неизвестный'))}"
         for index, (user_id, user) in enumerate(users_data.items())
         if is_user_active(user["last_active"]) and not user['blocked']
     ]
     return "\n".join(active_users) if active_users else None
 
 # Получить ТОП пользователей
+#@log_user_actions
 def get_top_users(top_n=10):
     users_data = load_user_data()
     user_activity = {user_id: user['last_active'] for user_id, user in users_data.items() if not user['blocked']}
     sorted_users = sorted(user_activity.items(), key=lambda x: x[1], reverse=True)
     top_users = sorted_users[:top_n]
-    return [f"{index + 1}) {user_id}: {users_data[user_id].get('username', 'Неизвестный')}" for index, (user_id, _) in enumerate(top_users)]
+    return [f"{index + 1}) {user_id}: {escape_markdown(users_data[user_id].get('username', 'Неизвестный'))}" for index, (user_id, _) in enumerate(top_users)]
 
 # Получить последние действия пользователей
+#@log_user_actions
 def get_recent_actions(limit=10):
     users_data = load_user_data()
     recent_actions = sorted(users_data.items(), key=lambda x: x[1]['last_active'], reverse=True)
-    return [f"{user_id}: {user['username']} - {user['last_active']}" for user_id, user in recent_actions[:limit]]
+    return [f"{user_id}: {escape_markdown(user['username'])} - {user['last_active']}" for user_id, user in recent_actions[:limit]]
 
 # Получить наиболее активное время использования бота
+#@log_user_actions
 def get_peak_usage_time():
     statistics = load_statistics()
     usage_times = defaultdict(int)
@@ -12407,10 +13178,12 @@ def get_peak_usage_time():
     return peak_hour, usage_times[peak_hour]
 
 # Получить версию бота
+#@log_user_actions
 def get_bot_version():
     return "1.0"  # Пример версии
 
 # Получить аптайм бота
+#@log_user_actions
 def get_uptime():
     start_time = datetime(2025, 1, 1)  # Пример времени запуска
     uptime = datetime.now() - start_time
@@ -12425,6 +13198,7 @@ def load_errors():
         return json.load(file)
 
 # Формирование нумерованного списка ошибок
+#@log_user_actions
 def get_error_list():
     errors = load_errors()
     error_list = []
@@ -12435,6 +13209,7 @@ def get_error_list():
     return error_list
 
 # Создание кнопок для подменю
+#@log_user_actions
 def create_submenu_buttons():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons = [
@@ -12450,67 +13225,100 @@ def create_submenu_buttons():
     return markup
 
 # Обработчик команды "Статистика"
-@bot.message_handler(func=lambda message: message.text == 'Статистика')
+@bot.message_handler(func=lambda message: message.text == 'Статистика' and check_admin_access(message))
+#@log_user_actions
 def show_statistics(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Статистика'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     if not check_admin_access(message):
         return
 
     bot.send_message(message.chat.id, "Выберите категорию статистики:", reply_markup=create_submenu_buttons())
 
 # Функция для экранирования специальных символов Markdown
+#@log_user_actions
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text in ["Пользователи", "Версия и аптайм", "Использование функций", "Список ошибок", "В меню админ-панели"])
 def handle_submenu_buttons(message):
     if not check_admin_access(message):
         return
 
     if message.text == "Пользователи":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Пользователи'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         online_count, total_count, users_today, users_week, users_month, users_year = get_statistics()
         active_user_list = list_active_users()
         response_message = (
-            f"*🌐 Пользователи онлайн:* {online_count}\n"
-            f"*👥 Всего пользователей:* {total_count}\n\n"
-            f"*📅 Пользователи за день:* {users_today}\n"
-            f"📅 Пользователи за неделю:* {users_week}\n"
-            f"📅 Пользователи за месяц:* {users_month}\n"
-            f"📅 Пользователи за год:* {users_year}\n\n\n"
+            f"**🌐 Пользователи онлайн:** {online_count}\n"
+            f"**👥 Всего пользователей:** {total_count}\n\n"
+            f"**📅 Пользователи за день:** {users_today}\n"
+            f"**📅 Пользователи за неделю:** {users_week}\n"
+            f"**📅 Пользователи за месяц:** {users_month}\n"
+            f"**📅 Пользователи за год:** {users_year}\n\n"
         )
         if active_user_list:
-            response_message += f"*🌐 Пользователи онлайн:*\n\n"
+            response_message += "**🌐 Пользователи онлайн:**\n\n"
             for user in active_user_list.split('\n'):
-                response_message += f"👤 {escape_markdown(user)}\n"
+                response_message += f"👤 {user}\n"
         else:
-            response_message += "*🌐 Нет активных пользователей*"
+            response_message += "**🌐 Нет активных пользователей**"
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
     elif message.text == "Версия и аптайм":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Версия и аптайм'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         bot_version = get_bot_version()
         uptime = get_uptime()
         bot.send_message(message.chat.id, f"*🤖 Версия бота:* {bot_version}\n\n*⏳ Аптайм бота:* {uptime}", parse_mode="Markdown")
     elif message.text == "Использование функций":
-        stats_day = get_aggregated_statistics('day')
-        stats_week = get_aggregated_statistics('week')
-        stats_month = get_aggregated_statistics('month')
-        stats_year = get_aggregated_statistics('year')
-        stats_all = get_aggregated_statistics('all')
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Использование функций'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
+        stats_day_users, stats_day_functions = get_aggregated_statistics('day')
+        stats_week_users, stats_week_functions = get_aggregated_statistics('week')
+        stats_month_users, stats_month_functions = get_aggregated_statistics('month')
+        stats_year_users, stats_year_functions = get_aggregated_statistics('year')
+        stats_all_users, stats_all_functions = get_aggregated_statistics('all')
 
         response_message = (
             "*📊 Использование функций:*\n\n\n"
             "☀️ *[За день]* ☀️\n\n" +
-            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_day.items()]) +
+            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_day_functions.items()]) +
             "\n\n7️⃣ *[За неделю]* 7️⃣\n\n" +
-            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_week.items()]) +
+            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_week_functions.items()]) +
             "\n\n🗓️ *[За месяц]* 🗓️\n\n" +
-            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_month.items()]) +
+            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_month_functions.items()]) +
             "\n\n⌛ *[За год]* ⌛\n\n" +
-            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_year.items()]) +
+            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_year_functions.items()]) +
             "\n\n♾️ *[За всё время]* ♾️\n\n" +
-            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_all.items()])
+            "\n".join([f"{escape_markdown(key)}: {value}" for key, value in stats_all_functions.items()])
         )
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
     elif message.text == "Список ошибок":
+
+        admin_id = str(message.chat.id)
+        if not check_permission(admin_id, 'Список ошибок'):
+            bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+            return
+
         error_list = get_error_list()
         if not error_list:
             bot.send_message(message.chat.id, "Данные не найдены! Активные ошибки не обнаружены!", parse_mode="Markdown")
@@ -12525,16 +13333,6 @@ def handle_submenu_buttons(message):
     elif message.text == "В меню админ-панели":
         bot.send_message(message.chat.id, "Выберите категорию статистики:", reply_markup=create_submenu_buttons())
 
-# Формирование нумерованного списка ошибок
-def get_error_list():
-    errors = load_errors()
-    error_list = []
-    for index, error in enumerate(errors, start=1):
-        error_details = error.get('error_details', '')
-        error_details_more = "\n".join(error.get('error_details_more', []))
-        error_list.append(f"🛑 *ОШИБКА №{index}* 🛑\n\n{error_details}\n\n{error_details_more}")
-    return error_list
-
 
 # (ADMIN 5) ------------------------------------------ "РЕЗЕРВНАЯ КОПИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
@@ -12548,6 +13346,7 @@ EXECUTABLE_FILE = '(104 update ИСПРАВЛЕНИЕ34  ( ( )) CAR MANAGER TG B
 # Путь к JSON файлу с админскими сессиями
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
 
+#@log_user_actions
 def normalize_name(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
@@ -12558,6 +13357,7 @@ def load_admin_sessions():
     return data['admin_sessions']
 
 # Функция для проверки прав доступа
+#@log_user_actions
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -12567,12 +13367,13 @@ def check_admin_access(message):
         return False
 
 # Обработчик для кнопки "Резервная копия"
-@bot.message_handler(func=lambda message: message.text == 'Резервная копия' and str(message.chat.id) in load_admin_sessions())
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Резервная копия' and check_admin_access(message))
 def show_backup_menu(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Резервная копия'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -12582,56 +13383,84 @@ def show_backup_menu(message):
     bot.send_message(message.chat.id, "Выберите действие с резервной копией:", reply_markup=markup)
 
 # Обработчик для кнопки "Создать копию"
-@bot.message_handler(func=lambda message: message.text == 'Создать копию')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Создать копию' and check_admin_access(message))
 def handle_create_backup(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Создать копию'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     backup_path = create_backup()
-    bot.send_message(message.chat.id, f"*Резервная копия создана!*\n\n*Путь* к резвервной копии: _{backup_path}_", parse_mode="Markdown")
+    backup_message = f"Резервная копия создана!\n\nПуть к резервной копии:\n{backup_path}"
+    bot.send_message(message.chat.id, backup_message)
     show_admin_panel(message)
 
 # Обработчик для кнопки "Восстановить данные"
-@bot.message_handler(func=lambda message: message.text == 'Восстановить данные')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Восстановить данные' and check_admin_access(message))
 def handle_restore_backup(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Восстановить данные'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     success = restore_latest_backup()
     if success:
         bot.send_message(message.chat.id, "Данные успешно восстановлены из последней резервной копии!")
     else:
-        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден")
+        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден!")
     show_admin_panel(message)
 
 # Функция для создания резервной копии
+#@log_user_actions
 def create_backup():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_file = os.path.join(BACKUP_DIR, f'backup_{timestamp}.zip')
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
-    with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(SOURCE_DIR):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, SOURCE_DIR)
+    try:
+        with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_STORED) as zipf:
+            for root, dirs, files in os.walk(SOURCE_DIR):
+                if 'backups' in dirs:
+                    dirs.remove('backups')  # Исключаем папку backups
 
-                # Пропускаем папку "backups" и исполняемый файл
-                if BACKUP_DIR in arcname or EXECUTABLE_FILE in arcname:
-                    continue
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, SOURCE_DIR)
 
-                zipf.write(file_path, arcname)
+                    if EXECUTABLE_FILE in file:
+                        print(f"Пропускается файл (исполняемый): {file_path}")
+                        continue
 
-    return backup_file
+                    if len(file_path) > 260:
+                        print(f"Пропущен файл с длинным путем: {file_path}")
+                        continue
+
+                    try:
+                        zipf.write(file_path, arcname)
+                        print(f"Добавлен в архив: {file_path}")
+                    except Exception as e:
+                        print(f"Ошибка при добавлении файла {file_path}: {e}")
+
+        # Проверяем целостность архива
+        with zipfile.ZipFile(backup_file, 'r') as zipf:
+            if zipf.testzip() is not None:
+                print("Архив содержит поврежденные файлы.")
+            else:
+                print("Архив успешно проверен.")
+
+        print(f"Резервная копия успешно создана: {backup_file}")
+        return backup_file
+    except Exception as e:
+        print(f"Ошибка при создании архива: {e}")
+        return None
 
 # Функция для восстановления из последнего бэкапа
+#@log_user_actions
 def restore_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     if not backups:
@@ -12651,13 +13480,15 @@ def restore_latest_backup():
     return True
 
 # Функция для отправки уведомления администратору
+#@log_user_actions
 def notify_admin(backup_path):
     admin_sessions = load_admin_sessions()
     current_time = datetime.now().strftime('%d.%m.%Y в %H:%M')
     for admin_id in admin_sessions:
-        bot.send_message(admin_id, f"*Резервная копия создана*!\n\n*Время* создания: _{current_time}_\n\n*Путь* к резервной копии: _{backup_path}_", parse_mode="Markdown")
+        bot.send_message(admin_id, f"Резервная копия создана!\n\nВремя создания: {current_time}\n\nПуть к резервной копии:\n{backup_path}", parse_mode="Markdown")
 
 # Функция для автоматического создания резервной копии и отправки уведомления
+#@log_user_actions
 def scheduled_backup():
     backup_path = create_backup()
     notify_admin(backup_path)
@@ -12693,15 +13524,17 @@ FUNCTIONS_STATE_PATH = 'data base/admin/functions_state.json'
 def load_function_states():
     if os.path.exists(FUNCTIONS_STATE_PATH):
         with open(FUNCTIONS_STATE_PATH, 'r', encoding='utf-8') as file:
-            return json.load(file)
-    else:
-        save_function_states()  # Создаем файл с начальным состоянием
-        return function_states
+            data = json.load(file)
+            if data:
+                return data
+    # Если файл отсутствует или пуст, создаем его с начальным состоянием
+    save_function_states({})
+    return {}
 
 # Сохранение состояния функций в файл
-def save_function_states():
+def save_function_states(states):
     with open(FUNCTIONS_STATE_PATH, 'w', encoding='utf-8') as file:
-        json.dump(function_states, file, ensure_ascii=False, indent=4)
+        json.dump(states, file, ensure_ascii=False, indent=4)
 
 # Загрузка состояний функций при старте
 function_states = load_function_states()
@@ -12710,12 +13543,12 @@ function_states = load_function_states()
 new_functions = {
     "Общее меню": [
         "Расход топлива", "Траты и ремонты", "Ваш транспорт", "Найти транспорт", "Поиск мест",
-        "Погода", "Цены на топливо", "Анти-радар", "Напоминания", "Коды OBD2", "Сайт"
+        "Погода", "Цены на топливо", "Код" "Анти-радар", "Напоминания", "Коды OBD2", "Прочее", "Сайт"
     ],
     "Кнопки": [
         "В главное меню", "Вернуться в меню расчета топлива", "Вернуться в меню трат и ремонтов",
         "Выбрать категорию заново", "Вернуться в меню напоминаний", "Посмотреть другие ошибки",
-        "Вернуться в ваш транспорт"
+        "Вернуться в ваш транспорт", "еще новости"
     ],
     "Расход топлива": [
         "Рассчитать расход топлива", "Сохранить поездку", "Посмотреть поездки",
@@ -12763,18 +13596,37 @@ new_functions = {
         "Выключить анти-радар", "Функция для обработки локации"
     ],
     "Прочее": [
-        "Чат с админом", "Заявка на рекламу", "Новости"
+        "Чат с админом", "Для рекламы", "Новости"
+    ],
+    "Меню новости": ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'],
+    "Для рекламы": [
+        "Заявка на рекламу", "Ваши заявки"
+    ],
+        "Код региона": [
+        "Код региона"
     ]
 }
 
+# Функция для обновления состояния функций
+def update_function_states():
+    global function_states
+    for category, functions in new_functions.items():
+        for function_name in functions:
+            if function_name not in function_states:
+                function_states[function_name] = {"state": True, "deactivation_time": None}
+    save_function_states(function_states)
+
+# Обновляем состояние функций при загрузке
+update_function_states()
 
 for category, functions in new_functions.items():
     for function_name in functions:
         if function_name not in function_states:
             function_states[function_name] = {"state": True, "deactivation_time": None}
 
-save_function_states()
+save_function_states(function_states)  # Передаем аргумент function_states
 
+#@log_user_actions
 def set_function_state(function_name, state, deactivation_time=None):
     if function_name in function_states:
         function_states[function_name]['state'] = state
@@ -12782,14 +13634,16 @@ def set_function_state(function_name, state, deactivation_time=None):
             function_states[function_name]['deactivation_time'] = deactivation_time
         else:
             function_states[function_name]['deactivation_time'] = None
-        save_function_states()  # Сохраняем изменения
+        save_function_states(function_states)  # Передаем аргумент function_states
         return f"Функция *{function_name}* успешно {'активирована' if state else 'деактивирована'}!"
     else:
-        return "Ошибка: Функция не найдена"
+        return "Ошибка: функция не найдена!"
 
+#@log_user_actions
 def activate_function(function_name):
     return set_function_state(function_name, True)
 
+#@log_user_actions
 def deactivate_function(function_name, deactivation_time):
     return set_function_state(function_name, False, deactivation_time)
 
@@ -12797,18 +13651,20 @@ def deactivate_function(function_name, deactivation_time):
 def activate_function_later(function_name, delay):
     threading.Timer(delay.total_seconds(), lambda: notify_admin_and_activate(function_name)).start()
 
+#@log_user_actions
 def notify_admin_and_activate(function_name):
     deactivation_time = function_states[function_name]['deactivation_time']
     date_part, time_part = deactivation_time.split('; ')
     admin_sessions = load_admin_sessions()
     for admin_id in admin_sessions:
         if len([fn for fn, data in function_states.items() if not data['state']]) == 1:
-            bot.send_message(admin_id, f"Функция *{function_name.lower()}* была *включена* по истечению времени (до _{date_part}_ в _{time_part}_)!", parse_mode="Markdown")
+            bot.send_message(admin_id, f"Функция *{function_name.lower()}* была *включена* по истечению времени (до {date_part} в {time_part})!", parse_mode="Markdown")
         else:
-            bot.send_message(admin_id, f"Функции *{function_name.lower()}* была *включена* по истечению времени (до _{date_part}_ в _{time_part}_)!", parse_mode="Markdown")
+            bot.send_message(admin_id, f"Функции *{function_name.lower()}* была *включена* по истечению времени (до {date_part} в {time_part})!", parse_mode="Markdown")
     activate_function(function_name)
 
 # Проверка корректности даты и времени
+#@log_user_actions
 def is_valid_date_time(date_str, time_str):
     try:
         date = datetime.strptime(date_str, "%d.%m.%Y")
@@ -12821,6 +13677,7 @@ def is_valid_date_time(date_str, time_str):
         return False
 
 # Обработчик временной деактивации
+#@log_user_actions
 def handle_time_deactivation(time_spec, function_names, message):
     try:
         end_time = datetime.strptime(time_spec, "%d.%m.%Y; %H:%M")
@@ -12834,24 +13691,25 @@ def handle_time_deactivation(time_spec, function_names, message):
                 activate_function_later(function_name, delay)  # Запускаем активацию позже
             date_part, time_part = time_spec.split('; ')
             if len(function_names) == 1:
-                bot.send_message(message.chat.id, f"Функция *{', '.join(function_names).lower()}* *отключена* до _{date_part}_ в _{time_part}_!", parse_mode="Markdown")
+                bot.send_message(message.chat.id, f"Функция *{', '.join(function_names).lower()}* *отключена* до {date_part} в {time_part}!", parse_mode="Markdown")
             else:
-                bot.send_message(message.chat.id, f"Функции *{', '.join(function_names).lower()}* *отключены* до _{date_part}_ в _{time_part}_!", parse_mode="Markdown")
-            show_admin_panel(message)  # Возвращаемся в меню админ-панели
+                bot.send_message(message.chat.id, f"Функции *{', '.join(function_names).lower()}* *отключены* до {date_part} в {time_part}!", parse_mode="Markdown")
+            toggle_functions(message)  
         else:
-            bot.send_message(message.chat.id, "Указанное время уже прошло. Пожалуйста, введите дату и время снова")
+            bot.send_message(message.chat.id, "Указанное время уже прошло! Пожалуйста, введите дату и время снова")
             bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
     except ValueError:
-        bot.send_message(message.chat.id, "Неверный формат. Попробуйте снова")
+        bot.send_message(message.chat.id, "Неверный формат! Попробуйте снова")
         bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
 
 # Обработчик для команды "Функции"
-@bot.message_handler(func=lambda message: message.text == 'Функции')
-def toggle_functions(message):
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Функции' and check_admin_access(message))
+def toggle_functions(message): 
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Функции'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if check_admin_access(message):
@@ -12859,18 +13717,20 @@ def toggle_functions(message):
             bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
             bot.register_next_step_handler(message, toggle_functions)
             return
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.row(types.KeyboardButton('Включение'), types.KeyboardButton('Выключение'))
-        markup.add(types.KeyboardButton('В меню админ-панели'))
-        bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+        
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton('Включение'), types.KeyboardButton('Выключение'))
+    markup.add(types.KeyboardButton('В меню админ-панели'))
+    bot.send_message(message.chat.id, "Выберите действие для функций:", reply_markup=markup)
 
 # Обработчик для кнопки "Включение"
-@bot.message_handler(func=lambda message: message.text == 'Включение')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Включение' and check_admin_access(message))
 def enable_function(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Включение'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if check_admin_access(message):
@@ -12889,21 +13749,28 @@ def enable_function(message):
                         deactivation_time = next((data for name, data in disabled_functions if name == function), None)
                         if deactivation_time:
                             date_part, time_part = deactivation_time.split('; ')
-                            response += f"❌ {index}. *{function}* (до _{date_part}_ в _{time_part}_)\n"
+                            response += f"❌ {index}. *{function}* (до {date_part} в {time_part})\n"
                         else:
                             response += f"❌ {index}. *{function}*\n"
                         index += 1
                 response += "\n"
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add(types.KeyboardButton('Вернуться в функции'))
             markup.add(types.KeyboardButton('В меню админ-панели'))
             bot.send_message(message.chat.id, response, parse_mode="Markdown", reply_markup=markup)
-            bot.send_message(message.chat.id, "Введите номера функций для включения через запятую:")
+            bot.send_message(message.chat.id, "Введите номера функций для включения:")
             bot.register_next_step_handler(message, process_enable_function_step)
         else:
             bot.send_message(message.chat.id, "*Все* функции уже *включены*!", parse_mode="Markdown")
-            show_admin_panel(message)  # Возвращаемся в меню админ-панели
+            toggle_functions(message) 
 
+#@log_user_actions
 def process_enable_function_step(message):
+
+    if message.text == "Вернуться в функции":
+        toggle_functions(message) 
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -12922,19 +13789,20 @@ def process_enable_function_step(message):
             for function_name in function_names:
                 activate_function(function_name)
             bot.send_message(message.chat.id, f"Функции *{', '.join(function_names).lower()}* успешно *активированы*!", parse_mode="Markdown")
-            show_admin_panel(message)  # Возвращаемся в меню админ-панели
+            toggle_functions(message) 
         else:
-            bot.send_message(message.chat.id, "Неверные номера функций")
+            bot.send_message(message.chat.id, "Неверные номера функций!")
     except ValueError:
-        bot.send_message(message.chat.id, "Неверный формат. Введите номера функций через запятую")
+        bot.send_message(message.chat.id, "Неверный формат! Введите номера функций через запятую")
 
 # Обработчик для кнопки "Выключение"
-@bot.message_handler(func=lambda message: message.text == 'Выключение')
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Выключение' and check_admin_access(message))
 def disable_function(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Выключение'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if check_admin_access(message):
@@ -12954,15 +13822,22 @@ def disable_function(message):
                         index += 1
                 response += "\n"
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add(types.KeyboardButton('Вернуться в функции'))
             markup.add(types.KeyboardButton('В меню админ-панели'))
             bot.send_message(message.chat.id, response, parse_mode="Markdown", reply_markup=markup)
-            bot.send_message(message.chat.id, "Введите номера функций для выключения через запятую:")
+            bot.send_message(message.chat.id, "Введите номера функций для выключения:")
             bot.register_next_step_handler(message, process_disable_function_step)
         else:
             bot.send_message(message.chat.id, "*Все* функции уже *выключены*!", parse_mode="Markdown")
-            show_admin_panel(message)  # Возвращаемся в меню админ-панели
+            toggle_functions(message)
 
+#@log_user_actions
 def process_disable_function_step(message):
+
+    if message.text == "Вернуться в функции":
+        toggle_functions(message) 
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -12979,17 +13854,24 @@ def process_disable_function_step(message):
         if valid_indices:
             function_names = [enabled_functions[i] for i in valid_indices]
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add(types.KeyboardButton('Вернуться в функции'))
             markup.add(types.KeyboardButton('В меню админ-панели'))
-            bot.send_message(message.chat.id, "Введите дату в формате (ДД.ММ.ГГГГ):", reply_markup=markup)
+            bot.send_message(message.chat.id, "Введите дату для выключения:", reply_markup=markup)
             bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
         else:
-            bot.send_message(message.chat.id, "Неверные номера функций")
+            bot.send_message(message.chat.id, "Неверные номера функций!")
             bot.register_next_step_handler(message, process_disable_function_step)
     except ValueError:
-        bot.send_message(message.chat.id, "Неверный формат. Введите номера функций через запятую")
+        bot.send_message(message.chat.id, "Неверный формат! Введите номера функций через запятую")
         bot.register_next_step_handler(message, process_disable_function_step)
 
+#@log_user_actions
 def process_disable_function_date_step(message, function_names):
+
+    if message.text == "Вернуться в функции":
+        toggle_functions(message) 
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -13002,14 +13884,21 @@ def process_disable_function_date_step(message, function_names):
     date_str = message.text
     if is_valid_date_time(date_str, "00:00"):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton('Вернуться в функции'))
         markup.add(types.KeyboardButton('В меню админ-панели'))
-        bot.send_message(message.chat.id, "Введите время в формате (ЧЧ:ММ):", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите время для выключения:", reply_markup=markup)
         bot.register_next_step_handler(message, process_disable_function_time_step, function_names, date_str, message)
     else:
-        bot.send_message(message.chat.id, "Неверный формат даты. Попробуйте снова")
+        bot.send_message(message.chat.id, "Неверный формат даты! Попробуйте снова")
         bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
 
+#@log_user_actions
 def process_disable_function_time_step(message, function_names, date_str, original_message):
+
+    if message.text == "Вернуться в функции":
+        toggle_functions(message) 
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -13024,7 +13913,7 @@ def process_disable_function_time_step(message, function_names, date_str, origin
         time_spec = f"{date_str}; {time_str}"
         handle_time_deactivation(time_spec, function_names, original_message)
     else:
-        bot.send_message(message.chat.id, "Неверный формат времени. Попробуйте снова")
+        bot.send_message(message.chat.id, "Неверный формат времени! Попробуйте снова")
         bot.register_next_step_handler(message, process_disable_function_time_step, function_names, date_str, original_message)
 
 # (ADMIN n) ------------------------------------------ "ОПОВЕЩЕНИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
@@ -13035,26 +13924,37 @@ ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
 USER_DATA_PATH = 'data base/admin/users.json'  # Путь к файлу с данными пользователей
 
 # Глобальные переменные
-alerts = {}  # Словарь для хранения уведомлений и отправленных сообщений
+alerts = {"sent_messages": {}, "notifications": {}}  # Инициализация структуры alerts
 admin_sessions = []
 
 # Загрузка пользователей
 def load_users():
     if os.path.exists(USER_DATA_PATH):
-        with open(USER_DATA_PATH, 'r') as file:
+        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
     return {}
 
-# Загрузка базы данных
+# Сохранение базы данных
 def save_database():
+    # Преобразование datetime объектов в строки
     for key, value in alerts['notifications'].items():
         if 'time' in value and isinstance(value['time'], datetime):
             value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
     for key, value in alerts['sent_messages'].items():
         if 'time' in value and isinstance(value['time'], datetime):
             value['time'] = value['time'].strftime("%d.%m.%Y в %H:%M")
-    with open(DATABASE_PATH, 'w', encoding='utf-8') as file:
-        json.dump(alerts, file, ensure_ascii=False, indent=4)
+
+    # Убедиться, что директория для базы данных существует
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+
+    # Сохранение данных в файл
+    try:
+        with open(DATABASE_PATH, 'w', encoding='utf-8') as file:
+            json.dump(alerts, file, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка при сохранении базы данных: {e}")
+
+    # Обратное преобразование строк в datetime
     for key, value in alerts['notifications'].items():
         if 'time' in value and isinstance(value['time'], str):
             value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
@@ -13062,16 +13962,19 @@ def save_database():
         if 'time' in value and isinstance(value['time'], str):
             value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
-
+# Загрузка базы данных
 def load_database():
     if os.path.exists(DATABASE_PATH):
-        with open(DATABASE_PATH, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+        try:
+            with open(DATABASE_PATH, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+
+            # Преобразование строк во временные метки
             for key, value in data['notifications'].items():
                 if 'time' in value and value['time']:
                     value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
-            # Преобразование списка sent_messages в словарь
+            # Преобразование списка sent_messages в словарь (если нужно)
             if isinstance(data['sent_messages'], list):
                 sent_messages_dict = {}
                 for i, msg in enumerate(data['sent_messages']):
@@ -13086,8 +13989,10 @@ def load_database():
                         value['time'] = datetime.strptime(value['time'], "%d.%m.%Y в %H:%M")
 
             return data
-    return {"sent_messages": {}, "notifications": {}}
+        except Exception as e:
+            print(f"Ошибка при загрузке базы данных: {e}")
 
+    return {"sent_messages": {}, "notifications": {}}
 
 # Инициализация базы данных при запуске
 alerts = load_database()
@@ -13141,6 +14046,7 @@ def load_admin_sessions():
 
 admin_sessions = load_admin_sessions()
 
+#@log_user_actions
 def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
@@ -13149,8 +14055,15 @@ def check_admin_access(message):
         return False
 
 # Показ меню уведомлений
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Оповещения' and check_admin_access(message))
 def show_notifications_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Оповещения'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('По времени', 'Всем', 'Отдельно')
     markup.add('В меню админ-панели')
@@ -13158,10 +14071,12 @@ def show_notifications_menu(message):
 
 # Обработчик для "По времени"
 @bot.message_handler(func=lambda message: message.text == 'По времени' and check_admin_access(message))
+#@log_user_actions
 def handle_time_notifications(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'По времени'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -13171,10 +14086,12 @@ def handle_time_notifications(message):
     bot.send_message(message.chat.id, "Управление уведомлениями по времени:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправить по времени' and check_admin_access(message))
+#@log_user_actions
 def schedule_notification(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить по времени'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -13184,6 +14101,7 @@ def schedule_notification(message):
     bot.register_next_step_handler(message, choose_send_action)
 
 @check_user_blocked
+#@log_user_actions
 def choose_send_action(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
@@ -13199,6 +14117,7 @@ def choose_send_action(message):
         list_users_for_time_notification(message)
 
 @check_user_blocked
+#@log_user_actions
 def set_theme_for_notification(message):
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена на этом этапе. Пожалуйста, введите текстовое сообщение.")
@@ -13211,6 +14130,7 @@ def set_theme_for_notification(message):
     bot.send_message(message.chat.id, "Введите текст уведомления или отправьте мультимедийный файл:", reply_markup=markup)
     bot.register_next_step_handler(message, set_time_for_notification, notification_theme)
 
+#@log_user_actions
 @check_user_blocked
 def set_time_for_notification(message, notification_theme):
     notification_text = message.text or message.caption
@@ -13240,6 +14160,7 @@ def set_time_for_notification(message, notification_theme):
     bot.send_message(message.chat.id, "Введите дату (ДД.ММ.ГГГГ):", reply_markup=markup)
     bot.register_next_step_handler(message, process_notification_date, notification_theme, notification_text, content_type, file_id, caption)
 
+#@log_user_actions
 @check_user_blocked
 def process_notification_date(message, notification_theme, notification_text, content_type, file_id, caption):
     date_str = message.text
@@ -13265,6 +14186,7 @@ def process_notification_date(message, notification_theme, notification_text, co
     bot.register_next_step_handler(message, process_notification_time, notification_theme, notification_text, date_str, content_type, file_id, caption)
 
 @check_user_blocked
+#@log_user_actions
 def validate_date_format(date_str):
     try:
         datetime.strptime(date_str, "%d.%m.%Y")
@@ -13273,6 +14195,7 @@ def validate_date_format(date_str):
         return False
 
 @check_user_blocked
+#@log_user_actions
 def process_notification_time(message, notification_theme, notification_text, date_str, content_type, file_id, caption):
     time_str = message.text
     if not validate_time_format(time_str):
@@ -13313,6 +14236,7 @@ def process_notification_time(message, notification_theme, notification_text, da
     show_admin_panel(message)
 
 @check_user_blocked  
+#@log_user_actions
 def validate_time_format(time_str):
     try:
         datetime.strptime(time_str, "%H:%M")
@@ -13321,10 +14245,12 @@ def validate_time_format(time_str):
         return False
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр (по времени)' and check_admin_access(message))
+#@log_user_actions
 def show_view_notifications(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр (по времени)'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -13333,10 +14259,11 @@ def show_view_notifications(message):
     bot.send_message(message.chat.id, "Выберите тип просмотра:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Активные (по времени)' and check_admin_access(message))
+#@log_user_actions
 def show_active_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Активные (по времени)'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if alerts['notifications']:
@@ -13359,10 +14286,11 @@ def show_active_notifications(message):
         bot.send_message(message.chat.id, "Нет уведомлений.")
 
 @bot.message_handler(func=lambda message: message.text == 'Остановленные (по времени)' and check_admin_access(message))
+#@log_user_actions
 def show_stopped_notifications(message):
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Остановленные (по времени)'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     stopped_notifications = [
@@ -13381,6 +14309,7 @@ def show_stopped_notifications(message):
     else:
         bot.send_message(message.chat.id, "Нет остановленных уведомлений.")
 
+#@log_user_actions
 def show_notification_details(message, status):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13432,10 +14361,12 @@ def show_notification_details(message, status):
         bot.register_next_step_handler(message, show_notification_details, status)
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить (по времени)' and check_admin_access(message))
+#@log_user_actions
 def delete_notification(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить (по времени)'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     notifications_list = [
@@ -13454,6 +14385,7 @@ def delete_notification(message):
     else:
         bot.send_message(message.chat.id, "Нет уведомлений для удаления.")
 
+#@log_user_actions
 def process_delete_notification(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13482,10 +14414,12 @@ def process_delete_notification(message):
 # Обработчик для "Всем"
 @check_user_blocked
 @bot.message_handler(func=lambda message: message.text == 'Всем' and check_admin_access(message))
+#@log_user_actions
 def handle_broadcast_notifications(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Всем'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -13496,10 +14430,12 @@ def handle_broadcast_notifications(message):
 
 @check_user_blocked
 @bot.message_handler(func=lambda message: message.text == 'Отправить сообщение' and check_admin_access(message))
+#@log_user_actions
 def send_message_to_all(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить сообщение'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -13508,6 +14444,7 @@ def send_message_to_all(message):
     bot.register_next_step_handler(message, set_theme_for_broadcast)
 
 @check_user_blocked
+#@log_user_actions
 def set_theme_for_broadcast(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13520,6 +14457,7 @@ def set_theme_for_broadcast(message):
     bot.register_next_step_handler(message, process_broadcast_message, broadcast_theme)
 
 @check_user_blocked
+#@log_user_actions
 def process_broadcast_message(message, broadcast_theme):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13592,10 +14530,12 @@ def process_broadcast_message(message, broadcast_theme):
     show_admin_panel(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправленные' and check_admin_access(message))
+#@log_user_actions
 def show_sent_messages(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправленные'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if alerts['sent_messages']:  # Используем загруженный список отправленных сообщений
@@ -13614,6 +14554,7 @@ def show_sent_messages(message):
     else:
         bot.send_message(message.chat.id, "Нет отправленных сообщений.")
 
+#@log_user_actions
 def show_sent_message_details(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13666,11 +14607,13 @@ def show_sent_message_details(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер сообщения.")
         bot.register_next_step_handler(message, show_sent_message_details)
 
-bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Удалить отправленные' and check_admin_access(message))
+#@log_user_actions
 def delete_sent_messages(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить отправленные'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if alerts['sent_messages']:  # Используем загруженный список отправленных сообщений
@@ -13689,6 +14632,7 @@ def delete_sent_messages(message):
     else:
         bot.send_message(message.chat.id, "Нет отправленных сообщений.")
 
+#@log_user_actions
 def process_delete_sent_message(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13711,11 +14655,13 @@ def process_delete_sent_message(message):
         delete_sent_messages(message)
 
 # Обработчик для "Отдельно"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Отдельно' and check_admin_access(message))
 def handle_individual_notifications(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отдельно'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -13725,19 +14671,23 @@ def handle_individual_notifications(message):
     bot.send_message(message.chat.id, "Управление уведомлениями для отдельных пользователей:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Отправить отдельно' and check_admin_access(message))
+#@log_user_actions
 def send_message_to_individual(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Отправить отдельно'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     list_users(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Посмотреть отдельно' and check_admin_access(message))
+#@log_user_actions
 def show_individual_messages(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Посмотреть отдельно'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     users_data = load_users()
@@ -13758,6 +14708,7 @@ def show_individual_messages(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_view)
 
+#@log_user_actions
 def choose_user_for_view(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13777,6 +14728,7 @@ def choose_user_for_view(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
         show_individual_messages(message)
 
+#@log_user_actions
 def view_individual_messages_for_user(message, user_id):
     sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_id', [])]
     if sent_messages:
@@ -13790,8 +14742,7 @@ def view_individual_messages_for_user(message, user_id):
         bot.send_message(message.chat.id, "Нет отправленных сообщений для этого пользователя.")
         show_admin_panel(message)
 
-
-
+#@log_user_actions
 def show_individual_message_details(message, user_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13846,10 +14797,12 @@ def show_individual_message_details(message, user_id):
 
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить отдельно' and check_admin_access(message))
+#@log_user_actions
 def delete_individual_messages(message):
+
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить отдельно'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     users_data = load_users()
@@ -13870,6 +14823,7 @@ def delete_individual_messages(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для удаления:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_delete)
 
+#@log_user_actions
 def choose_user_for_delete(message):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13889,6 +14843,7 @@ def choose_user_for_delete(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
         delete_individual_messages(message)
 
+#@log_user_actions
 def delete_individual_messages_for_user(message, user_id):
     sent_messages = [msg for msg in alerts['sent_messages'].values() if msg['category'] == 'individual' and user_id in msg.get('user_ids', [])]
     if sent_messages:
@@ -13903,6 +14858,7 @@ def delete_individual_messages_for_user(message, user_id):
         bot.send_message(message.chat.id, "Нет отправленных сообщений для этого пользователя.")
         show_admin_panel(message)
 
+#@log_user_actions
 def process_delete_individual_message(message, user_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13924,10 +14880,12 @@ def process_delete_individual_message(message, user_id):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер сообщения.")
         delete_individual_messages_for_user(message, user_id)
 
+#@log_user_actions
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
+#@log_user_actions
 def list_users(message):
     users_data = load_users()
     user_list = []
@@ -13947,6 +14905,7 @@ def list_users(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для отправки сообщения:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_message)
 
+#@log_user_actions
 def choose_user_for_message(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
@@ -13967,6 +14926,7 @@ def choose_user_for_message(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
         handle_individual_notifications(message)
 
+#@log_user_actions
 def set_theme_for_individual(message, user_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -13976,6 +14936,7 @@ def set_theme_for_individual(message, user_id):
     bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:")
     bot.register_next_step_handler(message, send_individual_message, user_id, individual_theme)
 
+#@log_user_actions
 def send_individual_message(message, user_id, individual_theme):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -14039,6 +15000,7 @@ def send_individual_message(message, user_id, individual_theme):
     save_database()
     show_admin_panel(message)
 
+#@log_user_actions
 def list_users_for_time_notification(message):
     users_data = load_users()
     user_list = []
@@ -14058,6 +15020,7 @@ def list_users_for_time_notification(message):
     bot.send_message(message.chat.id, "Введите номер пользователя для отправки сообщения:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_user_for_time_notification)
 
+#@log_user_actions
 def choose_user_for_time_notification(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
@@ -14078,6 +15041,7 @@ def choose_user_for_time_notification(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пользователя.")
         bot.register_next_step_handler(message, choose_user_for_time_notification)
 
+#@log_user_actions
 def set_theme_for_time_notification(message, user_id):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -14087,6 +15051,7 @@ def set_theme_for_time_notification(message, user_id):
     bot.send_message(message.chat.id, "Введите текст сообщения или отправьте мультимедийный файл:")
     bot.register_next_step_handler(message, set_time_for_time_notification, user_id, individual_theme)
 
+#@log_user_actions
 def set_time_for_time_notification(message, user_id, individual_theme):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -14119,6 +15084,7 @@ def set_time_for_time_notification(message, user_id, individual_theme):
     bot.send_message(message.chat.id, "Введите дату (ДД.ММ.ГГГГ):", reply_markup=markup)
     bot.register_next_step_handler(message, process_time_notification_date, user_id, individual_theme, notification_text, content_type, file_id, caption)
 
+#@log_user_actions
 def process_time_notification_date(message, user_id, individual_theme, notification_text, content_type, file_id, caption):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -14135,6 +15101,7 @@ def process_time_notification_date(message, user_id, individual_theme, notificat
     bot.send_message(message.chat.id, "Введите время (ЧЧ:ММ):", reply_markup=markup)
     bot.register_next_step_handler(message, process_time_notification_time, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption)
 
+#@log_user_actions
 def process_time_notification_time(message, user_id, individual_theme, notification_text, date_str, content_type, file_id, caption):
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
@@ -14186,11 +15153,22 @@ def process_time_notification_time(message, user_id, individual_theme, notificat
     bot.send_message(message.chat.id, f"Уведомление *{theme}* запланировано на {formatted_time} для пользователя {username} - {user_id}", parse_mode="Markdown")
     show_admin_panel(message)
 
+
+
+
+
+
 # Путь к файлу
 ADVERTISEMENT_PATH = 'data base/admin/chats/advertisement.json'
 
 # Глобальные переменные
 advertisements = {}
+temp_advertisement = {
+    'text': None,
+    'caption': None,
+    'files': [],
+    'chat_id': None
+}
 
 # Сохранение данных рекламы
 def save_advertisements():
@@ -14212,21 +15190,34 @@ def load_advertisements():
             return data
     return {"advertisements": {}}
 
-
-
 # Инициализация данных рекламы при запуске
 advertisements = load_advertisements()
 
 # Обработчик для пользователя "Заявка на рекламу"
 @bot.message_handler(func=lambda message: message.text == 'Заявка на рекламу')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Заявка на рекламу')
+@track_usage('Заявка на рекламу')  # Добавление отслеживания статистики
+#@log_user_actions
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Вернуться в меню для рекламы')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
     bot.register_next_step_handler(message, set_advertisement_theme)
 
+#@log_user_actions
 def set_advertisement_theme(message):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return
+
     if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
         return_to_menu(message)
         return
 
@@ -14239,8 +15230,16 @@ def set_advertisement_theme(message):
     bot.send_message(message.chat.id, "Введите дату, на которую вы хотите разместить рекламу:")
     bot.register_next_step_handler(message, set_advertisement_date, advertisement_theme)
 
+#@log_user_actions
 def set_advertisement_date(message, advertisement_theme):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return
+
     if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
         return_to_menu(message)
         return
 
@@ -14263,8 +15262,16 @@ def set_advertisement_date(message, advertisement_theme):
     bot.send_message(message.chat.id, "Введите время, на которое вы хотите разместить рекламу:")
     bot.register_next_step_handler(message, set_advertisement_time, advertisement_theme, expected_date)
 
+#@log_user_actions
 def set_advertisement_time(message, advertisement_theme, expected_date):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return
+
     if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
         return_to_menu(message)
         return
 
@@ -14287,9 +15294,15 @@ def set_advertisement_time(message, advertisement_theme, expected_date):
     bot.send_message(message.chat.id, "Введите дату окончания действия рекламы:")
     bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
 
+#@log_user_actions
 def set_advertisement_end_date(message, advertisement_theme, expected_date, expected_time):
     if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
         return_to_menu(message)
+        return
+
+    if message.text == 'Вернуться в меню для рекламы':
+        view_add_menu(message)
         return
 
     if message.content_type != 'text':
@@ -14311,8 +15324,16 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
     bot.send_message(message.chat.id, "Введите время окончания действия рекламы:")
     bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
 
+#@log_user_actions
 def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
+    
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return    
+    
     if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
         return_to_menu(message)
         return
 
@@ -14327,16 +15348,56 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
         bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
         return
 
-    bot.send_message(message.chat.id, "Отправьте текст и мультимедиа (если есть) для рекламы:")
-    bot.register_next_step_handler(message, save_advertisement_request, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    bot.send_message(message.chat.id, "Отправьте текст рекламы:")
+    bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
 
-def save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
-    user_id = message.chat.id
-    username = message.from_user.username
-    advertisement_text = message.text or message.caption
+#@log_user_actions
+def collect_advertisement_text(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return
+
+    if message.text == 'В главное меню':
+        return_to_menu(message)
+        return
+
+    if message.content_type != 'text':
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, collect_advertisement_text, advertisement_theme, expected_date, expected_time, end_date, end_time)
+        return
+
+    temp_advertisement['text'] = message.text
+    temp_advertisement['chat_id'] = message.chat.id
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Пропустить медиафайлы')
+    markup.add('Вернуться в меню для рекламы')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Отправьте мультимедийные файлы (если есть):", reply_markup=markup)
+    bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+#@log_user_actions
+def collect_advertisement_media(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+ 
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return
+
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
+        return_to_menu(message)
+        return
+
+    if message.text == "Пропустить медиафайлы":
+        temp_advertisement['files'] = []  # Инициализируем 'files' пустым списком
+        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+        return
+
     content_type = message.content_type
     file_id = None
-    caption = message.caption
 
     if content_type == 'photo':
         file_id = message.photo[-1].file_id
@@ -14355,6 +15416,59 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
     elif content_type == 'video_note':
         file_id = message.video_note.file_id
 
+    if file_id:
+        if 'files' not in temp_advertisement:
+            temp_advertisement['files'] = []
+        temp_advertisement['files'].append({
+            'type': content_type,
+            'file_id': file_id,
+            'caption': temp_advertisement.get('text', '')  # Используем get для безопасного доступа
+        })
+
+        if len(temp_advertisement['files']) >= 10:
+            save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+            return
+
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Добавить еще', 'Завершить отправку')
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, отправьте мультимедийный файл!")
+        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+#@log_user_actions
+def handle_advertisement_media_options(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+    
+    if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()  # Очистка временных данных
+        view_add_menu(message)
+        return   
+    
+    if message.text == 'В главное меню':
+        temp_advertisement.clear()  # Очистка временных данных
+        return_to_menu(message)
+        return
+
+    if message.text == "Добавить еще":
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Пропустить медиафайлы')
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
+        bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    elif message.text == "Завершить отправку":
+        save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, выберите действие!")
+        bot.register_next_step_handler(message, handle_advertisement_media_options, advertisement_theme, expected_date, expected_time, end_date, end_time)
+
+#@log_user_actions
+def save_advertisement_request(message, advertisement_theme, expected_date, expected_time, end_date, end_time):
+    user_id = message.chat.id
+    username = message.from_user.username
     advertisement_id = str(len(advertisements['advertisements']) + 1)
     advertisements['advertisements'][advertisement_id] = {
         'user_id': user_id,
@@ -14364,14 +15478,8 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
         'expected_time': expected_time,
         'end_date': end_date,
         'end_time': end_time,
-        'text': advertisement_text if content_type == 'text' else None,
-        'files': [
-            {
-                'type': content_type,
-                'file_id': file_id,
-                'caption': caption if content_type != 'text' else None
-            }
-        ],
+        'text': temp_advertisement['text'],
+        'files': temp_advertisement['files'],
         'status': 'pending',
         'user_ids': [],
         'message_ids': []
@@ -14379,9 +15487,17 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
     print(f"Advertisement request saved: {advertisements['advertisements'][advertisement_id]}")  # Отладочное сообщение
     save_advertisements()
     bot.send_message(message.chat.id, "Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
+
+    # Отправка уведомления админам
+    with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+        admin_data = json.load(file)
+        admin_ids = admin_data['admin_sessions']
+
+    for admin_id in admin_ids:
+        bot.send_message(admin_id, f"У вас новая заявка на рекламу от пользователя `{user_id}` по теме *{advertisement_theme.lower()}* на {expected_date} в {expected_time} до {end_date} в {end_time}!", parse_mode="Markdown")
+
+    temp_advertisement.clear()  # Очистка временных данных после сохранения
     return_to_menu(message)
-
-
 
 def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
     end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
@@ -14389,7 +15505,7 @@ def schedule_advertisement_deletion(advertisement_id, end_date, end_time):
     print(f"Scheduling deletion for advertisement ID: {advertisement_id} in {delay} seconds")  # Отладочное сообщение
     threading.Timer(delay, delete_advertisement_messages, [advertisement_id]).start()
 
-
+#@log_user_actions
 def delete_advertisement_messages(advertisement_id):
     advertisement = advertisements['advertisements'][advertisement_id]
     user_ids = advertisement['user_ids']
@@ -14403,16 +15519,17 @@ def delete_advertisement_messages(advertisement_id):
         try:
             bot.delete_message(user_id, message_id)
             print(f"Deleted message {message_id} for user {user_id}")  # Отладочное сообщение
-        except Exception as e:
-            print(f"Ошибка при удалении сообщения для пользователя {user_id}: {e}")
+        except ApiTelegramException as e:
+            if e.result.status_code == 400 and 'message to delete not found' in str(e.result):
+                print(f"Message {message_id} for user {user_id} not found, skipping.")
+            else:
+                print(f"Ошибка при удалении сообщения для пользователя {user_id}: {e}")
 
     del advertisements['advertisements'][advertisement_id]
     save_advertisements()
 
-
-
-
 # Функция для проверки формата даты
+#@log_user_actions
 def validate_date_format(date_str):
     if date_str is None:
         return False
@@ -14423,12 +15540,14 @@ def validate_date_format(date_str):
         return False
 
 # Функция для проверки будущей даты
+#@log_user_actions
 def validate_future_date(date_str):
     today = datetime.now().date()
     input_date = datetime.strptime(date_str, "%d.%m.%Y").date()
     return input_date >= today
 
 # Функция для проверки формата времени
+#@log_user_actions
 def validate_time_format(time_str):
     try:
         datetime.strptime(time_str, "%H:%M")
@@ -14437,12 +15556,14 @@ def validate_time_format(time_str):
         return False
 
 # Функция для проверки будущего времени
+#@log_user_actions
 def validate_future_time(date_str, time_str):
     now = datetime.now()
     input_datetime = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
     return input_datetime >= now
 
 # Функция для проверки срока
+#@log_user_actions
 def validate_duration(duration_str):
     try:
         duration = int(duration_str)
@@ -14451,199 +15572,367 @@ def validate_duration(duration_str):
         return False
 
 # Функция для обработки запросов на рекламу от администратора
+#@log_user_actions
 def handle_admin_advertisement_requests(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Запросы на рекламу', 'Удалить рекламу')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите действие для рекламы:", reply_markup=markup)
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Запросы на рекламу' and check_admin_access(message))
 def show_advertisement_requests(message):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Запросы на рекламу'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    pending_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['status'] == 'pending']
+    current_time = datetime.now()
+
+    for adv in pending_advertisements:
+        end_datetime = datetime.strptime(f"{adv['end_date']} {adv['end_time']}", "%d.%m.%Y %H:%M")
+        if current_time >= end_datetime:
+            advertisement_id = next(key for key, value in advertisements['advertisements'].items() if value == adv)
+            user_id = adv['user_id']
+            theme = adv['theme']
+            del advertisements['advertisements'][advertisement_id]
+            save_advertisements()
+            bot.send_message(user_id, f"Ваша заявка по теме *{theme.lower()}* была отклонена, так как срок истек!", parse_mode="Markdown")
+
     pending_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['status'] == 'pending']
     if pending_advertisements:
         advertisement_list = [
-            f"№{i + 1}. {adv['user_id']} - {adv['theme']} - {adv['expected_date']} - {adv['expected_time']} - {adv.get('end_date', 'N/A')} - {adv.get('end_time', 'N/A')}"
+            f"⭐ *№{i + 1}*\n\n"
+            f"👤 *Пользователь*: `{adv['user_id']}`\n"
+            f"📝 *Тема*: {adv['theme'].lower()}\n"
+            f"📅 *Начало*: {adv['expected_date']} в {adv['expected_time']}\n"
+            f"⌛ *Конец*: {adv.get('end_date', 'N/A')} в {adv.get('end_time', 'N/A')}\n\n"
             for i, adv in enumerate(pending_advertisements)
         ]
+        full_message = "*Список запросов* на рекламу:\n\n" + "\n\n".join(advertisement_list)
+
+        # Разбиваем сообщение на части, если оно слишком длинное
+        max_length = 4096
+        if len(full_message) > max_length:
+            parts = [full_message[i:i + max_length] for i in range(0, len(full_message), max_length)]
+            for part in parts:
+                bot.send_message(message.chat.id, part, parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, full_message, parse_mode="Markdown")
+
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Вернуться в рекламу')
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Список запросов на рекламу:\n\n" + "\n\n".join(advertisement_list), reply_markup=markup)
         bot.send_message(message.chat.id, "Введите номер запроса для просмотра:", reply_markup=markup)
         bot.register_next_step_handler(message, show_advertisement_request_details)
     else:
-        bot.send_message(message.chat.id, "Активных запросов на рекламу нет!")
+        bot.send_message(message.chat.id, "*Активных* запросов на рекламу нет!", parse_mode="Markdown")
 
-
+#@log_user_actions
 def show_advertisement_request_details(message):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     try:
         index = int(message.text) - 1
         advertisement_list = list(advertisements['advertisements'].values())
         if 0 <= index < len(advertisement_list):
             advertisement = advertisement_list[index]
             text = advertisement['text']
-            if not advertisement['files']:
-                text = advertisement['caption']
 
             # Основная информация о рекламе
             info_message = (
-                f"Основная информация о рекламе:\n\n"
-                f"Тема: {advertisement['theme']}\n"
-                f"Дата: {advertisement['expected_date']}\n"
-                f"Время: {advertisement['expected_time']}\n"
-                f"Дата окончания: {advertisement.get('end_date', 'N/A')}\n"
-                f"Время окончания: {advertisement.get('end_time', 'N/A')}\n"
+                f"⭐ *Основная информация о рекламе*:\n\n"
+                f"📝 *Тема*: {advertisement['theme'].lower()}\n"
+                f"📅 *Начало*: {advertisement['expected_date']} в {advertisement['expected_time']}\n"
+                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n\n"
             )
 
-            bot.send_message(message.chat.id, info_message)
+            bot.send_message(message.chat.id, info_message, parse_mode="Markdown")
 
-            # Отправка текста и медиафайлов рекламы
+            # Формируем текст сообщения в зависимости от наличия подписи или текста
             if text and text != 'None':
-                bot.send_message(message.chat.id, f"Текст: {text}")
-            for file in advertisement.get('files', []):
-                if file['type'] == 'photo':
-                    bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'video':
-                    bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'document':
-                    bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'animation':
-                    bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'sticker':
-                    bot.send_sticker(message.chat.id, file['file_id'])
-                elif file['type'] == 'audio':
-                    bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'voice':
-                    bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
-                elif file['type'] == 'video_note':
-                    bot.send_video_note(message.chat.id, file['file_id'])
+                message_text = f"📝 Текст рекламы 📝\n\n{text}"
+            else:
+                message_text = ""
+
+            # Если есть медиафайлы, отправляем их вместе с текстом
+            if 'files' in advertisement and advertisement['files']:
+                media_group = []
+                first_file = True
+                for file in advertisement['files']:
+                    if first_file:
+                        caption = message_text
+                    else:
+                        caption = None
+                    if file['type'] == 'photo':
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
+                    elif file['type'] == 'video':
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
+                    elif file['type'] == 'document':
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
+                    elif file['type'] == 'animation':
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'voice':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+                    first_file = False
+
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
+            else:
+                # Если нет медиафайлов, отправляем только текст
+                if message_text:
+                    bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
 
             markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-            markup.add('Принять рекламу', 'Отклонить рекламу', 'В меню админ-панели')
+            markup.add('Принять рекламу', 'Отклонить рекламу')
+            markup.add('Вернуться в рекламу')
+            markup.add('В меню админ-панели')
             bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
             bot.register_next_step_handler(message, handle_advertisement_request_action, index)
         else:
-            bot.send_message(message.chat.id, "Неверный номер запроса. Попробуйте снова.")
+            bot.send_message(message.chat.id, "Неверный номер запроса! Попробуйте снова")
             bot.register_next_step_handler(message, show_advertisement_request_details)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер запроса.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер запроса!")
         bot.register_next_step_handler(message, show_advertisement_request_details)
 
-
+#@log_user_actions
 def handle_advertisement_request_action(message, index):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    advertisement_id = list(advertisements['advertisements'].keys())[index]
+    advertisement = advertisements['advertisements'][advertisement_id]
+    current_time = datetime.now()
+    end_datetime = datetime.strptime(f"{advertisement['end_date']} {advertisement['end_time']}", "%d.%m.%Y %H:%M")
+
+    if current_time >= end_datetime:
+        user_id = advertisement['user_id']
+        theme = advertisement['theme']
+        del advertisements['advertisements'][advertisement_id]
+        save_advertisements()
+        bot.send_message(message.chat.id, "Реклама была отклонена, так как срок истек!")
+        bot.send_message(user_id, f"Ваша заявка по теме *{theme.lower()}* была отклонена, так как срок истек!", parse_mode="Markdown")
+        show_advertisement_menu(message)
+        return
+
     if message.text == 'Принять рекламу':
-        advertisement_id = list(advertisements['advertisements'].keys())[index]
         advertisements['advertisements'][advertisement_id]['status'] = 'accepted'
         save_advertisements()
         bot.send_message(message.chat.id, "Реклама была принята! Выберите действия для отправки:")
         choose_send_advertisement_action(message, advertisement_id)
     elif message.text == 'Отклонить рекламу':
-        advertisement_id = list(advertisements['advertisements'].keys())[index]
-        advertisement = advertisements['advertisements'][advertisement_id]
         user_id = advertisement['user_id']
         theme = advertisement['theme']
         del advertisements['advertisements'][advertisement_id]
         save_advertisements()
-        bot.send_message(message.chat.id, "Реклама была отклонена.")
-        bot.send_message(user_id, f"Ваша заявка по теме '{theme}' была отклонена администратором!")
-        show_admin_panel(message)
-    elif message.text == 'В меню админ-панели':
-        show_admin_panel(message)
+        bot.send_message(message.chat.id, "Реклама была отклонена!")
+        bot.send_message(user_id, f"Ваша заявка по теме *{theme.lower()}* была отклонена администратором!", parse_mode="Markdown")
+        show_advertisement_menu(message)
     else:
-        bot.send_message(message.chat.id, "Неверное действие. Попробуйте снова.")
+        bot.send_message(message.chat.id, "Неверное действие! Попробуйте снова")
         show_advertisement_request_details(message)
 
+#@log_user_actions
 def schedule_advertisement(message, advertisement_id):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     advertisement = advertisements['advertisements'][advertisement_id]
-    bot.send_message(message.chat.id, f"Тема: {advertisement['theme']}\nТекст: {advertisement['text']}")
-    for file in advertisement.get('files', []):
-        if file['type'] == 'photo':
-            bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'video':
-            bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'document':
-            bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'animation':
-            bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'sticker':
-            bot.send_sticker(message.chat.id, file['file_id'])
-        elif file['type'] == 'audio':
-            bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'voice':
-            bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption'))
-        elif file['type'] == 'video_note':
-            bot.send_video_note(message.chat.id, file['file_id'])
+    bot.send_message(message.chat.id, f"Тема: {advertisement['theme']}")
+
+    # Формируем текст сообщения в зависимости от наличия подписи или текста
+    if advertisement['text'] and advertisement['text'] != 'None':
+        message_text = f"📝 Текст рекламы 📝\n\n{advertisement['text']}"
+    else:
+        message_text = ""
+
+    # Если есть медиафайлы, отправляем их вместе с текстом
+    if 'files' in advertisement and advertisement['files']:
+        media_group = []
+        first_file = True
+        for file in advertisement['files']:
+            if first_file:
+                caption = message_text
+            else:
+                caption = None
+            if file['type'] == 'photo':
+                media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
+            elif file['type'] == 'video':
+                media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
+            elif file['type'] == 'document':
+                media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
+            elif file['type'] == 'animation':
+                media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
+            elif file['type'] == 'sticker':
+                bot.send_sticker(message.chat.id, file['file_id'])
+            elif file['type'] == 'audio':
+                media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+            elif file['type'] == 'voice':
+                media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+            elif file['type'] == 'video_note':
+                bot.send_video_note(message.chat.id, file['file_id'])
+            first_file = False
+
+        if media_group:
+            bot.send_media_group(message.chat.id, media_group)
+    else:
+        # Если нет медиафайлов, отправляем только текст
+        if message_text:
+            bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Отправить по времени', 'Отправить всем')
+    markup.add('Вернуться в рекламу')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
     bot.register_next_step_handler(message, choose_send_advertisement_action, advertisement_id)
 
+
+#@log_user_actions
 def choose_send_advertisement_action(message, advertisement_id):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Отправить по времени', 'Отправить всем')
+    markup.add('Вернуться в рекламу')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_send_advertisement_action, advertisement_id)
 
+#@log_user_actions
 def handle_send_advertisement_action(message, advertisement_id):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     if message.text == 'Отправить по времени':
         schedule_notification(message, advertisement_id)
     elif message.text == 'Отправить всем':
         send_advertisement_to_all(message, advertisement_id)
-    elif message.text == 'В меню админ-панели':
-        show_admin_panel(message)
     else:
-        bot.send_message(message.chat.id, "Неверное действие. Попробуйте снова.")
+        bot.send_message(message.chat.id, "Неверное действие! Попробуйте снова")
         choose_send_advertisement_action(message, advertisement_id)
 
+#@log_user_actions
 def schedule_notification(message, advertisement_id):
-    advertisement = advertisements['advertisements'][advertisement_id]
-    notification_id = str(len(alerts['notifications']) + 1)
-    alerts['notifications'][notification_id] = {
-        'theme': advertisement['theme'],
-        'text': advertisement['text'],
-        'time': datetime.strptime(f"{advertisement['expected_date']} {advertisement['expected_time']}", "%d.%m.%Y %H:%M"),
-        'status': 'active',
-        'category': 'time',
-        'user_id': None,
-        'files': advertisement['files'],
-        'content_type': advertisement['files'][0]['type'] if advertisement['files'] else 'text'
-    }
-    save_database()
-    bot.send_message(message.chat.id, f"Реклама '{advertisement['theme']}' запланирована на {advertisement['expected_date']} в {advertisement['expected_time']}.")
-    show_admin_panel(message)
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
 
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    advertisement = advertisements['advertisements'][advertisement_id]
+    expected_datetime = datetime.strptime(f"{advertisement['expected_date']} {advertisement['expected_time']}", "%d.%m.%Y %H:%M")
+    current_time = datetime.now()
+
+    if current_time >= expected_datetime:
+        send_advertisement_to_all(message, advertisement_id)
+    else:
+        delay = (expected_datetime - current_time).total_seconds()
+        threading.Timer(delay, send_advertisement_to_all, [message, advertisement_id]).start()
+        bot.send_message(message.chat.id, f"Реклама *{advertisement['theme'].lower()}* запланирована на {advertisement['expected_date']} в {advertisement['expected_time']}!", parse_mode="Markdown")
+        show_advertisement_menu(message)
+
+#@log_user_actions
 def send_advertisement_to_all(message, advertisement_id):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     advertisement = advertisements['advertisements'][advertisement_id]
     users = load_users()
     user_ids = []
     message_ids = []
 
     for user_id in users.keys():
-        if advertisement['files']:
-            file = advertisement['files'][0]
+        media_group = []
+        first_file = True
+        for file in advertisement['files']:
+            if first_file:
+                caption = advertisement['text']
+            else:
+                caption = None
             if file['type'] == 'photo':
-                sent_message = bot.send_photo(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
             elif file['type'] == 'video':
-                sent_message = bot.send_video(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
             elif file['type'] == 'document':
-                sent_message = bot.send_document(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
             elif file['type'] == 'animation':
-                sent_message = bot.send_animation(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
             elif file['type'] == 'sticker':
-                sent_message = bot.send_sticker(user_id, file['file_id'])
+                bot.send_sticker(user_id, file['file_id'])
             elif file['type'] == 'audio':
-                sent_message = bot.send_audio(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
             elif file['type'] == 'voice':
-                sent_message = bot.send_voice(user_id, file['file_id'], caption=file.get('caption'))
+                media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
             elif file['type'] == 'video_note':
-                sent_message = bot.send_video_note(user_id, file['file_id'])
-        else:
-            sent_message = bot.send_message(user_id, advertisement['text'])
+                bot.send_video_note(user_id, file['file_id'])
+            first_file = False
 
-        user_ids.append(user_id)
-        message_ids.append(sent_message.message_id)
+        if media_group:
+            try:
+                sent_messages = bot.send_media_group(user_id, media_group)
+                for sent_message in sent_messages:
+                    message_ids.append(sent_message.message_id)
+                    user_ids.append(user_id)
+            except Exception as e:
+                print(f"Ошибка при отправке медиафайлов пользователю {user_id}: {e}")
+        else:
+            try:
+                sent_message = bot.send_message(user_id, advertisement['text'])
+                message_ids.append(sent_message.message_id)
+                user_ids.append(user_id)
+            except Exception as e:
+                print(f"Ошибка при отправке текста пользователю {user_id}: {e}")
 
     print(f"User IDs: {user_ids}")  # Отладочное сообщение
     print(f"Message IDs: {message_ids}")  # Отладочное сообщение
@@ -14653,8 +15942,8 @@ def send_advertisement_to_all(message, advertisement_id):
     advertisement['status'] = 'accepted'  # Обновляем статус на 'accepted'
     save_advertisements()
 
-    bot.send_message(message.chat.id, "Реклама отправлена всем пользователям.")
-    show_admin_panel(message)
+    bot.send_message(message.chat.id, "Реклама отправлена всем пользователям!")
+    show_advertisement_menu(message)
 
 def check_advertisement_expiration():
     while True:
@@ -14667,58 +15956,308 @@ def check_advertisement_expiration():
         time.sleep(60)  # Проверяем каждую минуту
 threading.Thread(target=check_advertisement_expiration, daemon=True).start()
 
+def check_pending_advertisement_expiration():
+    while True:
+        current_time = datetime.now()
+        for adv_id, adv in list(advertisements['advertisements'].items()):
+            if adv['status'] == 'pending':
+                end_datetime = datetime.strptime(f"{adv['end_date']} {adv['end_time']}", "%d.%m.%Y %H:%M")
+                if current_time >= end_datetime:
+                    user_id = adv['user_id']
+                    theme = adv['theme']
+                    del advertisements['advertisements'][adv_id]
+                    save_advertisements()
+                    bot.send_message(user_id, f"Ваша заявка по теме *{theme.lower()}* была отклонена, так как срок истек!", parse_mode="Markdown")
+        time.sleep(60)  # Проверяем каждую минуту
+
+# Запуск фоновой проверки
+threading.Thread(target=check_pending_advertisement_expiration, daemon=True).start()
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Удалить рекламу' and check_admin_access(message))
 def delete_advertisement(message):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить рекламу'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     if advertisements['advertisements']:
         advertisement_list = [
-            f"№{i + 1}. {adv['user_id']} - {adv['theme']} - {adv['expected_date']} - {adv['expected_time']} - {adv.get('end_date', 'N/A')} - {adv.get('end_time', 'N/A')}"
+            f"⭐️ №{i + 1}\n\n"
+            f"👤 *Пользователь*: `{adv['user_id']}`\n"
+            f"📝 *Тема*: {adv['theme'].lower()}\n"
+            f"📅 *Начало*: {adv['expected_date']} в {adv['expected_time']}\n"
+            f"⌛️ *Конец*: {adv.get('end_date', 'N/A')} в {adv.get('end_time', 'N/A')}\n"
             for i, adv in enumerate(advertisements['advertisements'].values()) if adv['status'] == 'accepted'
         ]
         if advertisement_list:
-            bot.send_message(message.chat.id, "Список опубликованных реклам:\n\n" + "\n\n".join(advertisement_list))
-            bot.send_message(message.chat.id, "Введите номер рекламы для удаления:")
+            full_message = "*Список опубликованных реклам*:\n\n" + "\n\n".join(advertisement_list)
+
+            # Разбиваем сообщение на части, если оно слишком длинное
+            max_length = 4096
+            if len(full_message) > max_length:
+                parts = [full_message[i:i + max_length] for i in range(0, len(full_message), max_length)]
+                for part in parts:
+                    bot.send_message(message.chat.id, part, parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, full_message, parse_mode="Markdown")
+
+            markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Вернуться в рекламу')
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "Введите номер рекламы для удаления:", reply_markup=markup)
             bot.register_next_step_handler(message, process_delete_advertisement)
         else:
-            bot.send_message(message.chat.id, "У вас нет опубликованных реклам!")
+            bot.send_message(message.chat.id, "У вас нет *опубликованных* реклам!", parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, "Нет опубликованных реклам!")
+        bot.send_message(message.chat.id, "Нет *опубликованных* реклам!", parse_mode="Markdown")
 
-
+#@log_user_actions
 def process_delete_advertisement(message):
+    if message.text == "Вернуться в рекламу":
+        show_advertisement_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     try:
         index = int(message.text) - 1
         advertisement_list = list(advertisements['advertisements'].values())
         if 0 <= index < len(advertisement_list):
             advertisement_id = list(advertisements['advertisements'].keys())[index]
-            deleted_advertisement = advertisements['advertisements'].pop(advertisement_id)
-            save_advertisements()
-            bot.send_message(message.chat.id, f"Реклама '{deleted_advertisement['theme']}' удалена.")
-            show_admin_panel(message)
+            delete_advertisement_messages(advertisement_id)
+            bot.send_message(message.chat.id, f"Реклама удалена!")
+            show_advertisement_menu(message)
         else:
-            bot.send_message(message.chat.id, "Неверный номер рекламы. Попробуйте снова.")
+            bot.send_message(message.chat.id, "Неверный номер рекламы! Попробуйте снова")
             delete_advertisement(message)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер рекламы.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер рекламы!")
         delete_advertisement(message)
 
-
 # Обработчик для кнопки "РЕКЛАМА"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Реклама' and check_admin_access(message))
 def show_advertisement_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Реклама'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     handle_admin_advertisement_requests(message)
+
+
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Ваши заявки')
+@track_usage('Ваши заявки')  # Добавление отслеживания статистики
+#@log_user_actions
+@bot.message_handler(func=lambda message: message.text == 'Ваши заявки')
+def show_user_advertisement_requests(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, show_user_advertisement_requests)
+        return
+
+    user_id = message.chat.id
+    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+
+    if user_advertisements:
+        advertisement_list = [
+            f"⭐ №{i + 1}\n\n"
+            f"📝 *Тема*: {adv['theme'].lower()}\n"
+            f"📅 *Начало*: {adv['expected_date']} в {adv['expected_time']}\n"
+            f"⌛ *Конец*: {adv.get('end_date', 'N/A')} в {adv.get('end_time', 'N/A')}\n"
+            for i, adv in enumerate(user_advertisements)
+        ]
+        full_message = "*Ваши заявки на рекламу*:\n\n" + "\n\n".join(advertisement_list)
+
+        # Разбиваем сообщение на части, если оно слишком длинное
+        max_length = 4096
+        if len(full_message) > max_length:
+            parts = [full_message[i:i + max_length] for i in range(0, len(full_message), max_length)]
+            for part in parts:
+                bot.send_message(message.chat.id, part, parse_mode="Markdown")
+        else:
+            bot.send_message(message.chat.id, full_message, parse_mode="Markdown")
+
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Вернуться в меню для рекламы')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Введите номер заявки для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(message, show_user_advertisement_request_details)
+    else:
+        bot.send_message(message.chat.id, "*У вас нет активных заявок на рекламу!*", parse_mode="Markdown")
+
+#@log_user_actions
+def show_user_advertisement_request_details(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, show_user_advertisement_request_details)
+        return
+
+    if message.text == "Вернуться в меню для рекламы":
+        view_add_menu(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        index = int(message.text) - 1
+        user_id = message.chat.id
+        user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+
+        if 0 <= index < len(user_advertisements):
+            advertisement = user_advertisements[index]
+            text = advertisement['text']
+
+            # Основная информация о рекламе
+            info_message = (
+                f"⭐ *Основная информация о рекламе*:\n\n"
+                f"📝 *Тема*: {advertisement['theme'].lower()}\n"
+                f"📅 *Начало*: {advertisement['expected_date']} в {advertisement['expected_time']}\n"
+                f"⌛ *Конец*: {advertisement.get('end_date', 'N/A')} в {advertisement.get('end_time', 'N/A')}\n\n"
+            )
+
+            bot.send_message(message.chat.id, info_message, parse_mode="Markdown")
+
+            # Формируем текст сообщения в зависимости от наличия подписи или текста
+            if text and text != 'None':
+                message_text = f"📝 Текст рекламы 📝\n\n{text}"
+            else:
+                message_text = ""
+
+            # Если есть медиафайлы, отправляем их вместе с текстом
+            if 'files' in advertisement and advertisement['files']:
+                media_group = []
+                first_file = True
+                for file in advertisement['files']:
+                    if first_file:
+                        caption = message_text
+                    else:
+                        caption = None
+                    if file['type'] == 'photo':
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
+                    elif file['type'] == 'video':
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
+                    elif file['type'] == 'document':
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
+                    elif file['type'] == 'animation':
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
+                    elif file['type'] == 'sticker':
+                        bot.send_sticker(message.chat.id, file['file_id'])
+                    elif file['type'] == 'audio':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'voice':
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                    elif file['type'] == 'video_note':
+                        bot.send_video_note(message.chat.id, file['file_id'])
+                    first_file = False
+
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
+            else:
+                # Если нет медиафайлов, отправляем только текст
+                if message_text:
+                    bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+
+            markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('Отозвать рекламу')
+            markup.add('Вернуться в меню для рекламы')
+            markup.add('В главное меню')
+            bot.send_message(message.chat.id, "Выберите отозвать заявку или вернуться в меню:", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_user_advertisement_request_action, index)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер заявки! Попробуйте снова")
+            show_user_advertisement_requests(message)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер заявки!")
+        show_user_advertisement_requests(message)
+
+#@log_user_actions
+def handle_user_advertisement_request_action(message, index):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(sent, handle_user_advertisement_request_action, index)
+        return
+
+    if message.text == "Вернуться в меню для рекламы":
+        view_add_menu(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    user_id = message.chat.id
+    user_advertisements = [adv for adv in advertisements['advertisements'].values() if adv['user_id'] == user_id]
+    advertisement_id = list(advertisements['advertisements'].keys())[index]
+    advertisement = user_advertisements[index]
+
+    if message.text == 'Отозвать рекламу':
+        del advertisements['advertisements'][advertisement_id]
+        save_advertisements()
+        bot.send_message(message.chat.id, "Ваша заявка была успешно отозвана!")
+
+        # Отправка уведомления админам
+        with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+            admin_data = json.load(file)
+            admin_ids = admin_data['admin_sessions']
+
+        for admin_id in admin_ids:
+            bot.send_message(admin_id, f"Заявка на рекламу от пользователя `{user_id}` по теме *{advertisement['theme'].lower()}* была отозвана!", parse_mode="Markdown")
+
+        return_to_menu(message)
+    else:
+        bot.send_message(message.chat.id, "Неверное действие! Попробуйте снова")
+        show_user_advertisement_request_details(message)
+
+
+
+
+
+@bot.message_handler(func=lambda message: message.text == "Для рекламы")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Для рекламы')
+@track_usage('Для рекламы')  # Добавление отслеживания статистики
+#@log_user_actions
+def view_add_menu(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Заявка на рекламу', 'Ваши заявки')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие с рекламой:", reply_markup=markup)
+
+
+
 
 @bot.message_handler(func=lambda message: message.text == "Прочее")
 @restricted
 @track_user_activity
 @check_chat_state
-@check_function_state_decorator('Посмотреть')
+@check_function_state_decorator('Прочее')
+@track_usage('Прочее')  # Добавление отслеживания статистики
+#@log_user_actions
 def view_reminders(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Чат с админом', 'Заявка на рекламу', 'Новости')
+    markup.add('Чат с админом', 'Для рекламы', 'Новости')
     markup.add('В главное меню')
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
-
-
+    bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
 
 
 
@@ -14774,15 +16313,22 @@ def load_admin_sessions():
 
 admin_sessions = load_admin_sessions()
 
+#@log_user_actions
 def check_admin_access(message):
     if str(message.chat.id) in admin_sessions:
         return True
     else:
-        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
+        bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции!")
         return False
 
 # Показ меню новостей для пользователя
 @bot.message_handler(func=lambda message: message.text == 'Новости')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Новости')
+@track_usage('Новости')
+#@log_user_actions
 def show_news_menu(message):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('3 новости', '5 новостей', '7 новостей')
@@ -14792,110 +16338,226 @@ def show_news_menu(message):
 
 # Обработчик для выбора количества новостей
 @bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('3 новости')
+@check_function_state_decorator('5 новостей')
+@check_function_state_decorator('7 новостей')
+@check_function_state_decorator('10 новостей')
+@check_function_state_decorator('15 новостей')
+@track_usage('3 новости')
+@track_usage('5 новостей')
+@track_usage('7 новостей')
+@track_usage('10 новостей')
+@track_usage('15 новостей')
+#@log_user_actions
 def handle_news_selection(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, handle_news_selection)
+        return
+
     count = int(message.text.split()[0])
     news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-    if news_list:
-        for i in range(min(count, len(news_list))):
-            news_item = news_list[i]
-            if 'files' in news_item and news_item['files']:
-                for file in news_item['files']:
-                    if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-            if news_item['text']:
-                bot.send_message(message.chat.id, news_item['text'])
-        if len(news_list) > count:
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Ещё новости')
-            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_more_news, count)
-    else:
-        bot.send_message(message.chat.id, "Новостей нет.")
 
+    if len(news_list) == 0:
+        bot.send_message(message.chat.id, "Новостей нет!")
+        return_to_menu(message)
+        return
+
+    for i in range(min(count, len(news_list))):
+        news_item = news_list[i]
+        if 'files' in news_item and news_item['files']:
+            media_group = []
+            caption = None
+            for file in news_item['files']:
+                if file.get('caption'):
+                    caption = file['caption']
+                    break
+
+            first_file = True
+            for file in news_item['files']:
+                if file['type'] == 'photo':
+                    media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'video':
+                    media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'document':
+                    media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'animation':
+                    media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'sticker':
+                    bot.send_sticker(message.chat.id, file['file_id'])
+                elif file['type'] == 'audio':
+                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'voice':
+                    media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption if first_file else None))
+                elif file['type'] == 'video_note':
+                    bot.send_video_note(message.chat.id, file['file_id'])
+                first_file = False
+            if media_group:
+                bot.send_media_group(message.chat.id, media_group)
+        if news_item['text']:
+            bot.send_message(message.chat.id, news_item['text'])
+
+    if len(news_list) > count:
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('Еще новости')
+        markup.add('В главное меню')
+        bot.send_message(message.chat.id, "Хотите посмотреть Еще новости?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_more_news, count)
+    else:
+        bot.send_message(message.chat.id, "Новости закончились!")
+        return_to_menu(message)
+
+#@log_user_actions
 def handle_more_news(message, start_index):
-    if message.text == 'Ещё новости':
-        count = start_index + 3
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, handle_more_news, start_index)
+        return
+
+    if message.text == 'Еще новости':
         news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-        for i in range(start_index, min(count, len(news_list))):
+        if start_index >= len(news_list):
+            bot.send_message(message.chat.id, "Новости закончились!")
+            return_to_menu(message)
+            return
+
+        end_index = min(start_index + 3, len(news_list))
+        for i in range(start_index, end_index):
             news_item = news_list[i]
             if 'files' in news_item and news_item['files']:
+                media_group = []
                 for file in news_item['files']:
                     if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'sticker':
                         bot.send_sticker(message.chat.id, file['file_id'])
                     elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=file.get('caption', "")))
                     elif file['type'] == 'video_note':
                         bot.send_video_note(message.chat.id, file['file_id'])
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
             if news_item['text']:
                 bot.send_message(message.chat.id, news_item['text'])
-        if len(news_list) > count:
+
+        if end_index < len(news_list):
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Ещё новости')
-            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_more_news, count)
+            markup.add('Еще новости')
+            markup.add('В главное меню')
+            bot.send_message(message.chat.id, "Хотите посмотреть Еще новости?", reply_markup=markup)
+            bot.register_next_step_handler(message, handle_more_news, end_index)
+        else:
+            bot.send_message(message.chat.id, "Новости закончились!")
+            return_to_menu(message)
     else:
-        show_news_menu(message)
-        
+        return_to_menu(message)
+
 # Показ меню редакции для админа
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Редакция' and check_admin_access(message))
 def show_editorial_menu(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Редакция'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Опубликовать новость', 'Отредактировать новость', 'Посмотреть новость', 'Удалить новость')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите действие из редакции:", reply_markup=markup)
 
 # Обработчик для "Опубликовать новость"
+
+# Глобальные переменные для хранения временных данных новости
+temp_news = {}
+
+# Обработчик для "Опубликовать новость"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Опубликовать новость' and check_admin_access(message))
 def publish_news(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Опубликовать новость'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В редакцию')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите заголовок новости:", reply_markup=markup)
     bot.register_next_step_handler(message, set_news_title)
 
+#@log_user_actions
 def set_news_title(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, set_news_title)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    news_title = message.text
+    news_title = message.text.capitalize()  # Преобразуем заголовок в правильный регистр
+    temp_news['title'] = news_title
+    temp_news['files'] = []
+    temp_news['chat_id'] = message.chat.id  # Сохраняем chat_id для отправки сообщений
+
     markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В редакцию')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите текст новости или отправьте мультимедийный файл:", reply_markup=markup)
-    bot.register_next_step_handler(message, set_news_text, news_title)
+    bot.send_message(message.chat.id, "Введите подпись для новости:", reply_markup=markup)
+    bot.register_next_step_handler(message, collect_news_caption)
 
-def set_news_text(message, news_title):
+#@log_user_actions
+def collect_news_caption(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, collect_news_caption)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    news_text = message.text or message.caption
+    caption = message.text
+    temp_news['caption'] = caption
+
+    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('Пропустить медиафайлы')
+    markup.add('В редакцию')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Отправьте мультимедийные файлы или пропустите отправку:", reply_markup=markup)
+    bot.register_next_step_handler(message, collect_news_media)
+
+#@log_user_actions
+def collect_news_media(message):
+    if message.text == "Пропустить медиафайлы":
+        temp_news['text'] = temp_news['caption']
+        temp_news['caption'] = None
+        save_news(message)
+        return
+
     content_type = message.content_type
     file_id = None
-    caption = message.caption
 
     if content_type == 'photo':
         file_id = message.photo[-1].file_id
@@ -14914,110 +16576,98 @@ def set_news_text(message, news_title):
     elif content_type == 'video_note':
         file_id = message.video_note.file_id
 
+    if file_id:
+        temp_news['files'].append({
+            'type': content_type,
+            'file_id': file_id,
+            'caption': temp_news['caption']
+        })
+
+        if len(temp_news['files']) >= 10:
+            save_news(message)
+            return
+
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Добавить еще', 'Завершить отправку')
+        markup.add('В редакцию')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_media_options)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, отправьте мультимедийный файл!")
+        bot.register_next_step_handler(message, collect_news_media)
+
+#@log_user_actions
+def handle_media_options(message):
+    if message.text == "Добавить еще":
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В редакцию')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
+        bot.register_next_step_handler(message, collect_news_media)
+    elif message.text == "Завершить отправку":
+        save_news(message)
+    elif message.text == "В редакцию":
+        show_editorial_menu(message)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, выберите действие!")
+        bot.register_next_step_handler(message, handle_media_options)
+
+#@log_user_actions
+def save_news(message):
     news_id = str(len(news) + 1)
     news[news_id] = {
-        'title': news_title,
-        'text': news_text if content_type == 'text' else None,
+        'title': temp_news['title'],
+        'text': temp_news.get('text'),
         'time': datetime.now(),
-        'files': [
-            {
-                'type': content_type,
-                'file_id': file_id,
-                'caption': caption if content_type != 'text' else None
-            }
-        ]
+        'files': temp_news['files']
     }
     save_news_database()
-    bot.send_message(message.chat.id, "Новость опубликована.")
-    show_admin_panel(message)
+    bot.send_message(temp_news['chat_id'], "Новость опубликована!")
+    temp_news.clear()
+    show_editorial_menu(message)  # Возвращаемся в меню новостей
 
 # Обработчик для "Отредактировать новость"
-@bot.message_handler(func=lambda message: message.text in ['3 новости', '5 новостей', '7 новостей', '10 новостей', '15 новостей'])
-def handle_news_selection(message):
-    count = int(message.text.split()[0])
-    news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-    if news_list:
-        for i in range(min(count, len(news_list))):
-            news_item = news_list[i]
-            if 'files' in news_item and news_item['files']:
-                for file in news_item['files']:
-                    if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-            else:
-                bot.send_message(message.chat.id, news_item['text'])
-        if len(news_list) > count:
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Ещё новости')
-            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_more_news, count)
-    else:
-        bot.send_message(message.chat.id, "Новостей нет.")
 
-def handle_more_news(message, start_index):
-    if message.text == 'Ещё новости':
-        count = start_index + 3
-        news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
-        for i in range(start_index, min(count, len(news_list))):
-            news_item = news_list[i]
-            if 'files' in news_item and news_item['files']:
-                for file in news_item['files']:
-                    if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-            else:
-                bot.send_message(message.chat.id, news_item['text'])
-        if len(news_list) > count:
-            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-            markup.add('Ещё новости')
-            bot.send_message(message.chat.id, "Хотите посмотреть ещё новости?", reply_markup=markup)
-            bot.register_next_step_handler(message, handle_more_news, count)
-    else:
-        show_news_menu(message)
-
-# Обработчик для "Отредактировать новость"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Отредактировать новость' and check_admin_access(message))
 def edit_news(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Отредактировать новость'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     news_list = [
-        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        f"📰 №{i + 1}. *{n['title']}* - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
         for i, n in enumerate(news.values())
     ]
+
     if news_list:
-        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode="Markdown", reply_markup=markup)
+        news_text = "\n\n".join(news_list)
+        chunks = split_text(news_text)
+        for chunk in chunks:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В редакцию')
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
         bot.send_message(message.chat.id, "Введите номер новости для редактирования:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_edit)
     else:
-        bot.send_message(message.chat.id, "Нет новостей для редактирования.")
+        bot.send_message(message.chat.id, "Нет новостей для редактирования!")
 
+#@log_user_actions
 def choose_news_to_edit(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, choose_news_to_edit)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -15028,57 +16678,217 @@ def choose_news_to_edit(message):
         if 0 <= index < len(news_list):
             news_id = list(news.keys())[index]
             news_item = news[news_id]
-            bot.send_message(message.chat.id, f"*{news_item['title']}*\n\n{news_item['text']}", parse_mode="Markdown")
+
+            # Извлекаем подпись из первого файла, если есть
+            caption = news_item['files'][0]['caption'] if 'files' in news_item and news_item['files'] else None
+
+            # Формируем текст сообщения в зависимости от наличия подписи или текста
+            if caption:
+                message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}\n\n\n📢 ПОДПИСЬ НОВОСТИ 📢\n\n\n{caption}"
+            elif news_item.get('text'):
+                message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}\n\n\n📝 ТЕКСТ НОВОСТИ 📝\n\n\n{news_item['text']}"
+            else:
+                message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}"
+
+            # Если есть медиафайлы, отправляем их вместе с текстом
             if 'files' in news_item and news_item['files']:
+                media_group = []
+                first_file = True
                 for file in news_item['files']:
+                    if first_file:
+                        caption = message_text
+                    else:
+                        caption = None
                     if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
                     elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
                     elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
                     elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
                     elif file['type'] == 'sticker':
                         bot.send_sticker(message.chat.id, file['file_id'])
                     elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
                     elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
+                        media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
                     elif file['type'] == 'video_note':
                         bot.send_video_note(message.chat.id, file['file_id'])
+                    first_file = False
+
+                if media_group:
+                    bot.send_media_group(message.chat.id, media_group)
+            else:
+                # Если нет медиафайлов, отправляем только текст
+                bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+
+            # Формируем нумерованный список для редактирования
+            edit_list = []
+            edit_list.append(f"№1. Заголовок новости")
+            if news_item['text']:
+                edit_list.append(f"№2. Текст новости")
+            if 'files' in news_item and news_item['files']:
+                edit_list.append(f"№3. Подпись к новости")
+                edit_list.append("№4. Медиафайлы")
+
+            edit_text = "\n".join(edit_list)
+            bot.send_message(message.chat.id, "Что вы хотите отредактировать?\n\n" + edit_text)
 
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В редакцию')
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "Введите номер пункта для редактирования:", reply_markup=markup)
+            bot.register_next_step_handler(message, edit_news_item, news_id)
+        else:
+            bot.send_message(message.chat.id, "Неверный номер новости! Попробуйте снова")
+            bot.register_next_step_handler(message, choose_news_to_edit)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости!")
+        bot.register_next_step_handler(message, choose_news_to_edit)
+
+#@log_user_actions
+def edit_news_item(message, news_id):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, edit_news_item, news_id)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    try:
+        choice = int(message.text)
+        news_item = news[news_id]
+
+        if choice == 1:
+            # Редактирование заголовка новости
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В редакцию')
             markup.add('В меню админ-панели')
             bot.send_message(message.chat.id, "Введите новый заголовок новости:", reply_markup=markup)
             bot.register_next_step_handler(message, edit_news_title, news_id)
+        elif choice == 2:
+            if 'text' in news_item and news_item['text']:
+                # Редактирование текста новости
+                markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+                markup.add('В редакцию')
+                markup.add('В меню админ-панели')
+                bot.send_message(message.chat.id, "Введите новый текст новости:", reply_markup=markup)
+                bot.register_next_step_handler(message, edit_news_text, news_id)
+            else:
+                bot.send_message(message.chat.id, "Текст новости отсутствует! Выберите другой пункт для редактирования:")
+                bot.register_next_step_handler(message, edit_news_item, news_id)
+        elif choice == 3:
+            if 'files' in news_item and news_item['files']:
+                # Редактирование подписи к новости
+                markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+                markup.add('В редакцию')
+                markup.add('В меню админ-панели')
+                bot.send_message(message.chat.id, "Введите новую подпись к новости:", reply_markup=markup)
+                bot.register_next_step_handler(message, edit_news_caption, news_id)
+            else:
+                bot.send_message(message.chat.id, "Подпись к новости отсутствует! Выберите другой пункт для редактирования:")
+                bot.register_next_step_handler(message, edit_news_item, news_id)
+        elif choice == 4:
+            if 'files' in news_item and news_item['files']:
+                # Редактирование медиафайлов
+                markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+                markup.add('В редакцию')
+                markup.add('В меню админ-панели')
+                bot.send_message(message.chat.id, "Отправьте новые медиафайлы:", reply_markup=markup)
+                bot.register_next_step_handler(message, edit_news_media, news_id)
+            else:
+                bot.send_message(message.chat.id, "Медиафайлы отсутствуют! Выберите другой пункт для редактирования:")
+                bot.register_next_step_handler(message, edit_news_item, news_id)
         else:
-            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
-            bot.register_next_step_handler(message, choose_news_to_edit)
+            bot.send_message(message.chat.id, "Неверный номер пункта! Попробуйте снова")
+            bot.register_next_step_handler(message, edit_news_item, news_id)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
-        bot.register_next_step_handler(message, choose_news_to_edit)
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер пункта!")
+        bot.register_next_step_handler(message, edit_news_item, news_id)
 
+#@log_user_actions
 def edit_news_title(message, news_id):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, edit_news_title, news_id)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     news_title = message.text
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Введите новый текст новости или отправьте новый мультимедийный файл:", reply_markup=markup)
-    bot.register_next_step_handler(message, update_news_text_and_media, news_id, news_title)
+    news[news_id]['title'] = news_title
+    save_news_database()
+    bot.send_message(message.chat.id, "Заголовок новости отредактирован!")
+    show_editorial_menu(message)
 
-def update_news_text_and_media(message, news_id, news_title):
+#@log_user_actions
+def edit_news_text(message, news_id):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, edit_news_text, news_id)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
-    news_text = message.text or message.caption
+    news_text = message.text
+    news[news_id]['text'] = news_text
+    save_news_database()
+    bot.send_message(message.chat.id, "Текст новости отредактирован!")
+    show_editorial_menu(message)
+
+#@log_user_actions
+def edit_news_caption(message, news_id):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, edit_news_caption, news_id)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
+    caption = message.text
+    for file in news[news_id]['files']:
+        file['caption'] = caption
+    save_news_database()
+    bot.send_message(message.chat.id, "Подпись новости отредактирована!")
+    show_editorial_menu(message)
+
+#@log_user_actions
+def edit_news_media(message, news_id):
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
+    if message.text == "В меню админ-панели":
+        show_admin_panel(message)
+        return
+
     content_type = message.content_type
     file_id = None
-    caption = message.caption
 
     if content_type == 'photo':
         file_id = message.photo[-1].file_id
@@ -15097,117 +16907,258 @@ def update_news_text_and_media(message, news_id, news_title):
     elif content_type == 'video_note':
         file_id = message.video_note.file_id
 
-    # Обновляем заголовок и текст новости
-    news[news_id]['title'] = news_title
-    news[news_id]['time'] = datetime.now()
-
-    # Обновляем мультимедийные файлы, если они были отправлены
     if file_id:
-        news[news_id]['files'] = [
-            {
-                'type': content_type,
-                'file_id': file_id,
-                'caption': caption if content_type != 'text' else None
-            }
-        ]
-    else:
-        news[news_id]['text'] = news_text
+        # Сохраняем текущую подпись
+        caption = news[news_id]['files'][0]['caption'] if 'files' in news[news_id] and news[news_id]['files'] else None
 
-    save_news_database()
-    bot.send_message(message.chat.id, "Новость отредактирована.")
-    show_admin_panel(message)
+        # Удаляем старые медиафайлы, если это первый новый файл
+        if not news[news_id].get('new_files'):
+            news[news_id]['new_files'] = []
+            news[news_id]['files'] = []
+
+        # Добавляем новый медиафайл, сохраняя подпись
+        news[news_id]['new_files'].append({
+            'type': content_type,
+            'file_id': file_id,
+            'caption': caption
+        })
+
+        if len(news[news_id]['new_files']) >= 10:
+            # Переносим новые файлы в основной список файлов
+            news[news_id]['files'] = news[news_id].get('new_files', [])
+            del news[news_id]['new_files']
+            save_news_database()
+            bot.send_message(message.chat.id, "Медиафайлы новости отредактированы!")
+            show_editorial_menu(message)
+            return
+
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Добавить еще', 'Завершить отправку')
+        markup.add('В редакцию')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
+        bot.register_next_step_handler(message, handle_edit_media_options, news_id)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, отправьте мультимедийный файл!")
+        bot.register_next_step_handler(message, edit_news_media, news_id)
+
+#@log_user_actions
+def handle_edit_media_options(message, news_id):
+    if message.text == "Добавить еще":
+        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В редакцию')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
+        bot.register_next_step_handler(message, edit_news_media, news_id)
+    elif message.text == "Завершить отправку":
+        # Переносим новые файлы в основной список файлов
+        news[news_id]['files'] = news[news_id].get('new_files', [])
+        del news[news_id]['new_files']
+        save_news_database()
+        bot.send_message(message.chat.id, "Медиафайлы новости отредактированы!")
+        show_editorial_menu(message)
+    elif message.text == "В редакцию":
+        show_editorial_menu(message)
+    elif message.text == "В меню админ-панели":
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Пожалуйста, выберите действие!")
+        bot.register_next_step_handler(message, handle_edit_media_options, news_id)
+
+# Разделение текста
+
+#@log_user_actions
+def split_text(text, chunk_size=4096):
+    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
 # Обработчик для "Посмотреть новость"
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Посмотреть новость' and check_admin_access(message))
 def view_news(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Посмотреть новость'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     news_list = [
-        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        f"📰 №{i + 1}. *{n['title']}* - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
         for i, n in enumerate(news.values())
     ]
+
     if news_list:
-        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode="Markdown", reply_markup=markup)
-        bot.send_message(message.chat.id, "Введите номер новости для просмотра:", reply_markup=markup)
+        news_text = "\n\n".join(news_list)
+        chunks = split_text(news_text)
+        for chunk in chunks:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В редакцию')
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номера новости для просмотра:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_view)
     else:
-        bot.send_message(message.chat.id, "Нет новостей для просмотра.")
+        bot.send_message(message.chat.id, "Нет новостей для просмотра!")
 
+#@log_user_actions
 def choose_news_to_view(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, choose_news_to_view)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     try:
-        index = int(message.text) - 1
+        indices = [int(x.strip()) - 1 for x in message.text.split(',')]
         news_list = list(news.values())
-        if 0 <= index < len(news_list):
-            news_item = news_list[index]
-            if 'files' in news_item and news_item['files']:
-                for file in news_item['files']:
-                    if file['type'] == 'photo':
-                        bot.send_photo(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video':
-                        bot.send_video(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'document':
-                        bot.send_document(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'animation':
-                        bot.send_animation(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'sticker':
-                        bot.send_sticker(message.chat.id, file['file_id'])
-                    elif file['type'] == 'audio':
-                        bot.send_audio(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'voice':
-                        bot.send_voice(message.chat.id, file['file_id'], caption=file.get('caption', ""))
-                    elif file['type'] == 'video_note':
-                        bot.send_video_note(message.chat.id, file['file_id'])
-            # Проверка на наличие текста
-            if news_item['text']:
-                bot.send_message(message.chat.id, news_item['text'])
-            show_admin_panel(message)  # Автоматически перенаправляем в меню админ-панели
-        else:
-            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
-            bot.register_next_step_handler(message, choose_news_to_view)
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
-        bot.register_next_step_handler(message, choose_news_to_view)
+        invalid_indices = []
 
+        # Проверяем все номера новостей
+        for index in indices:
+            if not (0 <= index < len(news_list)):
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            bot.send_message(message.chat.id, f"Неверные номера новостей: {', '.join(map(str, invalid_indices))}. Пожалуйста, введите корректные номера новостей")
+            bot.register_next_step_handler(message, choose_news_to_view)
+        else:
+            # Если все номера верны, выводим новости
+            for index in indices:
+                news_item = news_list[index]
+
+                # Извлекаем подпись из первого файла, если есть
+                caption = news_item['files'][0]['caption'] if 'files' in news_item and news_item['files'] else None
+
+                # Формируем текст сообщения в зависимости от наличия подписи или текста
+                if caption:
+                    message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}\n\n\n📢 ПОДПИСЬ НОВОСТИ 📢\n\n\n{caption}"
+                elif news_item.get('text'):
+                    message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}\n\n\n📝 ТЕКСТ НОВОСТИ 📝\n\n\n{news_item['text']}"
+                else:
+                    message_text = f"📌 ЗАГОЛОВОК НОВОСТИ 📌\n\n\n{news_item['title']}"
+
+                # Если есть медиафайлы, отправляем их вместе с текстом
+                if 'files' in news_item and news_item['files']:
+                    media_group = []
+                    first_file = True
+                    for file in news_item['files']:
+                        if first_file:
+                            caption = message_text
+                        else:
+                            caption = None
+                        if file['type'] == 'photo':
+                            media_group.append(telebot.types.InputMediaPhoto(file['file_id'], caption=caption))
+                        elif file['type'] == 'video':
+                            media_group.append(telebot.types.InputMediaVideo(file['file_id'], caption=caption))
+                        elif file['type'] == 'document':
+                            media_group.append(telebot.types.InputMediaDocument(file['file_id'], caption=caption))
+                        elif file['type'] == 'animation':
+                            media_group.append(telebot.types.InputMediaAnimation(file['file_id'], caption=caption))
+                        elif file['type'] == 'sticker':
+                            bot.send_sticker(message.chat.id, file['file_id'])
+                        elif file['type'] == 'audio':
+                            media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                        elif file['type'] == 'voice':
+                            media_group.append(telebot.types.InputMediaAudio(file['file_id'], caption=caption))
+                        elif file['type'] == 'video_note':
+                            bot.send_video_note(message.chat.id, file['file_id'])
+                        first_file = False
+
+                    if media_group:
+                        bot.send_media_group(message.chat.id, media_group)
+                else:
+                    # Если нет медиафайлов, отправляем только текст
+                    bot.send_message(message.chat.id, message_text, parse_mode="Markdown")
+
+            show_editorial_menu(message)  # Автоматически перенаправляем в меню админ-панели
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректные номера новостей!")
+        bot.register_next_step_handler(message, choose_news_to_view)
 
 # Обработчик для "Удалить новость"
+
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Удалить новость' and check_admin_access(message))
 def delete_news(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить новость'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     news_list = [
-        f"№{i + 1}. {n['title']} - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
+        f"📰 №{i + 1}. *{n['title']}* - {n['time'].strftime('%d.%m.%Y в %H:%M')}"
         for i, n in enumerate(news.values())
     ]
+
     if news_list:
-        markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-        markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Список новостей:\n\n" + "\n\n".join(news_list), parse_mode="Markdown", reply_markup=markup)
-        bot.send_message(message.chat.id, "Введите номер новости для удаления:", reply_markup=markup)
+        news_text = "\n\n".join(news_list)
+        chunks = split_text(news_text)
+        for chunk in chunks:
+            markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+            markup.add('В редакцию')
+            markup.add('В меню админ-панели')
+            bot.send_message(message.chat.id, "📜 *Список новостей*:\n\n\n" + chunk, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message.chat.id, "Введите номера новостей:", reply_markup=markup)
         bot.register_next_step_handler(message, choose_news_to_delete)
     else:
-        bot.send_message(message.chat.id, "Нет новостей для удаления.")
+        bot.send_message(message.chat.id, "Нет новостей для удаления!")
 
+#@log_user_actions
 def choose_news_to_delete(message):
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, choose_news_to_delete)
+        return
+
+    if message.text == "В редакцию":
+        show_editorial_menu(message)
+        return
+
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     try:
-        index = int(message.text) - 1
+        indices = [int(x.strip()) - 1 for x in message.text.split(',')]
         news_list = list(news.values())
-        if 0 <= index < len(news_list):
-            news_id = list(news.keys())[index]
-            deleted_news = news.pop(news_id)
-            save_news_database()
-            bot.send_message(message.chat.id, f"Новость '{deleted_news['title']}' удалена.")
-            show_admin_panel(message)  # Автоматически перенаправляем в меню админ-панели
-        else:
-            bot.send_message(message.chat.id, "Неверный номер новости. Попробуйте снова.")
+        deleted_news_titles = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(news_list):
+                news_id = list(news.keys())[index]
+                deleted_news = news.pop(news_id)
+                deleted_news_titles.append(deleted_news['title'])
+            else:
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            bot.send_message(message.chat.id, f"Неверные номера новостей: {', '.join(map(str, invalid_indices))}. Пожалуйста, введите корректные номера новостей")
             bot.register_next_step_handler(message, choose_news_to_delete)
+        else:
+            if deleted_news_titles:
+                # Перенумеровываем новости после удаления
+                new_news = {}
+                for i, (key, value) in enumerate(news.items(), start=1):
+                    new_news[str(i)] = value
+                news.clear()
+                news.update(new_news)
+
+                save_news_database()
+                deleted_news_titles_lower = [title.lower() for title in deleted_news_titles]
+                bot.send_message(message.chat.id, f"Новости (*{', '.join(deleted_news_titles_lower)}*) удалены!", parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Нет новостей для удаления!")
+
+            show_editorial_menu(message)  # Автоматически перенаправляем в меню админ-панели
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректный номер новости.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректные номера новостей!")
         bot.register_next_step_handler(message, choose_news_to_delete)
 
 # (ADMIN n) ------------------------------------------ "ЧАТ АДМИНА И ПОЛЬЗОВАТЕЛЯ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
@@ -15222,6 +17173,7 @@ def load_admin_sessions():
     return data['admin_sessions']
 
 # Функция для проверки прав доступа
+#@log_user_actions
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -15250,28 +17202,13 @@ def load_active_chats():
             active_chats = data.get("active_chats", {})
             user_requests = data.get("user_requests", {})
 
-            # Удаляем пустые записи и записи с темой "Без темы"
-            active_chats = {user_id: chat_data for user_id, chat_data in active_chats.items() if chat_data.get("requests") and all(req[1] != "Без темы" for req in chat_data.get("requests", []))}
-
-            # Объединяем записи для одного и того же пользователя
-            combined_user_requests = {}
+            # Преобразуем строки дат в объекты datetime
             for user_id, requests in user_requests.items():
-                if user_id not in combined_user_requests:
-                    combined_user_requests[user_id] = {}
-                for date_str, count in requests.items():
-                    date = datetime.strptime(date_str, "%d.%m.%Y").date()
-                    if date not in combined_user_requests[user_id]:
-                        combined_user_requests[user_id][date] = 0
-                    combined_user_requests[user_id][date] += count
-
-            user_requests = combined_user_requests
-
-            for user_id, chat_data in active_chats.items():
-                if "requests" in chat_data:
-                    chat_data["requests"] = [datetime.strptime(req, "%d.%m.%Y %H:%M:%S") for req in chat_data["requests"] if isinstance(req, str)]
+                user_requests[user_id] = {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in requests.items()}
     else:
         active_chats = {}
         user_requests = {}
+
 
 # Загрузка активных чатов при запуске бота
 load_active_chats()
@@ -15280,11 +17217,12 @@ load_active_chats()
 def save_active_chats():
     with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
         data = {
-            "active_chats": {user_id: {k: ([req.strftime("%d.%m.%Y %H:%M:%S") if isinstance(req, datetime) else req for req in v] if k == "requests" else v) for k, v in chat_data.items()} for user_id, chat_data in active_chats.items()},
+            "active_chats": active_chats,
             "user_requests": {user_id: {date.strftime("%d.%m.%Y"): count for date, count in requests.items()} for user_id, requests in user_requests.items()}
         }
         json.dump(data, file, ensure_ascii=False, indent=4)
 
+#@log_user_actions
 def add_user_request(user_id, date, count):
     if user_id not in user_requests:
         user_requests[user_id] = {}
@@ -15342,15 +17280,18 @@ def load_admins():
     return []
 
 # Проверка, является ли пользователь администратором
+#@log_user_actions
 def is_admin(user_id):
     admins = load_admins()
     return user_id in admins
 
 # Экранируем специальные символы Markdown
+#@log_user_actions
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 # Функция для вывода списка пользователей
+#@log_user_actions
 def list_users_for_chat(message):
     users_data = load_users()
     user_list = []
@@ -15384,12 +17325,12 @@ active_user_chats = {}  # Хранит, какой администратор о
 active_admin_chats = {}  # Хранит, с каким пользователем общается администратор
 
 # Обработчик для меню "Общение"
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Общение' and check_admin_access(message))
 def show_communication_menu(message):
-
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Общение'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
@@ -15398,73 +17339,70 @@ def show_communication_menu(message):
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-# Команда для пользователя для запроса чата с администратором
+# Пример использования функции save_last_bot_message
 @bot.message_handler(func=lambda message: message.text == "Чат с админом")
 @restricted
 @track_user_activity
-@check_chat_state
 @check_function_state_decorator('Чат с админом')
-@track_usage('Чат с админом')  # Добавление отслеживания статистики
-@bot.message_handler(commands=['chat_with_admin'])
+@track_usage('Чат с админом')
 def request_chat_with_admin(message):
-    global active_chats  # Объявляем active_chats как глобальную переменную
-    user_id = message.from_user.id
-    today = datetime.now().date()
-
-    # Проверяем, есть ли уже запрос на чат
+    global active_chats
     if active_chats is None:
         active_chats = {}
 
-    if user_id in active_chats:
-        if active_chats[user_id].get("status") == "waiting_for_topic":
-            # Если уже есть запрос с статусом "waiting_for_topic", возвращаемся к нему
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-            markup.add(types.KeyboardButton('В главное меню'))
-            bot.send_message(user_id, "Пожалуйста, укажите тему для общения с администратором", reply_markup=markup)
-            return
-        elif active_chats[user_id].get("status") == "pending":
-            bot.send_message(user_id, "У вас уже есть запрос на чат к администратору! Ожидайте!")
-            return
+    user_id = message.from_user.id
+    today = datetime.now().date()
+
+    # Проверяем, есть ли уже запрос на чат с статусом "pending"
+    if any(chat_data.get("user_id") == user_id and chat_data.get("status") == "pending" for chat_data in active_chats.values()):
+        bot.send_message(user_id, "У вас уже есть запрос на чат к администратору! Ожидайте!")
+        return
 
     # Проверяем количество запросов на сегодня
     user_requests_today = user_requests.get(user_id, {}).get(today, 0)
     if user_requests_today >= 3:
         bot.send_message(user_id, "Вы исчерпали лимит запросов на сегодня! Попробуйте завтра")
-        return  # Добавляем return, чтобы прекратить выполнение функции
+        return
 
     # Запрашиваем тему для общения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(types.KeyboardButton('В главное меню'))
     bot.send_message(user_id, "Пожалуйста, укажите тему для общения с администратором", reply_markup=markup)
-    active_chats[user_id] = {"status": "waiting_for_topic"}
+    active_chats[user_id] = {"user_id": user_id, "status": "waiting_for_topic", "awaiting_response": False}
     save_active_chats()
 
-@bot.message_handler(func=lambda message: message.from_user.id in active_chats and active_chats[message.from_user.id]["status"] == "waiting_for_topic")
+@bot.message_handler(func=lambda message: any(chat_data.get("user_id") == message.from_user.id and chat_data.get("status") == "waiting_for_topic" for chat_data in active_chats.values()))
 def handle_chat_topic(message):
     user_id = message.from_user.id
     topic = message.text
     today = datetime.now().date()
 
-    # Обновляем количество запросов
-    add_user_request(user_id, today, 1)
+    # Находим запись с статусом "waiting_for_topic"
+    if user_id in active_chats and active_chats[user_id].get("status") == "waiting_for_topic":
+        # Обновляем количество запросов
+        add_user_request(user_id, today, 1)
 
-    active_chats[user_id] = {
-        "status": "pending",
-        "topic": topic
-    }
-    save_active_chats()
+        active_chats[user_id] = {
+            "user_id": user_id,
+            "status": "pending",
+            "topic": topic,
+            "awaiting_response": False
+        }
+        save_active_chats()
 
-    bot.send_message(user_id, "Запрос на чат был успешно передан администратору! Ожидаем ответа...")
-    return_to_menu(message)  # Перенаправляем пользователя в меню
+        bot.send_message(user_id, "Запрос на чат был успешно передан администратору! Ожидаем ответа...")
+        return_to_menu(message)  # Перенаправляем пользователя в меню
+        return
+
+    bot.send_message(user_id, "У вас уже есть запрос на чат к администратору! Ожидайте!")
 
 # Команда для администратора для связи с пользователем
-@bot.message_handler(func=lambda message: message.text == 'Чат')
+@bot.message_handler(func=lambda message: message.text == 'Чат' and check_admin_access(message))
 @bot.message_handler(commands=['chat'])
 def initiate_chat(message):
-
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Чат'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     if not check_admin_access(message):  # Проверяем, является ли пользователь администратором
@@ -15475,25 +17413,13 @@ def initiate_chat(message):
         user_input = command_parts[1]
         users_data = load_users()
 
-        # Проверка, является ли ввод ID пользователя
-        if user_input.isdigit():
-            user_id = int(user_input)
-            if str(user_id) not in users_data:
+        # Проверка, является ли ввод ID пользователя или номером
+        if len(user_input) > 5:
+            user_id = user_input
+            if user_id not in users_data:
                 bot.send_message(message.chat.id, f"Пользователь с таким *ID* - `{user_id}` не найден", parse_mode="Markdown")
                 return
-            username = users_data[str(user_id)]['username']
-        # Проверка, является ли ввод username
-        elif user_input.startswith('@'):
-            username = user_input
-            user_id = None
-            for uid, data in users_data.items():
-                if data.get('username') == username:
-                    user_id = int(uid)
-                    break
-            if user_id is None:
-                bot.send_message(message.chat.id, f"Пользователь с таким *USERNAME* - {escape_markdown(username)} не найден", parse_mode="Markdown")
-                return
-        # Проверка, является ли ввод номером из списка
+            username = users_data[user_id]['username']
         else:
             try:
                 user_number = int(user_input)
@@ -15513,35 +17439,48 @@ def initiate_chat(message):
                 active_chats[user_id]["admin_id"] = message.chat.id
                 save_active_chats()
             else:
-                bot.send_message(message.chat.id, "Этот пользователь уже находится в активном чате с другим администратором")
+                bot.send_message(message.chat.id, "Этот пользователь уже *находится в активном чате* с другим администратором!", parse_mode="Markdown")
+                show_communication_menu(message)  # Вызываем меню общения
                 return
+
+        # Проверка, что администратор не начинает чат с самим собой
+        if user_id == admin_id:
+            bot.send_message(message.chat.id, "Вы не можете начать чат с самим собой!")
+            return
 
         # Отправляем запрос пользователю
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add(types.KeyboardButton('Принять'))
         markup.add(types.KeyboardButton('Отклонить'))
-        bot.send_message(user_id, "Администратор хочет связаться с вами\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
-        bot.send_message(message.chat.id, f"Запрос отправлен пользователю {escape_markdown(username)} - `{user_id}`. Ожидаем ответа...", parse_mode="Markdown")
+        bot.send_message(user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
+        save_last_bot_message(user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения")
+        bot.send_message(message.chat.id, f"Запрос отправлен пользователю {escape_markdown(username)} - `{user_id}`! Ожидаем ответа...", parse_mode="Markdown")
 
         # Сохраняем запрос в active_chats
-        active_chats[user_id] = {"admin_id": message.chat.id, "status": "pending"}
+        active_chats[user_id] = {"admin_id": message.chat.id, "status": "pending", "awaiting_response": True}
+        save_active_chats()
 
     else:
         list_users_for_chat(message)
 
 # Команда для администратора для просмотра запросов на чат
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Запросы' and check_admin_access(message))
 def list_chat_requests(message):
     admin_id = message.from_user.id
+
+    # admin_id = str(message.chat.id)
+    # if not check_permission(admin_id, 'Запросы'):
+    #     bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+    #     return
+
+    # if not check_admin_access(message):  # Проверяем, является ли пользователь администратором
+    #     return
+
     requests = [(user_id, data.get("topic", "Без темы")) for user_id, data in active_chats.items() if data["status"] == "pending"]
 
     if not requests:
-        bot.send_message(admin_id, "Нет *активных* запросов на чат!", parse_mode="Markdown")
-        return
-
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Запросы'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(admin_id, "*Нет активных* запросов на чат!", parse_mode="Markdown")
         return
 
     users_data = load_users()
@@ -15549,69 +17488,71 @@ def list_chat_requests(message):
     for i, (user_id, topic) in enumerate(requests):
         username = users_data.get(str(user_id), {}).get('username', 'Unknown')
         escaped_username = escape_markdown(username)
-        escaped_topic = escape_markdown(topic).lower()  # Преобразование темы в нижний регистр
-        request_list.append(f"🔹 №{i + 1}. Запрос от пользователя:\n👤 {escaped_username} - `{user_id}`\n📨 Тема: {escaped_topic}")
+        request_list.append(f"🔹 *№{i + 1}.* Запрос от пользователя:\n👤 {escaped_username} - `{user_id}`\n📨 *Тема*: {topic.lower()}")
 
     request_list_message = "Список *запросов* на чат:\n\n" + "\n\n".join(request_list) + "\n\nВведите номер запроса для начала диалога:"
 
-    # Создаем клавиатуру с одной кнопкой "В меню админ-панели"
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    markup.add(types.KeyboardButton('В меню админ-панели'))
+    # Разбиваем сообщение на части, если оно слишком длинное
+    parts = [request_list_message[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(request_list_message), MAX_MESSAGE_LENGTH)]
 
-    bot.send_message(admin_id, request_list_message, parse_mode="Markdown", reply_markup=markup)
+    for part in parts:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add(types.KeyboardButton('Вернуться в общение'))
+        markup.add(types.KeyboardButton('В меню админ-панели'))
+
+        bot.send_message(admin_id, part, parse_mode="Markdown", reply_markup=markup)
+
     active_chats[admin_id] = {"status": "select_request", "requests": requests}
     save_active_chats()
 
 @bot.message_handler(func=lambda message: message.from_user.id in active_chats and active_chats[message.from_user.id]["status"] == "select_request")
 def handle_request_selection(message):
     admin_id = message.from_user.id
+
+    if message.text == "Вернуться в общение":
+        show_communication_menu(message)
+        return
+
     try:
         selected_index = int(message.text) - 1
         requests = active_chats[admin_id]["requests"]
         if selected_index < 0 or selected_index >= len(requests):
-            raise IndexError
+            raise IndexError("Номер запроса вне диапазона")
 
         selected_user_id, topic = requests[selected_index]
-
-        # Загружаем данные пользователей
         users_data = load_users()
         username = users_data.get(str(selected_user_id), {}).get('username', 'Unknown')
-        escaped_username = escape_markdown(username)
 
-        # Проверка, если чат уже активен
         if selected_user_id in active_chats:
             if active_chats[selected_user_id].get("admin_id") is None:
-                # Если нет активного админа, регистрируем текущего админа
                 active_chats[selected_user_id]["admin_id"] = admin_id
                 save_active_chats()
             else:
                 admin_id_in_chat = active_chats[selected_user_id]["admin_id"]
-                bot.send_message(admin_id, f"Этот пользователь уже находится в активном чате с администратором `{admin_id_in_chat}`", parse_mode="Markdown")
+                bot.send_message(admin_id, f"Этот пользователь уже *находится в активном чате* с администратором `{admin_id_in_chat}`!", parse_mode="Markdown")
+                show_communication_menu(message)  
                 return
 
-        # Отправляем запрос пользователю
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add(types.KeyboardButton('Принять'))
-        markup.add(types.KeyboardButton('Отклонить'))
-        bot.send_message(selected_user_id, "Администратор хочет связаться с вами\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
-        bot.send_message(admin_id, f"Запрос отправлен пользователю {escaped_username} - `{selected_user_id}`. Ожидаем ответа...", parse_mode="Markdown")
+        markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+        markup.add('Принять', 'Отклонить')
+        markup.add('В главное меню')
 
-        # Сохраняем запрос в active_chats
-        active_chats[selected_user_id] = {"admin_id": admin_id, "status": "pending"}
+        bot.send_message(selected_user_id, "Администратор хочет связаться с вами!\nВыберите *ПРИНЯТЬ* для принятия или *ОТКЛОНИТЬ* для отклонения", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(admin_id, f"Запрос отправлен пользователю {escape_markdown(username)} - `{selected_user_id}`! Ожидаем ответа...", parse_mode="Markdown")
+
+        active_chats[selected_user_id] = {"admin_id": admin_id, "status": "pending", "awaiting_response": True}
         save_active_chats()
 
-        # Удаляем выбранный запрос из списка
         del active_chats[admin_id]["requests"][selected_index]
         save_active_chats()
 
-        # Сбрасываем состояние чата для администратора
         del active_chats[admin_id]
         save_active_chats()
 
-    except (ValueError, IndexError):
-        bot.send_message(admin_id, "Неверный ввод. Пожалуйста, введите номер запроса")
+    except (ValueError, IndexError) as e:
+        bot.send_message(admin_id, f"Ошибка: {e}. Пожалуйста, введите корректный номер запроса")
 
-
+#@log_user_actions
 def return_admin_to_menu(admin_id):
     # Перенаправляем администратора в меню админ-панели
     bot.send_message(admin_id, "Чат с пользователем был *завершен*!", parse_mode="Markdown")
@@ -15624,11 +17565,12 @@ def return_admin_to_menu(admin_id):
 
 # Обработка ответов пользователя на запрос чата
 @bot.message_handler(func=lambda message: message.text.lower() in ["принять", "отклонить"])
+@check_chat_state
 def handle_chat_response(message):
     user_id = message.from_user.id
 
     # Проверяем, есть ли активный запрос на чат для этого пользователя
-    if active_chats and user_id in active_chats and active_chats[user_id]["status"] == "pending":
+    if user_id in active_chats and active_chats[user_id]["status"] == "pending" and active_chats[user_id]["awaiting_response"]:
         admin_id = active_chats[user_id]["admin_id"]
         users_data = load_users()
         username = users_data[str(user_id)]['username']
@@ -15639,6 +17581,7 @@ def handle_chat_response(message):
             bot.send_message(user_id, "Вы *на связи* с администратором!", parse_mode="Markdown", reply_markup=markup)
             bot.send_message(admin_id, f"Пользователь {escape_markdown(username)} - `{user_id}` *принял* запрос на чат!", parse_mode="Markdown", reply_markup=markup)
             active_chats[user_id]["status"] = "active"
+            active_chats[user_id]["awaiting_response"] = False
             active_user_chats[user_id] = admin_id  # Добавляем в активные чаты для пользователя
             active_admin_chats[admin_id] = user_id  # Добавляем в активные чаты для администратора
             save_active_chats()
@@ -15655,9 +17598,11 @@ def handle_chat_response(message):
         # Если нет активного запроса на чат, игнорируем сообщение
         return
 
+        
 # Обработчик для возврата в главное меню
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
 @bot.message_handler(commands=['mainmenu'])
+#@log_user_actions
 def return_to_menu(message):
     user_id = message.from_user.id
 
@@ -15669,12 +17614,14 @@ def return_to_menu(message):
     start_menu(user_id)  # Перенаправляем пользователя в главное меню
 
 # Функция для отправки сообщения пользователю по его user_id
+#@log_user_actions
 def send_message_to_user(user_id, text, reply_markup=None):
     bot.send_message(user_id, text, reply_markup=reply_markup)
 
 # Функция для завершения чата
 @bot.message_handler(func=lambda message: message.text == 'Стоп')
 @bot.message_handler(commands=['stopchat'])
+#@log_user_actions
 def stop_chat(message):
     user_id = message.from_user.id
 
@@ -15726,6 +17673,7 @@ def stop_chat(message):
         bot.send_message(user_id, "Нет активного чата для завершения!")
 
 # Функция для отображения главного меню
+#@log_user_actions
 def start_menu(user_id):
     # Создание кнопок меню
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -15748,8 +17696,9 @@ def start_menu(user_id):
     markup.add(item9, item10)
     markup.add(item11)
 
-    send_message_to_user(user_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
+    send_message_to_user(user_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
 
+#@log_user_actions
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -15785,6 +17734,7 @@ def load_admin_sessions():
     return data['admin_sessions']
 
 # Функция для проверки прав доступа
+#@log_user_actions
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -15794,9 +17744,15 @@ def check_admin_access(message):
         return False
 
 # Общий обработчик для команды "Файлы"
-@bot.message_handler(commands=['files'])
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Файлы' and check_admin_access(message))
 def show_files_menu(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Файлы'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('Просмотр файлов', 'Поиск файлов по ID')
     markup.add('Добавить файлы', 'Замена файлов', 'Удалить файлы')
@@ -15804,22 +17760,25 @@ def show_files_menu(message):
 
     bot.send_message(message.chat.id, "Выберите действие с файлами:", reply_markup=markup)
 
-# Обработчик для кнопки "Просмотр файлов"
 @bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and check_admin_access(message))
 def view_files(message):
-    if message.text == 'В меню админ-панели':
-        show_admin_panel(message)
-        return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр файлов'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     files_list = []
     extensions = set()
 
-    # Проверка файлов в корневой директории
+    # Сбор файлов из корневой директории
     for file_name in os.listdir(BASE_DIR):
         file_path = os.path.join(BASE_DIR, file_name)
         if os.path.isfile(file_path):
@@ -15827,38 +17786,55 @@ def view_files(message):
             extension = os.path.splitext(file_name)[1]
             extensions.add(extension)
 
+    # Сбор файлов из FILES_PATH
     for root, dirs, files in os.walk(FILES_PATH):
         for file_name in files:
             files_list.append(os.path.join(root, file_name))
             extension = os.path.splitext(file_name)[1]
             extensions.add(extension)
 
+    # Сбор файлов из ADDITIONAL_FILES_PATH
     for root, dirs, files in os.walk(ADDITIONAL_FILES_PATH):
         for file_name in files:
             files_list.append(os.path.join(root, file_name))
             extension = os.path.splitext(file_name)[1]
             extensions.add(extension)
 
-    response = "*Список расширений файлов:*\n\n\n"
-    response += "📁 1. *Отправка всех файлов*\n\n"
-    response += "\n\n".join([f"📄 {i + 2}. *{ext[1:]}*" for i, ext in enumerate(extensions)])
+    # Проверка наличия файлов
+    if not files_list:
+        bot.send_message(message.chat.id, "Файлы не найдены!")
+        return
 
+    # Формирование списка расширений
+    sorted_extensions = sorted(extensions)
+    response = "*Список расширений файлов:*\n\n"
+    response += "📁 1. *Отправка всех файлов*\n\n"
+    response += "\n".join([f"📄 {i + 2}. *{ext[1:]}*" for i, ext in enumerate(sorted_extensions)])
+
+    # Сохранение данных в bot_data
     bot_data[message.chat.id] = {
         "files_list": files_list,
-        "extensions": list(extensions)
+        "extensions": sorted_extensions
     }
 
+    # Отправка сообщения с нумерованным списком
     for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
         bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode="Markdown")
 
+    # Подготовка кнопок для дальнейшего взаимодействия
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите номер для выбора расширения:", reply_markup=markup)
     bot.register_next_step_handler(message, process_extension_selection)
 
+# @log_user_actions
 def process_extension_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -15870,68 +17846,41 @@ def process_extension_selection(message):
         selection = int(message.text.strip())
         if selection == 1:
             files_list = bot_data[message.chat.id]["files_list"]
+            selected_extension = None  # Для случая выбора всех файлов
         else:
             extensions = bot_data[message.chat.id]["extensions"]
             if 1 < selection <= len(extensions) + 1:
                 selected_extension = extensions[selection - 2]
                 files_list = [file for file in bot_data[message.chat.id]["files_list"] if file.endswith(selected_extension)]
             else:
-                bot.send_message(message.chat.id, "Некорректный номер.")
+                bot.send_message(message.chat.id, "Некорректный номер!")
                 bot.register_next_step_handler(message, process_extension_selection)
                 return
 
         if files_list:
-            response = "*Показаны файлы с расширением {selected_extension[1:]}:*\n\n"
-            response += "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
-            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
-                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode="Markdown")
-            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
-            bot.register_next_step_handler(message, process_file_selection, files_list)
-        else:
-            bot.send_message(message.chat.id, "Файлы с выбранным расширением не найдены.")
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
-        bot.register_next_step_handler(message, process_extension_selection)
+            if selected_extension:  # Для конкретного расширения
+                response = f"Показаны файлы с расширением {selected_extension[1:]}:\n\n"
+            else:  # Для всех файлов
+                response = "Показаны все файлы:\n\n"
 
-def process_extension_selection(message):
-    if message.text == 'В меню админ-панели':
-        show_admin_panel(message)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
-        sent = bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, process_extension_selection)
-        return
-
-    try:
-        selection = int(message.text.strip())
-        if selection == 1:
-            files_list = bot_data[message.chat.id]["files_list"]
-        else:
-            extensions = bot_data[message.chat.id]["extensions"]
-            if 1 < selection <= len(extensions) + 1:
-                selected_extension = extensions[selection - 2]
-                files_list = [file for file in bot_data[message.chat.id]["files_list"] if file.endswith(selected_extension)]
-            else:
-                bot.send_message(message.chat.id, "Некорректный номер.")
-                bot.register_next_step_handler(message, process_extension_selection)
-                return
-
-        if files_list:
-            response = "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
+            response += "\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
             for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
                 bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
-            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
+            bot.send_message(message.chat.id, "Введите номера файлов через запятую для отправки:")
             bot.register_next_step_handler(message, process_file_selection, files_list)
         else:
-            bot.send_message(message.chat.id, "Файлы с выбранным расширением не найдены.")
+            bot.send_message(message.chat.id, "Файлы с выбранным расширением не найдены!")
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_extension_selection)
 
+# @log_user_actions
 def process_file_selection(message, matched_files):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -15940,35 +17889,44 @@ def process_file_selection(message, matched_files):
         return
 
     try:
-        file_number = int(message.text.strip()) - 1
-        if 0 <= file_number < len(matched_files):
-            file_path = matched_files[file_number]
-            with open(file_path, 'rb') as file:
-                bot.send_document(message.chat.id, file)
-            show_admin_panel(message)
+        file_numbers = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_files = [matched_files[num] for num in file_numbers if 0 <= num < len(matched_files)]
+
+        if valid_files:
+            for file_path in valid_files:
+                with open(file_path, 'rb') as file:
+                    bot.send_document(message.chat.id, file)
+            show_files_menu(message)
         else:
-            bot.send_message(message.chat.id, "Некорректный номер файла.")
+            bot.send_message(message.chat.id, "Некорректные номера файлов!")
             bot.register_next_step_handler(message, process_file_selection, matched_files)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите номера файлов через запятую!")
         bot.register_next_step_handler(message, process_file_selection, matched_files)
 
 # Поиск файлов пользователя по ID
 @bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and check_admin_access(message))
+#@log_user_actions
 def search_files_by_id(message):
-    if message.text == 'В меню админ-панели':
-        show_admin_panel(message)
-        return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Поиск файлов по ID'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
     list_users_for_files(message)
 
+#@log_user_actions
 def search_id_in_json(data, user_id):
     if isinstance(data, dict):
         for key, value in data.items():
@@ -15984,6 +17942,7 @@ def search_id_in_json(data, user_id):
 
 USER_DATA_PATH = 'data base/admin/users.json'
 
+#@log_user_actions
 def escape_markdown(text):
     # Экранируем специальные символы Markdown
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
@@ -15992,6 +17951,7 @@ def load_user_data():
     with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
         return json.load(file)
 
+#@log_user_actions
 def list_users_for_files(message):
     users_data = load_user_data()
     user_list = []
@@ -16007,13 +17967,18 @@ def list_users_for_files(message):
         bot.send_message(message.chat.id, response_message, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Введите номер пользователя, username или ID для поиска файлов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_user_input_for_file_search)
 
+#@log_user_actions
 def process_user_input_for_file_search(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -16024,34 +17989,47 @@ def process_user_input_for_file_search(message):
     user_input = message.text.strip()
     users_data = load_user_data()
 
+    user_id = None
+    username = None
+
     if user_input.isdigit():
-        # Проверяем, является ли ввод номером пользователя
-        user_index = int(user_input) - 1
-        if 0 <= user_index < len(users_data):
-            user_id = list(users_data.keys())[user_index]
+        # Если длина ввода меньше 4 символов, это номер из списка
+        if len(user_input) < 4:
+            # Проверяем, является ли ввод номером пользователя (индекс из списка)
+            user_index = int(user_input) - 1
+            if 0 <= user_index < len(users_data):
+                user_id = list(users_data.keys())[user_index]
+                username = users_data[user_id]['username']  # Получаем username пользователя по ID
+            else:
+                bot.send_message(message.chat.id, "Некорректный номер пользователя!")
+                bot.register_next_step_handler(message, process_user_input_for_file_search)
+                return
         else:
-            bot.send_message(message.chat.id, "Некорректный номер пользователя.")
-            bot.register_next_step_handler(message, process_user_input_for_file_search)
-            return
+            # Если длина ввода >= 4 символов, это ID
+            if user_input in users_data:
+                user_id = user_input
+                username = users_data[user_id]['username']  # Получаем username пользователя по ID
+            else:
+                bot.send_message(message.chat.id, "Пользователь с таким *ID* не найден!", parse_mode="Markdown")
+                bot.register_next_step_handler(message, process_user_input_for_file_search)
+                return
     elif user_input.startswith('@'):
         # Проверяем, является ли ввод username
-        username = user_input[1:]
-        user_id = next((user_id for user_id, data in users_data.items() if data['username'] == username), None)
+        username = user_input
+        user_id = next((user_id for user_id, data in users_data.items() if data['username'].lower() == username.lower()), None)
         if not user_id:
-            bot.send_message(message.chat.id, "Пользователь с таким username не найден.")
+            bot.send_message(message.chat.id, "Пользователь с таким *username* не найден!", parse_mode="Markdown")
             bot.register_next_step_handler(message, process_user_input_for_file_search)
             return
     else:
-        # Проверяем, является ли ввод ID
-        user_id = user_input
-        if user_id not in users_data:
-            bot.send_message(message.chat.id, "Пользователь с таким ID не найден.")
-            bot.register_next_step_handler(message, process_user_input_for_file_search)
-            return
+        bot.send_message(message.chat.id, "Некорректный ввод! Пожалуйста, введите номер, username или ID")
+        bot.register_next_step_handler(message, process_user_input_for_file_search)
+        return
 
-    bot.send_message(message.chat.id, f"Поиск файлов для пользователя с ID: {user_id}")
+    bot.send_message(message.chat.id, f"Поиск файлов для пользователя: {escape_markdown(username)} - `{user_id}` ...", parse_mode="Markdown")
     process_file_search(message, user_id)
 
+#@log_user_actions
 def process_file_search(message, user_id):
     matched_files = []
 
@@ -16085,31 +18063,41 @@ def process_file_search(message, user_id):
         response = "\n".join([f"📄 {i + 1}. {os.path.basename(path)}" for i, path in enumerate(matched_files)])
         for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
             bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
-        bot.send_message(message.chat.id, "Выберите номер файла для отправки:")
+        bot.send_message(message.chat.id, "Выберите номера файлов через запятую для отправки:")
         bot.register_next_step_handler(message, process_file_selection, matched_files)
     else:
-        bot.send_message(message.chat.id, "Файлы с указанным ID не найдены.")
+        bot.send_message(message.chat.id, "Файлы с указанным ID не найдены!")
 
 # Замена файла
 @bot.message_handler(func=lambda message: message.text == 'Замена файлов' and check_admin_access(message))
+#@log_user_actions
 def handle_file_replacement(message):
-    if message.text == 'В меню админ-панели':
-        show_admin_panel(message)
-        return
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Замена файлов'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Отправьте новый файл для замены.", reply_markup=markup)
+    bot.send_message(message.chat.id, "Отправьте новый файл для замены:", reply_markup=markup)
     bot.register_next_step_handler(message, process_file_replacement)
 
+#@log_user_actions
 def process_file_replacement(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.document:
@@ -16117,7 +18105,7 @@ def process_file_replacement(message):
         file_path = None
 
         # Поиск файла в директориях BACKUP_DIR, FILES_PATH и ADDITIONAL_FILES_PATH
-        search_paths = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
+        search_paths = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
 
         for search_path in search_paths:
             for root, dirs, files in os.walk(search_path):
@@ -16133,33 +18121,48 @@ def process_file_replacement(message):
             with open(file_path, 'wb') as new_file:
                 new_file.write(downloaded_file)
             bot.send_message(message.chat.id, "Файл успешно заменен!")
-            show_admin_panel(message)
+            show_files_menu(message)
         else:
-            bot.send_message(message.chat.id, "Файл для замены не найден. Попробуйте отправить другой файл.")
+            bot.send_message(message.chat.id, "Файл для замены не найден! Попробуйте отправить другой файл")
             bot.register_next_step_handler(message, process_file_replacement)
     else:
-        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
+        bot.send_message(message.chat.id, "Неверный формат! Пожалуйста, отправьте файл в формате документа")
         bot.register_next_step_handler(message, process_file_replacement)
 
 @bot.message_handler(func=lambda message: message.text == 'Добавить файлы' and check_admin_access(message))
+#@log_user_actions
 def add_files(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Добавить файлы'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
 
-    directories = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
-    response = "*Список директорий:*\n\n"
-    response += "\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
+    directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
+    response = "*Список директорий:*\n\n\n"
+    response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите директорию для добавления файла:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_file_directory_selection)
 
+#@log_user_actions
 def process_add_file_directory_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -16170,20 +18173,24 @@ def process_add_file_directory_selection(message):
     try:
         selection = int(message.text.strip())
         if 1 <= selection <= 4:  # Убедитесь, что индексы соответствуют количеству директорий
-            selected_directory = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR][selection - 1]
+            selected_directory = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR][selection - 1]
             bot_data[message.chat.id] = {"selected_directory": selected_directory}
             bot.send_message(message.chat.id, "Отправьте файл для добавления:")
             bot.register_next_step_handler(message, process_add_file)
         else:
-            bot.send_message(message.chat.id, "Некорректный номер.")
+            bot.send_message(message.chat.id, "Некорректный номер!")
             bot.register_next_step_handler(message, process_add_file_directory_selection)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_add_file_directory_selection)
 
+#@log_user_actions
 def process_add_file(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.document:
@@ -16192,7 +18199,7 @@ def process_add_file(message):
         file_path = os.path.join(selected_directory, file_name)
 
         if os.path.exists(file_path):
-            bot.send_message(message.chat.id, "Файл с таким именем уже существует. Пожалуйста, отправьте файл с другим именем.")
+            bot.send_message(message.chat.id, "Файл с таким именем уже существует! Пожалуйста, отправьте файл с другим именем")
             bot.register_next_step_handler(message, process_add_file)
         else:
             file_info = bot.get_file(message.document.file_id)
@@ -16200,30 +18207,45 @@ def process_add_file(message):
             with open(file_path, 'wb') as new_file:
                 new_file.write(downloaded_file)
             bot.send_message(message.chat.id, "Файл успешно добавлен!")
-            show_admin_panel(message)
+            show_files_menu(message)
     else:
-        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
+        bot.send_message(message.chat.id, "Неверный формат! Пожалуйста, отправьте файл в формате документа")
         bot.register_next_step_handler(message, process_add_file)
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить файлы' and check_admin_access(message))
+#@log_user_actions
 def delete_files(message):
+
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Удалить файлы'):
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
+        return
+
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
         return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
 
-    directories = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR]
+    directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
     response = "*Список директорий:*\n\n\n"
     response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите директорию для удаления файла:", reply_markup=markup)
     bot.register_next_step_handler(message, process_delete_file_directory_selection)
 
+#@log_user_actions
 def process_delete_file_directory_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -16234,7 +18256,7 @@ def process_delete_file_directory_selection(message):
     try:
         selection = int(message.text.strip())
         if 1 <= selection <= 4:  # Убедитесь, что индексы соответствуют количеству директорий
-            selected_directory = [BACKUP_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BASE_DIR][selection - 1]
+            selected_directory = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR][selection - 1]
             files_list = [os.path.join(selected_directory, file) for file in os.listdir(selected_directory) if os.path.isfile(os.path.join(selected_directory, file))]
             response = "\n\n".join([f"📄 {i + 1}. {os.path.basename(file_path)}" for i, file_path in enumerate(files_list)])
             bot_data[message.chat.id] = {"files_list": files_list}
@@ -16243,18 +18265,22 @@ def process_delete_file_directory_selection(message):
             for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
                 bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
 
-            bot.send_message(message.chat.id, "Выберите файл для удаления:")
+            bot.send_message(message.chat.id, "Выберите файл через запятую для удаления:")
             bot.register_next_step_handler(message, process_delete_file_selection)
         else:
-            bot.send_message(message.chat.id, "Некорректный номер.")
+            bot.send_message(message.chat.id, "Некорректный номер!")
             bot.register_next_step_handler(message, process_delete_file_directory_selection)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_delete_file_directory_selection)
 
+#@log_user_actions
 def process_delete_file_selection(message):
     if message.text == 'В меню админ-панели':
         show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
         return
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
@@ -16263,28 +18289,31 @@ def process_delete_file_selection(message):
         return
 
     try:
-        file_number = int(message.text.strip()) - 1
+        file_numbers = [int(num.strip()) - 1 for num in message.text.split(',')]
         files_list = bot_data[message.chat.id]["files_list"]
-        if 0 <= file_number < len(files_list):
-            file_path = files_list[file_number]
-            os.remove(file_path)
-            bot.send_message(message.chat.id, "Файл успешно удален!")
-            show_admin_panel(message)
+        valid_files = [files_list[num] for num in file_numbers if 0 <= num < len(files_list)]
+
+        if valid_files:
+            for file_path in valid_files:
+                os.remove(file_path)
+            bot.send_message(message.chat.id, "Файлы успешно удалены!")
+            show_files_menu(message)
         else:
-            bot.send_message(message.chat.id, "Некорректный номер файла.")
+            bot.send_message(message.chat.id, "Некорректные номера файлов!")
             bot.register_next_step_handler(message, process_delete_file_selection)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+        bot.send_message(message.chat.id, "Пожалуйста, введите номера файлов через запятую!")
         bot.register_next_step_handler(message, process_delete_file_selection)
 
 #----------------------------------------------------------(ДИАЛОГИ)-----------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Диалоги' and check_admin_access(message))
+#@log_user_actions
 def show_dialogs_menu(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Диалоги'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -16293,12 +18322,13 @@ def show_dialogs_menu(message):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Просмотр диалогов' and check_admin_access(message))
 def show_user_dialogs(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Просмотр диалогов'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     chat_history = load_chat_history()
@@ -16327,6 +18357,7 @@ def show_user_dialogs(message):
     save_dialog_states()
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_user")
+#@log_user_actions
 def handle_user_selection(message):
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
@@ -16388,6 +18419,7 @@ def handle_user_selection(message):
         bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "select_dialog")
+#@log_user_actions
 def handle_dialog_selection(message):
     selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
     chat_key = f"{message.chat.id}_{selected_user_id}"
@@ -16480,18 +18512,18 @@ def handle_dialog_selection(message):
     except (ValueError, IndexError):
         bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер диалога")
 
-
 def save_dialog_states():
     with open('data base/admin/chats/dialog_states.json', 'w', encoding='utf-8') as file:
         json.dump(dialog_states, file, ensure_ascii=False, indent=4)
 
 
+#@log_user_actions
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалоги' and check_admin_access(message))
 def show_delete_dialogs_menu(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить диалоги'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -16501,11 +18533,12 @@ def show_delete_dialogs_menu(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить диалог' and check_admin_access(message))
+#@log_user_actions
 def delete_dialog(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить диалог'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     chat_history = load_chat_history()
@@ -16533,6 +18566,7 @@ def delete_dialog(message):
     save_dialog_states()
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_user")
+#@log_user_actions
 def handle_delete_dialog_user_selection(message):
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
@@ -16586,6 +18620,7 @@ def handle_delete_dialog_user_selection(message):
         bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_dialog_select_dialog")
+#@log_user_actions
 def handle_delete_dialog_selection(message):
     selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
     chat_key = f"{message.chat.id}_{selected_user_id}"
@@ -16615,11 +18650,12 @@ def handle_delete_dialog_selection(message):
         bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер диалога")
 
 @bot.message_handler(func=lambda message: message.text == 'Удалить все диалоги' and check_admin_access(message))
+#@log_user_actions
 def delete_all_dialogs(message):
 
     admin_id = str(message.chat.id)
     if not check_permission(admin_id, 'Удалить все диалоги'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
+        bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
     chat_history = load_chat_history()
@@ -16647,6 +18683,7 @@ def delete_all_dialogs(message):
     save_dialog_states()
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "delete_all_dialogs_select_user")
+#@log_user_actions
 def handle_delete_all_dialogs_user_selection(message):
     if message.text == "В меню админ-панели":
         dialog_states.pop(message.chat.id, None)
@@ -16680,6 +18717,7 @@ def handle_delete_all_dialogs_user_selection(message):
         bot.send_message(message.chat.id, "Неверный ввод. Пожалуйста, введите номер пользователя")
 
 @bot.message_handler(func=lambda message: message.chat.id in dialog_states and dialog_states[message.chat.id].get("state") == "confirm_delete_all_dialogs")
+#@log_user_actions
 def handle_confirm_delete_all_dialogs(message):
     if message.text.lower() == "да":
         selected_user_id = dialog_states[message.chat.id]["selected_user_id"]
@@ -16703,6 +18741,7 @@ def handle_confirm_delete_all_dialogs(message):
 # Изменения в функции handle_chat_messages для сохранения сообщений в историю
 @bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'animation', 'sticker', 'audio', 'contact', 'voice', 'video_note'])
 @check_chat_state
+#@log_user_actions
 def handle_chat_messages(message):
     user_id = message.from_user.id
 
@@ -16830,9 +18869,10 @@ threading.Thread(target=check_chat_activity, daemon=True).start()
 
 # Функция выхода из админ-панели
 @bot.message_handler(func=lambda message: message.text == 'Выход' and message.chat.id in admin_sessions)
+#@log_user_actions
 def admin_logout(message):
     try:
-        bot.send_message(message.chat.id, "Вы вышли из админ-панели. Быстрый вход сохранен.")
+        bot.send_message(message.chat.id, "Вы вышли из админ-панели!\nБыстрый вход сохранен")
         return_to_menu(message)
     except telebot.apihelper.ApiTelegramException as e:
         if e.result_json['description'] == 'Bad Request: chat not found':
@@ -16840,6 +18880,7 @@ def admin_logout(message):
         else:
             print(f"An error occurred: {e}")
 
+#@log_user_actions
 def return_to_menu(message):
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -16863,7 +18904,7 @@ def return_to_menu(message):
     markup.add(item11)
 
     try:
-        bot.send_message(user_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
+        bot.send_message(user_id, "Добро пожаловать!\nВыберите действие из меню:", reply_markup=markup)
     except telebot.apihelper.ApiTelegramException as e:
         if e.result_json['description'] == 'Bad Request: chat not found':
             print(f"Chat not found for user_id: {user_id}")
@@ -16894,18 +18935,11 @@ def start_bot_with_retries(retries=10000000, delay=5):
 # Запуск бота с повторными попытками
 start_bot_with_retries()
 
-# Ваши обработчики сообщений остаются как обычно
-@bot.message_handler(commands=['start'])
-@restricted
-@track_user_activity
-@check_chat_state
-def send_welcome(message):
-    bot.reply_to(message, "Привет! Я бот.")
-
 @bot.message_handler(func=lambda message: True)
 @restricted
 @track_user_activity
 @check_chat_state
+#@log_user_actions
 def echo_all(message):
     bot.reply_to(message, message.text)
 
