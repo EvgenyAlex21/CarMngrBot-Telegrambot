@@ -807,12 +807,14 @@ def track_referral_activity(referral_code, new_user_id):
     data = load_payment_data()
     users_data = load_users_data()
     referrer_id = next((uid for uid, code in data['referrals']['links'].items() if code == referral_code), None)
-    if referrer_id and referrer_id != str(new_user_id) and str(new_user_id) not in data['referrals']['stats'].get(referrer_id, []):
-        data['referrals']['stats'].setdefault(referrer_id, []).append(new_user_id)
+    
+    # Проверяем, что реферер существует, не совпадает с новым пользователем и реферал еще не зарегистрирован
+    if (referrer_id and referrer_id != str(new_user_id) and 
+        str(new_user_id) not in data['referrals']['stats'].get(referrer_id, [])):
+        data['referrals']['stats'].setdefault(referrer_id, []).append(str(new_user_id))
         now = datetime.now().strftime("%d.%m.%Y в %H:%M")
         users_data.setdefault(str(new_user_id), {})['join_date'] = now
         
-        # Обновляем milestones для referrer_id
         referral_count = len(data['referrals']['stats'][referrer_id])
         users_data.setdefault(referrer_id, {}).setdefault('referral_milestones', {})
         if str(referral_count) not in users_data[referrer_id]['referral_milestones']:
@@ -821,7 +823,7 @@ def track_referral_activity(referral_code, new_user_id):
         save_payments_data(data)
         save_users_data(users_data)
         return referrer_id
-    return None
+    return None  # Возвращаем None, если реферал уже был добавлен или реферер не найден
 
 def apply_referral_bonus(referrer_id):
     data = load_payment_data()
@@ -829,30 +831,32 @@ def apply_referral_bonus(referrer_id):
     referrer_data = data['subscriptions']['users'].get(str(referrer_id), {"plans": []})
     referral_count = len(data['referrals']['stats'].get(str(referrer_id), []))
     
-    # Добавляем +2 дня за каждого реферала
-    latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in referrer_data['plans']] or [datetime.now()])
-    new_end = latest_end + timedelta(days=2)
-    referrer_data['plans'].append({
-        "plan_name": "referral_bonus", 
-        "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
-        "end_date": new_end.strftime("%d.%m.%Y в %H:%M"), 
-        "price": 0
-    })
+    # Проверяем, не начислялся ли бонус ранее за регистрацию
+    if not users_data.get(referrer_id, {}).get('initial_referral_bonus_applied', False):
+        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in referrer_data['plans']] or [datetime.now()])
+        new_end = latest_end + timedelta(days=2)
+        referrer_data['plans'].append({
+            "plan_name": "referral_bonus",
+            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
+            "price": 0
+        })
+        
+        users_data[referrer_id]['referral_points'] = users_data[referrer_id].get('referral_points', 0) + 1
+        users_data[referrer_id].setdefault('points_history', []).append({
+            "action": "earned",
+            "points": 1,
+            "reason": f"Реферал №{referral_count} (регистрация)",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        users_data[referrer_id]['initial_referral_bonus_applied'] = True
+        
+        bot.send_message(referrer_id, (
+            f"🎉 *Спасибо за приглашение!*\n\n"
+            f"✨ Вам назначено: *+2 дня и +1 балл*!\n"
+            f"⏳ Подписка до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
+        ), parse_mode="Markdown")
     
-    # Добавляем 1 балл за реферала
-    users_data[str(referrer_id)]['referral_points'] = users_data[str(referrer_id)].get('referral_points', 0) + 1
-    users_data[str(referrer_id)].setdefault('points_history', []).append({
-        "action": "earned",
-        "points": 1,
-        "reason": f"Реферал №{referral_count}",
-        "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
-    })
-    
-    bot.send_message(referrer_id, (
-        f"🎉 *Спасибо за приглашение!*\n\n"
-        f"✨ Вам назначено: *+2 дня и +1 балл*!\n"
-        f"⏳ Подписка до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
-    ), parse_mode="Markdown")
     save_payments_data(data)
     save_users_data(users_data)
 
@@ -986,7 +990,7 @@ def process_successful_payment(message):
         ), parse_mode="Markdown")
         users_data[user_id]['referral_points'] += 5
         bot.send_message(user_id, (
-            "🎁 *Поздравляем!* 🎁\n\n"
+            "🎁 *Поздравляем!*\n\n"
             "✨ Вы получили *+5 баллов* за первую покупку!\n\n"
             "🚀 Используйте их в реферальной системе!"
         ), parse_mode="Markdown")
@@ -1125,27 +1129,39 @@ def start(message):
         if len(text_parts) > 1:
             referral_code = text_parts[-1]
     
+    data = load_payment_data()
+    users_data = load_users_data()
+    
+    # Проверяем, новый ли пользователь (нет записи в users_data)
+    if str(user_id) not in users_data:
+        users_data[str(user_id)] = {
+            "username": username,
+            "join_date": now,
+            "free_feature_trials": {},
+            "referral_points": 0,
+            "auto_renew": False,
+            "usage_stats": {},
+            "activity": {},
+            "last_promo_used": None,
+            "promo_usage_history": [],
+            "referral_milestones": {}
+        }
+        save_users_data(users_data)
+    
     if referral_code:
         referrer_id = track_referral_activity(referral_code, user_id)
-        if referrer_id:
+        if referrer_id:  # Бонусы начисляем только при первом добавлении реферала
             apply_referral_bonus(referrer_id)
             set_free_trial_period(user_id, 1, "referral")
-    else:
-        # Записываем дату для пользователей без реферальной ссылки
-        users_data = load_users_data()
-        if str(user_id) not in users_data or 'join_date' not in users_data[str(user_id)]:
-            users_data.setdefault(str(user_id), {})['join_date'] = now
-            save_users_data(users_data)
-
-    data = load_payment_data()
+    
     has_trial = any(plan['plan_name'] == "free" for plan in data['subscriptions']['users'].get(str(user_id), {}).get('plans', []))
     if str(user_id) not in data['subscriptions']['users'] or not data['subscriptions']['users'][str(user_id)].get('plans'):
         if not has_trial:
             set_free_trial_period(user_id, 3)
             referral_link = create_referral_link(user_id)
             combined_message = (
-                "🎉 <b>Поздравляем!</b> 🎉\n\n"
-                "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>! ✨\n\n"
+                "🎉 <b>Поздравляем!</b>\n\n"
+                "✨ У вас активирован <b>пробный период</b> на <b>3 дня</b>!\n\n"
                 "📅 После окончания пробного периода вам необходимо будет оформить подписку, чтобы продолжить пользоваться ботом!\n\n"
                 f"🔗 <b>Ваша реферальная ссылка:</b>\n<a href='{referral_link}'>{referral_link}</a>\n\n"
                 "🤝 <b>Приглашайте друзей</b> и получайте до <b>+14 дней и 10% скидки</b>!\n\n"
@@ -1154,6 +1170,11 @@ def start(message):
             bot.send_message(chat_id, combined_message, parse_mode="HTML", reply_markup=types.ReplyKeyboardRemove())
         else:
             bot.send_message(chat_id, "⚠️ У вас уже был пробный период. Пожалуйста, оформите подписку для продолжения использования!", parse_mode="Markdown")
+    else:
+        # Если пользователь уже зарегистрирован, просто показываем меню
+        markup = create_main_menu()
+        bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
+        return
 
     markup = create_main_menu()
     bot.send_message(chat_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
@@ -1304,196 +1325,6 @@ def buy_subscription(message):
         return
     
     send_subscription_options(message)
-
-@bot.message_handler(func=lambda message: message.text == "Ввести промокод")
-def enter_promo_code(message):
-    user_id = str(message.from_user.id)
-    users_data = load_users_data()
-
-    # Проверяем, есть ли активная скидка и не истек ли срок её действия
-    if user_id in users_data:
-        last_promo_used = users_data[user_id].get('last_promo_used')
-        current_discount = users_data[user_id].get('discount', 0)
-
-        if last_promo_used and current_discount > 0:
-            last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
-            now = datetime.now()
-            days_since_last_use = (now - last_used_date).days
-
-            # Проверяем, куплена ли подписка
-            data = load_payment_data()
-            user_subscriptions = data.get('subscriptions', {}).get('users', {}).get(user_id, {}).get('plans', [])
-            has_active_subscription = any(
-                datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > now
-                for plan in user_subscriptions
-            )
-
-            # Если прошло более 30 дней и подписка не куплена, сбрасываем скидку
-            if days_since_last_use >= 30 and not has_active_subscription:
-                users_data[user_id]['discount'] = 0
-                save_users_data(users_data)
-                bot.send_message(message.chat.id, (
-                    "⚠️ Ваша скидка от предыдущего промокода истекла!\n\n"
-                    "⏳ Прошло более 30 дней, и подписка не была приобретена.\n"
-                    "Введите новый промокод, если он есть, чтобы получить скидку!"
-                ), parse_mode="Markdown")
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-    item_back = types.KeyboardButton("Вернуться в подписку")
-    item_main = types.KeyboardButton("В главное меню")
-    markup.add(item_back)
-    markup.add(item_main)
-    bot.send_message(message.chat.id, (
-        "✍️ *Введите промокод:*\n\n"
-        "💡 *Что будет после ввода?*\n"
-        "Если промокод действителен, вы получите скидку на подписку до 20% в зависимости от кода. "
-        "Скидка будет автоматически применена при покупке подписки!\n\n"
-        "📅 *Ограничения:*\n"
-        "- Промокод можно использовать только один раз!\n"
-        "- Новый промокод можно активировать только через 30 дней после предыдущего!\n"
-        "- Если вы не купите подписку в течение 30 дней, скидка сгорит!"
-    ), reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, process_promo_code)
-
-def process_promo_code(message):
-    if message.text == "Вернуться в реферальную систему":
-        return_to_referral_menu(message)
-        return
-    if message.text == "Вернуться в подписку":
-        payments_function(message)  # Возвращаемся в меню подписки
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-        
-    user_id = message.from_user.id
-    username = message.from_user.username or "неизвестный"
-    code = message.text.upper()
-    data = load_payment_data()
-    users_data = load_users_data()
-    promo_codes = data.get('promo_codes', {})
-    
-    # Проверяем, использовал ли пользователь промокод в этом месяце
-    last_promo_used = users_data[str(user_id)].get('last_promo_used')
-    if last_promo_used:
-        last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
-        now = datetime.now()
-        days_since_last_use = (now - last_used_date).days
-        if days_since_last_use < 30:
-            bot.send_message(user_id, (
-                f"❌ Вы уже использовали промокод в этом месяце!\n\n"
-                f"🔒 Вы сможете использовать следующий промокод через {30 - days_since_last_use} дней!\n\n"
-            ), parse_mode="Markdown")
-            payments_function(message)
-            return
-    
-    # Создаем клавиатуру с двумя кнопками
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
-    markup.add(types.KeyboardButton("Вернуться в подписку"))
-    markup.add(types.KeyboardButton("В главное меню"))
-
-    if code in promo_codes and promo_codes[code]['uses'] > 0 and promo_codes[code]['active']:
-        if any(user['user_id'] == str(user_id) for user in promo_codes[code]['used_by']):
-            bot.send_message(user_id, (
-                "❌ Вы уже использовали этот промокод!\n\n"
-                "🔒 Один пользователь может использовать промокод только один раз! Попробуйте другой промокод:\n\n"
-            ), reply_markup=markup, parse_mode="Markdown")
-            # Повторно показываем приглашение к вводу
-            bot.send_message(user_id, (
-                "✍️ *Введите промокод:*\n\n"
-            ), reply_markup=markup, parse_mode="Markdown")
-            # Повторно регистрируем обработчик для ожидания нового ввода
-            bot.register_next_step_handler(message, process_promo_code)
-            return
-            
-        # Применяем промокод
-        discount = promo_codes[code]['discount']
-        # Заменяем старую скидку новой, даже если старая еще активна
-        users_data[str(user_id)]['discount'] = discount  # Устанавливаем новую скидку, заменяя старую
-        promo_codes[code]['uses'] -= 1
-        if promo_codes[code]['uses'] == 0:
-            promo_codes[code]['active'] = False
-        promo_codes[code]['used_by'].append({
-            "user_id": str(user_id),
-            "username": username
-        })
-        
-        # Обновляем данные пользователя
-        now = datetime.now().strftime("%d.%m.%Y в %H:%M")
-        users_data[str(user_id)]['last_promo_used'] = now
-        
-        # Проверяем и инициализируем 'promo_usage_history', если его нет
-        if 'promo_usage_history' not in users_data[str(user_id)]:
-            users_data[str(user_id)]['promo_usage_history'] = []
-        users_data[str(user_id)]['promo_usage_history'].append({
-            "promo_code": code,
-            "discount": discount,
-            "used_at": now
-        })
-        
-        data['promo_codes'] = promo_codes
-        save_payments_data(data)
-        save_users_data(users_data)
-        bot.send_message(user_id, (
-            "🎉 *Промокод успешно активирован!* 🎉\n\n"
-            f"✨ Вы получили скидку {discount}%!\n"
-            "🚀 Используйте её при покупке подписки!\n\n"
-            "📅 Вы сможете использовать следующий промокод через 30 дней!\n"
-            "⏳ Если вы не купите подписку в течение 30 дней, скидка сгорит!"
-        ), parse_mode="Markdown")
-        payments_function(message)  # После успешного ввода возвращаемся в меню подписки
-    else:
-        bot.send_message(user_id, (
-            "❌ Неверный или использованный промокод!\n\n"
-            "🔒 Проверьте код и попробуйте снова:\n\n"
-        ), reply_markup=markup, parse_mode="Markdown")
-        # Повторно показываем приглашение к вводу
-        bot.send_message(user_id, (
-            "✍️ *Введите промокод:*\n\n"
-        ), reply_markup=markup, parse_mode="Markdown")
-        # Повторно регистрируем обработчик для ожидания нового ввода
-        bot.register_next_step_handler(message, process_promo_code)
-        return
-
-@bot.message_handler(func=lambda message: message.text == "Получить день за рекламу")
-def get_day_for_ad(message):
-
-    if message.text == "Вернуться в реферальную систему":
-        return_to_referral_menu(message)
-        return
-    if message.text == "Вернуться в подписку":
-        payments_function(message)
-        return
-    if message.text == "В главное меню":
-        return_to_menu(message)
-        return
-
-    user_id = message.from_user.id
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Подписаться на канал", url="https://t.me/CarMngrBot_news"))
-    markup.add(InlineKeyboardButton("Проверить подписку", callback_data="check_ad_subscription"))
-    bot.send_message(user_id, (
-        "📢 *Подпишитесь на наш рекламный канал!* 📢\n\n"
-        "✨ Получите *+1 день подписки* за подписку!\n\n"
-        "🚀 Нажмите ниже и присоединяйтесь!"
-    ), reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "check_ad_subscription")
-def check_ad_subscription(call):
-    user_id = call.from_user.id
-    if is_user_subscribed(user_id, AD_CHANNEL_CHAT_ID):
-        new_end = set_free_trial_period(user_id, 1, "ad_bonus")
-        bot.send_message(call.message.chat.id, (
-            "🎉 *Поздравляем!* 🎉\n\n"
-            f"✨ Вы получили *+1 день подписки* за подписку на канал!\n"
-            f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
-            "Спасибо за подписку! 😊"
-        ), parse_mode="Markdown")
-        bot.answer_callback_query(call.id, "Спасибо за подписку!")
-    else:
-        bot.answer_callback_query(call.id, "Вы еще не подписаны! Пожалуйста, подпишитесь на канал!")
 
 @bot.message_handler(func=lambda message: message.text == "Настроить автопродление")
 def configure_auto_renew(message):
@@ -1754,6 +1585,50 @@ def refund_payment(user_id, refund_amount, plan):
     )
     bot.send_message(user_id, message_text, parse_mode="Markdown")
 
+
+@bot.message_handler(func=lambda message: message.text == "История подписок")
+def view_subscription_history(message):
+
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    user_id = message.from_user.id
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(user_id), {})
+    expired_plans = [p for p in user_data.get('plans', []) if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < datetime.now()]
+    if not expired_plans:
+        bot.send_message(user_id, (
+            "📜 У вас нет истекших подписок! 📜\n\n"
+            "🚀 Оформите подписку и начните пользоваться преимуществами!\n\n"
+            "👉 Перейдите в раздел *«Купить подписку»*!"
+        ), parse_mode="Markdown")
+        return
+
+    plans_summary = "*История подписок:*\n\n"
+    for idx, plan in enumerate(expired_plans):
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        remaining_time = end_date - datetime.now()
+        days_left = abs(remaining_time.days) if remaining_time.total_seconds() < 0 else 0
+        hours_left = abs(remaining_time.seconds // 3600) if remaining_time.total_seconds() < 0 else 0
+        minutes_left = abs((remaining_time.seconds % 3600) // 60) if remaining_time.total_seconds() < 0 else 0
+
+        period_type = f"💳 *№{idx + 1}. Платный период:*" if plan['plan_name'] in ["weekly", "monthly", "yearly"] else f"🎁 *№{idx + 1}. Бонусный период:*"
+        subscription_type = translate_plan_name(plan['plan_name'])
+
+        plans_summary += (
+            f"{period_type}\n"
+            f"💼 *Тип подписки:* *{subscription_type}*\n"
+            f"📅 *Дней прошло:* *{days_left} дней и {hours_left:02}:{minutes_left:02} часов*\n"
+            f"🕒 *Начало:* *{plan['start_date']}*\n"
+            f"⌛ *Конец:* *{plan['end_date']}*\n"
+            f"💰 *Стоимость подписки:* *{plan['price']} руб.*\n\n"
+        )
+    send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda message: message.text == "Реферальная система")
 def refferal_payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1763,6 +1638,10 @@ def refferal_payments_function(message):
     markup.add('Вернуться в подписку')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из реферальной системы:", reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в реферальную систему")
+def return_to_referral_menu(message):
+    refferal_payments_function(message)
 
 @bot.message_handler(func=lambda message: message.text == "Ваша ссылка")
 def send_referral_link_message(message):
@@ -1803,7 +1682,7 @@ def view_referrals_and_bonuses(message):
     user_id = message.from_user.id
     data = load_payment_data()
     users_data = load_users_data()
-    referrals = data['referrals']['stats'].get(str(user_id), [])
+    referrals = list(set(data['referrals']['stats'].get(str(user_id), [])))  # Уникальные рефералы
     points = users_data.get(str(user_id), {}).get('referral_points', 0)
     discount = users_data.get(str(user_id), {}).get('discount', 0)
     
@@ -1814,7 +1693,7 @@ def view_referrals_and_bonuses(message):
         ), parse_mode="Markdown")
         return
 
-    # Подсчет общего количества бонусных дней
+    # Подсчет бонусных дней только для реферальных бонусов
     user_plans = data['subscriptions']['users'].get(str(user_id), {}).get('plans', [])
     bonus_days = sum((datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") - 
                      datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M")).days 
@@ -1829,10 +1708,9 @@ def view_referrals_and_bonuses(message):
     )
 
     for index, referral_id in enumerate(referrals, start=1):
-        referral_data = data['subscriptions']['users'].get(str(referral_id), {})
-        referral_username = escape_markdown(users_data.get(str(referral_id), {}).get('username', 'Неизвестно'))
-        # Не экранируем дату, чтобы избежать слэшей
-        join_date = users_data.get(str(referral_id), {}).get('join_date', 'Неизвестно')
+        referral_data = data['subscriptions']['users'].get(referral_id, {})
+        referral_username = escape_markdown(users_data.get(referral_id, {}).get('username', 'Неизвестно'))
+        join_date = users_data.get(referral_id, {}).get('join_date', 'Неизвестно')
         bonus_days_referral = sum((datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") - 
                                   datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M")).days 
                                   for p in referral_data.get('plans', []) if p['source'] == "referral")
@@ -1840,7 +1718,7 @@ def view_referrals_and_bonuses(message):
         message_text += (
             f"✅ *№{index}. Пользователь:* {referral_username}\n"
             f"👤 *ID пользователя:* `{referral_id}`\n"
-            f"📅 *Дата вступления:* {join_date}\n"  # Без escape_markdown
+            f"📅 *Дата вступления:* {join_date}\n"
             f"🎁 *Ваш бонус:* +2 дня\n"
             f"📅 *Бонус реферала:* {bonus_days_referral} дней\n\n"
         )
@@ -1863,11 +1741,11 @@ def view_referral_leaderboard(message):
     # Создаем список кортежей: (user_id, referral_count, milestone_date)
     leaderboard_data = []
     for uid, refs in data['referrals']['stats'].items():
-        ref_count = len(refs)
-        milestone_date = users_data.get(uid, {}).get('referral_milestones', {}).get(str(ref_count), "01.01.2000 в 00:00")
-        leaderboard_data.append((uid, ref_count, milestone_date))
+        unique_refs = len(set(refs))  # Уникальные рефералы
+        milestone_date = users_data.get(uid, {}).get('referral_milestones', {}).get(str(unique_refs), "01.01.2000 в 00:00")
+        leaderboard_data.append((uid, unique_refs, milestone_date))
     
-    # Сортируем: сначала по количеству рефералов (убывание), затем по дате (возрастание)
+    # Сортируем
     leaderboard = sorted(leaderboard_data, key=lambda x: (-x[1], x[2]))[:10]
     
     if not leaderboard:
@@ -1883,7 +1761,7 @@ def view_referral_leaderboard(message):
         if idx == 1 and ref_count >= 5:
             new_end = set_free_trial_period(int(uid), 7, "leaderboard")
             bot.send_message(uid, (
-                "🎉 *Поздравляем!* 🎉\n\n"
+                "🎉 *Поздравляем!*\n\n"
                 "✨ Вы №1 в топе рефералов и получили *+7 дней* к использованию!\n"
                 f"⏳ *Активно до:* {new_end.strftime('%d.%m.%Y в %H:%M')}!\n\n"
                 "🚀 Продолжайте приглашать друзей!"
@@ -1935,7 +1813,7 @@ def check_monthly_leader_bonus():
                 if days_at_top == 30:
                     new_end = set_free_trial_period(int(current_top_user), 7, "monthly_leader_bonus")
                     bot.send_message(current_top_user, (
-                        "🎉 *Поздравляем!* 🎉\n\n"
+                        "🎉 *Поздравляем!*\n\n"
                         "✨ Вы удерживали 1-е место в топе рефералов 30 дней подряд!\n"
                         "🎁 Вы получили *+7 дней* к использованию!\n"
                         f"⏳ *Активно до:* {new_end.strftime('%d.%m.%Y в %H:%M')}!\n\n"
@@ -1955,6 +1833,7 @@ leader_thread.start()
 def points_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ваши баллы', 'История баллов', 'Обменять баллы')
+    markup.add('Подарить баллы')  # Добавляем новую опцию
     markup.add('Вернуться в реферальную систему')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из меню баллов:", reply_markup=markup, parse_mode="Markdown")
@@ -1967,11 +1846,17 @@ def view_points(message):
     total_points_earned = sum(h['points'] for h in users_data.get(user_id, {}).get('points_history', []) if h['action'] == "earned")
     total_points_spent = sum(h['points'] for h in users_data.get(user_id, {}).get('points_history', []) if h['action'] == "spent")
     
+    # Подсчет подаренных и полученных баллов
+    gifted_points = sum(h['points'] for h in users_data.get(user_id, {}).get('points_history', []) if h['action'] == "spent" and "Подарок @" in h['reason'])
+    received_gift_points = sum(h['points'] for h in users_data.get(user_id, {}).get('points_history', []) if h['action'] == "earned" and "Подарок от @" in h['reason'])
+    
     bot.send_message(message.chat.id, (
         f"*Ваши баллы*\n\n"
-        f"🎁 *Текущие баллы:* {points}\n"
+        f"🎁 *Текущие баллы:* {points}\n\n"
         f"🔥 *Всего заработано:* {total_points_earned}\n"
-        f"💸 *Всего потрачено:* {total_points_spent}"
+        f"💸 *Всего потрачено:* {total_points_spent}\n\n"
+        f"🎁 *Подарено другим:* {gifted_points}\n"
+        f"🎁 *Получено в подарок:* {received_gift_points}"
     ), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text == "История баллов")
@@ -2026,7 +1911,7 @@ def process_points_exchange(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-        
+    
     user_id = str(message.from_user.id)
     users_data = load_users_data()
     points = users_data.get(user_id, {}).get('referral_points', 0)
@@ -2085,13 +1970,293 @@ def process_points_exchange(message):
     
     points_menu(message)
 
-@bot.message_handler(func=lambda message: message.text == "Вернуться в реферальную систему")
-def return_to_referral_menu(message):
-    refferal_payments_function(message)
+@bot.message_handler(func=lambda message: message.text == "Ввести промокод")
+def enter_promo_code(message):
+    user_id = str(message.from_user.id)
+    users_data = load_users_data()
 
-@bot.message_handler(func=lambda message: message.text == "История подписок")
-def view_subscription_history(message):
+    # Проверяем, есть ли активная скидка и не истек ли срок её действия
+    if user_id in users_data:
+        last_promo_used = users_data[user_id].get('last_promo_used')
+        current_discount = users_data[user_id].get('discount', 0)
 
+        if last_promo_used and current_discount > 0:
+            last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
+            now = datetime.now()
+            days_since_last_use = (now - last_used_date).days
+
+            # Проверяем, куплена ли подписка
+            data = load_payment_data()
+            user_subscriptions = data.get('subscriptions', {}).get('users', {}).get(user_id, {}).get('plans', [])
+            has_active_subscription = any(
+                datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > now
+                for plan in user_subscriptions
+            )
+
+            # Если прошло более 30 дней и подписка не куплена, сбрасываем скидку
+            if days_since_last_use >= 30 and not has_active_subscription:
+                users_data[user_id]['discount'] = 0
+                save_users_data(users_data)
+                bot.send_message(message.chat.id, (
+                    "⚠️ Ваша скидка от предыдущего промокода истекла!\n\n"
+                    "⏳ Прошло более 30 дней, и подписка не была приобретена.\n"
+                    "Введите новый промокод, если он есть, чтобы получить скидку!"
+                ), parse_mode="Markdown")
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    item_back = types.KeyboardButton("Вернуться в подписку")
+    item_main = types.KeyboardButton("В главное меню")
+    markup.add(item_back)
+    markup.add(item_main)
+    bot.send_message(message.chat.id, (
+        "✍️ *Введите промокод:*\n\n"
+        "💡 *Что будет после ввода?*\n"
+        "Если промокод действителен, вы получите скидку на подписку до 20% в зависимости от кода. "
+        "Скидка будет автоматически применена при покупке подписки!\n\n"
+        "📅 *Ограничения:*\n"
+        "- Промокод можно использовать только один раз!\n"
+        "- Новый промокод можно активировать только через 30 дней после предыдущего!\n"
+        "- Если вы не купите подписку в течение 30 дней, скидка сгорит!"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_promo_code)
+
+def process_promo_code(message):
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)  # Возвращаемся в меню подписки
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+        
+    user_id = message.from_user.id
+    username = message.from_user.username or "неизвестный"
+    code = message.text.upper()
+    data = load_payment_data()
+    users_data = load_users_data()
+    promo_codes = data.get('promo_codes', {})
+    
+    # Проверяем, использовал ли пользователь промокод в этом месяце
+    last_promo_used = users_data[str(user_id)].get('last_promo_used')
+    if last_promo_used:
+        last_used_date = datetime.strptime(last_promo_used, "%d.%m.%Y в %H:%M")
+        now = datetime.now()
+        days_since_last_use = (now - last_used_date).days
+        if days_since_last_use < 30:
+            bot.send_message(user_id, (
+                f"❌ Вы уже использовали промокод в этом месяце!\n\n"
+                f"🔒 Вы сможете использовать следующий промокод через {30 - days_since_last_use} дней!\n\n"
+            ), parse_mode="Markdown")
+            payments_function(message)
+            return
+    
+    # Создаем клавиатуру с двумя кнопками
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+
+    if code in promo_codes and promo_codes[code]['uses'] > 0 and promo_codes[code]['active']:
+        if any(user['user_id'] == str(user_id) for user in promo_codes[code]['used_by']):
+            bot.send_message(user_id, (
+                "❌ Вы уже использовали этот промокод!\n\n"
+                "🔒 Один пользователь может использовать промокод только один раз! Попробуйте другой промокод\n\n"
+            ), reply_markup=markup, parse_mode="Markdown")
+            # Повторно показываем приглашение к вводу
+            bot.send_message(user_id, (
+                "✍️ Введите промокод:\n\n"
+            ), reply_markup=markup, parse_mode="Markdown")
+            # Повторно регистрируем обработчик для ожидания нового ввода
+            bot.register_next_step_handler(message, process_promo_code)
+            return
+            
+        # Применяем промокод
+        discount = promo_codes[code]['discount']
+        # Заменяем старую скидку новой, даже если старая еще активна
+        users_data[str(user_id)]['discount'] = discount  # Устанавливаем новую скидку, заменяя старую
+        promo_codes[code]['uses'] -= 1
+        if promo_codes[code]['uses'] == 0:
+            promo_codes[code]['active'] = False
+        promo_codes[code]['used_by'].append({
+            "user_id": str(user_id),
+            "username": username
+        })
+        
+        # Обновляем данные пользователя
+        now = datetime.now().strftime("%d.%m.%Y в %H:%M")
+        users_data[str(user_id)]['last_promo_used'] = now
+        
+        # Проверяем и инициализируем 'promo_usage_history', если его нет
+        if 'promo_usage_history' not in users_data[str(user_id)]:
+            users_data[str(user_id)]['promo_usage_history'] = []
+        users_data[str(user_id)]['promo_usage_history'].append({
+            "promo_code": code,
+            "discount": discount,
+            "used_at": now
+        })
+        
+        data['promo_codes'] = promo_codes
+        save_payments_data(data)
+        save_users_data(users_data)
+        bot.send_message(user_id, (
+            "🎉 *Промокод успешно активирован!*\n\n"
+            f"✨ Вы получили скидку {discount}%!\n"
+            "🚀 Используйте её при покупке подписки!\n\n"
+            "📅 Вы сможете использовать следующий промокод через 30 дней!\n"
+            "⏳ Если вы не купите подписку в течение 30 дней, скидка сгорит!"
+        ), parse_mode="Markdown")
+        payments_function(message)  # После успешного ввода возвращаемся в меню подписки
+    else:
+        bot.send_message(user_id, (
+            "❌ Неверный или использованный промокод! Проверьте код и попробуйте снова\n\n"
+        ), reply_markup=markup, parse_mode="Markdown")
+        # Повторно показываем приглашение к вводу
+        bot.send_message(user_id, (
+            "✍️ Введите промокод:\n\n"
+        ), reply_markup=markup, parse_mode="Markdown")
+        # Повторно регистрируем обработчик для ожидания нового ввода
+        bot.register_next_step_handler(message, process_promo_code)
+        return
+
+@bot.message_handler(func=lambda message: message.text == "Подарить баллы")
+def gift_points_handler(message):
+    user_id = str(message.from_user.id)
+    users_data = load_users_data()
+    points = users_data.get(user_id, {}).get('referral_points', 0)
+    
+    if points < 1:
+        bot.send_message(message.chat.id, "❌ У вас недостаточно баллов для подарка!", parse_mode="Markdown")
+        return
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    bot.send_message(message.chat.id, (
+        "🎁 *Подарить баллы*\n\n"
+        "Введите *username* (с @) или *ID* пользователя, которому хотите подарить баллы:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_gift_recipient, points)
+
+def process_gift_recipient(message, sender_points):
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)  # Возвращаемся в меню подписки
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    user_id = str(message.from_user.id)
+    users_data = load_users_data()
+    recipient_input = message.text.strip()
+    
+    # Определяем получателя
+    recipient_id = None
+    if recipient_input.startswith('@'):
+        # Ищем по username (в базе уже с @)
+        recipient_id = next((uid for uid, data in users_data.items() 
+                            if data.get('username') == recipient_input), None)
+    else:
+        # Проверяем, является ли ввод числовым ID и существует ли такой пользователь
+        if recipient_input.isdigit() and recipient_input in users_data:
+            recipient_id = recipient_input
+    
+    if not recipient_id:
+        bot.send_message(message.chat.id, "❌ Пользователь не найден! Проверьте username или ID.", parse_mode="Markdown")
+        points_menu(message)
+        return
+    
+    if recipient_id == user_id:
+        bot.send_message(message.chat.id, "❌ Нельзя подарить баллы самому себе!", parse_mode="Markdown")
+        points_menu(message)
+        return
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add(types.KeyboardButton("Вернуться в подписку"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    bot.send_message(message.chat.id, (
+        f"🎁 *Подарок для @{users_data[recipient_id]['username']}*\n\n"
+        f"Ваши баллы: *{sender_points}*\n"
+        "Введите количество баллов для подарка:"
+    ), reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
+
+def process_gift_amount(message, recipient_id, sender_points):
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
+    if message.text == "Вернуться в подписку":
+        payments_function(message)  # Возвращаемся в меню подписки
+        return
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    user_id = str(message.from_user.id)
+    users_data = load_users_data()
+    
+    try:
+        gift_points = int(message.text)
+        if gift_points <= 0:
+            raise ValueError("Количество баллов должно быть положительным!")
+        if gift_points > sender_points:
+            raise ValueError("Недостаточно баллов!")
+        
+        # Обновляем баллы отправителя
+        users_data[user_id]['referral_points'] -= gift_points
+        users_data[user_id].setdefault('points_history', []).append({
+            "action": "spent",
+            "points": gift_points,
+            "reason": f"Подарок @{users_data[recipient_id]['username']}",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        # Обновляем баллы получателя
+        users_data[recipient_id].setdefault('referral_points', 0)
+        users_data[recipient_id]['referral_points'] += gift_points
+        users_data[recipient_id].setdefault('points_history', []).append({
+            "action": "earned",
+            "points": gift_points,
+            "reason": f"Подарок от @{users_data[user_id]['username']}",
+            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+        })
+        
+        save_users_data(users_data)
+        
+        # Уведомления
+        bot.send_message(user_id, (
+            f"🎉 *Вы подарили @{users_data[recipient_id]['username']} {gift_points} баллов!*\n"
+            "Спасибо за щедрость! 😊"
+        ), parse_mode="Markdown")
+        bot.send_message(recipient_id, (
+            f"🎁 *@{users_data[user_id]['username']} подарил вам {gift_points} баллов!*\n"
+            "Используйте их в реферальной системе! 🚀"
+        ), parse_mode="Markdown")
+        
+        points_menu(message)
+        
+    except ValueError as e:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        error_msg = str(e) if str(e) != "invalid literal for int() with base 10: '" + message.text + "'" else "Введите корректное число!"
+        bot.send_message(message.chat.id, f"❌ {error_msg}", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
+
+@bot.message_handler(func=lambda message: message.text == "Получить день за рекламу")
+def get_day_for_ad(message):
+
+    if message.text == "Вернуться в реферальную систему":
+        return_to_referral_menu(message)
+        return
     if message.text == "Вернуться в подписку":
         payments_function(message)
         return
@@ -2100,37 +2265,30 @@ def view_subscription_history(message):
         return
 
     user_id = message.from_user.id
-    data = load_payment_data()
-    user_data = data['subscriptions']['users'].get(str(user_id), {})
-    expired_plans = [p for p in user_data.get('plans', []) if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < datetime.now()]
-    if not expired_plans:
-        bot.send_message(user_id, (
-            "📜 У вас нет истекших подписок! 📜\n\n"
-            "🚀 Оформите подписку и начните пользоваться преимуществами!\n\n"
-            "👉 Перейдите в раздел *«Купить подписку»*!"
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Подписаться на канал", url="https://t.me/CarMngrBot_news"))
+    markup.add(InlineKeyboardButton("Проверить подписку", callback_data="check_ad_subscription"))
+    bot.send_message(user_id, (
+        "📢 *Подпишитесь на наш рекламный канал!* 📢\n\n"
+        "✨ Получите *+1 день подписки* за подписку!\n\n"
+        "🚀 Нажмите ниже и присоединяйтесь!"
+    ), reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_ad_subscription")
+def check_ad_subscription(call):
+    user_id = call.from_user.id
+    if is_user_subscribed(user_id, AD_CHANNEL_CHAT_ID):
+        new_end = set_free_trial_period(user_id, 1, "ad_bonus")
+        bot.send_message(call.message.chat.id, (
+            "🎉 *Поздравляем!*\n\n"
+            f"✨ Вы получили *+1 день подписки* за подписку на канал!\n"
+            f"⏳ Активно до: *{new_end.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
+            "Спасибо за подписку! 😊"
         ), parse_mode="Markdown")
-        return
+        bot.answer_callback_query(call.id, "Спасибо за подписку!")
+    else:
+        bot.answer_callback_query(call.id, "Вы еще не подписаны! Пожалуйста, подпишитесь на канал!")
 
-    plans_summary = "*История подписок:*\n\n"
-    for idx, plan in enumerate(expired_plans):
-        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-        remaining_time = end_date - datetime.now()
-        days_left = abs(remaining_time.days) if remaining_time.total_seconds() < 0 else 0
-        hours_left = abs(remaining_time.seconds // 3600) if remaining_time.total_seconds() < 0 else 0
-        minutes_left = abs((remaining_time.seconds % 3600) // 60) if remaining_time.total_seconds() < 0 else 0
-
-        period_type = f"💳 *№{idx + 1}. Платный период:*" if plan['plan_name'] in ["weekly", "monthly", "yearly"] else f"🎁 *№{idx + 1}. Бонусный период:*"
-        subscription_type = translate_plan_name(plan['plan_name'])
-
-        plans_summary += (
-            f"{period_type}\n"
-            f"💼 *Тип подписки:* *{subscription_type}*\n"
-            f"📅 *Дней прошло:* *{days_left} дней и {hours_left:02}:{minutes_left:02} часов*\n"
-            f"🕒 *Начало:* *{plan['start_date']}*\n"
-            f"⌛ *Конец:* *{plan['end_date']}*\n"
-            f"💰 *Стоимость подписки:* *{plan['price']} руб.*\n\n"
-        )
-    send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
     
 # ---------- 8. ВЫХОД В ГЛАВНОЕ МЕНЮ ----------
 
@@ -18173,10 +18331,13 @@ def unblock_user(user_id):
     return None, None, False
 
 def get_user_id_by_username(username):
-    users_data = load_user_data()
+    users_data = load_users_data()
+    # Удаляем @ из входного username, если он есть, так как в базе он уже включен
+    username_to_check = username.lstrip('@')
     for user_id, data in users_data.items():
-        if data['username'] == f"@{username}":
-            return user_id
+        # Проверяем, существует ли ключ 'username' и совпадает ли значение
+        if 'username' in data and data['username'].lstrip('@') == username_to_check:
+            return int(user_id)
     return None
 
 def escape_markdown(text):
