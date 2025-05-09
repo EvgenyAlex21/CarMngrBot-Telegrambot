@@ -1620,7 +1620,8 @@ def translate_plan_name(plan_name):
         "gift_time": "Подаренное время",
         "referral": "Бонус за реферала",
         "monthly_leader_bonus": "Бонус лидера месяца",
-        "leaderboard": "Бонус топ-1"
+        "leaderboard": "Бонус топ-1",
+        "store_time": "Время из магазина"  # Добавлен перевод для store_time
     }.get(plan_name, plan_name)
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
@@ -1683,8 +1684,9 @@ def view_subscription(message):
             subscription_type = "рекламный бонус"
         else:
             period_type = f"💳 №{idx + 1}. *Платный период:*"
-            subscription_type = translate_plan_name(plan['plan_name']).lower() 
+            subscription_type = translate_plan_name(plan['plan_name']).lower()
 
+        subscription_type = escape_markdown(subscription_type)
         start_date = plan['start_date']  
         end_date_str = plan['end_date']  
         price_formatted = f"{plan['price']:.2f}"
@@ -1702,7 +1704,7 @@ def view_subscription(message):
 
     send_long_message(message.chat.id, plans_summary, parse_mode="Markdown")
 
-    subtypes = [translate_plan_name(p['plan_name']).lower() for p in active_plans]  
+    subtypes = [escape_markdown(translate_plan_name(p['plan_name']).lower()) for p in active_plans]
     start_date = min(datetime.strptime(p['start_date'], "%d.%m.%Y в %H:%M") for p in active_plans).strftime("%d.%m.%Y в %H:%M")
     end_date = max(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in active_plans).strftime("%d.%m.%Y в %H:%M")
     total_amount = user_data.get('total_amount', 0)
@@ -1712,10 +1714,10 @@ def view_subscription(message):
 
     summary_message = (
         "💎 *Итоговая подписочная оценка:*\n\n"
-        f"💼 *Типы подписок:* {', '.join(t for t in subtypes)}\n"  
+        f"💼 *Типы подписок:* {', '.join(t for t in subtypes)}\n"
         f"📅 *Дней осталось:* {total_days_left} дней\n"
-        f"🕒 *Начало:* {start_date}\n"
-        f"⌛ *Конец:* {end_date}\n"
+        f"🕒 *Начало:* {start_date}\n"  
+        f"⌛ *Конец:* {end_date}\n" 
         f"💰 *Общая стоимость активных подписок:* {total_cost_active_formatted} руб.\n"
         f"💰 *Общая стоимость всех подписок:* {total_amount_formatted} руб.\n"
     )
@@ -1754,7 +1756,7 @@ def view_subscription_history(message):
     plans_summary = "*История подписок:*\n\n"
     for idx, plan in enumerate(expired_plans):
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-        remaining_time = datetime.now() - end_date  
+        remaining_time = datetime.now() - end_date
         days_left = abs(remaining_time.days)
         hours_left = abs(remaining_time.seconds // 3600)
         minutes_left = abs((remaining_time.seconds % 3600) // 60)
@@ -1776,8 +1778,8 @@ def view_subscription_history(message):
             subscription_type = translate_plan_name(plan['plan_name'])
 
         subscription_type = escape_markdown(subscription_type)
-        start_date = escape_markdown(plan['start_date'])
-        end_date_str = escape_markdown(plan['end_date'])
+        start_date = plan['start_date']  
+        end_date_str = plan['end_date'] 
         price_formatted = f"{plan['price']:.2f}"
 
         plans_summary += (
@@ -2569,11 +2571,11 @@ def process_feature_exchange(message, feature, points):
     try:
         exchange_points = float(message.text)
         if exchange_points < 1:  
-            raise ValueError("⚠️ Минимальное количество баллов — 1!")
+            raise ValueError("Минимальное количество баллов — 1!")
         if exchange_points > points:
-            raise ValueError("❌ Недостаточно баллов!")
+            raise ValueError("Недостаточно баллов!")
         if exchange_points % 1 != 0: 
-            raise ValueError("⚠️ Баллы должны быть кратны 1!")
+            raise ValueError("Баллы должны быть кратны 1!")
         
         total_minutes = exchange_points * 15  
         days = int(total_minutes // (24 * 60))  
@@ -2642,13 +2644,13 @@ def process_points_exchange(message, exchange_rate):
     try:
         exchange_points = float(message.text)
         if exchange_points < 0.5:
-            raise ValueError("⚠️ Минимальное количество баллов — 0.5!")
+            raise ValueError("Минимальное количество баллов — 0.5!")
         if exchange_points > points:
-            raise ValueError("❌ Недостаточно баллов!")
+            raise ValueError("Недостаточно баллов!")
         if exchange_points % 0.5 != 0:
-            raise ValueError("⚠️ Баллы должны быть кратны 0.5!")
+            raise ValueError("Баллы должны быть кратны 0.5!")
         if exchange_points > 4380:
-            raise ValueError("⚠️ Максимальный обмен — 4380 баллов (365 дней)!")
+            raise ValueError("Максимальный обмен — 4380 баллов (365 дней)!")
         
         total_hours = exchange_points * exchange_rate
         days = int(total_hours // 24)
@@ -2721,11 +2723,11 @@ def process_discount_exchange(message):
     try:
         exchange_points = float(message.text)
         if exchange_points < 5:
-            raise ValueError("⚠️ Минимальное количество баллов — 5!")
+            raise ValueError("Минимальное количество баллов — 5!")
         if exchange_points > points:
-            raise ValueError("❌ Недостаточно баллов!")
+            raise ValueError("Недостаточно баллов!")
         if exchange_points % 5 != 0:
-            raise ValueError("⚠️ Баллы должны быть кратны 5!")
+            raise ValueError("Баллы должны быть кратны 5!")
         
         discount = (exchange_points // 5) * 5
         current_discount = users_data.get(user_id, {}).get('discount', 0)
@@ -3290,24 +3292,32 @@ def view_gifts_history(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     history = data['subscriptions']['users'].get(user_id, {}).get('points_history', [])
-    
+
     if not history:
         bot.send_message(message.chat.id, "❌ История подарков и операций пуста!", parse_mode="Markdown")
         return
-    
-    msg = "*История подарков и операций:*\n\n"
+
+    msg = "*История подарков и операций:*\n\n\n"
     for i, entry in enumerate(history, 1):
         if "Подарок времени" in entry['reason'] or "Подарок @" in entry['reason']:
             action = "Подарено" if entry['action'] == "spent" else "Получено"
             points_or_time = f"{entry['points']} баллов" if entry['points'] > 0 else entry['reason'].split(': ')[-1]
-            msg += f"🎁 №{i}. {entry['date']} - {action}: {points_or_time} ({escape_markdown(entry['reason'])})\n"
+            msg += f"🎁 №{i}. {entry['date']} - {action}: {points_or_time} ({escape_markdown(entry['reason'])})\n\n"
         elif "Обмен на" in entry['reason']:
-            msg += f"🔄 №{i}. {entry['date']} - Обмен: {entry['reason'].split('на ')[-1]} ({escape_markdown(entry['reason'])})\n"
+            msg += f"🔄 №{i}. {entry['date']} - Обмен: {entry['reason'].split('на ')[-1]} ({escape_markdown(entry['reason'])})\n\n"
         else:
             action = "Заработано" if entry['action'] == "earned" else "Потрачено"
-            msg += f"📝 №{i}. {entry['date']} - {action}: {entry['points']} баллов ({escape_markdown(entry['reason'])})\n"
-    
-    send_long_message(message.chat.id, msg, parse_mode="Markdown")
+            msg += f"📝 №{i}. {entry['date']} - {action}: {entry['points']} баллов ({escape_markdown(entry['reason'])})\n\n"
+
+    while len(msg) > 4096:
+        split_index = msg.rfind('\n\n', 0, 4096)
+        if split_index == -1:
+            split_index = 4095
+        part = msg[:split_index]
+        bot.send_message(message.chat.id, part, parse_mode="Markdown")
+        msg = msg[split_index:]
+
+    bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
 # ---------- 11. РЕФЕРАЛЬНАЯ СИСТЕМА ----------
 
@@ -11376,15 +11386,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
 
 def ensure_directory_exists(file_path):
-    """Создает директорию, если она не существует"""
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-def save_user_location(chat_id, latitude, longitude, city_code):
+def initialize_user_notifications(chat_id):
     ensure_directory_exists(NOTIFICATIONS_PATH)
     
-    # Проверяем существование файла и загружаем данные
     try:
         with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
             notifications = json.load(f)
@@ -11401,6 +11409,16 @@ def save_user_location(chat_id, latitude, longitude, city_code):
                 "fuel_prices": True
             }
         }
+        
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(notifications, f, ensure_ascii=False, indent=4)
+    
+    return notifications
+
+def save_user_location(chat_id, latitude, longitude, city_code):
+    ensure_directory_exists(NOTIFICATIONS_PATH)
+    
+    notifications = initialize_user_notifications(chat_id)
 
     if latitude is not None:
         notifications[str(chat_id)]["latitude"] = latitude
@@ -11409,7 +11427,6 @@ def save_user_location(chat_id, latitude, longitude, city_code):
     if city_code is not None:
         notifications[str(chat_id)]["city_code"] = city_code
 
-    # Сохраняем данные в файл
     with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
         json.dump(notifications, f, ensure_ascii=False, indent=4)
 
@@ -11420,7 +11437,6 @@ def load_user_locations():
         with open(NOTIFICATIONS_PATH, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        # Если файл не существует или пустой, создаем пустой файл и возвращаем пустой словарь
         with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
             json.dump({}, f)
         return {}
@@ -11428,32 +11444,36 @@ def load_user_locations():
 def toggle_notification(chat_id, notification_type):
     ensure_directory_exists(NOTIFICATIONS_PATH)
     
-    notifications = load_user_locations()
+    notifications = initialize_user_notifications(chat_id)
     user_notifications = notifications.get(str(chat_id), {}).get("notifications", {})
 
     if notification_type in user_notifications:
         user_notifications[notification_type] = not user_notifications[notification_type]
         notifications[str(chat_id)]["notifications"] = user_notifications
 
-        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:  # Исправлена кавычка
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f: 
             json.dump(notifications, f, ensure_ascii=False, indent=4)
+        
+        # Return the new status for notification message
+        return user_notifications[notification_type]
 
 def get_notification_status(chat_id):
     notifications = load_user_locations()
-    return notifications.get(str(chat_id), {}).get("notifications", {})
+    return notifications.get(str(chat_id), {}).get("notifications", {"weather": True, "fuel_prices": True})
+
+def get_notification_status_message(chat_id):
+    status = get_notification_status(chat_id)
+    weather_status = "включены" if status.get("weather", True) else "выключены"
+    fuel_status = "включены" if status.get("fuel_prices", True) else "выключены"
+    
+    return f"📬 Текущий статус уведомлений:\n\n" \
+           f"🌤️ Погода: {weather_status}\n" \
+           f"⛽ Цены на топливо: {fuel_status}\n\n"
 
 @bot.message_handler(func=lambda message: message.text == "Уведомления")
-@check_function_state_decorator('Уведомления')
-@track_usage('Уведомления')
-@restricted
-@track_user_activity
-@check_chat_state
-@check_user_blocked
-@log_user_actions
-@check_subscription
-@check_subscription_chanal
 def toggle_notifications_handler(message, show_description=True):
     chat_id = message.chat.id
+    initialize_user_notifications(chat_id)
     notification_status = get_notification_status(chat_id)
 
     weather_button_text = "Выключить погоду" if notification_status.get("weather") else "Включить погоду"
@@ -11477,7 +11497,46 @@ def toggle_notifications_handler(message, show_description=True):
     if show_description:
         bot.send_message(chat_id, info_message, parse_mode="Markdown")
 
-    bot.send_message(chat_id, "Выберите, какие уведомления включить или выключить:", reply_markup=markup)
+    status_message = get_notification_status_message(chat_id)
+    bot.send_message(chat_id, status_message + "Выберите, какие уведомления включить или выключить:", 
+                    reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
+def handle_notification_toggle(message):
+    chat_id = message.chat.id
+    notification_messages = []
+
+    if message.text == "Включить погоду":
+        new_status = toggle_notification(chat_id, "weather")
+        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить погоду":
+        new_status = toggle_notification(chat_id, "weather")
+        notification_messages.append(f"🌤️ Уведомления о погоде {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить цены":
+        new_status = toggle_notification(chat_id, "fuel_prices")
+        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Выключить цены":
+        new_status = toggle_notification(chat_id, "fuel_prices")
+        notification_messages.append(f"⛽ Уведомления о ценах на топливо {'включены' if new_status else 'выключены'}!")
+    elif message.text == "Включить все":
+        weather_status = toggle_notification(chat_id, "weather")
+        fuel_status = toggle_notification(chat_id, "fuel_prices")
+        if weather_status or fuel_status:
+            notification_messages.append("📬 Все уведомления включены!")
+        else:
+            notification_messages.append("📬 Все уведомления уже включены!")
+    elif message.text == "Выключить все":
+        weather_status = toggle_notification(chat_id, "weather")
+        fuel_status = toggle_notification(chat_id, "fuel_prices")
+        if not weather_status and not fuel_status:
+            notification_messages.append("📬 Все уведомления выключены!")
+        else:
+            notification_messages.append("📬 Все уведомления уже выключены!")
+
+    if notification_messages:
+        bot.send_message(chat_id, "\n".join(notification_messages), parse_mode="Markdown")
+
+    toggle_notifications_handler(message, show_description=False)
 
 @bot.message_handler(func=lambda message: message.text in ["Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все"])
 @restricted
@@ -11552,7 +11611,7 @@ def get_current_weather(coords):
             current_date = datetime.now().strftime("%d.%m.%Y")
 
             return (
-                f"*Вам пришло новое уведомление!*🔔\n\n\n"
+                f"🔔 *Вам пришло новое уведомление!*\n\n\n"
                 f"*Погода на {current_date} в {current_time}*:\n"
                 f"*(г. {city_name}; {coords['latitude']}, {coords['longitude']})*\n\n"
                 f"🌡️ *Температура:* {temperature}°C\n"
@@ -24307,11 +24366,17 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
         bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
         return
 
+    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
+    end_datetime = datetime.strptime(f"{end_date} 23:59", "%d.%m.%Y %H:%M")  
+    if end_datetime.date() < start_datetime.date():
+        bot.send_message(message.chat.id, "Дата окончания не может быть раньше даты начала! Пожалуйста, введите корректную дату:")
+        bot.register_next_step_handler(message, set_advertisement_end_date, advertisement_theme, expected_date, expected_time)
+        return
+
     bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для окончания действия рекламы:")
     bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
 
 def set_advertisement_end_time(message, advertisement_theme, expected_date, expected_time, end_date):
-
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
         view_add_menu(message, show_description=False)
@@ -24330,6 +24395,13 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
     end_time = message.text
     if not validate_time_format(end_time):
         bot.send_message(message.chat.id, "Неверный формат времени! Пожалуйста, введите время в формате ЧЧ:ММ:")
+        bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
+        return
+
+    start_datetime = datetime.strptime(f"{expected_date} {expected_time}", "%d.%m.%Y %H:%M")
+    end_datetime = datetime.strptime(f"{end_date} {end_time}", "%d.%m.%Y %H:%M")
+    if end_datetime <= start_datetime:
+        bot.send_message(message.chat.id, "Дата и время окончания должны быть позже даты и времени начала! Пожалуйста, введите корректное время:")
         bot.register_next_step_handler(message, set_advertisement_end_time, advertisement_theme, expected_date, expected_time, end_date)
         return
 
