@@ -4900,13 +4900,12 @@ def handle_menu_buttons(message):
         keyboard.add(button_send_location)
         keyboard.add(button_reset_category)
         keyboard.add(item1)
-        bot.send_message(message.chat.id, f"Отправьте свою геолокацию. Вам будет выдан список ближайших {selected_category.lower()}.", reply_markup=keyboard)
+        bot.send_message(message.chat.id, f"Отправьте свою геолокацию. Вам будет выдан список ближайших мест по категории - {selected_category.lower()}", reply_markup=keyboard)
     else:
         selected_category = None
         bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
 
 # Обработчик для получения геолокации
-# Обработчик для получения геолокации для анти-радара и поиска мест
 @bot.message_handler(content_types=['location'])
 def handle_location(message):
     global selected_category  # Указываем, что selected_category является глобальной переменной
@@ -4937,11 +4936,11 @@ def handle_location(message):
             short_search_url = shorten_url(search_url)
 
             # Формирование сообщения
-            message_text = f"Ближайшие {selected_category.lower()} по адресу:\n\n{address}\n\n"
-            message_text += f"Ссылка на карту: {short_search_url}"
+            message_text = f"🏙️ *Ближайшие {selected_category.lower()} по адресу:* \n\n{address}\n\n"
+            message_text += f"🗺️ [Ссылка на карту]({short_search_url})"
 
             # Отправка сообщения
-            bot.send_message(message.chat.id, message_text, parse_mode='HTML')
+            bot.send_message(message.chat.id, message_text, parse_mode='Markdown')
 
             # Сброс категории после использования
             selected_category = None
@@ -4952,13 +4951,324 @@ def handle_location(message):
             item1 = types.KeyboardButton("В главное меню")
             keyboard.add(button_reset_category)
             keyboard.add(item1)
-            bot.send_message(message.chat.id, "Выберите категорию заново или вернитесь в главное меню.", reply_markup=keyboard)
+            bot.send_message(message.chat.id, "Выберите категорию заново или вернитесь в главное меню", reply_markup=keyboard)
 
         except Exception as e:
             bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
     else:
         # Если ни анти-радар, ни категория не выбраны, отправляем сообщение о выборе категории
-        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
+        bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню")
+
+
+#------------------- (НАЧАЛО) КОД ДЛЯ ПОИСКА МЕСТ, РАБОЧИЙ, НЕДОДЕЛАННЫЙ В ПЛАНЕ КАТЕГОРИЙ И ПРОВЕРКИ ВЫДАЧИ, НУЖЕН API------------------------
+
+
+# geolocator = Nominatim(user_agent="geo_bot")
+
+# user_locations = {}
+
+# def calculate_distance(origin, destination):
+#     return geodesic(origin, destination).kilometers
+
+# # (12.2) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (СОКРАЩЕНИЕ ССЫЛОК) ---------------
+
+# def shorten_url(original_url):
+#     endpoint = 'https://clck.ru/--'
+#     response = requests.get(endpoint, params={'url': original_url})
+#     return response.text
+
+# # (12.3) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АЗС) ---------------
+
+# def get_nearby_fuel_stations(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "АЗС",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045", 
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     fuel_stations = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         fuel_stations.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return fuel_stations
+
+# # (12.4) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОМОЙКИ) ---------------
+
+# def get_nearby_car_washes(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "Автомойка",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045", 
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     car_washes = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         car_washes.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return car_washes
+
+# # (12.5) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (АВТОСЕРВИС) ---------------
+
+# def get_nearby_auto_services(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "Автосервис",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045",
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     auto_services = []
+#     for feature in data.get("features", []):
+#         coordinates = feature.get("geometry", {}).get("coordinates")
+#         name = feature.get("properties", {}).get("name")
+#         address = feature.get("properties", {}).get("description", "Адрес не указан")
+#         if coordinates and name:
+#             auto_services.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return auto_services
+
+# # (12.6) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ПАРКОВКИ) ---------------
+
+# def get_nearby_parking(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "Парковки",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045",
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     parking_places = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         parking_places.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return parking_places
+
+# # (12.7) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ЭВАКУАТОР) ---------------
+
+# def get_nearby_evacuation_services(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "Эвакуация",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045",
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     evacuation_services = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         evacuation_services.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return evacuation_services
+
+# # (12.8) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ГИБДД) ---------------
+
+# def get_nearby_gibdd_mreo(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "ГИБДД",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045",
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     gibdd_mreo_offices = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         gibdd_mreo_offices.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return gibdd_mreo_offices
+
+# # (12.9) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (КОМИССАРЫ) ---------------
+
+# def get_nearby_accident_commissioner(latitude, longitude, user_coordinates):
+#     api_url = "https://search-maps.yandex.ru/v1/"
+#     params = {
+#         "apikey": "af145d41-4168-430b-b7d5-392df4d232cc",
+#         "text": "Комиссары",
+#         "lang": "ru_RU",
+#         "ll": f"{longitude},{latitude}",
+#         "spn": "0.045,0.045",
+#         "type": "biz"
+#     }
+#     response = requests.get(api_url, params=params)
+#     data = response.json()
+
+#     accident_commissioners = []
+#     for feature in data["features"]:
+#         coordinates = feature["geometry"]["coordinates"]
+#         name = feature["properties"]["name"]
+#         address = feature["properties"]["description"]
+#         accident_commissioners.append({"name": name, "coordinates": coordinates, "address": address})
+
+#     return accident_commissioners
+
+# # (12.10) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ПОИСК МЕСТ") ---------------
+
+# @bot.message_handler(func=lambda message: message.text == "Поиск мест")
+# def send_welcome(message):
+#     user_id = message.chat.id
+#     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+#     button_azs = types.KeyboardButton("АЗС")
+#     button_car_wash = types.KeyboardButton("Автомойки")
+#     button_auto_service = types.KeyboardButton("Автосервисы")
+#     button_parking = types.KeyboardButton("Парковки")
+#     button_evacuation = types.KeyboardButton("Эвакуация")
+#     button_gibdd_mreo = types.KeyboardButton("ГИБДД")
+#     button_accident_commissioner = types.KeyboardButton("Комиссары")
+
+#     item1 = types.KeyboardButton("В главное меню")
+
+#     markup.add(button_azs, button_car_wash, button_auto_service)
+#     markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner)
+#     markup.add(item1)
+
+#     bot.send_message(user_id, "Выберите категорию для ближайшего поиска:", reply_markup=markup)
+
+# # (12.11) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ВЫБОР КАТЕГОРИИ ЗАНОВО") ---------------
+
+# @bot.message_handler(func=lambda message: message.text == "Выбрать категорию заново")
+# def handle_reset_category(message):
+#     global selected_category
+#     selected_category = None
+#     send_welcome(message)
+
+# selected_category = None 
+
+# # (12.12) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ДЛЯ ВЫБОРА КАТЕГОРИИ") ---------------
+
+# @bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"})
+# def handle_menu_buttons(message):
+#     global selected_category 
+#     if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"}:
+#         selected_category = message.text 
+#         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+#         button_send_location = types.KeyboardButton("Отправить геолокацию", request_location=True)
+#         button_reset_category = types.KeyboardButton("Выбрать категорию заново")
+#         item1 = types.KeyboardButton("В главное меню")
+#         keyboard.add(button_send_location)
+#         keyboard.add(button_reset_category)
+#         keyboard.add(item1)
+#         bot.send_message(message.chat.id, f"Отправьте свою геолокацию. Вам будет выдан список ближайших {selected_category.lower()}.", reply_markup=keyboard)
+#     else:
+#         selected_category = None
+#         bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
+
+# # (12.13) --------------- КОД ДЛЯ "ПОИСКА МЕСТ" (ОБРАБОТЧИК "ГЕОЛОКАЦИЯ") ---------------
+
+# @bot.message_handler(content_types=['location'])
+# def handle_location(message):
+#     global selected_category, selected_location, user_locations
+#     latitude = message.location.latitude
+#     longitude = message.location.longitude
+#     user_id = message.from_user.id
+
+#     try:
+#         location = geolocator.reverse((latitude, longitude), language='ru', timeout=10)
+#         address = location.address
+
+#         if selected_category is None:
+#             bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню.")
+#             return
+
+#         user_locations[user_id] = {"address": address, "coordinates": (latitude, longitude)}
+
+#         if selected_category == "АЗС":
+#             locations = get_nearby_fuel_stations(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "Автомойки":
+#             locations = get_nearby_car_washes(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "Автосервисы":
+#             locations = get_nearby_auto_services(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "Парковки":
+#             locations = get_nearby_parking(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "Эвакуация":
+#             locations = get_nearby_evacuation_services(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "ГИБДД":
+#             locations = get_nearby_gibdd_mreo(latitude, longitude, user_locations[user_id]["coordinates"])
+#         elif selected_category == "Комиссары":
+#             locations = get_nearby_accident_commissioner(latitude, longitude, user_locations[user_id]["coordinates"])
+
+#         selected_location = {"address": address, "coordinates": (latitude, longitude)}
+
+#         # Формирование текста сообщения с использованием смайлов, гиперссылок и Markdown
+#         message_text = f"📍 *Ближайшие объекты по адресу:*\n\n🏠 *{address}*\n\n"
+#         message_text += f"🔍 *{selected_category}:*\n\n"
+
+#         for location in locations:
+#             name = location["name"]
+#             coordinates = location["coordinates"]
+#             address = location["address"]
+
+#             # Создание ссылки на Яндекс.Карты
+#             yandex_maps_url = f"https://yandex.ru/maps/?rtext={user_locations[user_id]['coordinates'][0]},{user_locations[user_id]['coordinates'][1]}~{coordinates[1]},{coordinates[0]}&l=map&rtt=auto&ruri=~ymapsbm1%3A%2F%2Forg%3Foid%3D1847883008%26name%3D{quote(name)}%26address%3D{quote(address)}\n\n"
+#             short_yandex_maps_url = shorten_url(yandex_maps_url)
+
+#             # Форматирование каждого пункта с гиперссылкой
+#             message_text += f"🚗 *{name}* ({address}):\n[Посмотреть на карте]({short_yandex_maps_url})\n\n"
+
+#         # Отправка отформатированного сообщения с Markdown
+#         bot.send_message(message.chat.id, message_text, parse_mode='Markdown')
+
+#         selected_category = None
+
+#         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+#         button_reset_category = types.KeyboardButton("Выбрать категорию заново")
+#         item1 = types.KeyboardButton("В главное меню")
+#         keyboard.add(button_reset_category)
+#         keyboard.add(item1)
+#         bot.send_message(message.chat.id, "Выберите категорию заново или вернитесь в главное меню.", reply_markup=keyboard)
+
+#     except Exception as e:
+#         bot.send_message(message.chat.id, f"Произошла ошибка при обработке вашего запроса: {e}")
+
+
+#-------------------(КОНЕЦ) КОД ДЛЯ ПОИСКА МЕСТ, РАБОЧИЙ, НЕДОДЕЛАННЫЙ В ПЛАНЕ КАТЕГОРИЙ И ПРОВЕРКИ ВЫДАЧИ, НУЖЕН API------------------------
+
+#-----------------------------------------------------------------------------------------------------------------------------------
 
 def delete_repairs(user_id, deleted_repair):
     # Удаляем ремонт из базы данных
