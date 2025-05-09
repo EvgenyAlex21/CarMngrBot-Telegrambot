@@ -7160,6 +7160,7 @@ def show_admin_panel(message):
         'Бан',
         'Оповещения',
         'Чат',
+        'Файлы',
         'Статистика',
         'Резервная копия',
         'Выход'
@@ -8057,6 +8058,143 @@ def handle_chat_messages(message):
         admin_id = active_user_chats[user_id]
         bot.send_message(admin_id, f"Пользователь {user_id}: {message.text}")
         print(f"Сообщение от пользователя {user_id} переслано администратору {admin_id}: {message.text}")
+
+
+    
+# Максимальная длина сообщения в Telegram
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+# Путь к основной директории файлов
+# Определяем основную директорию файлов относительно директории, где находится текущий скрипт
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILES_PATH = os.path.join(BASE_DIR, 'data base')
+
+# Словарь для хранения данных о файлах и директориях
+bot_data = {}
+
+@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and message.chat.id in admin_sessions)
+def view_files(message):
+    bot.send_message(message.chat.id, "Введите путь к директории для просмотра:")
+    bot.register_next_step_handler(message, process_directory_view)
+
+def process_directory_view(message):
+    directory = os.path.join(FILES_PATH, message.text.strip())
+    if os.path.exists(directory) and os.path.isdir(directory):
+        files_list = os.listdir(directory)
+        
+        if files_list:
+            # Нумеруем список файлов
+            response = "\n".join([f"{i + 1}. {file_name}" for i, file_name in enumerate(files_list)])
+            
+            # Сохраняем список файлов и директорию для дальнейшего использования
+            bot_data[message.chat.id] = {
+                "directory": directory,
+                "files_list": files_list
+            }
+            
+            # Разбиваем длинное сообщение на части, если оно превышает лимит
+            for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+                bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
+
+            # Запрашиваем у пользователя выбор файла
+            bot.send_message(message.chat.id, "Введите номер файла для отправки:")
+            bot.register_next_step_handler(message, process_file_selection, files_list)  # Передаем список файлов
+        else:
+            bot.send_message(message.chat.id, "Директория пуста.")
+    else:
+        bot.send_message(message.chat.id, "Директория не найдена или доступ запрещен.")
+
+# Обработчик для отправки файла по выбранному номеру
+def process_file_selection(message, matched_files):
+    try:
+        file_number = int(message.text.strip()) - 1
+        
+        # Проверяем, что номер файла корректный
+        if 0 <= file_number < len(matched_files):
+            directory = bot_data[message.chat.id]["directory"]
+            file_name = matched_files[file_number]
+            file_path = os.path.join(directory, file_name)
+            
+            # Отправляем файл
+            with open(file_path, 'rb') as file:
+                bot.send_document(message.chat.id, file)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер файла.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+
+# Поиск файлов пользователя по ID
+@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and message.chat.id in admin_sessions)
+def search_files_by_id(message):
+    bot.send_message(message.chat.id, "Введите ID пользователя для поиска файлов:")
+    bot.register_next_step_handler(message, process_file_search)
+
+def process_file_search(message):
+    user_id = message.text.strip()
+    matched_files = []
+
+    for root, dirs, files in os.walk(FILES_PATH):
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            # Проверка ID в названии файла
+            if user_id in file_name:
+                matched_files.append(file_path)
+            else:
+                # Проверка ID внутри файла только для текстовых файлов
+                if file_name.endswith(('.txt', '.log', '.csv')):  # Пропускать бинарные файлы
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            if re.search(rf'\b{user_id}\b', content):
+                                matched_files.append(file_path)
+                    except UnicodeDecodeError:
+                        print(f"Не удалось прочитать файл {file_path}, пропуск...")
+
+    # Разбиение длинного ответа на части
+    if matched_files:
+        response = "\n".join([f"{i + 1}. {os.path.basename(path)}" for i, path in enumerate(matched_files)])
+        for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+            bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT])
+        bot.send_message(message.chat.id, "Выберите номер файла для отправки:")
+        bot.register_next_step_handler(message, process_file_selection, matched_files)
+    else:
+        bot.send_message(message.chat.id, "Файлы с указанным ID не найдены.")
+
+def process_file_selection(message, matched_files):
+    try:
+        file_number = int(message.text.strip()) - 1
+        if 0 <= file_number < len(matched_files):
+            file_path = matched_files[file_number]
+            with open(file_path, 'rb') as file:
+                bot.send_document(message.chat.id, file)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер файла.")
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер файла.")
+
+# Замена файла
+@bot.message_handler(func=lambda message: message.text == 'Замена файлов' and message.chat.id in admin_sessions)
+def handle_file_replacement(message):
+    bot.send_message(message.chat.id, "Введите путь к файлу для замены:")
+    bot.register_next_step_handler(message, process_file_replacement)
+
+def process_file_replacement(message):
+    file_path = os.path.join(FILES_PATH, message.text.strip())
+    if os.path.exists(file_path):
+        bot.send_message(message.chat.id, "Отправьте новый файл для замены.")
+        bot.register_next_step_handler(message, replace_file, file_path)
+    else:
+        bot.send_message(message.chat.id, "Файл не найден.")
+
+def replace_file(message, file_path):
+    if message.document:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        with open(file_path, 'wb') as new_file:
+            new_file.write(downloaded_file)
+        bot.send_message(message.chat.id, "Файл успешно заменен.")
+    else:
+        bot.send_message(message.chat.id, "Неверный формат. Пожалуйста, отправьте файл в формате документа.")
 
 # (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
