@@ -1626,6 +1626,14 @@ def save_expense_data(user_id, user_data):
 
     # Измененное имя файла: "user_id_expenses.json"
     file_path = os.path.join(folder_path, f"{user_id}_expenses.json")
+
+    # Загружаем текущие данные пользователя, чтобы сохранить user_categories
+    current_data = load_expense_data(user_id)
+
+    # Сохраняем только изменения, не перезаписывая user_categories
+    if "user_categories" in current_data:
+        user_data["user_categories"] = current_data["user_categories"]
+
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(user_data, file, ensure_ascii=False, indent=4)
 
@@ -1636,7 +1644,7 @@ def load_expense_data(user_id):
     
     # Проверка, существует ли файл, перед его открытием
     if not os.path.exists(file_path):
-        return {}  # Если файла нет, возвращаем пустой словарь
+        return {"user_categories": []}  # Если файла нет, возвращаем пустой словарь с пустым списком категорий
 
     try:
         with open(file_path, "r", encoding="utf-8") as file:
@@ -1645,7 +1653,7 @@ def load_expense_data(user_id):
                 raise ValueError("Данные не являются словарем.")
     except (FileNotFoundError, ValueError) as e:
         print("Ошибка загрузки данных:", e)
-        data = {}
+        data = {"user_categories": []}  # Обеспечиваем наличие пустого списка категорий
     return data
 
 def get_user_categories(user_id):
@@ -2358,6 +2366,11 @@ def view_all_expenses(message):
 
 valid_months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
 
+def save_selected_transport(user_id, selected_transport):
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    user_data["selected_transport"] = selected_transport
+    save_expense_data(user_id, {str(user_id): user_data})
+
 # Удаление трат
 @bot.message_handler(func=lambda message: message.text == "Удалить траты")
 def delete_expenses_menu(message):
@@ -2404,9 +2417,14 @@ def handle_transport_selection_for_deletion(message):
     # Сохраняем выбранный транспорт
     save_selected_transport(user_id, selected_transport)
 
+    if selected_transport == "Del траты (категория)":
+        delete_expenses_by_category(message)
+        return
+
     if selected_transport == "Вернуться в меню трат и ремонтов":
         send_menu(user_id)
         return
+
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
@@ -2416,12 +2434,130 @@ def handle_transport_selection_for_deletion(message):
     item_month = types.KeyboardButton("Del траты (месяц)")
     item_year = types.KeyboardButton("Del траты (год)")
     item_all_time = types.KeyboardButton("Del траты (всё время)")
+    item_del_category_exp = types.KeyboardButton("Del траты (категория)")
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     
-    markup.add(item_month, item_year, item_all_time)
+    markup.add(item_month, item_year, item_all_time, item_del_category_exp)
     markup.add(item_return, item_main_menu)
     bot.send_message(user_id, "Выберите вариант удаления трат:", reply_markup=markup)
+
+# Новый обработчик для удаления по категории
+@bot.message_handler(func=lambda message: message.text == "Del траты (категория)")
+def delete_expenses_by_category(message):
+    user_id = message.from_user.id
+
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    selected_transport = user_data.get("selected_transport")
+
+    if not selected_transport:
+        bot.send_message(user_id, "Не выбран транспорт. Вернитесь в меню.")
+        send_menu(user_id)
+        return
+
+    # Получаем марку, модель и год из выбранного транспорта
+    transport_info = selected_transport.split(" ")
+    selected_brand = transport_info[0]  # Марка
+    selected_model = transport_info[1]  # Модель
+    selected_year = transport_info[2]    # Год
+
+    expenses = user_data.get("expenses", [])
+    
+    # Фильтруем траты по выбранному транспорту
+    categories = list(set(expense.get("category") for expense in expenses 
+                          if (expense.get("transport", {}).get("brand") == selected_brand and
+                              expense.get("transport", {}).get("model") == selected_model and
+                              str(expense.get("transport", {}).get("year")) == selected_year)))
+
+    if not categories:
+        bot.send_message(user_id, "У вас нет категорий для удаления трат по выбранному транспорту.")
+        send_menu(user_id)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for category in categories:
+        markup.add(types.KeyboardButton(category))
+
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return, item_main_menu)
+    
+    bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_category_selection)
+
+def handle_category_selection(message):
+    user_id = message.from_user.id
+    selected_category = message.text
+
+    if selected_category == "Вернуться в меню трат и ремонтов":
+        send_menu(user_id)
+        return
+
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    expenses = user_data.get("expenses", [])
+    
+    # Получаем выбранный транспорт
+    selected_transport = user_data.get("selected_transport")
+    transport_info = selected_transport.split(" ")
+    selected_brand = transport_info[0]
+    selected_model = transport_info[1]
+    selected_year = transport_info[2]
+
+    expenses_to_delete = [expense for expense in expenses if 
+                          expense.get("category") == selected_category and
+                          expense.get("transport", {}).get("brand") == selected_brand and
+                          expense.get("transport", {}).get("model") == selected_model and
+                          str(expense.get("transport", {}).get("year")) == selected_year]
+
+    if not expenses_to_delete:
+        bot.send_message(user_id, f"Нет трат для удаления в категории '{selected_category}' по выбранному транспорту.")
+        send_menu(user_id)
+        return
+
+    # Отображение трат для удаления в более удобном формате
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    keyboard.add(types.KeyboardButton("В главное меню"))
+    
+    for index, expense in enumerate(expenses_to_delete, start=1):
+        expense_name = expense.get("name", "Без названия")
+        keyboard.add(types.KeyboardButton(f"Удалить трату #{index} - {expense_name}"))
+
+    bot.send_message(user_id, f"Выберите трату для удаления из категории '{selected_category}':", reply_markup=keyboard)
+    bot.register_next_step_handler(message, confirm_delete_expense_by_category, expenses_to_delete)
+
+def confirm_delete_expense_by_category(message, expenses_to_delete):
+    user_id = message.from_user.id
+    selected_option = message.text
+
+    user_data = load_expense_data(user_id).get(str(user_id), {})
+    selected_transport = user_data.get("selected_transport")
+
+    # Получаем марку, модель и год из выбранного транспорта
+    transport_info = selected_transport.split(" ")
+    selected_brand = transport_info[0]  # Марка
+    selected_model = transport_info[1]  # Модель
+    selected_year = transport_info[2]    # Год
+
+    if selected_option.startswith("Удалить трату #"):
+        try:
+            expense_index = int(selected_option.split("#")[1].split(" - ")[0]) - 1
+            expenses = user_data.get("expenses", [])
+
+            if 0 <= expense_index < len(expenses_to_delete):
+                deleted_expense = expenses_to_delete[expense_index]
+                expenses.remove(deleted_expense)  # Удаляем только трату
+                user_data["expenses"] = expenses  # Обновляем список трат
+                save_expense_data(user_id, {str(user_id): user_data})  # Сохраняем изменения
+                bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' удалена успешно.")
+            else:
+                bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите трату из списка.")
+        except ValueError:
+            bot.send_message(user_id, "Ошибка при обработке выбора. Пожалуйста, выберите трату из списка.")
+    else:
+        bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите трату из списка.")
+
+    send_menu(user_id)
 
 # Удаление трат за месяц
 @bot.message_handler(func=lambda message: message.text == "Del траты (месяц)")
@@ -2437,10 +2573,10 @@ def delete_expense_by_month(message):
 
 def delete_expenses_by_month(message):
     user_id = message.from_user.id
-    month_year = message.text
+    month_year = message.text.strip()
 
-    month = month_year.split(".")[0]
-    if month not in valid_months:
+    # Проверка формата ввода
+    if len(month_year) != 7 or month_year[2] != '.' or month_year[:2] not in valid_months:
         bot.send_message(user_id, "Введен неверный месяц. Пожалуйста, введите корректный месяц (ММ.ГГГГ).")
         bot.register_next_step_handler(message, delete_expenses_by_month)
         return
@@ -2462,33 +2598,36 @@ def delete_expenses_by_month(message):
 
     if not expenses:
         bot.send_message(user_id, f"У вас пока нет сохраненных трат за {month_year} для удаления.")
+        send_menu(user_id)
+        return
+
+    expenses_to_delete = []
+    for index, expense in enumerate(expenses, start=1):
+        expense_date = expense.get("date", "")
+        expense_month_year = expense_date.split(".")[1] + "." + expense_date.split(".")[2]
+
+        # Проверяем, совпадает ли месяц, год и выбранный транспорт
+        if expense_month_year == month_year and \
+           expense.get("transport", {}).get("brand") == selected_brand and \
+           expense.get("transport", {}).get("model") == selected_model and \
+           str(expense.get("transport", {}).get("year")) == selected_year:
+            expenses_to_delete.append((index, expense))
+
+    if expenses_to_delete:
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        keyboard.add(types.KeyboardButton("В главное меню"))
+        for index, expense in expenses_to_delete:
+            expense_name = expense.get("name", "Без названия")
+            keyboard.add(types.KeyboardButton(f"Удалить трату #{index} - {expense_name}"))
+
+        bot.send_message(user_id, "Выберите трату для удаления:", reply_markup=keyboard)
+        bot.register_next_step_handler(message, confirm_delete_expense_month, expenses_to_delete)
     else:
-        expenses_to_delete = []
-        for index, expense in enumerate(expenses, start=1):
-            expense_date = expense.get("date", "")
-            expense_month_year = expense_date.split(".")[1] + "." + expense_date.split(".")[2]
+        bot.send_message(user_id, f"За {month_year} месяц трат не найдено для удаления.")
+        send_menu(user_id)
 
-            # Проверяем, совпадает ли месяц, год и выбранный транспорт
-            if expense_month_year == month_year and \
-               expense.get("transport", {}).get("brand") == selected_brand and \
-               expense.get("transport", {}).get("model") == selected_model and \
-               str(expense.get("transport", {}).get("year")) == selected_year:
-                expenses_to_delete.append((index, expense))
-
-        if expenses_to_delete:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-            keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
-            keyboard.add(types.KeyboardButton("В главное меню"))
-            for index, expense in expenses_to_delete:
-                expense_name = expense.get("name", "Без названия")
-                keyboard.add(types.KeyboardButton(f"Удалить трату #{index} - {expense_name}"))
-
-            bot.send_message(user_id, "Выберите трату для удаления:", reply_markup=keyboard)
-            bot.register_next_step_handler(message, confirm_delete_expense_month)
-        else:
-            bot.send_message(user_id, f"За {month_year} месяц трат не найдено для удаления.")
-
-def confirm_delete_expense_month(message):
+def confirm_delete_expense_month(message, expenses_to_delete):
     user_id = message.from_user.id
     selected_option = message.text
 
@@ -2526,7 +2665,7 @@ def delete_expense_by_year(message):
 
 def delete_expenses_by_year(message):
     user_id = message.from_user.id
-    year = message.text
+    year = message.text.strip()
 
     user_data = load_expense_data(user_id).get(str(user_id), {})
     expenses = user_data.get("expenses", [])
@@ -2545,31 +2684,34 @@ def delete_expenses_by_year(message):
 
     if not expenses:
         bot.send_message(user_id, f"У вас пока нет сохраненных трат за {year} для удаления.")
+        send_menu(user_id)
+        return
+
+    expenses_to_delete = []
+    for index, expense in enumerate(expenses, start=1):
+        expense_year = expense.get("date", "").split(".")[2]
+        # Проверяем, совпадает ли год и выбранный транспорт
+        if expense_year == year and \
+           expense.get("transport", {}).get("brand") == selected_brand and \
+           expense.get("transport", {}).get("model") == selected_model and \
+           str(expense.get("transport", {}).get("year")) == selected_year:
+            expenses_to_delete.append((index, expense))
+
+    if expenses_to_delete:
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+        keyboard.add(types.KeyboardButton("В главное меню"))
+        for index, expense in expenses_to_delete:
+            expense_name = expense.get("name", "Без названия")
+            keyboard.add(types.KeyboardButton(f"Удалить трату #{index} - {expense_name}"))
+
+        bot.send_message(user_id, "Выберите трату для удаления:", reply_markup=keyboard)
+        bot.register_next_step_handler(message, confirm_delete_expense_year, expenses_to_delete)
     else:
-        expenses_to_delete = []
-        for index, expense in enumerate(expenses, start=1):
-            expense_year = expense.get("date", "").split(".")[2]
-            # Проверяем, совпадает ли год и выбранный транспорт
-            if expense_year == year and \
-               expense.get("transport", {}).get("brand") == selected_brand and \
-               expense.get("transport", {}).get("model") == selected_model and \
-               str(expense.get("transport", {}).get("year")) == selected_year:
-                expenses_to_delete.append((index, expense))
+        bot.send_message(user_id, f"За {year} год трат не найдено для удаления.")
+        send_menu(user_id)
 
-        if expenses_to_delete:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-            keyboard.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
-            keyboard.add(types.KeyboardButton("В главное меню"))
-            for index, expense in expenses_to_delete:
-                expense_name = expense.get("name", "Без названия")
-                keyboard.add(types.KeyboardButton(f"Удалить трату #{index} - {expense_name}"))
-
-            bot.send_message(user_id, "Выберите трату для удаления:", reply_markup=keyboard)
-            bot.register_next_step_handler(message, confirm_delete_expense_year)
-        else:
-            bot.send_message(user_id, f"За {year} год трат не найдено для удаления.")
-
-def confirm_delete_expense_year(message):
+def confirm_delete_expense_year(message, expenses_to_delete):
     user_id = message.from_user.id
     selected_option = message.text
 
@@ -2593,35 +2735,6 @@ def confirm_delete_expense_year(message):
 
     send_menu(user_id)
 
-def select_transport(message):
-    user_id = message.from_user.id
-    # Предположим, что вы уже получаете список доступных транспортных средств
-    selected_transport = get_selected_transport(user_id)  # Замените это на вашу логику получения выбранного транспорта
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    
-    # Сохраняем выбранный транспорт в пользовательских данных
-    user_data["selected_transport"] = selected_transport
-    save_expense_data(user_id, user_data)
-
-# Предположим, что этот код выполняется при выборе транспорта
-@bot.message_handler(func=lambda message: message.text.startswith("Выбор транспорта: "))
-def select_transport(message):
-    user_id = message.from_user.id
-    selected_transport = message.text.split(": ")[1]  # Получаем выбранный транспорт
-    user_data = load_expense_data(user_id).get(str(user_id), {})
-    user_data["selected_transport"] = selected_transport  # Сохраняем выбранный транспорт
-    save_expense_data(user_id, {str(user_id): user_data})  # Сохраняем изменения
-    bot.send_message(user_id, f"Выбран транспорт: {selected_transport}")
-
-
-def save_selected_transport(user_id, transport):
-    user_data = load_expense_data(user_id)
-    if str(user_id) not in user_data:
-        user_data[str(user_id)] = {"expenses": [], "selected_transport": None}
-    user_data[str(user_id)]["selected_transport"] = transport
-    save_expense_data(user_id, user_data)
-
-# Удаление всех трат
 # Удаление всех трат
 @bot.message_handler(func=lambda message: message.text == "Del траты (всё время)")
 def delete_all_expenses(message):
@@ -2637,12 +2750,6 @@ def delete_all_expenses(message):
 
 def confirm_delete_all_expenses(message):
     user_id = message.from_user.id
-
-    # Проверка на мультимедийные файлы
-    if contains_media(message):
-        sent = bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(sent, confirm_delete_all_expenses)
-        return
 
     # Обработка возвратов в меню
     if message.text == "Вернуться в меню трат и ремонтов":
