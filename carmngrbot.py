@@ -2676,7 +2676,9 @@ def confirm_delete_expense_year(message, expenses_to_delete):
             if 0 <= expense_index < len(expenses):
                 deleted_expense = expenses.pop(expense_index)
                 user_data["expenses"] = expenses 
-                save_expense_data(user_id, {str(user_id): user_data}) 
+                # Сохраняем данные, передавая выбранный транспорт
+                selected_transport = user_data.get("selected_transport")
+                save_expense_data(user_id, {str(user_id): user_data}, selected_transport) 
                 bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' удалена успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите трату из списка.")
@@ -2687,6 +2689,8 @@ def confirm_delete_expense_year(message, expenses_to_delete):
 
     send_menu(user_id)
 
+
+# Удаление всех трат
 # Удаление всех трат
 @bot.message_handler(func=lambda message: message.text == "Del траты (всё время)")
 def delete_all_expenses(message):
@@ -2741,7 +2745,7 @@ def confirm_delete_all_expenses(message):
 
             # Сохраняем оставшиеся траты
             user_data["expenses"] = expenses_to_keep
-            save_expense_data(user_id, {str(user_id): user_data})
+            save_expense_data(user_id, {str(user_id): user_data}, selected_transport)  # Передаем selected_transport
             bot.send_message(user_id, f"Все траты для транспорта '{selected_brand} {selected_model} {selected_year}' успешно удалены.")
         else:
             bot.send_message(user_id, "Не удалось найти выбранный транспорт.")
@@ -2749,6 +2753,7 @@ def confirm_delete_all_expenses(message):
         bot.send_message(user_id, "Удаление трат отменено.")
 
     send_menu(user_id)
+
 
 # (11) --------------- КОД ДЛЯ "РЕМОНТОВ" ---------------
 
@@ -3938,13 +3943,14 @@ def send_welcome(message):
     button_evacuation = types.KeyboardButton("Эвакуация")
     button_gibdd_mreo = types.KeyboardButton("ГИБДД")
     button_accident_commissioner = types.KeyboardButton("Комиссары")
+    button_impound = types.KeyboardButton("Штрафстоянка")  # Новая кнопка для штрафстоянки
 
     # Кнопка для возврата в главное меню
     item1 = types.KeyboardButton("В главное меню")
 
     # Добавление кнопок на клавиатуру
     markup.add(button_azs, button_car_wash, button_auto_service)
-    markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner)
+    markup.add(button_parking, button_evacuation, button_gibdd_mreo, button_accident_commissioner, button_impound)  # Добавляем кнопку штрафстоянки
     markup.add(item1)
 
     # Отправка пользователю
@@ -3960,10 +3966,10 @@ def handle_reset_category(message):
 selected_category = None 
 
 # Обработчик для выбора категории
-@bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"})
+@bot.message_handler(func=lambda message: message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"})
 def handle_menu_buttons(message):
     global selected_category 
-    if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары"}:
+    if message.text in {"АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"}:  # Включаем "Штрафстоянка"
         selected_category = message.text 
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
         button_send_location = types.KeyboardButton("Отправить геолокацию", request_location=True)
@@ -5496,6 +5502,136 @@ def view_transport(message):
 @bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
 def return_to_transport_menu(message):
     manage_transport(message)  # Возвращаем пользователя в меню транспорта
+
+
+
+ADMIN_USERNAME = "Alex"
+ADMIN_PASSWORD = "hh1515az"
+admin_sessions = set()
+
+FEEDBACK_FILE_PATH = 'data base/feedback/feedback.json'
+
+# Глобальные переменные для хранения статистики
+active_users = {}  # {user_id: last_active_time}
+total_users = set()   # Общее количество пользователей
+function_usage = {
+    'Статистика': 0,
+    'Отзывы': 0,
+    'Просмотр файлов БД': 0,
+    'Просмотр всех файлов': 0,
+}  # Статистика использования функций
+
+INACTIVE_TIME = timedelta(minutes=1)  # Время для определения неактивного пользователя
+
+def load_feedback():
+    if os.path.exists(FEEDBACK_FILE_PATH):
+        with open(FEEDBACK_FILE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {}
+
+def search_files_by_user_id(user_id):
+    # Код поиска файлов по user_id
+    pass
+
+# Обновляем активность пользователя
+def update_user_activity(user_id):
+    active_users[user_id] = datetime.now()
+    total_users.add(user_id)  # Добавляем пользователя в список всех, кто когда-либо использовал бот
+
+# Проверяем активных пользователей
+def get_active_users_count():
+    now = datetime.now()
+    return sum(1 for last_active in active_users.values() if now - last_active <= INACTIVE_TIME)
+
+# Получаем статистику
+def get_statistics():
+    online_count = get_active_users_count()
+    total_count = len(total_users)
+    return online_count, total_count, function_usage
+
+@bot.message_handler(commands=['admin'])
+def handle_admin_login(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("В главное меню")
+    bot.send_message(message.chat.id, "Введите логин:", reply_markup=markup)
+    bot.register_next_step_handler(message, verify_username)
+
+def verify_username(message):
+    if message.text.lower() == "в главное меню":
+        return_to_menu(message)
+        return
+    username = message.text
+    bot.send_message(message.chat.id, "Введите пароль:")
+    bot.register_next_step_handler(message, verify_password, username)
+
+def verify_password(message, username):
+    if message.text.lower() == "в главное меню":
+        return_to_menu(message)
+        return
+    password = message.text
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        admin_sessions.add(message.chat.id)
+        bot.send_message(message.chat.id, "Добро пожаловать в админ-панель!")
+        show_admin_panel(message)
+    else:
+        bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
+        handle_admin_login(message)
+
+def show_admin_panel(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2)
+    markup.add('Просмотр файлов БД', 'Просмотр всех файлов', 'Просмотр отзывов', 'Статистика', 'Выход')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов БД' and message.chat.id in admin_sessions)
+def view_db_files_prompt(message):
+    # Код отображения файлов БД
+    pass
+
+@bot.message_handler(func=lambda message: message.text == 'Просмотр отзывов' and message.chat.id in admin_sessions)
+def view_feedback(message):
+    feedback_data = load_feedback()
+    if feedback_data:
+        feedbacks = "\n".join([f"{user_id}: {feedback}" for user_id, feedback in feedback_data.items()])
+        bot.send_message(message.chat.id, f"Собранные отзывы:\n{feedbacks}")
+    else:
+        bot.send_message(message.chat.id, "Отзывы отсутствуют.")
+
+@bot.message_handler(func=lambda message: message.text == 'Статистика' and message.chat.id in admin_sessions)
+def show_statistics(message):
+    online_count, total_count, function_usage = get_statistics()
+    usage_summary = "\n".join([f"{func}: {count}" for func, count in function_usage.items()])
+    
+    response_message = (
+        f"Пользователи онлайн: {online_count}\n"
+        f"Всего пользователей: {total_count}\n\n"
+        f"Использование функций:\n{usage_summary}"
+    )
+    bot.send_message(message.chat.id, response_message)
+
+@bot.message_handler(func=lambda message: message.text == 'Выход' and message.chat.id in admin_sessions)
+def logout(message):
+    admin_sessions.discard(message.chat.id)
+    return_to_menu(message)
+
+@bot.message_handler(commands=['feedback'])
+def get_feedback(message):
+    update_user_activity(message.from_user.id)  # Обновляем активность пользователя
+    bot.send_message(message.chat.id, "Напишите ваш отзыв:")
+    bot.register_next_step_handler(message, save_feedback)
+
+def save_feedback(message):
+    feedback_data = load_feedback()
+    user_id = str(message.from_user.id)
+    feedback_data.setdefault(user_id, []).append(message.text)
+
+    with open(FEEDBACK_FILE_PATH, 'w', encoding='utf-8') as file:
+        json.dump(feedback_data, file, ensure_ascii=False, indent=4)
+    bot.send_message(message.chat.id, "Спасибо за ваш отзыв!")
+
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    update_user_activity(message.from_user.id)
+    # Здесь можно добавить любые дополнительные обработки сообщений
 
 
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
