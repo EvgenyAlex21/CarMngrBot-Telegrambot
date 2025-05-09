@@ -130,7 +130,10 @@ function_states = {
     'Поиск мест': True,
     'Погода': True,
     'Код региона': True,
-    'Цены на топливо': True
+    'Цены на топливо': True,
+    'Анти-радар': True,
+    'Напоминания': True,
+    'Коды OBD2': True
 }
 
 @bot.message_handler(commands=['start'])
@@ -339,6 +342,7 @@ def reset_user_data(user_id):
     bot.clear_step_handler_by_chat_id(user_id) 
 
 # (9.4) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ НАЧАЛЬНОГО МЕСТОПОЛОЖЕНИЯ) ---------------
+
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать расход топлива")
 @track_user_activity
@@ -554,8 +558,6 @@ def process_end_location_step(message):
 
 def process_custom_distance_step(message):
     chat_id = message.chat.id
-
-    # Создаем новую разметку для ввода расстояния
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
     item2 = types.KeyboardButton("В главное меню")
@@ -579,9 +581,9 @@ def process_custom_distance_step(message):
         custom_distance = float(message.text)
         bot.send_message(chat_id, f"Вы ввели свое расстояние: {custom_distance:.2f} км.", reply_markup=markup)
         
-        # Теперь отображаем кнопки для выбора способа ввода даты
+        # Переход к выбору даты
         markup_date = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item_calendar = types.KeyboardButton("Выбрать дату из календаря")
+        item_calendar = types.KeyboardButton("Из календаря")
         item_manual = types.KeyboardButton("Ввести дату вручную")
         item_skip = types.KeyboardButton("Пропустить ввод даты")
         markup_date.add(item_calendar, item_manual, item_skip)
@@ -635,10 +637,12 @@ def process_distance_choice_step(message, distance_km):
 
 def process_date_step(message, distance):
     chat_id = message.chat.id
+    user_code = trip_data[chat_id].get("user_code", "ru")  # Задаем код по умолчанию
 
     if message.text == "Пропустить ввод даты":
         selected_date = "Без даты"
         process_selected_date(message, selected_date)
+        return  # Завершаем выполнение функции, так как дата была пропущена
 
     if message.text == "Вернуться в меню расчета топлива":
         reset_and_start_over(chat_id)
@@ -647,20 +651,42 @@ def process_date_step(message, distance):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item_calendar = types.KeyboardButton("Выбрать дату из календаря")
-    item_manual = types.KeyboardButton("Ввести дату вручную")
-    item_skip = types.KeyboardButton("Пропустить ввод даты")
-    markup.add(item_calendar, item_manual, item_skip)
-    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
-    item2 = types.KeyboardButton("В главное меню")
-    markup.add(item1)
-    markup.add(item2)
 
-    # Отправляем сообщение с новыми кнопками для выбора способа ввода даты
-    sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
-    bot.register_next_step_handler(sent, handle_date_selection, distance)
+    if message.text == "Из календаря":
+        show_calendar(chat_id, user_code)  # Передаем user_code
+        pass
+    elif message.text == "Ввести дату вручную":
+        # Переход к следующему шагу для ввода даты вручную
+        bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:")
+        bot.register_next_step_handler(message, process_date_input_step, distance)
+    else:
+        # Повторно запрашиваем способ ввода даты, если что-то пошло не так
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item_calendar = types.KeyboardButton("Из календаря")
+        item_manual = types.KeyboardButton("Ввести дату вручную")
+        item_skip = types.KeyboardButton("Пропустить ввод даты")
+        markup.add(item_calendar, item_manual, item_skip)
+
+        item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+        item2 = types.KeyboardButton("В главное меню")
+        markup.add(item1, item2)
+
+        sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_date_step, distance)
+
+def process_date_input_step(message, distance):
+    chat_id = message.chat.id
+    date_input = message.text.strip()  # Получаем введенную дату
+
+    # Проверка формата даты (ДД.ММ.ГГГГ)
+    date_pattern = r"^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.\d{4}$"
+    if re.match(date_pattern, date_input):
+        selected_date = date_input
+        process_selected_date(message, selected_date)  # Переход к следующему шагу с двумя аргументами
+    else:
+        # Если формат неверный, сообщаем пользователю и запрашиваем ввод снова
+        bot.send_message(chat_id, "Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
+        bot.register_next_step_handler(message, process_date_input_step, distance)
 
 def handle_date_selection(message, distance):
     chat_id = message.chat.id
@@ -678,7 +704,7 @@ def handle_date_selection(message, distance):
         return_to_menu(message)
         return
 
-    if message.text == "Выбрать дату из календаря":
+    if message.text == "Из календаря":
         show_calendar(chat_id, user_code)  # Передаем user_code
     elif message.text == "Ввести дату вручную":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -696,6 +722,96 @@ def handle_date_selection(message, distance):
     else:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите корректный вариант.")
         bot.register_next_step_handler(sent, handle_date_selection, distance)
+
+def show_calendar(chat_id, user_code):
+    # Inline-календарь с использованием кода пользователя
+    calendar, _ = DetailedTelegramCalendar(min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), locale=user_code).build()
+
+    # Обычная клавиатура для кнопок навигации
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    # Отправляем сообщение с навигацией и календарем
+    bot.send_message(chat_id, "Календарь:", reply_markup=markup)
+    bot.send_message(chat_id, "Выберите дату", reply_markup=calendar)
+
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+@restricted
+@track_user_activity
+def handle_calendar(call):
+    result, key, step = DetailedTelegramCalendar(
+        min_date=date(2000, 1, 1), max_date=date(3000, 12, 31), unique_key=call.data
+    ).process(call.data)
+
+    if not result and key:
+        bot.edit_message_text(f"Выберите {step}",
+                              call.message.chat.id,
+                              call.message.message_id,
+                              reply_markup=key)
+    elif result:
+        selected_date = result.strftime('%d.%m.%Y')
+        bot.edit_message_text(f"Вы выбрали дату {selected_date}",
+                              call.message.chat.id,
+                              call.message.message_id)
+
+        # Переходим к следующему шагу
+        process_selected_date(call.message, selected_date)
+
+
+def process_selected_date(message, selected_date):
+    chat_id = message.chat.id
+    distance_km = trip_data[chat_id].get("distance")  # Получаем расстояние
+
+    if distance_km is None:
+        bot.send_message(chat_id, "Расстояние не было задано. Пожалуйста, попробуйте снова.")
+        return
+
+    show_fuel_types(chat_id, selected_date, distance_km)
+
+
+def process_manual_date_step(message, distance):
+    chat_id = message.chat.id
+    date_pattern = r"\d{2}\.\d{2}\.\d{4}"  # Формат ДД.ММ.ГГГГ
+    
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(chat_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    # Разметка только с двумя кнопками
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(chat_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
+        return
+
+    if re.match(date_pattern, message.text):
+        day, month, year = map(int, message.text.split('.'))
+        if 2000 <= year <= 3000:  # Проверка корректности года
+            try:
+                datetime(year, month, day)  # Проверка правильности даты
+                bot.send_message(chat_id, f"Вы выбрали дату {message.text}.", reply_markup=markup)  # Отправляем сообщение с двумя кнопками
+                show_fuel_types(chat_id, message.text, distance)
+            except ValueError:
+                sent = bot.send_message(chat_id, "Неправильная дата. Пожалуйста, введите корректную дату.", reply_markup=markup)
+                bot.register_next_step_handler(sent, process_manual_date_step, distance)
+        else:
+            sent = bot.send_message(chat_id, "Год должен быть в диапазоне от 2000 г. до 3000 г.", reply_markup=markup)
+            bot.register_next_step_handler(sent, process_manual_date_step, distance)
+    else:
+        sent = bot.send_message(chat_id, "Неправильный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_manual_date_step, distance)
 
 def show_calendar(chat_id, user_code):
     # Inline-календарь с использованием кода пользователя
@@ -812,43 +928,44 @@ def clean_price(price):
         cleaned_price = cleaned_price[:cleaned_price.find('.') + 1] + cleaned_price[cleaned_price.find('.') + 1:].replace('.', '')
     return cleaned_price
 
-def get_average_fuel_prices():
-    url = 'https://azsprice.ru/benzin-cheboksary?ysclid=m1fguy8a6w869590461'  # Замените на URL сайта
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    table = soup.find('table')
-    fuel_prices = {}
-
-    rows = table.find_all('tr')
+def get_average_fuel_prices(city_code='default_city_code'):
+    url = f'https://azsprice.ru/benzin-{city_code}'  # Замените на подходящий URL с использованием city_code
     
-    for row in rows[1:]:
-        columns = row.find_all('td')
-        if len(columns) < 5:
-            continue
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Проверка на успешный статус ответа
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        fuel_type = columns[2].text.strip()  # Марка топлива
-        today_price = clean_price(columns[3].text.strip())  # Цена на топливо
+        table = soup.find('table')
+        if not table:
+            raise ValueError("Не найдена таблица с ценами на топливо.")
         
-        if today_price:
-            try:
-                price = float(today_price)
+        fuel_prices = {}
+        rows = table.find_all('tr')
+        
+        for row in rows[1:]:
+            columns = row.find_all('td')
+            if len(columns) < 5:
+                continue
+            
+            fuel_type = columns[2].text.strip()  # Марка топлива
+            today_price = clean_price(columns[3].text.strip())  # Цена на топливо
+            
+            if today_price:
+                try:
+                    price = float(today_price)
+                    if fuel_type not in fuel_prices:
+                        fuel_prices[fuel_type] = []
+                    fuel_prices[fuel_type].append(price)
+                except ValueError:
+                    print(f"Не удалось преобразовать цену: {today_price}")
 
-                # Если это первый раз, когда мы видим эту марку топлива, инициализируем список
-                if fuel_type not in fuel_prices:
-                    fuel_prices[fuel_type] = []
-                
-                # Добавляем цену в список
-                fuel_prices[fuel_type].append(price)
-            except ValueError:
-                print(f"Не удалось преобразовать цену: {today_price}")
-
-    # Возвращаем словарь, где для каждой марки топлива указана средняя цена
-    average_prices = {}
-    for fuel_type, prices in fuel_prices.items():
-        average_prices[fuel_type] = sum(prices) / len(prices)  # Среднее значение
-
-    return average_prices
+        average_prices = {fuel: sum(prices) / len(prices) for fuel, prices in fuel_prices.items()}
+        return average_prices
+    
+    except (requests.RequestException, ValueError) as e:
+        print(f"Ошибка при получении данных: {e}")
+        return None  # Вернем None в случае ошибки
 
 
 def process_fuel_type(message, date, distance):
@@ -909,46 +1026,34 @@ def process_fuel_type(message, date, distance):
 
 def handle_price_input_choice(message, date, distance, fuel_type):
     chat_id = message.chat.id
-    
+
     if message.text == "Ввести свою цену":
-        # Создаем новую клавиатуру с двумя кнопками
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
         item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
-        markup.add(item2)
+        markup.add(item1, item2)
 
         sent = bot.send_message(chat_id, "Пожалуйста, введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
     
     elif message.text == "Использовать актуальную цену":
-        try:
-            fuel_prices = get_average_fuel_prices()
-            fuel_prices_lower = {key.lower(): value for key, value in fuel_prices.items()}
-            price_per_liter = fuel_prices_lower.get(fuel_type.lower())
-
-            if price_per_liter is None:
-                raise ValueError("Price not found")
-
+        fuel_prices = get_average_fuel_prices(city_code="cheboksary")
+        
+        if fuel_prices and fuel_type.lower() in fuel_prices:
+            price_per_liter = fuel_prices[fuel_type.lower()]
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
             item2 = types.KeyboardButton("В главное меню")
-            markup.add(item1)
-            markup.add(item2) 
-
+            markup.add(item1, item2)
             bot.send_message(chat_id, f"Актуальная средняя цена для {fuel_type.upper()} в РФ: {price_per_liter:.2f} руб./л.", reply_markup=markup)
             sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
             bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
-        
-        except Exception as e:
-            print(f"Ошибка получения цены: {e}")
-            # Создаем новую клавиатуру с двумя кнопками
+        else:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
             item2 = types.KeyboardButton("В главное меню")
             markup.add(item1)
             markup.add(item2)
-
             sent = bot.send_message(chat_id, "Не удалось получить актуальную цену. Пожалуйста, введите свою цену.", reply_markup=markup)
             bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
 
@@ -1392,18 +1497,25 @@ def view_trips(message):
         else:
             # Создаем кнопки для выбора поездок
             markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+            buttons = []
+
             for i, trip in enumerate(trips, start=1):
                 start_address = trip['start_location']['address']
                 end_address = trip['end_location']['address']
-                button_text = f"{i}. {trip['date']}"
-                markup.add(button_text)
-            
-            # Добавляем кнопку для просмотра в Excel
+                button_text = f"№{i}. {trip['date']}"
+                buttons.append(types.KeyboardButton(button_text))
+
+                # Добавляем кнопку в ряд по 3
+                if len(buttons) == 3 or i == len(trips):
+                    markup.row(*buttons)
+                    buttons = []  # Очистить список для следующего ряда
+
+            # Добавляем дополнительные кнопки
             markup.add("Посмотреть в Excel")
             markup.add("Вернуться в меню расчета топлива")
             markup.add("В главное меню")
-            
-            # Отправляем сообщение с запросом на выбор поездки и кнопками
+
+            # Отправляем сообщение с кнопками
             bot.send_message(user_id, "Выберите поездку для просмотра:", reply_markup=markup)
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
@@ -1505,22 +1617,28 @@ def ask_for_trip_to_delete(message):
     if user_id in user_trip_data:
         if user_trip_data[user_id]:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+            buttons = []
 
             # Изменяем создание кнопок для отображения номера и даты поездки
             for i, trip in enumerate(user_trip_data[user_id], start=1):
                 trip_date = trip.get('date', 'Дата не указана')  # Получаем дату поездки
                 button_text = f"№{i}. {trip_date}"  # Создаем текст кнопки с номером и датой
-                markup.add(types.KeyboardButton(button_text))
+                buttons.append(types.KeyboardButton(button_text))
 
+                # Добавляем кнопку в ряд по 3
+                if len(buttons) == 3 or i == len(user_trip_data[user_id]):
+                    markup.row(*buttons)
+                    buttons = []  # Очистить список для следующего ряда
+
+            # Добавляем дополнительные кнопки
             markup.add(types.KeyboardButton("Удалить все поездки"))
             markup.add(types.KeyboardButton("Вернуться в меню расчета топлива"))
             markup.add(types.KeyboardButton("В главное меню"))
-            
-            bot.send_message(user_id, "Выберите номер поездки для удаления или нажмите 'Удалить все поездки' для удаления всех поездок:", reply_markup=markup)
+
+            bot.send_message(user_id, "Выберите номер поездки для удаления или удалите все:", reply_markup=markup)
             bot.register_next_step_handler(message, confirm_trip_deletion)
         else:
             bot.send_message(user_id, "У вас нет поездок для удаления.")
-            reset_and_start_over(user_id)
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
 
@@ -7026,12 +7144,13 @@ def save_data(data):
 @bot.message_handler(func=lambda message: message.text == "Напоминания")
 def reminders_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Добавить напоминание', 'Посмотреть напоминания', 'Удалить напоминание')
+    markup.add('Добавить', 'Посмотреть', 'Удалить')
+    markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 
 # Обработка кнопки "Добавить напоминание"
-@bot.message_handler(func=lambda message: message.text == "Добавить напоминание")
+@bot.message_handler(func=lambda message: message.text == "Добавить")
 def add_reminder(message):
     msg = bot.send_message(message.chat.id, "Введите название напоминания:")
     bot.register_next_step_handler(msg, process_title_step)
@@ -7051,10 +7170,10 @@ def process_title_step(message):
     save_data(data)
 
     msg = bot.send_message(message.chat.id, "Введите дату напоминания в формате ДД.ММ.ГГГГ:")
-    bot.register_next_step_handler(msg, process_date_step)
+    bot.register_next_step_handler(msg, process_date_step_2)
 
 
-def process_date_step(message):
+def process_date_step_2(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
@@ -7065,7 +7184,7 @@ def process_date_step(message):
         reminder["date"] = message.text
     except ValueError:
         msg = bot.send_message(message.chat.id, "Неверный формат даты. Попробуйте еще раз.")
-        bot.register_next_step_handler(msg, process_date_step)
+        bot.register_next_step_handler(msg, process_date_step_2)
         return
 
     save_data(data)
@@ -7097,7 +7216,7 @@ def process_time_step(message):
 
 
 # Обработка кнопки "Посмотреть напоминания"
-@bot.message_handler(func=lambda message: message.text == "Посмотреть напоминания")
+@bot.message_handler(func=lambda message: message.text == "Посмотреть")
 def view_reminders(message):
     user_id = str(message.from_user.id)
     data = load_data()
@@ -7124,7 +7243,7 @@ def view_reminders(message):
 
 
 # Обработка кнопки "Удалить напоминание"
-@bot.message_handler(func=lambda message: message.text == "Удалить напоминание")
+@bot.message_handler(func=lambda message: message.text == "Удалить")
 def delete_reminder(message):
     user_id = str(message.from_user.id)
     data = load_data()
