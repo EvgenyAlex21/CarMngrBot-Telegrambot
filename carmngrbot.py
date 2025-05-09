@@ -1427,7 +1427,7 @@ def return_to_subscription(message):
 SUBSCRIPTION_PLANS = {
     "weekly_subscription_7": {
         "base_price": 149,
-        "fictitious_discount": 0,
+        "fictitious_discount": 50,
         "label": "Неделя",
         "duration": 7
     },
@@ -1471,14 +1471,14 @@ def send_subscription_options(message):
         applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
                             "все подписки" if applicable_category == "subscriptions" else 
                             "весь магазин" if applicable_category == "store" else 
-                            ", ".join([SUBSCRIPTION_PLANS.get(item, {'label': item})['label'] for item in applicable_items if item in SUBSCRIPTION_PLANS]))
+                            ", ".join([SUBSCRIPTION_PLANS.get(item, {'label': item})['label'].lower() for item in applicable_items if item in SUBSCRIPTION_PLANS]))
         applicability_str = f" (применимо к: {applicability_str})"
 
     discount_info = ""
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
         base_price = plan_info["base_price"]
         fictitious_discount = plan_info["fictitious_discount"]
-        label = plan_info["label"]
+        label = plan_info["label"].lower()  # Приводим название плана к нижнему регистру
 
         # Проверяем, применима ли скидка
         discount_applicable = (applicable_category is None or 
@@ -1489,7 +1489,7 @@ def send_subscription_options(message):
 
         # Добавляем информацию об акционной скидке для текущего плана, если она есть
         if fictitious_discount > 0:
-            discount_info += f"🎁 Акционная скидка на {label}: -{fictitious_discount:.2f} ₽\n"
+            discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
 
         button_text = f"💳 {label} ({final_price:.2f} ₽)"
         markup.add(InlineKeyboardButton(button_text, callback_data=plan_key))
@@ -1498,7 +1498,7 @@ def send_subscription_options(message):
         "Выберите период подписки:\n\n"
         f"🎁 *Ваша скидка:* {user_discount}%{applicability_str}\n"
         f"{discount_info}\n"  # Добавляем информацию об акционных скидках
-        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"
+        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"  # Названия в нижнем регистре
         "📌 *Месяц*: полный доступ ко всем функциям на продолжительный период!\n"
         "📌 *Год*: экономия и долгосрочный доступ ко всем функциям бота!"
     ), reply_markup=markup, parse_mode="Markdown")
@@ -1520,22 +1520,17 @@ def send_subscription_invoice(call):
     label = plan_info["label"]
     duration = plan_info["duration"]
 
-    data = load_payment_data()  # Добавляем загрузку данных
+    data = load_payment_data()
     users_data = load_users_data()
     user_discount = users_data.get(user_id, {}).get('discount', 0)
-    applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
-    applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
+    applicable_category = users_data.get(user_id, {}).get('applicable_category')
+    applicable_items = users_data.get(user_id, {}).get('applicable_items', [])
 
     # Проверяем, применима ли скидка
     discount_applicable = (applicable_category is None or 
                           applicable_category == "subscriptions" or 
                           plan_key in applicable_items)
     user_discount = user_discount if discount_applicable else 0
-
-    # Рассчитываем скидку
-    user_discount_amount = round(base_price * (user_discount / 100), 2)
-    discounted_price = base_price - user_discount_amount
-    final_price = round(discounted_price - fictitious_discount, 2)
 
     # Если скидка 100%, предоставляем подписку без оплаты
     if user_discount >= 100:
@@ -1582,10 +1577,27 @@ def send_subscription_invoice(call):
         bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
         return
 
-    if final_price < 1:
-        final_price = 1
-        fictitious_discount = 0
-        user_discount_amount = base_price - 1
+    # Рассчитываем скидку
+    user_discount_amount = round(base_price * (user_discount / 100), 2)
+    discounted_price = base_price - user_discount_amount
+
+    # Минимальная сумма для Telegram API (например, 10 ₽ = 1000 копеек)
+    MINIMUM_AMOUNT = 10  # Можно изменить в зависимости от требований провайдера
+
+    # Проверяем итоговую цену после всех скидок
+    final_price = discounted_price - fictitious_discount
+    if final_price < MINIMUM_AMOUNT:
+        # Если итоговая цена меньше минимальной, корректируем скидки
+        total_discount = base_price - MINIMUM_AMOUNT  # Максимальная скидка, чтобы итоговая цена была MINIMUM_AMOUNT
+        user_discount_amount = min(user_discount_amount, total_discount)
+        user_discount_amount = round(user_discount_amount, 2)  # Округляем до 2 знаков
+        remaining_discount = total_discount - user_discount_amount
+        fictitious_discount = min(fictitious_discount, remaining_discount)
+        fictitious_discount = round(fictitious_discount, 2)  # Округляем до 2 знаков
+        final_price = MINIMUM_AMOUNT
+
+    # Логирование промежуточных значений
+    print(f"Base Price: {base_price}, User Discount Amount: {user_discount_amount}, Fictitious Discount: {fictitious_discount}, Final Price: {final_price}")
 
     provider_token = PAYMENT_PROVIDER_TOKEN
     currency = "RUB"
@@ -1603,23 +1615,24 @@ def send_subscription_invoice(call):
     )
     
     prices = [types.LabeledPrice(f"Подписка на {label}", int(base_price * 100))]
-    if user_discount > 0:
+    if user_discount > 0 and user_discount_amount > 0:
         description += f"🏷️ Скидка {user_discount}%: -{user_discount_amount:.2f} ₽\n"
-        prices.append(types.LabeledPrice(f"Скидка {user_discount}%", -int(user_discount_amount * 100)))
+        user_discount_amount_kopecks = int(round(user_discount_amount * 100))
+        prices.append(types.LabeledPrice(f"Скидка {user_discount}%", -user_discount_amount_kopecks))
     
-    if fictitious_discount > 0 and final_price > 1:
+    if fictitious_discount > 0:
         description += f"🎁 Акционная скидка: -{fictitious_discount:.2f} ₽\n"
-        prices.append(types.LabeledPrice("Акционная скидка", -int(fictitious_discount * 100)))
+        fictitious_discount_kopecks = int(round(fictitious_discount * 100))
+        prices.append(types.LabeledPrice("Акционная скидка", -fictitious_discount_kopecks))
 
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
+    # Дополнительная проверка суммы в prices
     total_amount = sum(price.amount for price in prices)
-    if total_amount <= 0:
-        prices = [types.LabeledPrice(f"Подписка на {label}", int(final_price * 100))]
-        description = (
-            f"✨ Полный доступ ко всем функциям на {label.lower()}!\n"
-            f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
-        )
+    print(f"Total amount in prices (kopecks): {total_amount}")
+    if total_amount < MINIMUM_AMOUNT * 100:
+        prices = [types.LabeledPrice(f"Подписка на {label}", int(MINIMUM_AMOUNT * 100))]
+        description += f"\n⚠️ Цена скорректирована до минимальной ({MINIMUM_AMOUNT} ₽) из-за требований платежной системы!\n"
 
     try:
         bot.send_invoice(
@@ -2464,7 +2477,7 @@ def send_store_options(message):
         fictitious_discount = item_info["fictitious_discount"]
         label = item_info["label"]
         if fictitious_discount > 0:
-            points_discount_info += f"🎁 Акционная скидка на {label}: -{fictitious_discount:.2f} ₽\n"
+            points_discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
 
     # Собираем информацию об акционных скидках для пакетов времени
     time_items = {k: v for k, v in STORE_ITEMS.items() if k.startswith("time_")}
@@ -2473,7 +2486,7 @@ def send_store_options(message):
         fictitious_discount = item_info["fictitious_discount"]
         label = item_info["label"]
         if fictitious_discount > 0:
-            time_discount_info += f"🎁 Акционная скидка на {label}: -{fictitious_discount:.2f} ₽\n"
+            time_discount_info += f"🎁 *Акционная скидка* на {label}: -{fictitious_discount:.2f} ₽\n"
 
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("📍 Пакеты баллов", callback_data="noop"))
@@ -27513,8 +27526,8 @@ def manage_system(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Управление подписками', 'Управление магазином')
     markup.add('Управление баллами', 'Управление обменами')
-    markup.add('Управление скидками', 'Статистика системы')
-    markup.add('Управление подарками')
+    markup.add('Управление скидками', 'Управление подарками')
+    markup.add('Статистика системы')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления системой:", reply_markup=markup)
 
@@ -28344,7 +28357,11 @@ def process_delete_subscription_plan(message, user_id, plans):
 
 # Функция для форматирования чисел
 def format_number(num):
-    return f"{int(num)}" if num == int(num) else f"{num:.2f}"
+    if isinstance(num, int):
+        return f"{num}"
+    elif isinstance(num, float):
+        return f"{num:.2f}" if num != int(num) else f"{int(num)}"
+    return str(num)
 
 @bot.message_handler(func=lambda message: message.text == 'Статистика системы' and check_admin_access(message))
 @restricted
@@ -29637,10 +29654,6 @@ def process_view_points(message):
     spent_admin_delete = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'] == 'удаление покупок администратором')
     spent_admin = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower() == 'списание администратором')
 
-    # Функция для форматирования чисел
-    def format_number(num):
-        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
-
     # Вычисление времени для "Подарено времени" и "Получено времени"
     gifted_time_minutes = 0
     received_time_minutes = 0
@@ -29940,10 +29953,6 @@ def process_view_points_history(message):
     if not username.startswith('@'):
         username = f"@{username}"
 
-    # Функция для форматирования чисел
-    def format_number(num):
-        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
-
     # Функция для форматирования даты (убираем секунды)
     def format_date(date_str):
         return re.sub(r'(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2}):\d{2}', r'\1', date_str)
@@ -30067,10 +30076,6 @@ def process_perform_exchange(message):
 
     exchange_rate = 2  # Фиксированный курс: 1 балл = 2 часа
 
-    # Функция для форматирования чисел
-    def format_number(num):
-        return f"{int(num)}" if num.is_integer() else f"{num:.2f}"
-
     username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
     if not username.startswith('@'):
         username = f"@{username}"
@@ -30112,10 +30117,6 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
 
-    # Функция для форматирования чисел
-    def format_number(num):
-        return f"{int(num)}" if num == int(num) else f"{num:.2f}"
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в управление обменами')
     markup.add('Вернуться в управление системой')
@@ -30148,10 +30149,6 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
             f"Выберите функцию для обмена:\n_P.S. 5 баллов = 15 минут_"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_feature, user_id)
-
-# Функция для форматирования чисел (используется во всех функциях)
-def format_number(num):
-    return f"{int(num)}" if num.is_integer() else f"{num:.2f}"
 
 @text_only_handler
 def process_perform_exchange_time(message, user_id, exchange_rate):
@@ -30694,11 +30691,11 @@ def process_create_promo_code_uses(message, discount):
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, 
-            "Выберите, к чему применим промокод:\n"
-            "- Все товары: подписки и магазин\n"
-            "- Все подписки: только подписки\n"
-            "- Весь магазин: только товары магазина\n"
-            "- Конкретные товары: выберите отдельные товары/подписки", 
+            "Выберите, к чему применим промокод:\n\n"
+            "💳 - Все товары: подписки и магазин\n"
+            "🎁 - Все подписки: только подписки\n"
+            "🛒 - Весь магазин: только товары магазина\n"
+            "🏷️ - Конкретные товары: выберите отдельные товары/подписки", 
             reply_markup=markup)
         bot.register_next_step_handler(message, process_create_promo_code_category, discount, uses)
     except ValueError as e:
@@ -30726,19 +30723,39 @@ def process_create_promo_code_category(message, discount, uses):
     elif message.text == "Весь магазин":
         applicable_category = "store"
     elif message.text == "Конкретные товары":
-        available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
-        items_display = "\n".join([f"{idx + 1}. {SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label']}" for idx, item in enumerate(available_items)])
+        items_display = (
+            "💎 Список подписок и товаров:\n\n"
+            "💳 №1. Неделя\n"
+            "💳 №2. Месяц\n"
+            "💳 №3. Год\n"
+            "🛒 №4. 5 баллов\n"
+            "🛒 №5. 10 баллов\n"
+            "🛒 №6. 15 баллов\n"
+            "🛒 №7. 30 баллов\n"
+            "🛒 №8. 50 баллов\n"
+            "🛒 №9. 75 баллов\n"
+            "🛒 №10. 100 баллов\n"
+            "🛒 №11. 150 баллов\n"
+            "🛒 №12. 250 баллов\n"
+            "🛒 №13. 350 баллов\n"
+            "🛒 №14. 500 баллов\n"
+            "🛒 №15. 1000 баллов\n"
+            "🛒 №16. 1 день подписки\n"
+            "🛒 №17. 3 дня подписки\n"
+            "🛒 №18. 7 дней подписки\n"
+            "🛒 №19. 15 дней подписки\n"
+            "🛒 №20. 6 месяцев подписки\n\n"
+            "Введите номера товаров и подписок:"
+        )
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в управление скидками')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, 
-            f"Введите номера товаров/подписок через запятую (например, 1,2,3):\n\n{items_display}", 
-            reply_markup=markup)
+        bot.send_message(message.chat.id, items_display, reply_markup=markup)
         bot.register_next_step_handler(message, process_create_promo_code_items, discount, uses)
         return
     else:
-        bot.send_message(message.chat.id, "Некорректный выбор! Пожалуйста, выберите одну из предложенных опций.", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Некорректный выбор!\nПожалуйста, выберите одну из предложенных опций", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_create_promo_code_category, discount, uses)
         return
 
@@ -30758,7 +30775,7 @@ def process_create_promo_code_category(message, discount, uses):
     }
 
     save_payments_data(data)
-    discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+    discount_str = f"{int(discount)}%" if isinstance(discount, int) or discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
     applicability_str = ("все товары" if applicable_category is None else 
                         "все подписки" if applicable_category == "subscriptions" else 
                         "весь магазин")
@@ -30782,7 +30799,7 @@ def process_create_promo_code_items(message, discount, uses):
             show_admin_panel(message)
         return
 
-    available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
+    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_7days", "time_15days", "time_6months"]
     applicable_items = []
 
     try:
@@ -30813,8 +30830,8 @@ def process_create_promo_code_items(message, discount, uses):
     }
 
     save_payments_data(data)
-    discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
-    items_str = ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] for item in applicable_items])
+    discount_str = f"{int(discount)}%" if isinstance(discount, int) or discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+    items_str = ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] + (" в магазине" if item.startswith("points_") or item.startswith("time_") else "") for item in applicable_items])
     bot.send_message(message.chat.id, 
         f"✅ Создан промокод:\n\n"
         f"🎁 *Промокод:* `{promo_code}`\n"
@@ -30920,11 +30937,11 @@ def process_assign_discount_amount(message, user_id):
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, 
-            "Выберите, к чему применима скидка:\n"
-            "- Все товары: подписки и магазин\n"
-            "- Все подписки: только подписки\n"
-            "- Весь магазин: только товары магазина\n"
-            "- Конкретные товары: выберите отдельные товары/подписки", 
+            "Выберите, к чему применима скидка:\n\n"
+            "💳 - Все товары: подписки и магазин\n"
+            "🎁 - Все подписки: только подписки\n"
+            "🛒 - Весь магазин: только товары магазина\n"
+            "🏷️ - Конкретные товары: выберите отдельные товары/подписки", 
             reply_markup=markup)
         bot.register_next_step_handler(message, process_assign_discount_category, user_id, discount)
     except ValueError as e:
@@ -30952,15 +30969,25 @@ def process_assign_discount_category(message, user_id, discount):
     elif message.text == "Весь магазин":
         applicable_category = "store"
     elif message.text == "Конкретные товары":
+        # Формируем список товаров и подписок
         available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
-        items_display = "\n".join([f"{idx + 1}. {SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label']}" for idx, item in enumerate(available_items)])
+        items_display_lines = []
+        for idx, item in enumerate(available_items, 1):
+            label = SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label']
+            # Определяем, является ли элемент подпиской или товаром
+            if item in SUBSCRIPTION_PLANS:
+                emoji = "💳"  # Для подписок
+            else:
+                emoji = "🛒"  # Для товаров магазина
+            items_display_lines.append(f"{emoji} №{idx}. {label}")
+        
+        items_display = "💎 Список подписок и товаров:\n\n" + "\n".join(items_display_lines) + "\n\nВведите номера товаров и подписок:"
+        
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в управление скидками')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, 
-            f"Введите номера товаров/подписок через запятую (например, 1,2,3):\n\n{items_display}", 
-            reply_markup=markup)
+        bot.send_message(message.chat.id, items_display, reply_markup=markup)
         bot.register_next_step_handler(message, process_assign_discount_items, user_id, discount)
         return
     else:
@@ -30970,7 +30997,7 @@ def process_assign_discount_category(message, user_id, discount):
 
     data = load_payment_data()
     users_data = load_users()
-    username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
+    username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
     if not username.startswith('@'):
         username = f"@{username}"
 
@@ -30999,7 +31026,7 @@ def process_assign_discount_category(message, user_id, discount):
     }
 
     save_payments_data(data)
-    discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+    discount_str = f"{int(discount)}%" if isinstance(discount, int) or discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
     applicability_str = ("все товары" if applicable_category is None else 
                         "все подписки" if applicable_category == "subscriptions" else 
                         "весь магазин")
@@ -31034,7 +31061,7 @@ def process_assign_discount_items(message, user_id, discount):
             show_admin_panel(message)
         return
 
-    available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
+    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_7days", "time_15days", "time_6months"]
     applicable_items = []
 
     try:
@@ -31051,7 +31078,7 @@ def process_assign_discount_items(message, user_id, discount):
 
     data = load_payment_data()
     users_data = load_users()
-    username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
+    username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
     if not username.startswith('@'):
         username = f"@{username}"
 
@@ -31080,8 +31107,8 @@ def process_assign_discount_items(message, user_id, discount):
     }
 
     save_payments_data(data)
-    discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
-    items_str = ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] for item in applicable_items])
+    discount_str = f"{int(discount)}%" if isinstance(discount, int) or discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+    items_str = ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] + (" в магазине" if item.startswith("points_") or item.startswith("time_") else "") for item in applicable_items])
     admin_message = (
         f"✅ Пользователю {username} - `{user_id}` назначена скидка:\n\n"
         f"🎁 *Промокод:* `{promo_code}`\n"
@@ -31147,13 +31174,17 @@ def view_promo_codes(message):
         created_at_display = details.get('created_at', 'неизвестно')
         uses = details.get('uses', 'неограничено')
         discount = details['discount']
-        discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+        if isinstance(discount, int):
+            discount_str = f"{discount}%"
+        else:
+            discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+
         applicable_category = details.get('applicable_category')
         applicable_items = details.get('applicable_items', [])
         applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
                             "все подписки" if applicable_category == "subscriptions" else 
                             "весь магазин" if applicable_category == "store" else 
-                            ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] for item in applicable_items]))
+                            ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] + (" в магазине" if item.startswith("points_") or item.startswith("time_") else "") for item in applicable_items]))
 
         promo_summary += (
             f"🎁 *№{idx}.* `{escape_markdown(code)}`\n"
@@ -31168,10 +31199,10 @@ def view_promo_codes(message):
             promo_summary += f"⏳ *Деактивирован:* {details['deactivated_at']} ({details['deactivation_reason'].lower()})\n"
         if details.get('used_by'):
             for used_entry in details['used_by']:
-                username = used_entry['username']
+                username = escape_markdown(used_entry['username'])
                 if not username.startswith('@'):
                     username = f"@{username}"
-                promo_summary += f"👤 *Использован:* {escape_markdown(username)} (`{escape_markdown(str(used_entry['user_id']))}`) в {used_entry['used_at']}\n"
+                promo_summary += f"👤 *Использован:* {username} (`{escape_markdown(str(used_entry['user_id']))}`) в {used_entry['used_at']}\n"
         promo_summary += "\n"
 
     message_parts = split_message(promo_summary)
@@ -31232,13 +31263,13 @@ def delete_promo_code(message):
         created_at_display = details.get('created_at', 'неизвестно')
         uses = details.get('uses', 'неограничено')
         discount = details['discount']
-        discount_str = f"{int(discount)}%" if discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
+        discount_str = f"{int(discount)}%" if isinstance(discount, int) or discount.is_integer() else f"{discount:.2f}%".replace(".00%", "%")
         applicable_category = details.get('applicable_category')
         applicable_items = details.get('applicable_items', [])
         applicability_str = ("все товары" if applicable_category is None and not applicable_items else 
                             "все подписки" if applicable_category == "subscriptions" else 
                             "весь магазин" if applicable_category == "store" else 
-                            ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] for item in applicable_items]))
+                            ", ".join([SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label'] + (" в магазине" if item.startswith("points_") or item.startswith("time_") else "") for item in applicable_items]))
 
         promo_summary += (
             f"🎁 *№{idx}.* `{escape_markdown(code)}`\n"
@@ -31253,10 +31284,10 @@ def delete_promo_code(message):
             promo_summary += f"⏳ *Деактивирован:* {details['deactivated_at']} ({details['deactivation_reason']})\n"
         if details.get('used_by'):
             for used_entry in details['used_by']:
-                username = used_entry['username']
+                username = escape_markdown(used_entry['username'])
                 if not username.startswith('@'):
                     username = f"@{username}"
-                promo_summary += f"👤 *Использован:* {escape_markdown(username)} (`{escape_markdown(str(used_entry['user_id']))}`) в {used_entry['used_at']}\n"
+                promo_summary += f"👤 *Использован:* {username} (`{escape_markdown(str(used_entry['user_id']))}`) в {used_entry['used_at']}\n"
         promo_summary += "\n"
         promo_list.append(code)
 
@@ -31655,14 +31686,12 @@ def process_gift_points_amount(message, sender_id, recipient_id):
         data = load_payment_data()
         users_data = load_users()
 
-        sender_username = escape_markdown(users_data.get(sender_id, {}).get('username', f"@{sender_id}"))
-        recipient_username = escape_markdown(users_data.get(recipient_id, {}).get('username', f"@{recipient_id}"))
         raw_sender_username = users_data.get(sender_id, {}).get('username', f"@{sender_id}")
         raw_recipient_username = users_data.get(recipient_id, {}).get('username', f"@{recipient_id}")
 
         # Проверка наличия достаточного количества баллов
         sender_data = data['subscriptions']['users'].setdefault(sender_id, {
-            "plans": [], "total_amount": 0, "username": sender_username, "referral_points": 0,
+            "plans": [], "total_amount": 0, "username": raw_sender_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
         })
         available_points = sender_data.get('referral_points', 0)
@@ -31674,29 +31703,30 @@ def process_gift_points_amount(message, sender_id, recipient_id):
         sender_data['points_history'].append({
             "action": "spent",
             "points": gift_points,
-            "reason": f"подарок {raw_recipient_username} (от админа)",
+            "reason": f"подарок {raw_recipient_username} (от админа)",  # Используем raw_recipient_username
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
         # Обновление данных получателя
         recipient_data = data['subscriptions']['users'].setdefault(recipient_id, {
-            "plans": [], "total_amount": 0, "username": recipient_username, "referral_points": 0,
-            "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
+            "plans": [], "total_amount": 0, "username": raw_recipient_username, "referral_points": 0,
+            "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": [], "points_history": []
         })
         recipient_data['referral_points'] += gift_points
         recipient_data['points_history'].append({
             "action": "earned",
             "points": gift_points,
-            "reason": f"подарок от {raw_sender_username} (от админа)",
+            "reason": f"подарок от {raw_sender_username} (от админа)",  # Используем raw_sender_username
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
         save_payments_data(data)
 
+        # Сообщения для отображения с экранированием
         admin_message = (
             f"✅ Подарок назначен:\n\n"
-            f"📤 *Отправитель:* {sender_username} (`{sender_id}`)\n"
-            f"📥 *Получатель:* {recipient_username} (`{recipient_id}`)\n\n"
+            f"📤 *Отправитель:* {escape_markdown(raw_sender_username)} (`{sender_id}`)\n"
+            f"📥 *Получатель:* {escape_markdown(raw_recipient_username)} (`{recipient_id}`)\n\n"
             f"🎁 *Подарок:* {format_number(gift_points)} баллов"
         )
         sender_message = (
@@ -31800,13 +31830,11 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
         data = load_payment_data()
         users_data = load_users()
 
-        sender_username = escape_markdown(users_data.get(sender_id, {}).get('username', f"@{sender_id}"))
-        recipient_username = escape_markdown(users_data.get(recipient_id, {}).get('username', f"@{recipient_id}"))
         raw_sender_username = users_data.get(sender_id, {}).get('username', f"@{sender_id}")
         raw_recipient_username = users_data.get(recipient_id, {}).get('username', f"@{recipient_id}")
 
         sender_data = data['subscriptions']['users'].setdefault(sender_id, {
-            "plans": [], "total_amount": 0, "username": sender_username, "referral_points": 0,
+            "plans": [], "total_amount": 0, "username": raw_sender_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
         })
         # Разрешённые источники для подарка времени
@@ -31850,8 +31878,8 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
         sender_data['plans'] = [p for p in user_plans if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()]
 
         recipient_data = data['subscriptions']['users'].setdefault(recipient_id, {
-            "plans": [], "total_amount": 0, "username": recipient_username, "referral_points": 0,
-            "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
+            "plans": [], "total_amount": 0, "username": raw_recipient_username, "referral_points": 0,
+            "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": [], "points_history": []
         })
         latest_end = max(
             [datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in recipient_data['plans']] or [datetime.now()]
@@ -31880,13 +31908,13 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
         sender_data['points_history'].append({
             "action": "spent",
             "points": 0,
-            "reason": f"подарок времени {raw_recipient_username}: {gift_description} (от админа)",
+            "reason": f"подарок времени {raw_recipient_username}: {gift_description} (от админа)",  # Используем raw_recipient_username
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         recipient_data['points_history'].append({
             "action": "earned",
             "points": 0,
-            "reason": f"подарок времени от {raw_sender_username}: {gift_description} (от админа)",
+            "reason": f"подарок времени от {raw_sender_username}: {gift_description} (от админа)",  # Используем raw_sender_username
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
 
@@ -31905,8 +31933,8 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
 
         admin_message = (
             f"✅ Подарок времени назначен:\n\n"
-            f"📤 *Отправитель:* {sender_username} (`{sender_id}`)\n"
-            f"📥 *Получатель:* {recipient_username} (`{recipient_id}`)\n\n"
+            f"📤 *Отправитель:* {escape_markdown(raw_sender_username)} (`{sender_id}`)\n"
+            f"📥 *Получатель:* {escape_markdown(raw_recipient_username)} (`{recipient_id}`)\n\n"
             f"🎁 *Подарок:* {gift_description}\n\n"
             f"🕒 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
             f"⌛ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}"
