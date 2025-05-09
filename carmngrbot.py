@@ -21,6 +21,7 @@ import logging
 import calendar
 from telegram_bot_calendar import DetailedTelegramCalendar
 from datetime import date
+from requests.exceptions import ReadTimeout, ConnectionError
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -3908,19 +3909,37 @@ def clean_price(price):
 
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
-logging.basicConfig(level=logging.INFO)
-
-logger = logging.getLogger(__name__)
-
-def main_polling():
-    while True:
+# Функция для обработки повторных попыток
+def start_bot_with_retries(retries=100, delay=100):
+    attempt = 0
+    while attempt < retries:
         try:
-            logger.info("Запуск бота...")
-            bot.polling(none_stop=True, interval=1, timeout=60)
+            print(f"Запуск попытки #{attempt + 1}")
+            bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120)
+        except (ReadTimeout, ConnectionError) as e:
+            print(f"Ошибка: {e}. Попытка {attempt + 1} из {retries}")
+            attempt += 1
+            if attempt < retries:
+                print(f"Повторная попытка через {delay} секунд...")
+                time.sleep(delay)  # Ожидание перед повторной попыткой
+            else:
+                print("Превышено количество попыток. Бот не смог запуститься.")
         except Exception as e:
-            logger.error(f"Ошибка: {e}", exc_info=True)
-            time.sleep(5)
+            print(f"Неожиданная ошибка: {e}")
+            break
+
+# Запуск бота с повторными попытками
+start_bot_with_retries()
+
+# Ваши обработчики сообщений остаются как обычно
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Добро пожаловать! Выберите действие из меню:")
+
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    bot.reply_to(message, message.text)
 
 # (17) --------------- КОД ДЛЯ "ЗАПУСК БОТА" ---------------
 if __name__ == '__main__':
-    bot.polling(none_stop=True, interval=1, timeout=60)
+    bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120)
