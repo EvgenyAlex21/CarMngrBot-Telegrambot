@@ -1,0 +1,1 @@
+CAR MANAGER (@CarMngrBot) is a multifunctional messenger Telegram bot for motorists that simplifies everyday tasks related to the use and maintenance of the car
