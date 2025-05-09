@@ -2243,80 +2243,58 @@ def view_subscription_history(message):
 
 # ---------- 10.4. ПОДПИСКА НА БОТА (ОТМЕНА ПОДПИСКИ) ----------
 
+# Константы
 PAYMASTER_MERCHANT_ID = "1744374395"
 PAYMASTER_SECRET_KEY = "93aa42be8420f58d5243"
 PAYMASTER_API_URL = "https://paymaster.ru/api/v2/"
-PAYMASTER_TOKEN = "YOUR_BEARER_TOKEN" 
+PAYMASTER_TOKEN = "1744374395:TEST:93aa42be8420f58d5243"
 REFUND_COMMISSION = 0.10
 MIN_REFUND_AMOUNT = 1.0
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_FILE = os.path.join(BASE_DIR, "data base", "admin", "payments.json")
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data_base", "admin", "admin_sessions.json")
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data base", "admin", "admin_sessions.json")
+
+# Вспомогательные функции для работы с базой данных
+def load_payment_data():
+    """Загружает данные из payments.json."""
+    try:
+        with open(PAYMENTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Ошибка загрузки payments.json: {str(e)}")
+        return {"subscriptions": {"users": {}}, "refunds": [], "all_users_total_amount": 0}
+
+def save_payments_data(data):
+    """Сохраняет данные в payments.json."""
+    try:
+        os.makedirs(os.path.dirname(PAYMENTS_FILE), exist_ok=True)
+        with open(PAYMENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка сохранения payments.json: {str(e)}")
 
 def load_admin_chat_id():
+    """Загружает ID первого администратора из admin_sessions.json."""
     try:
         os.makedirs(os.path.dirname(ADMIN_SESSIONS_FILE), exist_ok=True)
-        
         with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         admin_sessions = data.get('admin_sessions', [])
-        return admin_sessions[0] if admin_sessions else None
+        return int(admin_sessions[0]) if admin_sessions else None
     except Exception as e:
         print(f"Ошибка загрузки admin_sessions.json: {str(e)}")
         return None
 
-@bot.message_handler(func=lambda message: message.text == "Отменить подписку")
-@text_only_handler
-def cancel_subscription(message):
-    user_id = message.from_user.id
-    data = load_payment_data()
-    user_data = data['subscriptions']['users'].get(str(user_id), {})
+def send_long_message(chat_id, message_text, parse_mode='Markdown'):
+    """Отправляет длинное сообщение частями, если превышает лимит Telegram."""
+    max_length = 4096
+    for i in range(0, len(message_text), max_length):
+        bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
 
-    if 'plans' not in user_data or not user_data['plans']:
-        bot.send_message(user_id, "❌ У вас нет активных подписок!", parse_mode="Markdown")
-        payments_function(message, show_description=False)
-        return
-
-    paid_plans = [
-        p for p in user_data['plans']
-        if p['plan_name'] in ['weekly', 'monthly', 'yearly']
-        and p['source'] == 'user'
-        and datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > datetime.now(pytz.UTC)
-    ]
-    if not paid_plans:
-        bot.send_message(user_id, "❌ Нет подписок для отмены!", parse_mode="Markdown")
-        payments_function(message, show_description=False)
-        return
-
-    plans_summary = "*Ваши подписки:*\n\n"
-    for idx, plan in enumerate(paid_plans):
-        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-        start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-        now = datetime.now(pytz.UTC)
-        status = "(Ожидает начала)" if now < start_date else ""
-        remaining_time = end_date - now if now >= start_date else end_date - start_date
-        days_left = max(0, remaining_time.total_seconds() // (24 * 3600))
-        hours_left = (remaining_time.total_seconds() % (24 * 3600)) // 3600
-        minutes_left = (remaining_time.total_seconds() % 3600) // 60
-
-        plans_summary += (
-            f"💳 *№{idx + 1}. {plan['plan_name'].capitalize()}{status}:*\n"
-            f"📅 *Осталось:* {int(days_left)} дней, {int(hours_left):02}:{int(minutes_left):02}\n"
-            f"🕒 *Начало:* {plan['start_date']}\n"
-            f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость:* {plan['price']:.2f} руб.\n\n"
-        )
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в подписку")
-    markup.add("В главное меню")
-    bot.send_message(user_id, plans_summary, parse_mode="Markdown")
-    bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
-
-@text_only_handler
+# Расчет суммы возврата
 def calculate_refunded_amount(plan):
+    """Рассчитывает сумму возврата для подписки."""
     try:
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
@@ -2327,7 +2305,10 @@ def calculate_refunded_amount(plan):
 
         if now < start_date:
             refund_amount = plan['price']
-            final_refunded = refund_amount * (1 - REFUND_COMMISSION)
+            commission = refund_amount * REFUND_COMMISSION
+            if refund_amount <= commission:
+                return 0.0, "Сумма возврата меньше комиссии"
+            final_refunded = refund_amount - commission
             return round(final_refunded, 2), None
 
         total_days = (end_date - start_date).days
@@ -2339,7 +2320,10 @@ def calculate_refunded_amount(plan):
         daily_cost = plan['price'] / total_days
         refund_amount = daily_cost * remaining_days
         refund_amount = min(refund_amount, plan['price'])
-        final_refunded = refund_amount * (1 - REFUND_COMMISSION)
+        commission = refund_amount * REFUND_COMMISSION
+        if refund_amount <= commission:
+            return 0.0, "Сумма возврата меньше комиссии"
+        final_refunded = refund_amount - commission
         final_refunded = round(final_refunded, 2)
 
         if final_refunded < MIN_REFUND_AMOUNT:
@@ -2349,9 +2333,9 @@ def calculate_refunded_amount(plan):
     except Exception as e:
         return 0.0, f"Ошибка расчета возврата: {str(e)}"
 
-@text_only_handler
+# Запрос на возврат платежа
 def refund_payment(user_id, refund_amount, payment_id, plan):
-
+    """Отправляет запрос на возврат платежа через Paymaster."""
     refund_data = {
         "paymentId": payment_id,
         "amount": {
@@ -2380,6 +2364,9 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
 
     except Exception as e:
         data = load_payment_data()
+        # Ensure 'refunds' key exists
+        if "refunds" not in data:
+            data["refunds"] = []
         refund_data = {
             "user_id": user_id,
             "plan_name": plan["plan_name"],
@@ -2398,15 +2385,87 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
                 admin_chat_id,
                 f"Ошибка возврата для user_id={user_id}: {str(e)}\n"
                 f"Payment ID: {payment_id}\n"
-                f"Request: {refund_data}\n"
+                f"Request: {json.dumps(refund_data, ensure_ascii=False)}\n"
                 f"Response: {response.text if 'response' in locals() else 'No response'}"
             )
         print(f"Ошибка возврата для user_id={user_id}: {str(e)}")
         return False
 
+# Обработка отмены подписки
+@bot.message_handler(func=lambda message: message.text == "Отменить подписку")
+@text_only_handler
+def cancel_subscription(message):
+    """Обрабатывает запрос на отмену подписки с отображением в стиле view_subscription."""
+    user_id = message.from_user.id
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(str(user_id), {})
+
+    if 'plans' not in user_data or not user_data['plans']:
+        bot.send_message(user_id, (
+            "⚠️ *У вас нет подписок!*\n\n"
+            "🚀 Попробуйте оформить первую подписку прямо сейчас!\n"
+            "👉 Перейдите в раздел *«Купить подписку»*!"
+        ), parse_mode="Markdown")
+        payments_function(message, show_description=False)
+        return
+
+    now = datetime.now(pytz.UTC)
+    paid_plans = [
+        p for p in user_data['plans']
+        if p['plan_name'] in ['weekly', 'monthly', 'yearly', 'store_time']
+        and p['source'] in ['user', 'store']
+        and datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now
+    ]
+    if not paid_plans:
+        bot.send_message(user_id, (
+            "⚠️ *У вас нет активных подписок!*\n\n"
+            "🚀 Подключите подписку, чтобы воспользоваться функциями бота!\n"
+            "👉 Перейдите в раздел *«Купить подписку»*!"
+        ), parse_mode="Markdown")
+        payments_function(message, show_description=False)
+        return
+
+    plans_summary = "💎 *Список активных подписок:*\n\n\n"
+
+    for idx, plan in enumerate(paid_plans):
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+        start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+        remaining_time = end_date - now
+        days_left = remaining_time.days
+        hours_left, remainder = divmod(remaining_time.seconds, 3600)
+        minutes_left = remainder // 60
+
+        # Определяем тип периода и смайл на основе source
+        plan_name_lower = plan['plan_name'].lower()
+        source = plan.get('source', '')
+        if source in {"user", "store"}:
+            period_type = f"💳 *№{idx + 1}. Платный период:*"
+        else:
+            period_type = f"📦 *№{idx + 1}. Назначенный период:*"
+        subscription_type = translate_plan_name(plan_name_lower)
+
+        price_formatted = f"{plan['price']:.2f}"
+
+        plans_summary += (
+            f"{period_type}\n\n"
+            f"💼 *Тип подписки:* {subscription_type}\n"
+            f"📅 *Дней осталось:* {days_left} дней и {hours_left:02d}:{minutes_left:02d} часов\n"
+            f"🕒 *Начало:* {plan['start_date']}\n"
+            f"⌛ *Конец:* {plan['end_date']}\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n\n"
+        )
+
+    send_long_message(user_id, plans_summary, parse_mode="Markdown")
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Вернуться в подписку")
+    markup.add("В главное меню")
+    bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+
 @text_only_handler
 def confirm_cancellation(message, user_id, paid_plans):
-
+    """Подтверждает выбор подписок для отмены."""
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
@@ -2438,9 +2497,18 @@ def confirm_cancellation(message, user_id, paid_plans):
             if error:
                 refund_summary += f"❌ Подписка №{num}: {error}\n"
                 continue
+            now = datetime.now(pytz.UTC)
+            end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            total_days = (end_date - start_date).days
+            remaining_time = end_date - now
+            remaining_days = max(0, min(total_days, remaining_time.total_seconds() / (24 * 3600)))
+            commission = refund_amount / (1 - REFUND_COMMISSION) * REFUND_COMMISSION
             refund_summary += (
-                f"💳 Подписка №{num} ({plan['plan_name'].capitalize()}):\n"
-                f"💸 Возврат: {refund_amount:.2f} руб.\n\n"
+                f"💳 Подписка №{num} ({translate_plan_name(plan['plan_name'])}):\n"
+                f"📅 Осталось дней: {remaining_days:.2f}\n"
+                f"💸 Возврат: {refund_amount:.2f} руб.\n"
+                f"💸 Комиссия: {commission:.2f} руб.\n\n"
             )
             total_refunded += refund_amount
 
@@ -2452,6 +2520,8 @@ def confirm_cancellation(message, user_id, paid_plans):
         refund_summary += f"📥 Итого: *{total_refunded:.2f} руб.*"
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Подтвердить", "Отменить")
+        markup.add("Вернуться в подписку")
+        markup.add("В главное меню")
         bot.send_message(user_id, refund_summary, parse_mode="Markdown")
         bot.send_message(user_id, "Подтвердите действие:", reply_markup=markup)
         bot.register_next_step_handler(message, process_subscription_cancellation, user_id, paid_plans, valid_numbers)
@@ -2465,7 +2535,7 @@ def confirm_cancellation(message, user_id, paid_plans):
 
 @text_only_handler
 def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
-
+    """Обрабатывает отмену выбранных подписок."""
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
@@ -2490,11 +2560,11 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
             continue
 
         payment_id = plan.get('provider_payment_charge_id', '')
-        if not payment_id.isdigit():
-            bot.send_message(user_id, f"❌ Подписка №{num}: неверный ID платежа!", parse_mode="Markdown")
+        if not payment_id:
+            bot.send_message(user_id, f"❌ Подписка №{num}: отсутствует ID платежа!", parse_mode="Markdown")
             admin_chat_id = load_admin_chat_id()
             if admin_chat_id:
-                bot.send_message(admin_chat_id, f"Ошибка возврата для user_id={user_id}: неверный provider_payment_charge_id={payment_id}")
+                bot.send_message(admin_chat_id, f"Ошибка возврата для user_id={user_id}: отсутствует provider_payment_charge_id")
             continue
 
         success = refund_payment(user_id, refund_amount, payment_id, plan)
@@ -2515,14 +2585,17 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
             "provider_payment_charge_id": payment_id,
             "status": "success"
         }
-        data['refunds'].append(refund_data)
+        # Ensure 'refunds' key exists before appending
+        if "refunds" not in data:
+            data["refunds"] = []
+        data["refunds"].append(refund_data)
         total_refunded += refund_amount
 
     data['subscriptions']['users'][str(user_id)] = user_data
     save_payments_data(data)
 
     if total_refunded > 0:
-        bot.send_message(user_id, f"✅ Подписки отменены! Возвращено: *{total_refunded:.2f} руб.*", parse_mode="Markdown")
+        bot.send_message(user_id, f"✅ Подписки отменены!\nВозвращено: *{total_refunded:.2f} руб.*", parse_mode="Markdown")
     else:
         bot.send_message(user_id, "❌ Не удалось отменить подписки!", parse_mode="Markdown")
 
