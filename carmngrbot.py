@@ -1617,18 +1617,29 @@ def return_to_menu_2(message):
 
 # (10.5) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "ЗАПИСАТЬ ТРАТУ") ---------------
 
+# Обработка данных о расходах
 def save_expense_data(user_id, user_data):
-    folder_path = "data base"
+    # Задаем новый путь к папке и файлу
+    folder_path = os.path.join("data base", "expense")
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    with open(os.path.join(folder_path, f"expenses_{user_id}.json"), "w", encoding="utf-8") as file:
+    # Измененное имя файла: "user_id_expenses.json"
+    file_path = os.path.join(folder_path, f"{user_id}_expenses.json")
+    with open(file_path, "w", encoding="utf-8") as file:
         json.dump(user_data, file, ensure_ascii=False, indent=4)
 
 def load_expense_data(user_id):
-    folder_path = "data base"
+    # Путь к файлу в новой папке
+    folder_path = os.path.join("data base", "expense")
+    file_path = os.path.join(folder_path, f"{user_id}_expenses.json")
+    
+    # Проверка, существует ли файл, перед его открытием
+    if not os.path.exists(file_path):
+        return {}  # Если файла нет, возвращаем пустой словарь
+
     try:
-        with open(os.path.join(folder_path, f"expenses_{user_id}.json"), "r", encoding="utf-8") as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
             if not isinstance(data, dict):
                 raise ValueError("Данные не являются словарем.")
@@ -1639,7 +1650,7 @@ def load_expense_data(user_id):
 
 def get_user_categories(user_id):
     data = load_expense_data(user_id)
-    default_categories = ["Мойка", "Штрафы", "Парковка", "Платный проезд", "Кредит", "Страховка", "Налог", "Регистрация"]
+    default_categories = ["Без категории", "АЗС", "Мойка", "Парковка", "Платная дорога", "Страховка", "Штрафы"]
     user_categories = data.get("user_categories", [])
     return default_categories + user_categories
 
@@ -1656,6 +1667,7 @@ def remove_user_category(user_id, category_to_remove):
         data["user_categories"].remove(category_to_remove)
         save_expense_data(user_id, data)
 
+# Основная функция для записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
 def record_expense(message):
     user_id = message.from_user.id
@@ -1666,13 +1678,21 @@ def record_expense(message):
         return
 
     markup = get_user_transport_keyboard(str(user_id))
+    # Добавляем кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+    
     bot.send_message(user_id, "Выберите транспорт для записи траты:", reply_markup=markup)
     bot.register_next_step_handler(message, handle_transport_selection_for_record)
 
 def handle_transport_selection_for_record(message):
-    user_id = message.from_user.id # исправлено получение user_id
+    user_id = message.from_user.id
 
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+    # Проверяем, была ли выбрана кнопка для возврата в меню
+    if message.text == "Вернуться в меню трат и ремонтов":
+        return_to_menu_2(message)
+        return
+    elif message.text == "В главное меню":
         return_to_menu(message)
         return
 
@@ -1681,7 +1701,7 @@ def handle_transport_selection_for_record(message):
         return
 
     selected_transport = message.text
-    for transport in user_transport.get(str(user_id), []): # Исправлено: используем строковый user_id
+    for transport in user_transport.get(str(user_id), []):
         if f"{transport['brand']} {transport['model']} {transport['year']}" == selected_transport:
             brand, model, year = transport['brand'], transport['model'], transport['year']
             break
@@ -1690,135 +1710,132 @@ def handle_transport_selection_for_record(message):
         bot.send_message(user_id, "Выберите транспорт или добавьте новый:", reply_markup=get_user_transport_keyboard(user_id))
         return
 
+    # Получение категорий и обработка выбора категории
+    process_category_selection(user_id, brand, model, year)
+
+def process_category_selection(user_id, brand, model, year, prompt_message=None):
     categories = get_user_categories(user_id)
+
+    # Создаем текстовый список категорий
+    category_list = "\n".join(f"{i + 1}. {category}" for i, category in enumerate(categories))
     
-    # Настраиваем клавиатуру так, чтобы категории отображались в одну строку
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3) # Параметр row_width задает количество кнопок в строке
-    buttons = [types.KeyboardButton(category) for category in categories]
-    markup.add(*buttons)
-    
-    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
-    markup.add(
-        types.KeyboardButton("Без категории"),
+    # Обновленный текст
+    category_list = f"*Выберите категорию или '0' для отмены:*\n\n{category_list}"
+
+    # Настраиваем клавиатуру с кнопками
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    # Добавляем кнопки в нужной конфигурации
+    markup.row(
         types.KeyboardButton("Добавить категорию"),
         types.KeyboardButton("Удалить категорию")
     )
-    
-    # Добавляем кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
-    bot.send_message(user_id, "Выберите категорию траты, добавьте новую или удалите существующую:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_category, brand, model, year)
+    markup.add(
+        types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    )
+    markup.add(
+        types.KeyboardButton("В главное меню")
+    )
+    if prompt_message:
+        bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(prompt_message, get_expense_category, brand, model, year)
+    else:
+        prompt_message = bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(prompt_message, get_expense_category, brand, model, year)
 
 def get_expense_category(message, brand, model, year):
     user_id = message.from_user.id
+    selected_index = message.text.strip()
 
-    # Обработка выбора удаления категории
-    if message.text == "Удалить категорию":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-        categories = get_user_categories(user_id)
-        buttons = [types.KeyboardButton(category) for category in categories]
-        markup.add(*buttons)
-
-        # Кнопки для возврата
-        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-        item_main_menu = types.KeyboardButton("В главное меню")
-        markup.add(item_return, item_main_menu)
-
-        sent = bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
-        bot.register_next_step_handler(sent, handle_category_removal, brand, model, year)
+    # Переход в меню в зависимости от выбора
+    if selected_index == "Вернуться в меню трат и ремонтов":
+        return_to_menu_2(message)
         return
-
-    # Обработка добавления новой категории
-    if message.text == "Добавить категорию":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-        item_main_menu = types.KeyboardButton("В главное меню")
-        markup.add(item_return, item_main_menu)
-
-        sent = bot.send_message(user_id, "Введите название новой категории:", reply_markup=markup)
-        bot.register_next_step_handler(sent, add_category_and_select, brand, model, year)
-        return
-
-    # Обработка возврата в меню
-    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+    elif selected_index == "В главное меню":
         return_to_menu(message)
         return
 
-    # Обработка выбора категории для записи траты
-    selected_category = message.text if message.text != "Без категории" else ""
+    if selected_index == 'Без категории':
+        selected_category = "Без категории"
+        proceed_to_expense_name(message, selected_category, brand, model, year)
+        return
 
+    if selected_index == 'Добавить категорию':
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(
+            types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        )
+        markup.add(
+            types.KeyboardButton("В главное меню")
+        )
+        bot.send_message(user_id, "Введите название новой категории:", reply_markup=markup)
+        bot.register_next_step_handler(message, add_new_category, brand, model, year)
+        return
+
+    if selected_index == 'Удалить категорию':
+        handle_category_removal(message, brand, model, year)
+        return
+
+    if selected_index.isdigit():
+        index = int(selected_index) - 1
+        categories = get_user_categories(user_id)
+        if 0 <= index < len(categories):
+            selected_category = categories[index]
+            proceed_to_expense_name(message, selected_category, brand, model, year)
+        else:
+            bot.send_message(user_id, "Неверный номер категории. Попробуйте снова.")
+            bot.register_next_step_handler(message, get_expense_category, brand, model, year)
+    else:
+        bot.send_message(user_id, "Пожалуйста, введите номер категории.")
+        bot.register_next_step_handler(message, get_expense_category, brand, model, year)
+
+def add_new_category(message, brand, model, year):
+    user_id = message.from_user.id
+    new_category = message.text.strip()
+
+    if new_category in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if new_category == "Вернуться в меню трат и ремонтов":
+            return_to_menu_2(message)
+        else:
+            return_to_menu(message)
+        return
+
+    if new_category:
+        add_user_category(user_id, new_category)
+        bot.send_message(user_id, f"Категория '{new_category}' добавлена.")
+    
+    process_category_selection(user_id, brand, model, year)
+
+def proceed_to_expense_name(message, selected_category, brand, model, year):
+    user_id = message.from_user.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
+    markup.add(item_return)
+    markup.add(item_main_menu)
 
     bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, year)
 
-def handle_category_removal(message, brand, model, year):
-    user_id = message.from_user.id
-    category_to_remove = message.text
-
-    # Загружаем данные и категории пользователя
-    data = load_expense_data(user_id)
-    user_categories = data.get("user_categories", [])
-
-    # Если категория для удаления существует среди пользовательских категорий, удаляем её
-    if category_to_remove in user_categories:
-        user_categories.remove(category_to_remove)
-        data["user_categories"] = user_categories
-        save_expense_data(user_id, data)
-        bot.send_message(user_id, f"Категория '{category_to_remove}' успешно удалена.")
-    else:
-        bot.send_message(user_id, f"Категория '{category_to_remove}' не найдена среди пользовательских категорий.")
-
-    # Возвращаем пользователя на выбор категории после удаления
-    categories = get_user_categories(user_id)
-    
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    buttons = [types.KeyboardButton(category) for category in categories]
-    markup.add(*buttons)
-    
-    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
-    markup.add(
-        types.KeyboardButton("Без категории"),
-        types.KeyboardButton("Добавить категорию"),
-        types.KeyboardButton("Удалить категорию")
-    )
-    
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
-    item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
-    # Сообщение с предложением выбрать категорию после удаления
-    bot.send_message(user_id, "Выберите категорию траты или добавьте новую:", reply_markup=markup)
-    bot.register_next_step_handler(message, get_expense_category, brand, model, year)
-
-def add_category_and_select(message, brand, model, year):
-    user_id = message.from_user.id
-    new_category = message.text
-
-    add_user_category(user_id, new_category)
-
-    bot.send_message(user_id, f"Категория '{new_category}' добавлена.")
-    get_expense_category(message, brand, model, year)
-
+# Обработчик для ввода названия траты
 def get_expense_name(message, selected_category, brand, model, year):
     user_id = message.from_user.id
 
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
-        return_to_menu(message)
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_menu_2(message)
+        else:
+            return_to_menu(message)
         return
 
     expense_name = message.text
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item_skip = types.KeyboardButton("Пропустить описание")  
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    item_skip = types.KeyboardButton("Пропустить описание")
-    markup.add(item_return, item_main_menu, item_skip)
+    markup.add(item_skip)
+    markup.add(item_return)
+    markup.add(item_main_menu)
 
     bot.send_message(user_id, "Введите описание траты или пропустите этот шаг:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_description, selected_category, expense_name, brand, model, year)
@@ -1826,18 +1843,33 @@ def get_expense_name(message, selected_category, brand, model, year):
 def get_expense_description(message, selected_category, expense_name, brand, model, year):
     user_id = message.from_user.id
 
+    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_menu_2(message)
+        else:
+            return_to_menu(message)
+        return
+
     description = message.text if message.text != "Пропустить описание" else ""
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
+    markup.add(item_return) 
+    markup.add(item_main_menu)
 
     bot.send_message(user_id, "Введите дату траты в формате ДД.ММ.ГГГГ:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_date, selected_category, expense_name, description, brand, model, year)
 
 def get_expense_date(message, selected_category, expense_name, description, brand, model, year):
     user_id = message.from_user.id
+
+    if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
+        if message.text == "Вернуться в меню трат и ремонтов":
+            return_to_menu_2(message)
+        else:
+            return_to_menu(message)
+        return
 
     expense_date = message.text
     date_parts = expense_date.split(".")
@@ -1849,11 +1881,12 @@ def get_expense_date(message, selected_category, expense_name, description, bran
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
-
+    markup.add(item_return) 
+    markup.add(item_main_menu)
+    
     bot.send_message(user_id, "Введите сумму траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_amount, selected_category, expense_name, description, expense_date, brand, model, year)
-
+    
 def get_expense_amount(message, selected_category, expense_name, description, expense_date, brand, model, year):
     user_id = message.from_user.id
 
@@ -1876,12 +1909,69 @@ def get_expense_amount(message, selected_category, expense_name, description, ex
         "description": description,
         "transport": {"brand": brand, "model": model, "year": year}
     })
-
     data[str(user_id)]["expenses"] = expenses
     save_expense_data(user_id, data)
 
     bot.send_message(user_id, "Трата успешно записана!")
     send_menu(user_id)
+
+# Удаление категории
+# Удаление категории
+@bot.message_handler(func=lambda message: message.text == "Удалить категорию")
+def handle_category_removal(message, brand=None, model=None, year=None):
+    user_id = message.from_user.id
+    categories = get_user_categories(user_id)
+
+    # Создаем текстовый список категорий
+    category_list = "\n".join(f"{i + 1}. {category}" for i, category in enumerate(categories))
+    
+    # Обновленный текст с жирным началом
+    category_list = f"*Выберите категорию для удаления или '0' для отмены:*\n\n{category_list}"
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Вернуться в меню трат и ремонтов"))
+    markup.add(types.KeyboardButton("В главное меню"))
+
+    bot.send_message(user_id, category_list, reply_markup=markup, parse_mode="Markdown")
+    bot.register_next_step_handler(message, remove_selected_category, brand, model, year)
+
+def remove_selected_category(message, brand, model, year):
+    user_id = message.from_user.id
+    selected_index = message.text.strip()
+
+    # Проверка на команды меню
+    if selected_index == "Вернуться в меню трат и ремонтов":
+        return_to_menu_2(message)
+        return
+    elif selected_index == "В главное меню":
+        return_to_menu(message)
+        return
+
+    if selected_index == '0':
+        bot.send_message(user_id, "Удаление категории отменено.")
+        return process_category_selection(user_id, brand, model, year)
+
+    if selected_index.isdigit():
+        index = int(selected_index) - 1
+        categories = get_user_categories(user_id)
+        default_categories = ["Без категории", "АЗС", "Мойка", "Парковка", "Платная дорога", "Страховка", "Штрафы"]
+
+        if 0 <= index < len(categories):
+            category_to_remove = categories[index]
+            if category_to_remove in default_categories:
+                bot.send_message(user_id, f"Нельзя удалить системную категорию '{category_to_remove}'. Попробуйте еще раз.")
+                return bot.register_next_step_handler(message, remove_selected_category, brand, model, year)
+
+            remove_user_category(user_id, category_to_remove)
+            bot.send_message(user_id, f"Категория '{category_to_remove}' успешно удалена.")
+        else:
+            bot.send_message(user_id, "Неверный номер категории. Попробуйте снова.")
+            return bot.register_next_step_handler(message, remove_selected_category, brand, model, year)
+    else:
+        bot.send_message(user_id, "Пожалуйста, введите номер категории.")
+        return bot.register_next_step_handler(message, remove_selected_category, brand, model, year)
+
+    return process_category_selection(user_id, brand, model, year)
 
 def is_numeric(s):
     if s is not None:
@@ -3955,7 +4045,6 @@ def translate_weather_description(english_description):
         'light snow': 'небольшой снег',
         'snow': 'снег',
         'heavy snow': 'сильный снегопад',
-        'light rain': 'небольшой дождь',
     }
 
     return translation_dict.get(english_description, english_description)
