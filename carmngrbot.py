@@ -2852,7 +2852,7 @@ def confirm_delete_expense_year(message, expenses_to_delete):
                 selected_transport = selected_transports.get(user_id)
                 save_expense_data(user_id, {str(user_id): user_data}, selected_transport) 
 
-                update_excel_file(user_id)
+                update_excel_file(user_id) 
 
                 bot.send_message(user_id, f"Трата '{deleted_expense.get('name', 'Без названия')}' удалена успешно.")
             else:
@@ -4167,6 +4167,9 @@ def confirm_delete_repair_by_category(message, repairs_to_delete):
                 user_data["repairs"] = repairs
                 save_repair_data(user_id, {str(user_id): user_data})
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
+
+                update_repairs_excel_file(user_id)
+
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
         except ValueError:
@@ -4259,6 +4262,9 @@ def confirm_delete_repair_month(message, repairs_to_delete):
                 user_data["repairs"] = repairs 
                 save_repair_data(user_id, {str(user_id): user_data}) 
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
+
+                update_repairs_excel_file(user_id)
+
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
         except ValueError:
@@ -4341,6 +4347,9 @@ def confirm_delete_repair_year(message, repairs_to_delete):
                 deleted_repair = repairs.pop(repair_index)
                 user_data["repairs"] = repairs 
                 save_repair_data(user_id, {str(user_id): user_data}) 
+
+                update_repairs_excel_file(user_id)
+
                 bot.send_message(user_id, f"Ремонт '{deleted_repair.get('name', 'Без названия')}' удален успешно.")
             else:
                 bot.send_message(user_id, "Недопустимый выбор. Пожалуйста, выберите ремонт из списка.")
@@ -4406,6 +4415,9 @@ def confirm_delete_all_repairs(message):
             # Сохраняем оставшиеся ремонты
             user_data["repairs"] = repairs_to_keep
             save_repair_data(user_id, {str(user_id): user_data})
+
+            update_repairs_excel_file(user_id)
+
             bot.send_message(user_id, f"Все ремонты для транспорта '{selected_brand} {selected_model} {selected_year}' успешно удалены.")
         else:
             bot.send_message(user_id, "Не удалось найти выбранный транспорт.")
