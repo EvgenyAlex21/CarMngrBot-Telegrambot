@@ -506,7 +506,7 @@ captcha_data = {}
 
 def save_captcha_data():
     try:
-        with open('captcha_data.json', 'w', encoding='utf-8') as f:
+        with open(r'data base\admin\captcha_data.json', 'w', encoding='utf-8') as f:
             json.dump(captcha_data, f)
     except Exception as e:
         logging.error(f"Error saving captcha_data: {e}")
@@ -514,8 +514,8 @@ def save_captcha_data():
 def load_captcha_data():
     global captcha_data
     try:
-        if os.path.exists('captcha_data.json') and os.path.getsize('captcha_data.json') > 0:
-            with open('captcha_data.json', 'r', encoding='utf-8') as f:
+        if os.path.exists(r'data base\admin\captcha_data.json') and os.path.getsize(r'data base\admin\captcha_data.json') > 0:
+            with open(r'data base\admin\captcha_data.json', 'r', encoding='utf-8') as f:
                 captcha_data = json.load(f)
         else:
             captcha_data = {}
@@ -1458,8 +1458,8 @@ def buy_subscription(message):
 
 def send_subscription_options(message):
     user_id = str(message.from_user.id)
-    users_data = load_users_data()
-    user_discount = users_data.get(user_id, {}).get('discount', 0)
+    data = load_payment_data()
+    user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
     markup = InlineKeyboardMarkup()
 
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
@@ -1498,7 +1498,8 @@ def send_subscription_invoice(call):
     duration = plan_info["duration"]
 
     users_data = load_users_data()
-    user_discount = users_data.get(user_id, {}).get('discount', 0)
+    data = load_payment_data()
+    user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
 
     # Рассчитываем скидку
     user_discount_amount = round(base_price * (user_discount / 100), 2)
@@ -1507,7 +1508,6 @@ def send_subscription_invoice(call):
 
     # Если скидка 100%, предоставляем подписку без оплаты
     if user_discount >= 100:
-        data = load_payment_data()
         user_data = data['subscriptions']['users'].setdefault(user_id, {
             "plans": [], "total_amount": 0, "referral_points": 0, "store_purchases": []
         })
@@ -1529,14 +1529,14 @@ def send_subscription_invoice(call):
         })
 
         # Сбрасываем скидку, если она была от промокода
-        if users_data.get(user_id, {}).get('discount_type') == "promo":
+        if data['subscriptions']['users'].get(user_id, {}).get('discount_type') == "promo":
             bot.send_message(user_id, (
                 "🎉 Ваша скидка в размере *100%* была успешно применена!\n"
                 "🚀 Скидка сброшена! Используйте новые промокоды для получения скидок."
             ), parse_mode="Markdown")
-            users_data[user_id]['discount'] = 0
-            users_data[user_id]['discount_type'] = None
-            save_users_data(users_data)
+            data['subscriptions']['users'][user_id]['discount'] = 0
+            data['subscriptions']['users'][user_id]['discount_type'] = None
+            save_payments_data(data)
 
         save_payments_data(data)
 
@@ -1573,7 +1573,6 @@ def send_subscription_invoice(call):
         f"💰 Базовая цена: {base_price:.2f} ₽\n"
     )
     
-    # Формируем список цен
     prices = [types.LabeledPrice(f"Подписка на {label}", int(base_price * 100))]
     if user_discount > 0:
         description += f"🏷️ Скидка {user_discount}%: -{user_discount_amount:.2f} ₽\n"
@@ -1585,10 +1584,8 @@ def send_subscription_invoice(call):
 
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
-    # Проверяем, что итоговая сумма в ценах корректна
     total_amount = sum(price.amount for price in prices)
     if total_amount <= 0:
-        # Если итоговая сумма некорректна, корректируем prices
         prices = [types.LabeledPrice(f"Подписка на {label}", int(final_price * 100))]
         description = (
             f"✨ Полный доступ ко всем функциям на {label.lower()}!\n"
@@ -1636,8 +1633,8 @@ def process_successful_payment(message):
         fictitious_discount = plan_info["fictitious_discount"]
         plan_duration = plan_info["duration"]
 
-        user_discount = users_data.get(user_id, {}).get('discount', 0)
-        discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
+        user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
+        discount_type = data['subscriptions']['users'].get(user_id, {}).get('discount_type', 'promo')
 
         discounted_price = base_price * (1 - user_discount / 100)
         price = max(1, round(discounted_price - fictitious_discount, 2))
@@ -1645,13 +1642,13 @@ def process_successful_payment(message):
         latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
         new_end = latest_end + timedelta(days=plan_duration)
 
-        consecutive_months = users_data.get(user_id, {}).get('consecutive_months', 0)
+        consecutive_months = data['subscriptions']['users'].get(user_id, {}).get('consecutive_months', 0)
         if (datetime.now() - latest_end).days <= 1:
             consecutive_months += 1
         else:
             consecutive_months = 1
 
-        discount = users_data.get(user_id, {}).get('discount', 0)
+        discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
         if consecutive_months >= 3 and discount < 15:
             discount = 15
             discount_type = "loyalty"
@@ -1720,19 +1717,19 @@ def process_successful_payment(message):
                 "😊 Спасибо за приглашение!"
             ), parse_mode="Markdown")
 
-        users_data.setdefault(user_id, {})
-        users_data[user_id]['consecutive_months'] = consecutive_months
+        data['subscriptions']['users'].setdefault(user_id, {})
+        data['subscriptions']['users'][user_id]['consecutive_months'] = consecutive_months
 
         if user_discount > 0 and discount_type == "promo":
             bot.send_message(user_id, (
                 "🎉 Ваша скидка в размере *{}%* была успешно применена!\n"
                 "🚀 Теперь скидка сброшена! Используйте новые промокоды для получения скидок"
             ).format(user_discount), parse_mode="Markdown")
-            users_data[user_id]['discount'] = 0
-            users_data[user_id]['discount_type'] = None
+            data['subscriptions']['users'][user_id]['discount'] = 0
+            data['subscriptions']['users'][user_id]['discount_type'] = None
         else:
-            users_data[user_id]['discount'] = discount
-            users_data[user_id]['discount_type'] = discount_type
+            data['subscriptions']['users'][user_id]['discount'] = discount
+            data['subscriptions']['users'][user_id]['discount_type'] = discount_type
 
         bot.send_message(user_id, (
             "🎉 *Спасибо за оплату*!\n\n"
@@ -1746,18 +1743,16 @@ def process_successful_payment(message):
         base_price = item_info["base_price"]
         fictitious_discount = item_info["fictitious_discount"]
         label = item_info["label"]
-        user_discount = users_data.get(user_id, {}).get('discount', 0)
-        discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
+        user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
+        discount_type = data['subscriptions']['users'].get(user_id, {}).get('discount_type', 'promo')
 
         price = max(1, round(base_price * (1 - user_discount / 100) - fictitious_discount, 2))
         purchase_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
         monthly_key = datetime.now().strftime("%m.%Y")
 
-        # Ensure store_purchases exists
         if 'store_purchases' not in user_data:
             user_data['store_purchases'] = []
 
-        # Calculate monthly points and days
         monthly_points = sum(p['points'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
         monthly_days = sum(p['duration'] for p in user_data['store_purchases'] if p['purchase_date'].startswith(monthly_key))
 
@@ -1829,7 +1824,7 @@ def process_successful_payment(message):
                 "price": price,
                 "purchase_date": purchase_date,
                 "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
-                "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+                "provider_payment_charge_id": payment_info.telegram_payment_charge_id,
                 "source": "user",
                 "user_discount": user_discount,
                 "fictitious_discount": fictitious_discount
@@ -1847,8 +1842,8 @@ def process_successful_payment(message):
                 "🎉 Ваша скидка в размере *{}%* была успешно применена!\n"
                 "🚀 Теперь скидка сброшена! Используйте новые промокоды для получения скидок"
             ).format(user_discount), parse_mode="Markdown")
-            users_data[user_id]['discount'] = 0
-            users_data[user_id]['discount_type'] = None
+            data['subscriptions']['users'][user_id]['discount'] = 0
+            data['subscriptions']['users'][user_id]['discount_type'] = None
 
         user_data['total_amount'] = user_data.get('total_amount', 0) + price
         data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
@@ -3925,7 +3920,6 @@ def process_promo_code(message):
     username = message.from_user.username or "неизвестный"
     code = message.text.upper()
     data = load_payment_data()
-    users_data = load_users_data()
     promo_codes = data.get('promo_codes', {})
 
     now = datetime.now()
@@ -3995,8 +3989,8 @@ def process_promo_code(message):
         return
 
     discount = promo['discount']
-    users_data.setdefault(user_id, {})['discount'] = discount
-    users_data[user_id]['discount_type'] = 'promo'
+    data['subscriptions']['users'].setdefault(user_id, {})['discount'] = discount
+    data['subscriptions']['users'][user_id]['discount_type'] = 'promo'
 
     # Добавляем пользователя в список использовавших промокод
     used_by.append({
@@ -4023,7 +4017,6 @@ def process_promo_code(message):
 
     data['promo_codes'] = promo_codes
     save_payments_data(data)
-    save_users_data(users_data)
 
     bot.send_message(user_id, (
         "🎉 *Промокод успешно активирован!*\n\n"
@@ -31665,7 +31658,7 @@ def process_view_gifts(message):
 
     history_summary = f"*История подарков пользователя* {username} - `{user_id}`:\n\n\n"
     for idx, entry in enumerate(gift_entries, 1):
-        action = "Подарено" if entry['action'] == "spent" else "Получено"
+        action = "подарено" if entry['action'] == "spent" else "получено"
         gift_type = []
         if entry['points'] > 0:
             gift_type.append(f"{format_number(entry['points'])} {pluralize_points(entry['points'])}")
@@ -31681,8 +31674,7 @@ def process_view_gifts(message):
         history_summary += (
             f"🎁 *№{idx}. {action}:*\n\n"
             f"💰 *Подарок:* {gift_type}\n"
-            f"📅 *Дата:* {entry['date']}\n"
-            f"📋 *Причина:* {reason}\n\n\n"
+            f"📅 *Дата:* {entry['date']}\n\n\n"
         )
 
     message_parts = split_message(history_summary)
