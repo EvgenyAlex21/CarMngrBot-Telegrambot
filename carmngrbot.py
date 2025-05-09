@@ -161,10 +161,10 @@ def save_last_bot_message(user_id, message_text):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def ensure_directories_and_files():
-    log_dir = os.path.join(BASE_DIR, "data base/log")
+    log_dir = os.path.join(BASE_DIR, "data/admin/log")
     os.makedirs(log_dir, exist_ok=True)
     
-    db_dir = os.path.join(BASE_DIR, "data base")
+    db_dir = os.path.join(BASE_DIR, "data")
     os.makedirs(db_dir, exist_ok=True)
     
     log_file = os.path.join(log_dir, "bot_logs.log")
@@ -180,7 +180,7 @@ def ensure_directories_and_files():
 ensure_directories_and_files()
 
 file_logger = logging.getLogger('fileLogger')
-file_handler = logging.FileHandler(os.path.join(BASE_DIR, 'data base/log/bot_logs.log'), encoding='utf-8')
+file_handler = logging.FileHandler(os.path.join(BASE_DIR, 'data/admin/log/bot_logs.log'), encoding='utf-8')
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 file_logger.addHandler(file_handler)
 file_logger.setLevel(logging.INFO)
@@ -193,7 +193,7 @@ console_logger.addHandler(console_handler)
 console_logger.setLevel(logging.ERROR)
 
 def log_to_json(user_id, log_entry):
-    log_file = os.path.join(BASE_DIR, f"data base/log/{user_id}_log.json")
+    log_file = os.path.join(BASE_DIR, f"data/admin/log/{user_id}_log.json")
 
     try:
         if os.path.exists(log_file):
@@ -211,7 +211,7 @@ def log_to_json(user_id, log_entry):
         json.dump(logs, file, ensure_ascii=False, indent=4)
 
 def clear_logs_and_transfer_errors():
-    log_dir = os.path.join(BASE_DIR, "data base/log")
+    log_dir = os.path.join(BASE_DIR, "data/admin/log")
     error_log_file = os.path.join(log_dir, "errors_log.json")
 
     file_logger.info("Начало переноса ошибок из логов пользователей.")
@@ -248,7 +248,7 @@ def clear_logs_and_transfer_errors():
     file_logger.info("Перенос ошибок завершен.")
 
 def remove_old_errors():
-    error_log_file = os.path.join(BASE_DIR, "data base/log/errors_log.json")
+    error_log_file = os.path.join(BASE_DIR, "data/admin/log/errors_log.json")
 
     file_logger.info("Начало удаления старых ошибок.")
 
@@ -276,7 +276,7 @@ def remove_old_errors():
 def log_user_actions(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
-        log_dir = os.path.join(BASE_DIR, "data base/log")
+        log_dir = os.path.join(BASE_DIR, "data/admin/log")
         error_log_file = os.path.join(log_dir, "errors_log.json")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -354,7 +354,7 @@ weekly_task_thread.start()
 
 # ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания бокировки бота пользователем) ---------------------------
 
-BLOCKED_USERS_FILE = 'data base/admin/blocked_bot_users.json'
+BLOCKED_USERS_FILE = 'data/admin/bloked_bot/blocked_bot_users.json'
 
 def load_blocked_users():
     if os.path.exists(BLOCKED_USERS_FILE):
@@ -502,7 +502,7 @@ captcha_data = {}
 
 def save_captcha_data():
     try:
-        with open(r'data base/admin/captcha_data.json', 'w', encoding='utf-8') as f:
+        with open(r'data/admin/captcha/captcha_data.json', 'w', encoding='utf-8') as f:
             json.dump(captcha_data, f)
     except Exception as e:
         pass
@@ -510,8 +510,8 @@ def save_captcha_data():
 def load_captcha_data():
     global captcha_data
     try:
-        if os.path.exists(r'data base/admin/captcha_data.json') and os.path.getsize(r'data base/admin/captcha_data.json') > 0:
-            with open(r'data base/admin/captcha_data.json', 'r', encoding='utf-8') as f:
+        if os.path.exists(r'data/admin/captcha/captcha_data.json') and os.path.getsize(r'data/admin/captcha/captcha_data.json') > 0:
+            with open(r'data/admin/captcha/captcha_data.json', 'r', encoding='utf-8') as f:
                 captcha_data = json.load(f)
         else:
             captcha_data = {}
@@ -632,7 +632,8 @@ def handle_captcha(message, original_func, *args, **kwargs):
     
 # ---------- 5. УВЕДОМЛЕНИЕ О НЕАКТИВНОСТИ ----------
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data base', 'admin', 'users.json')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'admin', 'admin_user_payments', 'users.json')
+
 INACTIVITY_THRESHOLD = 3 * 24 * 60 * 60
 CHECK_INTERVAL = 12 * 60 * 60
 DELETE_THRESHOLD = 30 * 24 * 60 * 60
@@ -686,7 +687,7 @@ def delete_user_data_from_all_files(user_id, users):
                     continue
 
                 # Специальная обработка для payments.json
-                if file == 'payments.json' and 'admin' in root and 'data base' in root:
+                if file == 'payments.json' and 'data' in root and 'admin' in root:
                     users_section = data.get("subscriptions", {}).get("users", {})
                     if user_id_str in users_section:
                         user_info = users_section[user_id_str]
@@ -778,8 +779,8 @@ def send_website_file(message):
 # ---------- 7. ИНИЦИАЛИЗАЦИЯ БД, ПЛАТЕЖЕК, АКТИВНОСТИ ПОЛЬЗОВАТЕЛЕЙ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/payments.json")
-USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data base/admin/users.json")
+PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/payments.json")
+USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/users.json")
 
 def load_payment_data():
 
@@ -2277,8 +2278,8 @@ REFUND_COMMISSION = 0.10
 MIN_REFUND_AMOUNT = 1.0
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PAYMENTS_FILE = os.path.join(BASE_DIR, "data base", "admin", "payments.json")
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data base", "admin", "admin_sessions.json")
+PAYMENTS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "payments.json")
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "admin_sessions.json")
 
 def load_payment_data():
     try:
@@ -5294,7 +5295,7 @@ leader_thread.start()
 # ---------- 9. РАСХОД ТОПЛИВА ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TRIP_DIR = os.path.join(BASE_DIR, 'data base', 'calculators', 'trip')
+TRIP_DIR = os.path.join(BASE_DIR, 'data', 'user', 'calculators', 'trip')
 geolocator = Nominatim(user_agent="fuel_expense_bot")
 
 def ensure_trip_directory():
@@ -5878,7 +5879,7 @@ fuel_type_mapping = {
     "газ": "Газ СПБТ",
 }
 
-def get_average_fuel_price_from_files(fuel_type, directory="data base/azs"):
+def get_average_fuel_price_from_files(fuel_type, directory="data/user/azs"):
     fuel_prices = []
 
     fuel_type = fuel_type.lower()
@@ -6021,7 +6022,7 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         sent = bot.send_message(chat_id, "Введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
     elif message.text == "Актуальная цена":
-        price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data base/azs")
+        price_from_files = get_average_fuel_price_from_files(fuel_type, directory="data/user/azs")
         if price_from_files:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в расход топлива")
@@ -6206,7 +6207,7 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
 # ---------- 9.2 РАСХОД ТОПЛИВА (ЗАПИСЬ В ЭКСЕЛЬ) ----------
 
 def update_excel_file(user_id):
-    folder_path = "data base/calculators/trip/excel"
+    folder_path = "data/user/calculators/trip/excel"
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
     file_path = os.path.join(folder_path, f"{user_id}_trips.xlsx")
@@ -6276,7 +6277,7 @@ def update_excel_file(user_id):
     workbook.save(file_path)
 
 def save_trip_to_excel(user_id, trip):
-    directory = "data base/calculators/trip/excel"
+    directory = "data/user/calculators/trip/excel"
     if not os.path.exists(directory):
         os.makedirs(directory)
     file_path = os.path.join(directory, f"{user_id}_trips.xlsx")
@@ -6473,7 +6474,7 @@ def process_view_trip_selection(message):
 @rate_limit_with_captcha
 def send_excel_file(message):
     user_id = message.chat.id
-    excel_file_path = f"data base/calculators/trip/excel/{user_id}_trips.xlsx"
+    excel_file_path = f"data/user/calculators/trip/excel/{user_id}_trips.xlsx"
 
     if os.path.exists(excel_file_path):
         with open(excel_file_path, 'rb') as excel_file:
@@ -6661,9 +6662,9 @@ def return_to_expense_and_repairs(message):
 # ---------- 17. ВАШ ТРАНСПОРТ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TRANSPORT_DIR = os.path.join(BASE_DIR, "data base", "transport")
-REPAIRS_DIR = os.path.join(BASE_DIR, "data base", "repairs")
-EXPENSES_DIR = os.path.join(BASE_DIR, "data base", "expenses")
+TRANSPORT_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs", "transport")
+REPAIRS_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs", "repairs")
+EXPENSES_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs", "expenses")
 
 def ensure_transport_directory():
     os.makedirs(TRANSPORT_DIR, exist_ok=True)
@@ -7510,7 +7511,7 @@ def update_excel_files_after_transport_change(user_id, old_transport, new_transp
 # ---------- 10.1 ТРАТЫ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
+DATA_BASE_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs")
 EXPENSE_DIR = os.path.join(DATA_BASE_DIR, "expenses")
 
 def ensure_directories():
@@ -7969,7 +7970,7 @@ def get_expense_amount(message, selected_category, expense_name, description, ex
     return_to_expense_and_repairs(message)
 
 def save_expense_to_excel(user_id, expense):
-    excel_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
+    excel_path = os.path.join("data", "user", "expenses_and_repairs", "expenses", "excel", f"{user_id}_expenses.xlsx")
 
     directory = os.path.dirname(excel_path)
     if not os.path.exists(directory):
@@ -8168,7 +8169,7 @@ def send_menu1(user_id):
 def send_expense_excel(message):
     user_id = str(message.from_user.id)
 
-    excel_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
+    excel_path = os.path.join("data", "user", "expenses_and_repairs", "expenses", "excel", f"{user_id}_expenses.xlsx")
 
     try:
         if not os.path.exists(excel_path):
@@ -9419,7 +9420,7 @@ def update_excel_file_expense(user_id):
     user_id = str(user_id)
     user_data = load_expense_data(user_id).get(user_id, {})
     expense = user_data.get("expense", [])
-    excel_file_path = os.path.join("data base", "expenses", "excel", f"{user_id}_expenses.xlsx")
+    excel_file_path = os.path.join("data", "user", "expenses_and_repairs", "expenses", "excel", f"{user_id}_expenses.xlsx")
 
     try:
         if not os.path.exists(excel_file_path):
@@ -9512,7 +9513,7 @@ def update_excel_file_expense(user_id):
 # ---------- 11. РЕМОНТЫ (ОСНОВНЫЕ ФУНКЦИИ) ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
+DATA_BASE_DIR = os.path.join(BASE_DIR, "data", "user", "expenses_and_repairs")
 REPAIRS_DIR = os.path.join(DATA_BASE_DIR, "repairs")
 
 def ensure_directories():
@@ -11398,7 +11399,7 @@ def update_repairs_excel_file(user_id):
     user_id = str(user_id)
     user_data = load_repair_data(user_id)
     repairs = user_data.get(user_id, {}).get("repairs", [])
-    excel_file_path = os.path.join("data base", "repairs", "excel", f"{user_id}_repairs.xlsx")
+    excel_file_path = os.path.join("data", "user", "expenses_and_repairs", "repairs", "excel", f"{user_id}_repairs.xlsx")
     
     try:
         if not os.path.exists(excel_file_path):
@@ -11669,8 +11670,8 @@ LATITUDE_KEY = 'latitude'
 LONGITUDE_KEY = 'longitude'
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_BASE_DIR = os.path.join(BASE_DIR, "data base")
-FIND_TRANSPORT_DIR = os.path.join(DATA_BASE_DIR, "findtransport")
+DATA_BASE_DIR = os.path.join(BASE_DIR, "data")
+FIND_TRANSPORT_DIR = os.path.join(DATA_BASE_DIR, "user", "findtransport")
 
 def ensure_directories():
     os.makedirs(FIND_TRANSPORT_DIR, exist_ok=True)
@@ -13007,7 +13008,7 @@ def send_forecast_monthly_by_city(chat_id, city, city_rus, url_type, days=31):
 
 # ---------- 15. ЦЕНЫ НА ТОПЛИВО ----------
 
-BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data base")
+BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "user")
 CITYFORPRICE_DIR = os.path.join(BASE_DIR, "cityforprice")
 AZS_DIR = os.path.join(BASE_DIR, "azs")
 DATA_FILE_PATH = os.path.join(CITYFORPRICE_DIR, "city_for_the_price.json")
@@ -13393,7 +13394,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         today = datetime.now().date()
 
         if saved_data:
-            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data', 'user', 'azs', f"{city_code}_table_azs_data.json"))).date()
             if file_modification_time >= today:
                 print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем парсинг...")
                 fuel_prices = [
@@ -13549,7 +13550,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
     today = datetime.now().date()
     saved_data = load_saved_data(city_code)
 
-    filepath = os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json")
+    filepath = os.path.join('data', 'user', 'azs', f"{city_code}_table_azs_data.json")
     if saved_data:
         file_modification_time = datetime.fromtimestamp(os.path.getmtime(filepath)).date()
         if file_modification_time < today:
@@ -13742,14 +13743,14 @@ def clean_price(price):
     return cleaned_price
 
 def parse_fuel_prices():
-    cities_to_parse = os.listdir(os.path.join('data base', 'azs'))
+    cities_to_parse = os.listdir(os.path.join('data', 'user', 'azs'))
     for city_code in cities_to_parse:
         city_code = city_code.replace('_table_azs_data.json', '')
         saved_data = load_saved_data(city_code)
 
         today = datetime.now().date()
         if saved_data:
-            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data', 'user', 'azs', f"{city_code}_table_azs_data.json"))).date()
             if file_modification_time >= today:
                 print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем.")
                 continue
@@ -13773,14 +13774,14 @@ def parse_fuel_prices():
         print(f"Данные для города {city_code} успешно обновлены.")
 
 def parse_fuel_prices_scheduled():
-    cities_to_parse = os.listdir(os.path.join('data base', 'azs'))
+    cities_to_parse = os.listdir(os.path.join('data', 'user', 'azs'))
     for i, city_code in enumerate(cities_to_parse):
         city_code = city_code.replace('_table_azs_data.json', '')
         saved_data = load_saved_data(city_code)
 
         today = datetime.now().date()
         if saved_data:
-            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
+            file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data', 'user', 'azs', f"{city_code}_table_azs_data.json"))).date()
             if file_modification_time >= today:
                 print(f"Данные для города {city_code} уже обновлены сегодня. Пропускаем.")
                 continue
@@ -14067,7 +14068,7 @@ def track_user_location(user_id, initial_location):
 
 # ---------- n. НАПОМИНАНИЯ ----------
 
-DB_PATH = 'data base/reminders/reminders.json'
+DB_PATH = 'data/user/reminders/reminders.json'
 
 def load_data():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -14974,7 +14975,7 @@ def view_exchange_rates(message):
 # ---------- 16. УВЕДОМЛЕНИЯ ПОГОДА + ЦЕНЫ НА ТОПЛИВО + КУРСЫ ВАЛЮТ ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data base', 'notifications', 'notifications.json')
+NOTIFICATIONS_PATH = os.path.join(BASE_DIR, 'data', 'user', 'notifications', 'notifications.json')
 OPENWEATHERMAP_API_KEY = '2949ae1ef99c838462d16e7b0caf65b5'
 WEATHERAPI_API_KEY = 'd4d47e9a095046949fe83849253004' 
 OPENWEATHERMAP_WEATHER_URL = 'http://api.openweathermap.org/data/2.5/weather'
@@ -15467,7 +15468,7 @@ def get_current_weather(coords):
 
 def get_average_fuel_prices(city_code):
     fuel_prices = {}
-    file_path = f'data base/azs/{city_code}_table_azs_data.json'
+    file_path = f'data/user/azs/{city_code}_table_azs_data.json'
 
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -15923,7 +15924,7 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
     save_advertisements()
     bot.send_message(message.chat.id, "✅ Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
 
-    with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+    with open('data/admin/admin_user_payments/admin_sessions.json', 'r', encoding='utf-8') as file:
         admin_data = json.load(file)
         admin_ids = admin_data['admin_sessions']
 
@@ -16148,7 +16149,7 @@ def handle_user_advertisement_request_action(message, index):
         save_advertisements()
         bot.send_message(message.chat.id, "✅ Ваша заявка была успешно отозвана!")
 
-        with open('data base/admin/admin_sessions.json', 'r', encoding='utf-8') as file:
+        with open('data/admin/admin_user_payments/admin_sessions.json', 'r', encoding='utf-8') as file:
             admin_data = json.load(file)
             admin_ids = admin_data['admin_sessions']
 
@@ -16248,7 +16249,7 @@ def view_alc_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действия из алкоголя:", reply_markup=markup)
 
 ALKO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_alko', 'alko.json')
-USER_HISTORY_PATH_ALKO = os.path.join('data base', 'calculators', 'alcohol', 'alko_users.json')
+USER_HISTORY_PATH_ALKO = os.path.join('data', 'user', 'calculators', 'alcohol', 'alko_users.json')
 
 alko_data = {}
 user_history_alko = {}
@@ -17229,7 +17230,7 @@ def view_rastamozka_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 RASTAMOZKA_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_rastamozka', 'rastamozka.json')
-USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data base', 'calculators', 'rastamozka', 'rastamozka_users.json')
+USER_HISTORY_PATH_RASTAMOZKA = os.path.join('data', 'user', 'calculators', 'rastamozka', 'rastamozka_users.json')
 
 rastamozka_data = {}
 user_history_raztamozka = {}
@@ -18277,7 +18278,7 @@ def view_osago_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 OSAGO_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_osago', 'osago.json')
-USER_HISTORY_PATH_OSAGO = os.path.join('data base', 'calculators', 'osago', 'osago_users.json')
+USER_HISTORY_PATH_OSAGO = os.path.join('data', 'user', 'calculators', 'osago', 'osago_users.json')
 
 osago_data = {}
 user_history_osago = {}
@@ -19463,8 +19464,8 @@ def view_autokredit_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-KREDIT_USERS_PATH = os.path.join('data base', 'calculators', 'kredit', 'kredit_users.json')
-EXCEL_PATH_TEMPLATE = os.path.join('data base', 'calculators', 'kredit', 'excel', '{user_id}', '{user_id}_{timestamp}_autokredit.xlsx')
+KREDIT_USERS_PATH = os.path.join('data', 'user', 'calculators', 'kredit', 'kredit_users.json')
+EXCEL_PATH_TEMPLATE = os.path.join('data', 'user', 'calculators', 'kredit', 'excel', '{user_id}', '{user_id}_{timestamp}_autokredit.xlsx')
 
 user_data = {}
 user_history_kredit = {}
@@ -20586,7 +20587,7 @@ def view_tire_calc(message, show_description=True):
 
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-TIRE_HISTORY_PATH = os.path.join('data base', 'calculators', 'tires', 'tire_users.json')
+TIRE_HISTORY_PATH = os.path.join('data', 'user', 'calculators', 'tires', 'tire_users.json')
 
 user_data = {}
 user_history_tire = {}
@@ -21489,8 +21490,8 @@ def view_nalog_calc(message, show_description=True):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 NALOG_JSON_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'nalog.json')
-USER_HISTORY_PATH_NALOG = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
-PERECHEN_AUTO_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'auto_10mln_rub_2025.json') 
+USER_HISTORY_PATH_NALOG = os.path.join('data', 'user', 'calculators', 'nalog', 'nalog_users.json')
+PERECHEN_AUTO_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'auto_10mln_rub_2025.json')
 TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'files_for_calc', 'files_for_nalog', 'transport_tax_{year}.json')
 
 nalog_data = {}
@@ -22402,7 +22403,7 @@ def process_delete_nalog_selection(message):
 
 ADMIN_USERNAME = "EvgenyAlex21"
 ADMIN_PASSWORD = "HH1515az!"
-ADMIN_SESSIONS_PATH = 'data base/admin/admin_sessions.json'
+ADMIN_SESSIONS_PATH = 'data/admin/admin_user_payments/admin_sessions.json'
 credentials_changed = False
 admin_sessions = set()
 
@@ -23167,7 +23168,7 @@ def get_root_admin_id():
         return next(iter(admins_data))
     return None
 
-users_db_path = os.path.join('data base', 'admin', 'users.json')
+users_db_path = os.path.join('data', 'admin', 'admin_user_payments', 'users.json')
 
 def ensure_directory_exists(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -23206,7 +23207,7 @@ def handle_remove_admin(message):
     list_admins_for_removal(message)
     bot.register_next_step_handler(message, process_remove_admin, root_admin_id, message.chat.id)
 
-admin_sessions_db_path = os.path.join('data base', 'admin', 'admin_sessions.json')
+admin_sessions_db_path = os.path.join('data', 'admin', 'admin_user_payments', 'admin_sessions.json')
 
 def ensure_directory_exists(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -23798,10 +23799,10 @@ def handle_permissions(message):
 TELEGRAM_MESSAGE_LIMIT = 4096
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
-FILES_PATH = os.path.join(BASE_DIR, 'data base')
+FILES_PATH = os.path.join(BASE_DIR, 'data')
 ADDITIONAL_FILES_PATH = os.path.join(BASE_DIR, 'files')
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'admin_sessions.json')
-USER_DATA_PATH = os.path.join(BASE_DIR, 'data base', 'admin', 'users.json')
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'admin_sessions.json')
+USER_DATA_PATH = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'users.json')
 
 def load_admin_sessions():
     with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
@@ -24281,10 +24282,10 @@ def delete_user_data_recursively(user_id, current_dir):
 # ---------- 26. СТАТИСТИКА ----------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'admin_sessions.json')
-USER_DATA_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'users.json')
-STATS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'stats.json')
-ERRORS_LOG_FILE = os.path.join(BASE_DIR, 'data base', 'log', 'errors_log.json')
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'admin_sessions.json')
+USER_DATA_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'users.json')
+STATS_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'statistics', 'stats.json')
+ERRORS_LOG_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'log', 'errors_log.json')
 
 active_users = {}
 total_users = set()
@@ -24579,7 +24580,7 @@ def handle_submenu_buttons(message):
         stats_year_users, stats_year_functions = get_aggregated_statistics('year')
         stats_all_users, stats_all_functions = get_aggregated_statistics('all')
 
-        file_path = os.path.join(BASE_DIR, 'data base', 'admin', 'function_usage.xlsx')
+        file_path = os.path.join(BASE_DIR, 'data', 'admin', 'statistics', 'function_usage.xlsx')
         wb = Workbook()
 
         sheets = {
@@ -24654,7 +24655,7 @@ def handle_submenu_buttons(message):
 BACKUP_DIR = 'backups'
 SOURCE_DIR = '.'
 EXECUTABLE_FILE = os.path.basename(sys.argv[0])  
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+ADMIN_SESSIONS_FILE = 'data/admin/admin_user_payments/admin_sessions.json'
 
 def normalize_name(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
@@ -24922,7 +24923,7 @@ schedule.every().day.at("00:00").do(scheduled_backup)
 
 # ---------- 28. ВКЛЮЧЕНИЕ И ОТКЛЮЧЕНИЕ ФУНКЦИЙ ----------
 
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+ADMIN_SESSIONS_FILE = 'data/admin/admin_user_payments/admin_sessions.json'
 
 def load_admin_sessions():
     with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
@@ -24937,7 +24938,7 @@ def check_admin_access(message):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
-FUNCTIONS_STATE_PATH = 'data base/admin/functions_state.json'
+FUNCTIONS_STATE_PATH = 'data/admin/functions/functions_state.json'
 
 def load_function_states():
     if os.path.exists(FUNCTIONS_STATE_PATH):
@@ -25483,9 +25484,9 @@ def process_disable_function_time_step(message, function_names, date_str, origin
 
 # ---------- 29. ОПОВЕЩЕНИЯ ----------
 
-DATABASE_PATH = 'data base/admin/chats/alerts.json'
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
-USER_DATA_PATH = 'data base/admin/users.json'
+DATABASE_PATH = 'data/admin/chats/alerts.json'
+ADMIN_SESSIONS_FILE = 'data/admin/admin_user_payments/admin_sessions.json'
+USER_DATA_PATH = 'data/admin/admin_user_payments/users.json'
 alerts = {"sent_messages": {}, "notifications": {}}
 admin_sessions = []
 
@@ -27418,7 +27419,7 @@ def process_delete_individual_message(message, user_id):
 
 # ---------- 30. РЕКЛАМА ----------
 
-ADVERTISEMENT_PATH = 'data base/admin/chats/advertisement.json'
+ADVERTISEMENT_PATH = 'data/admin/chats/advertisement.json'
 
 advertisements = {}
 temp_advertisement = {
@@ -27994,9 +27995,9 @@ def show_advertisement_menu(message):
 
 # ---- РЕДАКЦИЯ ДЛЯ НОВОСТЕЙ ---
 
-NEWS_DATABASE_PATH = 'data base/admin/chats/news.json'
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
-USER_DATA_PATH = 'data base/admin/users.json'
+NEWS_DATABASE_PATH = 'data/admin/chats/news.json'
+ADMIN_SESSIONS_FILE = 'data/admin/admin_user_payments/admin_sessions.json'
+USER_DATA_PATH = 'data/admin/admin_user_payments/users.json'
 news = {}
 admin_sessions = []
 
@@ -28716,9 +28717,9 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 EXECUTABLE_FILE = os.path.abspath(__file__)
 BASE_DIR = os.path.dirname(EXECUTABLE_FILE)
 BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
-FILES_PATH = os.path.join(BASE_DIR, 'data base')
+FILES_PATH = os.path.join(BASE_DIR, 'data')
 ADDITIONAL_FILES_PATH = os.path.join(BASE_DIR, 'files')
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data base', 'admin', 'admin_sessions.json')
+ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'admin_user_payments', 'admin_sessions.json')
 bot_data = {}
 
 def load_admin_sessions():
@@ -28919,7 +28920,7 @@ def search_id_in_json(data, user_id):
                 return True
     return False
 
-USER_DATA_PATH = 'data base/admin/users.json'
+USER_DATA_PATH = 'data/admin/admin_user_payments/users.json'
 
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
@@ -34358,7 +34359,7 @@ def handle_dialog_selection(message):
         bot.send_message(message.chat.id, "Неверный ввод! Пожалуйста, введите номер диалога")
 
 def save_dialog_states():
-    with open('data base/admin/chats/dialog_states.json', 'w', encoding='utf-8') as file:
+    with open('data/admin/chats/dialog_states.json', 'w', encoding='utf-8') as file:
         json.dump(dialog_states, file, ensure_ascii=False, indent=4)
 
 # ---------- 36.2 ДИАЛОГИ (УДАЛЕНИЕ ДИАЛОГОВ) ----------
@@ -34664,11 +34665,9 @@ def handle_confirm_delete_all_dialogs(message):
     return show_communication_menu(message)
 
 
-
-
 # ---------- 37 ЧАТ МЕЖДУ АДМИНОМ И ПОЛЬЗОВАТЕЛЕМ ----------
 
-ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+ADMIN_SESSIONS_FILE = 'data/admin/admin_user_payments/admin_sessions.json'
 
 def load_admin_sessions():
     with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
@@ -34683,10 +34682,10 @@ def check_admin_access(message):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return False
 
-USER_DB_PATH = 'data base/admin/users.json'
-ADMIN_DB_PATH = 'data base/admin/admin_sessions.json'
-ACTIVE_CHATS_PATH = 'data base/admin/chats/active_chats.json'
-CHAT_HISTORY_PATH = 'data base/admin/chats/chat_history.json'
+USER_DB_PATH = 'data/admin/admin_user_payments/users.json'
+ADMIN_DB_PATH = 'data/admin/admin_user_payments/admin_sessions.json'
+ACTIVE_CHATS_PATH = 'data/admin/chats/active_chats.json'
+CHAT_HISTORY_PATH = 'data/admin/chats/chat_history.json'
 
 active_chats = {}
 user_requests_chat = {}
@@ -35228,7 +35227,7 @@ def return_admin_to_menu(admin_id):
 
 # ---------- 37.3 ЧАТ МЕЖДУ ПОЛЬЗОВАТЕЛЕМ И АДМИНА ----------
 
-ACTIVE_CHATS_PATH = os.path.join(os.path.dirname(__file__), 'data base', 'admin', 'chats', 'active_chats.json')
+ACTIVE_CHATS_PATH = os.path.join(os.path.dirname(__file__), 'data', 'admin', 'chats', 'active_chats.json')
 active_chats = {}
 user_requests_chat = {}
 
