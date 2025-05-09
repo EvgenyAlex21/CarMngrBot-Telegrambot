@@ -3983,9 +3983,9 @@ def check_media(message, user_id, next_step_handler=None, *args):
 # Функция для создания новой клавиатуры
 def create_transport_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return)
+    item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
+    markup.add(item_return_transport)
     markup.add(item_main_menu)
     return markup
 
@@ -4001,11 +4001,11 @@ def process_brand(message):
     if check_media(message, user_id, process_brand): return
 
     # Обработка кнопок
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    elif message.text == "В главное меню":
+    if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
         return
 
     brand = message.text
@@ -4017,11 +4017,11 @@ def process_model(message, brand):
     if check_media(message, user_id, process_model, brand): return
 
     # Обработка кнопок
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    elif message.text == "В главное меню":
+    if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
         return
 
     model = message.text
@@ -4033,11 +4033,11 @@ def process_year(message, brand, model):
     if check_media(message, user_id, process_year, brand, model): return
 
     # Обработка кнопок
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    elif message.text == "В главное меню":
+    if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
         return
 
     # Проверка на корректность года
@@ -4058,11 +4058,11 @@ def process_license_plate(message, brand, model, year):
     if check_media(message, user_id, process_license_plate, brand, model, year): return
 
     # Обработка кнопок
-    if message.text == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    elif message.text == "В главное меню":
+    if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
         return
 
     license_plate = message.text
@@ -4097,9 +4097,10 @@ def delete_transport(message):
             keyboard.add(f"{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
         
         # Добавление кнопок "Вернуться в меню трат и ремонтов" и "В главное меню"
-        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
         item_main_menu = types.KeyboardButton("В главное меню")
-        keyboard.add(item_return)
+        item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
+        keyboard.add("Удалить весь транспорт")
+        keyboard.add(item_return_transport)
         keyboard.add(item_main_menu)
         
         bot.send_message(user_id, "Выберите транспорт для удаления или вернитесь:", reply_markup=keyboard)
@@ -4112,11 +4113,17 @@ def process_transport_selection(message):
     selected_transport = message.text.strip()
 
     # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
-    if selected_transport == "Вернуться в меню трат и ремонтов":
-        send_menu(user_id)
-        return
-    elif selected_transport == "В главное меню":
+    if selected_transport == "В главное меню":
         return_to_menu(message)
+        return
+
+    # Проверка на выбор "Удалить весь транспорт"
+    if selected_transport == "Удалить весь транспорт":
+        delete_all_transports(message)  # Переход к удалению всех транспортов
+        return
+
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
         return
 
     # Проверяем, выбрал ли пользователь транспорт из списка
@@ -4149,13 +4156,13 @@ def process_confirmation(message, transport_to_delete):
     confirmation = message.text.strip().upper()  # Приводим к верхнему регистру для удобства проверки
 
     # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
-    if confirmation == "ВЕРНУТЬСЯ В МЕНЮ ТРАТ И РЕМОНТОВ":
-        send_menu(user_id)  # Возвращаем в меню трат и ремонтов
-        return
-    elif confirmation == "В ГЛАВНОЕ МЕНЮ":
+    if confirmation == "В ГЛАВНОЕ МЕНЮ":
         return_to_menu(message)  # Возвращаем в главное меню
         return
-
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+    
     # Проверка на текстовое подтверждение "ДА" или "НЕТ"
     if confirmation == "ДА":
         if user_id in user_transport:
@@ -4176,10 +4183,50 @@ def process_confirmation(message, transport_to_delete):
 # Функция для создания клавиатуры с кнопками возврата
 def get_return_menu_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
-    markup.add(item_return, item_main_menu)
+    item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
+    markup.add(item_return_transport)
+    markup.add(item_main_menu)
     return markup
+
+@bot.message_handler(func=lambda message: message.text == "Удалить весь транспорт")
+def delete_all_transports(message):
+    user_id = str(message.chat.id)
+    if user_id in user_transport and user_transport[user_id]:
+        # Подтверждение удаления всех транспортов
+        bot.send_message(user_id, "Вы уверены, что хотите удалить весь транспорт? Введите 'ДА' для подтверждения или 'НЕТ' для отмены.", reply_markup=get_return_menu_keyboard())
+        bot.register_next_step_handler(message, process_delete_all_confirmation)
+    else:
+        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+
+def process_delete_all_confirmation(message):
+    user_id = str(message.chat.id)
+    confirmation = message.text.strip().upper()
+
+    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
+    if confirmation == "В ГЛАВНОЕ МЕНЮ":
+        return_to_menu(message)  # Возвращаем в главное меню
+        return
+    if message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    # Проверка на текстовое подтверждение "ДА" или "НЕТ"
+    if confirmation == "ДА":
+        if user_id in user_transport:
+            user_transport[user_id] = []  # Удаляем все транспорты
+            save_transport_data(user_id, user_transport[user_id])  # Обновляем сохраненные данные
+            bot.send_message(user_id, "Весь транспорт успешно удален.")
+        else:
+            bot.send_message(user_id, "У вас нет добавленного транспорта.")
+    elif confirmation == "НЕТ":
+        bot.send_message(user_id, "Удаление отменено.")
+    else:
+        # Если введено что-то другое, повторяем ввод
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
+        bot.register_next_step_handler(message, process_delete_all_confirmation)  # Ожидание повторного ввода
+
+    manage_transport(message)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
 def view_transport(message):
@@ -4192,7 +4239,9 @@ def view_transport(message):
         bot.send_message(user_id, "У вас нет добавленного транспорта.")
 
 
-
+@bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
+def return_to_transport_menu(message):
+    manage_transport(message)  # Возвращаем пользователя в меню транспорта
 
 
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
