@@ -7519,25 +7519,6 @@ def create_filename(city_code, date):
     date_str = date.strftime('%d_%m_%Y')
     return f"{city_code}_table_azs_data_{date_str}.json"
 
-# Функция для сохранения данных в JSON
-def save_data(city_code, fuel_prices):
-    filename = f'{city_code}_table_azs_data.json'
-    filepath = os.path.join('data base', 'azs', filename)
-
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(fuel_prices, f, ensure_ascii=False, indent=4)
-
-# Функция для загрузки сохранённых данных из JSON
-def load_saved_data(city_code):
-    filename = f'{city_code}_table_azs_data.json'
-    filepath = os.path.join('data base', 'azs', filename)
-    
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
-
 # Обновление функции для загрузки данных
 def load_citys_users_data():
     global user_data
@@ -7582,7 +7563,7 @@ def create_filename(city_code, date):
     return f"{city_code}_table_azs_data_{date_str}.json"
 
 # Функция для сохранения данных в JSON
-def save_data(city_code, fuel_prices):
+def save_fuel_data(city_code, fuel_prices):
     filename = f'{city_code}_table_azs_data.json'  # Уникальный файл для каждого города
     filepath = os.path.join('data base', 'azs', filename)  # Указываем путь к папке
 
@@ -7931,7 +7912,7 @@ def parse_fuel_prices():
     for city_code in cities_to_parse:
         city_code = city_code.replace('_table_azs_data.json', '')  # Убираем расширение для получения кода города
         saved_data = load_saved_data(city_code)
-        
+
         today = datetime.now().date()
         if saved_data:
             file_modification_time = datetime.fromtimestamp(os.path.getmtime(os.path.join('data base', 'azs', f"{city_code}_table_azs_data.json"))).date()
@@ -7945,7 +7926,8 @@ def parse_fuel_prices():
             fuel_prices = get_fuel_prices_from_site(fuel_type, city_code)
             all_fuel_prices.extend(fuel_prices)
 
-        save_data(city_code, all_fuel_prices)
+        print(f"Сохранение данных для города {city_code} с {len(all_fuel_prices)} записями.")
+        save_fuel_data(city_code, all_fuel_prices)
         print(f"Данные для города {city_code} успешно обновлены.")
 
 
@@ -7964,7 +7946,7 @@ def schedule_tasks():
         schedule.run_pending()
         
         # Ожидание перед следующей проверкой расписания
-        time.sleep(1)
+        time.sleep(300)
 
 # Запуск объединенного потока
 threading.Thread(target=schedule_tasks, daemon=True).start()
@@ -8698,19 +8680,15 @@ DB_PATH = 'data base/reminders/reminders.json'
 
 # Функция для загрузки данных
 def load_data():
-    # Проверка существования папки и файла базы данных
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     if not os.path.exists(DB_PATH):
-        with open(DB_PATH, 'w', encoding='utf-8') as file:  # Указываем кодировку при записи нового файла
-            # Если файл не существует, создаем пустую структуру данных
+        with open(DB_PATH, 'w', encoding='utf-8') as file:
             json.dump({"users": {}}, file, indent=4, ensure_ascii=False)
 
-    # Загружаем данные из файла с указанием кодировки utf-8
     with open(DB_PATH, 'r', encoding='utf-8') as file:
         data = json.load(file)
 
-    # Убедимся, что ключ 'users' существует в данных
     if 'users' not in data:
         data['users'] = {}
 
@@ -8718,7 +8696,6 @@ def load_data():
 
 # Функция для сохранения данных
 def save_data(data):
-    # Проверка на наличие ключа 'users'
     if 'users' not in data:
         data['users'] = {}
 
@@ -8743,28 +8720,45 @@ def return_to_reminders_menu(message):
 def return_to_main_menu(message):
     start(message)
 
-# Функция для отправки напоминаний
 def send_reminders():
     data = load_data()
     current_time = datetime.now()
+    logging.info(f"Current time: {current_time}")
 
     for user_id, user_data in data["users"].items():
         reminders = user_data.get("reminders", [])
         for reminder in reminders:
+            reminder_type = reminder.get("type")
             reminder_datetime = datetime.strptime(reminder["date"] + " " + reminder["time"], "%d.%m.%Y %H:%M")
-            
-            # Если время напоминания наступило и оно активно
-            if reminder["status"] == "active" and reminder_datetime <= current_time:
-                bot.send_message(user_id, f"⏰ *У вас напоминание!* ⏰\n\n\n📝 Название: {reminder['title']} \n\n📅 Дата: {reminder['date']} \n\n🕒 Время: {reminder['time']}", parse_mode='Markdown')
-                reminder["status"] = "expired"  # Меняем статус на "истекший"
+            logging.info(f"Checking reminder: {reminder}")
+
+            if reminder["status"] == "active":
+                if reminder_type == "один раз":
+                    if reminder_datetime <= current_time:
+                        bot.send_message(user_id, f"⏰ *У вас напоминание!* ⏰\n\n\n📝 Название: {reminder['title']} \n\n📅 Дата: {reminder['date']} \n\n🕒 Время: {reminder['time']} \n\n🔖 Тип: {reminder['type']}", parse_mode='Markdown')
+                        reminder["status"] = "expired"
+                elif reminder_type == "ежедневно":
+                    if current_time.date() == reminder_datetime.date() and current_time.time() >= reminder_datetime.time():
+                        bot.send_message(user_id, f"⏰ *У вас напоминание!* ⏰\n\n\n📝 Название: {reminder['title']} \n\n📅 Дата: {reminder['date']} \n\n🕒 Время: {reminder['time']} \n\n🔖 Тип: {reminder['type']}", parse_mode='Markdown')
+                        reminder["date"] = (reminder_datetime + timedelta(days=1)).strftime("%d.%m.%Y")
+                elif reminder_type == "еженедельно":
+                    if current_time.date() == reminder_datetime.date() and current_time.time() >= reminder_datetime.time():
+                        bot.send_message(user_id, f"⏰ *У вас напоминание!* ⏰\n\n\n📝 Название: {reminder['title']} \n\n📅 Дата: {reminder['date']} \n\n🕒 Время: {reminder['time']} \n\n🔖 Тип: {reminder['type']}", parse_mode='Markdown')
+                        reminder["date"] = (reminder_datetime + timedelta(weeks=1)).strftime("%d.%m.%Y")
+                elif reminder_type == "ежемесячно":
+                    if current_time.date() == reminder_datetime.date() and current_time.time() >= reminder_datetime.time():
+                        bot.send_message(user_id, f"⏰ *У вас напоминание!* ⏰\n\n\n📝 Название: {reminder['title']} \n\n📅 Дата: {reminder['date']} \n\n🕒 Время: {reminder['time']} \n\n🔖 Тип: {reminder['type']}", parse_mode='Markdown')
+                        next_month = reminder_datetime.month % 12 + 1
+                        next_year = reminder_datetime.year + (reminder_datetime.month // 12)
+                        reminder["date"] = reminder_datetime.replace(day=reminder_datetime.day, month=next_month, year=next_year).strftime("%d.%m.%Y")
 
         save_data(data)
 
 # Функция для фонового планировщика
 def run_scheduler():
     while True:
-        send_reminders()  # Проверяем напоминания каждую минуту
-        time.sleep(15)  # Задержка на 15 секунд для следующей проверки
+        send_reminders()
+        time.sleep(15)
 
 # Запуск фона в отдельном потоке
 threading.Thread(target=run_scheduler, daemon=True).start()
@@ -8775,7 +8769,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Напоминания')
-@track_usage('Напоминания')  # Добавление отслеживания статистики
+@track_usage('Напоминания')
 def reminders_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Добавить', 'Посмотреть', 'Удалить')
@@ -8789,7 +8783,6 @@ def reminders_menu(message):
 @check_chat_state
 @check_function_state_decorator('Добавить')
 def add_reminder(message):
-    # Кнопки на этапе ввода названия
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
@@ -8800,7 +8793,6 @@ def process_title_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
 
-    # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_title_step)
@@ -8812,7 +8804,7 @@ def process_title_step(message):
 
     if message.text == "Вернуться в меню напоминаний":
         reminders_menu(message)
-        return	
+        return
 
     if user_id not in data["users"]:
         data["users"][user_id] = {"reminders": []}
@@ -8821,55 +8813,91 @@ def process_title_step(message):
     data["users"][user_id]["current_reminder"] = reminder
     save_data(data)
 
-    # Кнопки на этапе ввода даты
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Один раз', 'Ежедневно')
+    markup.add('Еженедельно', 'Ежемесячно')
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
-    msg = bot.send_message(message.chat.id, "Введите дату напоминания в формате ДД.ММ.ГГГГ:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_date_step_2)
+    msg = bot.send_message(message.chat.id, "Выберите тип напоминания:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_type_step)
 
-def process_date_step_2(message):
+def process_type_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
 
-    # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, process_date_step_2)
+        bot.register_next_step_handler(message, process_type_step)
         return
 
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-        
+
     if message.text == "Вернуться в меню напоминаний":
         reminders_menu(message)
-        return	
+        return
 
-    date_input = message.text
-
-    # Проверка на формат и диапазоны даты
-    if re.match(r"^\d{2}\.\d{2}\.\d{4}$", date_input):
-        try:
-            day, month, year = map(int, date_input.split('.'))
-            # Проверка на корректность значений дня, месяца и года
-            if 1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 3000:
-                datetime.strptime(date_input, "%d.%m.%Y")
-                reminder["date"] = date_input
-            else:
-                raise ValueError
-        except ValueError:
-            msg = bot.send_message(message.chat.id, "Неверный формат даты или значения. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
-            bot.register_next_step_handler(msg, process_date_step_2)
-            return
+    reminder_type = message.text.lower()
+    if reminder_type in ["ежедневно", "еженедельно", "ежемесячно", "один раз"]:
+        reminder["type"] = reminder_type
     else:
-        msg = bot.send_message(message.chat.id, "Неверный формат даты. Попробуйте еще раз в формате ДД.ММ.ГГГГ.")
-        bot.register_next_step_handler(msg, process_date_step_2)
+        msg = bot.send_message(message.chat.id, "Неверный тип напоминания. Пожалуйста, выберите из предложенных вариантов.")
+        bot.register_next_step_handler(msg, process_type_step)
         return
 
     save_data(data)
-    # Кнопки на этапе ввода времени
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в меню напоминаний')
+    markup.add('В главное меню')
+    msg = bot.send_message(message.chat.id, "Введите дату напоминания в формате ДД.ММ.ГГГГ:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_date_step)
+
+def process_date_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminder = data["users"][user_id]["current_reminder"]
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_date_step)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    if message.text == "Вернуться в меню напоминаний":
+        reminders_menu(message)
+        return
+
+    date_input = message.text
+
+    if re.match(r"^\d{2}\.\d{2}\.\d{4}$", date_input):
+        try:
+            day, month, year = map(int, date_input.split('.'))
+            if 1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 3000:
+                reminder_date = datetime.strptime(date_input, "%d.%m.%Y")
+                current_date = datetime.now()
+                if reminder_date.date() >= current_date.date():
+                    reminder["date"] = date_input
+                else:
+                    raise ValueError("Дата не может быть меньше текущей даты.")
+            else:
+                raise ValueError
+        except ValueError as e:
+            msg = bot.send_message(message.chat.id, f"Ошибка: {e}. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ.")
+            bot.register_next_step_handler(msg, process_date_step)
+            return
+    else:
+        msg = bot.send_message(message.chat.id, "Неверный формат даты. Попробуйте еще раз в формате ДД.ММ.ГГГГ.")
+        bot.register_next_step_handler(msg, process_date_step)
+        return
+
+    save_data(data)
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
@@ -8881,7 +8909,6 @@ def process_time_step(message):
     data = load_data()
     reminder = data["users"][user_id]["current_reminder"]
 
-    # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_time_step)
@@ -8890,29 +8917,35 @@ def process_time_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-        
+
     if message.text == "Вернуться в меню напоминаний":
         reminders_menu(message)
-        return	
+        return
 
     time_input = message.text
 
-    # Проверка на формат и диапазоны времени
     if re.match(r"^\d{2}:\d{2}$", time_input):
         try:
             hour, minute = map(int, time_input.split(':'))
-            # Проверка на корректность значений времени
             if 0 <= hour <= 23 and 0 <= minute <= 59:
-                reminder["time"] = time_input
-                reminder["status"] = "active"
+                reminder_time = datetime.strptime(time_input, "%H:%M").time()
+                current_time = datetime.now().time()
+                reminder_date = datetime.strptime(reminder["date"], "%d.%m.%Y").date()
+                current_date = datetime.now().date()
+
+                if reminder_date > current_date or (reminder_date == current_date and reminder_time >= current_time):
+                    reminder["time"] = time_input
+                    reminder["status"] = "active"
+                else:
+                    raise ValueError("Время не может быть меньше текущего времени.")
             else:
                 raise ValueError
-        except ValueError:
-            msg = bot.send_message(message.chat.id, "Неверный формат времени. Попробуйте еще раз в формате ЧЧ:ММ")
+        except ValueError as e:
+            msg = bot.send_message(message.chat.id, f"Ошибка: {e}. Пожалуйста, введите время в формате ЧЧ:ММ.")
             bot.register_next_step_handler(msg, process_time_step)
             return
     else:
-        msg = bot.send_message(message.chat.id, "Неверный формат времени. Попробуйте еще раз в формате ЧЧ:ММ")
+        msg = bot.send_message(message.chat.id, "Неверный формат времени. Попробуйте еще раз в формате ЧЧ:ММ.")
         bot.register_next_step_handler(msg, process_time_step)
         return
 
@@ -8920,9 +8953,8 @@ def process_time_step(message):
     del data["users"][user_id]["current_reminder"]
     save_data(data)
 
-    # Сообщение о добавлении напоминания и возврат в меню
     bot.send_message(message.chat.id, "Напоминание добавлено!")
-    reminders_menu(message)  # Возврат в меню напоминаний
+    reminders_menu(message)
 
 # Обработка кнопки "Посмотреть напоминания"
 @bot.message_handler(func=lambda message: message.text == "Посмотреть")
@@ -8944,29 +8976,12 @@ def view_reminders(message):
 @check_chat_state
 @check_function_state_decorator('Активные')
 def view_active_reminders(message):
-    user_id = str(message.from_user.id)
-    data = load_data()
-    reminders = data["users"].get(user_id, {}).get("reminders", [])
-    current_date = datetime.now()
-    
-    active = []
-    for i, reminder in enumerate(reminders, 1):
-        reminder_date = datetime.strptime(reminder["date"] + ' ' + reminder["time"], "%d.%m.%Y %H:%M")
-        if reminder_date >= current_date and reminder["status"] == "active":
-            active.append(
-                f"\n⭐ №{i} ⭐\n\n\n"
-                f"📝 Название: {reminder['title']}\n\n"
-                f"📅 Дата: {reminder['date']}\n"
-                f"🕒 Время: {reminder['time']}\n"
-                f"✅ Статус: Активное"
-            )
-    
-    if active:
-        response = "*Активные напоминания:*\n\n" + "\n\n".join(active)
-    else:
-        response = "*Активные напоминания:*\n\nНет активных напоминаний"
-    
-    bot.send_message(message.chat.id, response, parse_mode="Markdown")
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Один раз (активные)', 'Ежедневно (активные)')
+    markup.add('Еженедельно (активные)', 'Ежемесячно (активные)')
+    markup.add('Вернуться в меню напоминаний')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите тип активных напоминаний:", reply_markup=markup)
 
 # Обработка выбора "Истекшие" напоминания
 @bot.message_handler(func=lambda message: message.text == "Истекшие")
@@ -8975,27 +8990,83 @@ def view_active_reminders(message):
 @check_chat_state
 @check_function_state_decorator('Истекшие')
 def view_expired_reminders(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Один раз (истекшие)', 'Ежедневно (истекшие)')
+    markup.add('Еженедельно (истекшие)', 'Ежемесячно (истекшие)')
+    markup.add('Вернуться в меню напоминаний')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите тип истекших напоминаний:", reply_markup=markup)
+
+# Обработка выбора типа активных напоминаний
+@bot.message_handler(func=lambda message: message.text in ['Один раз (активные)', 'Ежедневно (активные)', 'Еженедельно (активные)', 'Ежемесячно (активные)'])
+@restricted
+@track_user_activity
+@check_chat_state
+def view_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"].get(user_id, {}).get("reminders", [])
     current_date = datetime.now()
+    reminder_type = message.text.split(' ')[0].lower()
+
+    active = []
+    for reminder in reminders:
+        reminder_datetime = datetime.strptime(reminder["date"] + ' ' + reminder["time"], "%d.%m.%Y %H:%M")
+        if reminder["status"] == "active" and reminder["type"] == reminder_type:
+            if reminder_type == "один раз" and reminder_datetime >= current_date:
+                active.append(reminder)
+            elif reminder_type == "ежедневно" and reminder_datetime.date() >= current_date.date():
+                active.append(reminder)
+            elif reminder_type == "еженедельно" and reminder_datetime.weekday() == current_date.weekday():
+                active.append(reminder)
+            elif reminder_type == "ежемесячно" and reminder_datetime.day == current_date.day:
+                active.append(reminder)
+
+    if active:
+        response = f"*Активные напоминания ({reminder_type}):*\n\n"
+        for i, reminder in enumerate(active, 1):
+            response += (
+                f"\n⭐ №{i} ⭐\n\n\n"
+                f"📝 Название: {reminder['title']}\n\n"
+                f"📅 Дата: {reminder['date']}\n"
+                f"🕒 Время: {reminder['time']}\n"
+                f"✅ Статус: Активное\n"
+                f"🔖 Тип: {reminder['type']}\n\n"
+            )
+    else:
+        response = f"*Активные напоминания ({reminder_type}):*\n\nНет активных напоминаний"
+
+    bot.send_message(message.chat.id, response, parse_mode="Markdown")
+
+# Обработка выбора типа истекших напоминаний
+@bot.message_handler(func=lambda message: message.text in ['Один раз (истекшие)', 'Ежедневно (истекшие)', 'Еженедельно (истекшие)', 'Ежемесячно (истекшие)'])
+@restricted
+@track_user_activity
+@check_chat_state
+def view_expired_reminders_by_type(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+    reminder_type = message.text.split(' ')[0].lower()
 
     expired = []
-    for i, reminder in enumerate(reminders, 1):
-        reminder_date = datetime.strptime(reminder["date"] + ' ' + reminder["time"], "%d.%m.%Y %H:%M")
-        if reminder_date < current_date and reminder["status"] == "expired":
-            expired.append(
+    for reminder in reminders:
+        if reminder["status"] == "expired" and reminder["type"] == reminder_type:
+            expired.append(reminder)
+
+    if expired:
+        response = f"*Истекшие напоминания ({reminder_type}):*\n\n"
+        for i, reminder in enumerate(expired, 1):
+            response += (
                 f"\n❌ №{i} ❌\n\n\n"
                 f"📝 Название: {reminder['title']}\n\n"
                 f"📅 Дата: {reminder['date']}\n"
                 f"🕒 Время: {reminder['time']}\n"
-                f"✅ Статус: Истекло"
+                f"✅ Статус: Истекло\n"
+                f"🔖 Тип: {reminder['type']}\n\n"
             )
-
-    if expired:
-        response = "*Истекшие напоминания:*\n\n" + "\n\n".join(expired)
     else:
-        response = "*Истекшие напоминания:*\n\nНет истекших напоминаний"
+        response = f"*Истекшие напоминания ({reminder_type}):*\n\nНет истекших напоминаний"
 
     bot.send_message(message.chat.id, response, parse_mode="Markdown")
 
@@ -9007,64 +9078,113 @@ def view_expired_reminders(message):
 @check_function_state_decorator('Удалить')
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Удалить напоминание', 'Удалить все напоминания')
-    markup.add("Вернуться в меню напоминаний")
+    markup.add('Del Активные', 'Del Истекшие')
+    markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите тип напоминаний для удаления:", reply_markup=markup)
 
-# Обработка кнопки "Удалить напоминание"
-@bot.message_handler(func=lambda message: message.text == "Удалить напоминание")
+# Обработка выбора "Del Активные" напоминания
+@bot.message_handler(func=lambda message: message.text == "Del Активные")
 @restricted
 @track_user_activity
 @check_chat_state
-@check_function_state_decorator('Удалить напоминание')
-def delete_single_reminder(message):
+#@check_function_state_decorator('Del Активные')
+def delete_active_reminders(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Del Один раз (активные)', 'Del Ежедневно (активные)')
+    markup.add('Del Еженедельно (активные)', 'Del Ежемесячно (активные)')
+    markup.add('Вернуться в меню напоминаний')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите тип активных напоминаний для удаления:", reply_markup=markup)
+
+# Обработка выбора "Del Истекшие" напоминания
+@bot.message_handler(func=lambda message: message.text == "Del Истекшие")
+@restricted
+@track_user_activity
+@check_chat_state
+#@check_function_state_decorator('Del Истекшие')
+def delete_expired_reminders(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Del Один раз (истекшие)', 'Del Ежедневно (истекшие)')
+    markup.add('Del Еженедельно (истекшие)', 'Del Ежемесячно (истекшие)')
+    markup.add('Вернуться в меню напоминаний')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите тип истекших напоминаний для удаления:", reply_markup=markup)
+
+# Обработка выбора типа активных напоминаний для удаления
+@bot.message_handler(func=lambda message: message.text in ['Del Один раз (активные)', 'Del Ежедневно (активные)', 'Del Еженедельно (активные)', 'Del Ежемесячно (активные)'])
+@restricted
+@track_user_activity
+@check_chat_state
+def delete_active_reminders_by_type(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"].get(user_id, {}).get("reminders", [])
+    reminder_type = message.text.split(' ')[2].lower()
 
-    if not reminders:
-        bot.send_message(message.chat.id, "У вас нет напоминаний")
+    active_reminders = []
+    for reminder in reminders:
+        if reminder["status"] == "active" and reminder["type"] == reminder_type:
+            active_reminders.append(reminder)
+
+    if active_reminders:
+        response = f"*Активные напоминания ({reminder_type}) для удаления:*\n\n"
+        for i, reminder in enumerate(active_reminders, 1):
+            response += (
+                f"\n⭐ №{i} ⭐\n\n\n"
+                f"📝 Название: {reminder['title']}\n\n"
+                f"📅 Дата: {reminder['date']}\n"
+                f"🕒 Время: {reminder['time']}\n"
+                f"✅ Статус: Активное\n"
+                f"🔖 Тип: {reminder['type']}\n\n"
+            )
     else:
-        # Разделяем напоминания на активные и истекшие
-        active_reminders = []
-        expired_reminders = []
-        
-        for i, reminder in enumerate(reminders, 1):
-            if reminder["status"] == "active":
-                active_reminders.append(f'⭐️ №{i}. {reminder["title"]} - *(активно)*')
-            else:
-                expired_reminders.append(f'❌ №{i}. {reminder["title"]} - *(истекшее)*')
-        
-        # Формируем итоговое сообщение с разделением по статусам
-        reminder_text = "*Напишите номер для удаления напоминания:*\n\n"
-        
-        if active_reminders:
-            reminder_text += "\n*Активные напоминания:*\n\n\n" + "\n\n".join(active_reminders) + "\n\n"
-        if expired_reminders:
-            reminder_text += "\n*Истекшие напоминания:*\n\n\n" + "\n\n".join(expired_reminders) + "\n\n"
-        
-        # Разделение текста на части, если длина превышает 4096 символов
-        while len(reminder_text) > 4096:
-            part = reminder_text[:4096]
-            reminder_text = reminder_text[4096:]
-            bot.send_message(message.chat.id, part, parse_mode='Markdown')
+        response = f"*Активные напоминания ({reminder_type}) для удаления:*\n\nНет активных напоминаний"
 
-        # Отправляем оставшуюся часть сообщения с клавиатурой и parse_mode='Markdown'
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Вернуться в меню напоминаний')
-        markup.add('В главное меню')
-        bot.send_message(message.chat.id, reminder_text, reply_markup=markup, parse_mode='Markdown')
-        bot.register_next_step_handler(message, confirm_delete_single_step)
+    bot.send_message(message.chat.id, response, parse_mode="Markdown")
+    bot.register_next_step_handler(message, confirm_delete_active_step)
 
-def confirm_delete_single_step(message):
+# Обработка выбора типа истекших напоминаний для удаления
+@bot.message_handler(func=lambda message: message.text in ['Del Один раз (истекшие)', 'Del Ежедневно (истекшие)', 'Del Еженедельно (истекшие)', 'Del Ежемесячно (истекшие)'])
+@restricted
+@track_user_activity
+@check_chat_state
+def delete_expired_reminders_by_type(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+    reminder_type = message.text.split(' ')[2].lower()
+
+    expired_reminders = []
+    for reminder in reminders:
+        if reminder["status"] == "expired" and reminder["type"] == reminder_type:
+            expired_reminders.append(reminder)
+
+    if expired_reminders:
+        response = f"*Истекшие напоминания ({reminder_type}) для удаления:*\n\n"
+        for i, reminder in enumerate(expired_reminders, 1):
+            response += (
+                f"\n❌ №{i} ❌\n\n\n"
+                f"📝 Название: {reminder['title']}\n\n"
+                f"📅 Дата: {reminder['date']}\n"
+                f"🕒 Время: {reminder['time']}\n"
+                f"✅ Статус: Истекло\n"
+                f"🔖 Тип: {reminder['type']}\n\n"
+            )
+    else:
+        response = f"*Истекшие напоминания ({reminder_type}) для удаления:*\n\nНет истекших напоминаний"
+
+    bot.send_message(message.chat.id, response, parse_mode="Markdown")
+    bot.register_next_step_handler(message, confirm_delete_expired_step)
+
+def confirm_delete_active_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"].get(user_id, {}).get("reminders", [])
 
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, confirm_delete_single_step)
+        bot.register_next_step_handler(message, confirm_delete_active_step)
         return
 
     if message.text == "В главное меню":
@@ -9086,66 +9206,90 @@ def confirm_delete_single_step(message):
             raise IndexError
     except (ValueError, IndexError):
         bot.send_message(message.chat.id, "Неверный номер напоминания. Пожалуйста, введите правильный номер")
-        bot.register_next_step_handler(message, confirm_delete_single_step)
+        bot.register_next_step_handler(message, confirm_delete_active_step)
 
+def confirm_delete_expired_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, confirm_delete_expired_step)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    if message.text == "Вернуться в меню напоминаний":
+        reminders_menu(message)
+        return
+
+    try:
+        reminder_index = int(message.text) - 1
+        if 0 <= reminder_index < len(reminders):
+            removed = reminders.pop(reminder_index)
+            save_data(data)
+            bot.send_message(message.chat.id, f"Напоминание '№{reminder_index + 1}' удалено", parse_mode='Markdown')
+            reminders_menu(message)
+        else:
+            raise IndexError
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверный номер напоминания. Пожалуйста, введите правильный номер")
+        bot.register_next_step_handler(message, confirm_delete_expired_step)
+
+# Обработка кнопки "Удалить все напоминания"
 @bot.message_handler(func=lambda message: message.text == "Удалить все напоминания")
 @restricted
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Удалить все напоминания')
 def delete_all_reminders(message):
-    # Оставляем только одну отправку сообщения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
 
-    # Отправляем сообщение с кнопками
     bot.send_message(message.chat.id, "Вы уверены, что хотите удалить все напоминания? Напишите *ДА* или *НЕТ*", reply_markup=markup, parse_mode='Markdown')
 
-    # Регистрируем следующий шаг
     bot.register_next_step_handler(message, confirm_delete_all_step)
 
 def confirm_delete_all_step(message):
     user_id = str(message.from_user.id)
     data = load_data()
 
-    # Проверка на мультимедийные сообщения
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, confirm_delete_all_step)
         return
 
-    # Обработка кнопок возврата
     if message.text == "В главное меню":
-        return_to_menu(message)  # Функция для возвращения в главное меню
+        return_to_menu(message)
         return
 
     if message.text == "Вернуться в меню напоминаний":
-        reminders_menu(message)  # Функция для возвращения в меню напоминаний
+        reminders_menu(message)
         return
 
     user_reminders = data["users"].get(user_id, {}).get("reminders", [])
 
-    # Проверка на наличие напоминаний
     if not user_reminders and message.text.strip().upper() == "ДА":
         bot.send_message(message.chat.id, "У вас нет напоминаний", parse_mode='Markdown')
-        reminders_menu(message)  # Возврат в меню напоминаний
+        reminders_menu(message)
         return
 
     if message.text.strip().upper() == "ДА":
-        # Удаляем все напоминания
         data["users"][user_id]["reminders"] = []
         save_data(data)
         bot.send_message(message.chat.id, "Все напоминания удалены", parse_mode='Markdown')
-        reminders_menu(message)  # Возвращаем в меню после удаления всех напоминаний
+        reminders_menu(message)
     elif message.text.strip().upper() == "НЕТ":
-        # Возвращаем в меню напоминаний
         bot.send_message(message.chat.id, "Вы вернулись в меню напоминаний", parse_mode='Markdown')
         reminders_menu(message)
     else:
-        # Некорректный ответ
         bot.send_message(message.chat.id, "Пожалуйста, напишите *ДА* или *НЕТ*", parse_mode='Markdown')
         bot.register_next_step_handler(message, confirm_delete_all_step)
+
 
 #----------------------------------------- КОДЫ OBD2-------------------------------
 
