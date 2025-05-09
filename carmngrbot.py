@@ -10882,11 +10882,13 @@ def fuel_prices_command(message, show_description=True):
         city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
         markup.row(*city_buttons)
 
+    # Добавляем кнопку для отправки геопозиции
+    markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
     markup.add(types.KeyboardButton("В главное меню"))
 
     reference_info = (
         "ℹ️ *Краткая справка по ценам на топливо*\n\n\n"
-        "📌 *Город:* Вводится *город* для получения актуальных средних цен на топливо разных марок АЗС\n\n"
+        "📌 *Город:* Вводится *город* или отправляется *геопозиция* для получения актуальных средних цен на топливо разных марок АЗС\n\n"
         "📌 *Тип:* Выбирается тип топлива *(АИ-92, АИ-95, АИ-98, АИ-100, ДТ, ГАЗ)*\n\n"
         "📌 *Цены:* *Получение цен* на нужный вид топлива *в выбранном городе*\n\n"
         "_P.S. Данная функция может работать некорректно из-за хостинга или серверов telegram. "
@@ -10898,8 +10900,26 @@ def fuel_prices_command(message, show_description=True):
     if show_description:
         bot.send_message(chat_id, reference_info, parse_mode='Markdown')
 
-    bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
     bot.register_next_step_handler(message, process_city_selection)
+
+def get_city_from_coordinates(latitude, longitude):
+    time.sleep(1)  # Задержка 1 секунда
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
+        headers = {
+            'User-Agent': 'YourBotName/1.0 (0543398@gmail.com)'
+        }
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        address = data.get('address', {})
+        city = address.get('city') or address.get('town') or address.get('village')
+        return city
+    except Exception as e:
+        print(f"Ошибка получения города по координатам: {e}")
+        return None
 
 def process_city_selection(message):
     chat_id = message.chat.id
@@ -10913,44 +10933,76 @@ def process_city_selection(message):
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации")
         return
 
-    city_name = message.text.strip().lower()
-    city_code = get_city_code(city_name)
+    city_name = None
+    city_code = None
 
-    if city_code:
-        if str_chat_id not in user_data:
-            user_data[str_chat_id] = {'recent_cities': [], 'city_code': None}
+    # Проверяем, отправлена ли геопозиция
+    if message.location:
+        latitude = message.location.latitude
+        longitude = message.location.longitude
+        city_name = get_city_from_coordinates(latitude, longitude)
 
-        update_recent_cities(str_chat_id, city_name)
-        user_data[str_chat_id]['city_code'] = city_code
+        if not city_name:
+            bot.send_message(chat_id, "Не удалось определить город по вашей геопозиции. Пожалуйста, введите город вручную.")
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+            recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
+            if recent_cities:
+                markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])
+            markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+            markup.add(types.KeyboardButton("В главное меню"))
+            bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
+            bot.register_next_step_handler(message, process_city_selection)
+            return
 
-        notifications = load_user_locations()
-        user_info = notifications.get(str_chat_id)
+        city_name = city_name.lower()
+        city_code = get_city_code(city_name)
 
-        latitude = None
-        longitude = None
-
-        if user_info:
-            latitude = user_info.get('latitude')
-            longitude = user_info.get('longitude')
-
-        save_user_location(chat_id, latitude, longitude, city_code)
-
-        save_citys_users_data()
-
-        site_type = "default_site_type"
-        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
+        if not city_code:
+            bot.send_message(chat_id, f"Город {city_name.capitalize()} не найден в базе. Попробуйте ввести другой город или отправить геопозицию снова.")
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+            recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
+            if recent_cities:
+                markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])
+            markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+            markup.add(types.KeyboardButton("В главное меню"))
+            bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
+            bot.register_next_step_handler(message, process_city_selection)
+            return
     else:
-        bot.send_message(chat_id, f"Город {city_name} не найден! Пожалуйста, проверьте правильность написания и попробуйте еще раз")
+        # Обработка текстового ввода города
+        city_name = message.text.strip().lower()
+        city_code = get_city_code(city_name)
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+        if not city_code:
+            bot.send_message(chat_id, f"Город {city_name.capitalize()} не найден! Пожалуйста, проверьте правильность написания и попробуйте еще раз.")
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+            recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
+            if recent_cities:
+                markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])
+            markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+            markup.add(types.KeyboardButton("В главное меню"))
+            bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
+            bot.register_next_step_handler(message, process_city_selection)
+            return
 
-        recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
-        if recent_cities:
-            markup.add(*[types.KeyboardButton(city.title()) for city in recent_cities])
+    # Если город найден, сохраняем данные
+    if str_chat_id not in user_data:
+        user_data[str_chat_id] = {'recent_cities': [], 'city_code': None}
 
-        markup.add(types.KeyboardButton("В главное меню"))
-        bot.send_message(chat_id, "Введите город или выберите из последних:", reply_markup=markup)
-        bot.register_next_step_handler(message, process_city_selection)
+    update_recent_cities(str_chat_id, city_name)
+    user_data[str_chat_id]['city_code'] = city_code
+
+    notifications = load_user_locations()
+    user_info = notifications.get(str_chat_id)
+
+    latitude = message.location.latitude if message.location else None
+    longitude = message.location.longitude if message.location else None
+
+    save_user_location(chat_id, latitude, longitude, city_code)
+    save_citys_users_data()
+
+    site_type = "default_site_type"
+    show_fuel_price_menu(chat_id, city_code, site_type)
 
 def update_recent_cities(chat_id, city_name):
     if chat_id not in user_data:
@@ -11162,7 +11214,7 @@ def process_fuel_price_selection(message, city_code, site_type):
         print(f"Ошибка: {e}")
 
         bot.send_message(chat_id, "Ошибка получения цен!\n\nНе найдена таблица с ценами.\nПопробуйте выбрать другой город или тип топлива:")
-        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
+        show_fuel_price_menu(chat_id, city_code, site_type)
         return 
     
 def process_next_action(message):
@@ -11188,7 +11240,7 @@ def process_next_action(message):
     elif text == "посмотреть цены на другое топливо":
         city_code = user_data[str(chat_id)]['city_code']
         site_type = "default_site_type"
-        show_fuel_price_menu(chat_id, city_code, site_type, show_description=False)
+        show_fuel_price_menu(chat_id, city_code, site_type)
 
     elif text == "в главное меню":
         return_to_menu(message)
@@ -11419,16 +11471,21 @@ def save_user_location(chat_id, latitude, longitude, city_code):
     ensure_directory_exists(NOTIFICATIONS_PATH)
     
     notifications = initialize_user_notifications(chat_id)
+    str_chat_id = str(chat_id)
 
+    # Обновляем только те поля, которые переданы (не None)
     if latitude is not None:
-        notifications[str(chat_id)]["latitude"] = latitude
+        notifications[str_chat_id]["latitude"] = float(latitude)  # Приводим к float для консистентности
     if longitude is not None:
-        notifications[str(chat_id)]["longitude"] = longitude
+        notifications[str_chat_id]["longitude"] = float(longitude)  # Приводим к float для консистентности
     if city_code is not None:
-        notifications[str(chat_id)]["city_code"] = city_code
+        notifications[str_chat_id]["city_code"] = city_code
 
-    with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(notifications, f, ensure_ascii=False, indent=4)
+    try:
+        with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(notifications, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Ошибка сохранения местоположения: {e}")
 
 def load_user_locations():
     ensure_directory_exists(NOTIFICATIONS_PATH)
@@ -11576,15 +11633,38 @@ def get_city_name(latitude, longitude):
             'format': 'json',
             'accept-language': 'ru'
         }
-        response = requests.get(geocode_url, params=params)
+        response = requests.get(geocode_url, params=params, timeout=5)
+        response.raise_for_status()  
         data = response.json()
 
         if response.status_code == 200:
             city = data.get("address", {}).get("city", None)
-            return city or f"неизвестное место ({latitude}, {longitude})"
+            if city:
+                return city
+            town = data.get("address", {}).get("town", None)
+            village = data.get("address", {}).get("village", None)
+            return town or village or f"неизвестное место ({latitude}, {longitude})"
         return None
-    except:
-        return None
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"Ошибка LocationIQ: {e}")
+
+    # Резервный вариант: OpenStreetMap (Nominatim)
+    try:
+        time.sleep(1)  
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
+        headers = {
+            'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'  
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+
+        address = data.get('address', {})
+        city = address.get('city') or address.get('town') or address.get('village')
+        return city or f"неизвестное место ({latitude}, {longitude})"
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"Ошибка Nominatim: {e}")
+        return f"неизвестное место ({latitude}, {longitude})"
 
 def get_current_weather(coords):
     try:
