@@ -154,11 +154,13 @@ def start(message):
     item6 = types.KeyboardButton("Код региона")
     item7 = types.KeyboardButton("Цены на топливо")
     item8 = types.KeyboardButton("Анти-радар")
+    item9 = types.KeyboardButton("Напоминания")
 
     markup.add(item1, item2)
     markup.add(item3, item4)
     markup.add(item5, item7)
     markup.add(item6, item8)
+    markup.add(item9)
 
     bot.send_message(chat_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
 
@@ -6956,6 +6958,196 @@ def track_user_location(user_id, initial_location):
 
     threading.Thread(target=monitor, daemon=True).start()
 
+
+
+# Функция для отправки напоминаний
+def send_reminders():
+    data = load_data()
+    current_time = datetime.now()
+
+    for user_id, user_data in data["users"].items():
+        reminders = user_data.get("reminders", [])
+        for reminder in reminders:
+            # Проверка, что напоминание активное и дата-время его подходит
+            reminder_datetime = datetime.strptime(reminder["date"] + " " + reminder["time"], "%d.%m.%Y %H:%M")
+            if reminder["status"] == "active" and reminder_datetime <= current_time:
+                # Отправляем напоминание пользователю
+                bot.send_message(user_id, f"Напоминание: {reminder['title']}")
+
+                # Обновляем статус напоминания на "expired" (или можно удалить его)
+                reminder["status"] = "expired"
+        
+        # Сохраняем обновленные данные
+        save_data(data)
+
+
+# Функция для фоновой проверки напоминаний с помощью schedule
+def run_scheduler():
+    schedule.every(1).minutes.do(send_reminders)  # Проверять напоминания каждые 1 минуту
+    
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
+# Запускаем фоновую задачу в отдельном потоке
+import threading
+threading.Thread(target=run_scheduler).start()
+
+
+# ----------------------------------КОД ДЛЯ НАПОМИНАНИЙ---------------------------------------
+
+# Путь к файлу базы данных
+DB_PATH = 'data base/reminders/reminders.json'
+
+
+# Функция для загрузки данных
+def load_data():
+    # Проверка существования папки и файла базы данных
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)  # Создает папку, если она не существует
+
+    if not os.path.exists(DB_PATH):  # Если файла нет, создаем пустой файл с базовой структурой
+        with open(DB_PATH, 'w') as file:
+            json.dump({"users": {}}, file, indent=4)
+
+    # Загружаем данные из файла
+    with open(DB_PATH, 'r') as file:
+        return json.load(file)
+
+
+# Функция для сохранения данных
+def save_data(data):
+    with open(DB_PATH, 'w') as file:
+        json.dump(data, file, indent=4)
+
+
+# Обработка кнопки "Напоминания"
+@bot.message_handler(func=lambda message: message.text == "Напоминания")
+def reminders_menu(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Добавить напоминание', 'Посмотреть напоминания', 'Удалить напоминание')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+
+# Обработка кнопки "Добавить напоминание"
+@bot.message_handler(func=lambda message: message.text == "Добавить напоминание")
+def add_reminder(message):
+    msg = bot.send_message(message.chat.id, "Введите название напоминания:")
+    bot.register_next_step_handler(msg, process_title_step)
+
+
+def process_title_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+
+    # Инициализируем пользователя и его напоминания
+    if user_id not in data["users"]:
+        data["users"][user_id] = {"reminders": []}
+    
+    # Создаем новый шаблон напоминания
+    reminder = {"title": message.text}
+    data["users"][user_id]["current_reminder"] = reminder
+    save_data(data)
+
+    msg = bot.send_message(message.chat.id, "Введите дату напоминания в формате ДД.ММ.ГГГГ:")
+    bot.register_next_step_handler(msg, process_date_step)
+
+
+def process_date_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminder = data["users"][user_id]["current_reminder"]
+    
+    # Проверка формата даты
+    try:
+        datetime.strptime(message.text, "%d.%m.%Y")
+        reminder["date"] = message.text
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Неверный формат даты. Попробуйте еще раз.")
+        bot.register_next_step_handler(msg, process_date_step)
+        return
+
+    save_data(data)
+    msg = bot.send_message(message.chat.id, "Введите время напоминания в формате ЧЧ:ММ:")
+    bot.register_next_step_handler(msg, process_time_step)
+
+
+def process_time_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminder = data["users"][user_id]["current_reminder"]
+    
+    # Проверка формата времени
+    try:
+        datetime.strptime(message.text, "%H:%M")
+        reminder["time"] = message.text
+        reminder["status"] = "active"
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Неверный формат времени. Попробуйте еще раз.")
+        bot.register_next_step_handler(msg, process_time_step)
+        return
+    
+    # Сохранение напоминания
+    data["users"][user_id]["reminders"].append(reminder)
+    del data["users"][user_id]["current_reminder"]
+    save_data(data)
+    
+    bot.send_message(message.chat.id, "Напоминание добавлено!")
+
+
+# Обработка кнопки "Посмотреть напоминания"
+@bot.message_handler(func=lambda message: message.text == "Посмотреть напоминания")
+def view_reminders(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+    
+    if not reminders:
+        bot.send_message(message.chat.id, "У вас нет напоминаний.")
+    else:
+        active, expired = [], []
+        current_date = datetime.now()
+        
+        # Разделение активных и истекших напоминаний
+        for i, reminder in enumerate(reminders, 1):
+            reminder_date = datetime.strptime(reminder["date"] + ' ' + reminder["time"], "%d.%m.%Y %H:%M")
+            if reminder_date >= current_date:
+                active.append(f"{i}. {reminder['title']} - {reminder['date']} {reminder['time']}")
+            else:
+                expired.append(f"{i}. {reminder['title']} - {reminder['date']} {reminder['time']} (истекло)")
+        
+        response = "Активные напоминания:\n" + "\n".join(active) if active else "Нет активных напоминаний."
+        response += "\n\nИстекшие напоминания:\n" + "\n".join(expired) if expired else "\nНет истекших напоминаний."
+        
+        bot.send_message(message.chat.id, response)
+
+
+# Обработка кнопки "Удалить напоминание"
+@bot.message_handler(func=lambda message: message.text == "Удалить напоминание")
+def delete_reminder(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+    
+    if not reminders:
+        bot.send_message(message.chat.id, "У вас нет напоминаний.")
+    else:
+        msg = bot.send_message(message.chat.id, "Введите номер напоминания для удаления:")
+        bot.register_next_step_handler(msg, confirm_delete_step)
+
+
+def confirm_delete_step(message):
+    user_id = str(message.from_user.id)
+    data = load_data()
+    reminders = data["users"].get(user_id, {}).get("reminders", [])
+    
+    try:
+        reminder_index = int(message.text) - 1
+        removed = reminders.pop(reminder_index)
+        save_data(data)
+        bot.send_message(message.chat.id, f"Напоминание '{removed['title']}' удалено.")
+    except (ValueError, IndexError):
+        bot.send_message(message.chat.id, "Неверный номер напоминания.")
 
 
 
