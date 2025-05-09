@@ -10558,7 +10558,7 @@ def load_user_history_alko():
         print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history = {}
 
-def save_user_history():
+def save_user_history_alko():
     try:
         with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history, db_file, ensure_ascii=False, indent=2)
@@ -11137,7 +11137,7 @@ def save_calculation_to_history(chat_id, promille):
         }
 
     user_history[str(user_id)]['calculations'].append(calculation_data)
-    save_user_history()
+    save_user_history_alko()
 
 # ---------- n.n АЛКОГОЛЬ (ПРОСМОТР АЛКОГОЛЯ) ----------
 
@@ -11317,7 +11317,7 @@ def process_delete_selection(message):
         for index in valid_indices:
             del calculations[index]
 
-        save_user_history()
+        save_user_history_alko()
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
         view_alc_calc(message)
 
@@ -11422,7 +11422,7 @@ def load_user_history_rastamozka():
         print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history = {}
 
-def save_user_history():
+def save_user_history_rastamozka():
     try:
         with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history, db_file, ensure_ascii=False, indent=2)
@@ -12028,7 +12028,7 @@ def save_calculation_to_history(user_id, total_cost):
         }
 
     user_history[str(user_id)]['calculations'].append(calculation_data)
-    save_user_history()
+    save_user_history_rastamozka()
 
 # ---------- ПРОСМОТР РАСТАМОЖЕК ----------
 
@@ -12224,7 +12224,7 @@ def process_delete_rastamozka_selection(message):
         for index in valid_indices:
             del calculations[index]
 
-        save_user_history()
+        save_user_history_rastamozka()
         bot.send_message(chat_id, "✅ Выбранные расчеты растаможки успешно удалены!")
         view_rastamozka_calc(message)
 
@@ -12283,7 +12283,7 @@ def load_osago_data():
     except Exception as e:
         print(f"Ошибка при загрузке файла osago.json: {e}")
 
-def load_user_history():
+def load_user_history_osago():
     global user_history
     try:
         if os.path.exists(USER_HISTORY_PATH):
@@ -12296,7 +12296,7 @@ def load_user_history():
         print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history = {}
 
-def save_user_history():
+def save_user_history_osago():
     try:
         with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history, db_file, ensure_ascii=False, indent=2)
@@ -12306,7 +12306,7 @@ def save_user_history():
 ensure_path_and_file(OSAGO_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH)
 load_osago_data()
-load_user_history()
+load_user_history_osago()
 
 # Start OSAGO calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать ОСАГО")
@@ -13004,7 +13004,7 @@ def save_calculation_to_history(user_id, min_cost, max_cost):
         }
 
     user_history[str(user_id)]['calculations'].append(calculation_data)
-    save_user_history()
+    save_user_history_osago()
 
 # ---------- ПРОСМОТР ОСАГО ----------
 
@@ -13254,7 +13254,7 @@ def process_delete_osago_selection(message):
             del calculations[index]
             deleted_count += 1
 
-        save_user_history()
+        save_user_history_osago()
         bot.send_message(chat_id, f"✅ Выбранные расчеты ОСАГО успешно удалены!")
         view_osago_calc(message)
 
@@ -13311,7 +13311,7 @@ def ensure_path_and_file(file_path):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump({}, f, ensure_ascii=False, indent=2)
 
-def load_user_history():
+def load_user_history_kredit():
     global user_history
     try:
         if os.path.exists(KREDIT_USERS_PATH):
@@ -13323,7 +13323,7 @@ def load_user_history():
         print(f"Ошибка при загрузке истории пользователей: {e}")
         user_history = {}
 
-def save_user_history():
+def save_user_history_kredit():
     try:
         with open(KREDIT_USERS_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history, db_file, ensure_ascii=False, indent=2)
@@ -13331,7 +13331,7 @@ def save_user_history():
         print(f"Ошибка при сохранении истории: {e}")
 
 ensure_path_and_file(KREDIT_USERS_PATH)
-load_user_history()
+load_user_history_kredit()
 
 @bot.message_handler(func=lambda message: message.text == "Рассчитать автокредит")
 def start_car_loan_calculation(message):
@@ -14017,7 +14017,7 @@ def save_calculation_to_history(user_id, principal, total_interest, total_paymen
         }
     
     user_history[str(user_id)]['calculations'].append(calculation_data)
-    save_user_history()
+    save_user_history_kredit()
 
 # ---------- ПРОСМОТР АВТОКРЕДИТОВ ----------
 
@@ -14240,7 +14240,7 @@ def process_delete_autokredit_selection(message):
             del calculations[index]
             deleted_count += 1
 
-        save_user_history()
+        save_user_history_kredit()
         bot.send_message(chat_id, f"✅ Выбранные расчеты автокредитов успешно удалены!")
         view_autokredit_calc(message)
 
@@ -14251,7 +14251,1421 @@ def process_delete_autokredit_selection(message):
         bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
         view_autokredit_calc(message)
 
+# ---------- РАСЧЕТ ШИН ----------
 
+@bot.message_handler(func=lambda message: message.text == "Шины")
+def view_tire_calc(message):
+    description = (
+        "ℹ️ *Краткая справка по шинному калькулятору*\n\n"
+        "📌 *Расчет шин и дисков:*\n"
+        "Расчет выполняется на основе данных - *ширина, профиль и диаметр текущих шин, ширина обода и вылет текущих дисков, а также параметры новых шин и дисков*\n"
+        "_P.S. Калькулятор предоставляет ориентировочные данные для сравнения. Совместимость зависит от конструкции автомобиля и может отличаться!_\n\n"
+        "📌 *Просмотр расчетов:*\n"
+        "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
+        "📌 *Удаление расчетов:*\n"
+        "Вы можете удалить свои расчеты, если они больше не нужны"
+    )
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Рассчитать шины', 'Просмотр шин', 'Удаление шин')
+    markup.add('Вернуться в калькуляторы')
+    markup.add('В главное меню')
+
+    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+# Пути к файлам для хранения истории
+TIRE_HISTORY_PATH = os.path.join('data base', 'calculators', 'tires', 'tire_users.json')
+
+# Глобальные переменные
+user_data = {}
+user_history = {}
+
+# Обеспечение существования файлов и загрузка данных
+def ensure_path_and_file(file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    if not os.path.exists(file_path):
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
+
+def load_user_history_tires():
+    global user_history
+    try:
+        if os.path.exists(TIRE_HISTORY_PATH):
+            with open(TIRE_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
+                user_history = json.load(db_file)
+        else:
+            print(f"Файл {TIRE_HISTORY_PATH} не найден! Создание нового...")
+            user_history = {}
+    except Exception as e:
+        print(f"Ошибка при загрузке истории пользователей: {e}")
+        user_history = {}
+
+def save_user_history_tires():
+    try:
+        with open(TIRE_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Ошибка при сохранении истории: {e}")
+
+ensure_path_and_file(TIRE_HISTORY_PATH)
+load_user_history_tires()
+
+# Обработчик команды "Рассчитать шины"
+@bot.message_handler(func=lambda message: message.text == "Рассчитать шины")
+def start_tire_calculation(message):
+    user_id = message.from_user.id
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username or 'unknown'}
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add('Вернуться в шины')
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Введите ширину текущих шин (мм):\n\n_P.S. ввод осуществляется от 135 до 400 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_current_width_step)
+
+# Шаг 1: Ширина текущих шин
+def process_current_width_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+    
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        width = int(message.text)
+        if width < 135 or width > 400 or (width - 135) % 10 != 0:
+            raise ValueError
+        user_data[user_id]['current_width'] = width
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите профиль текущих шин (%):\n\n_P.S. ввод осуществляется от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_current_profile_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_current_width_step)
+
+# Шаг 2: Профиль текущих шин
+def process_current_profile_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+    
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        profile = int(message.text)
+        if profile < 30 or profile > 80 or (profile - 30) % 5 != 0:
+            raise ValueError
+        user_data[user_id]['current_profile'] = profile
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите диаметр текущих шин (дюймы):\n\n_P.S. ввод осуществляется от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_current_diameter_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_current_profile_step)
+
+# Шаг 3: Диаметр текущих шин
+def process_current_diameter_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        diameter = int(message.text)
+        if diameter < 12 or diameter > 24:
+            raise ValueError
+        user_data[user_id]['current_diameter'] = diameter
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите ширину обода текущих дисков (дюймы):\n\n_P.S. ввод осуществляется от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_current_rim_width_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_current_diameter_step)
+
+# Шаг 4: Ширина обода текущих дисков
+def process_current_rim_width_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        rim_width = float(message.text.replace(',', '.'))
+        if rim_width < 4 or rim_width > 13 or (rim_width * 2 % 1 != 0):
+            raise ValueError
+        user_data[user_id]['current_rim_width'] = rim_width
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите вылет текущих дисков (ET, мм):\n\n_P.S. ввод осуществляется от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_current_et_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_current_rim_width_step)
+
+# Шаг 5: Вылет текущих дисков
+def process_current_et_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        et = int(message.text)
+        if et < -55 or et > 65:
+            raise ValueError
+        user_data[user_id]['current_et'] = et
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите ширину новых шин (мм):\n\n_P.S. ввод осуществляется от 135 до 400 с шагом 10_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_new_width_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_current_et_step)
+
+# Шаг 6: Ширина новых шин
+def process_new_width_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        width = int(message.text)
+        if width < 135 or width > 400 or (width - 135) % 10 != 0:
+            raise ValueError
+        user_data[user_id]['new_width'] = width
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите профиль новых шин (%):\n\n_P.S. ввод осуществляется от 30 до 80 с шагом 5_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_new_profile_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_new_width_step)
+
+# Шаг 7: Профиль новых шин
+def process_new_profile_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        profile = int(message.text)
+        if profile < 30 or profile > 80 or (profile - 30) % 5 != 0:
+            raise ValueError
+        user_data[user_id]['new_profile'] = profile
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите диаметр новых шин (дюймы):\n\n_P.S. ввод осуществляется от 12 до 24 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_new_diameter_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_new_profile_step)
+
+# Шаг 8: Диаметр новых шин
+def process_new_diameter_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        diameter = int(message.text)
+        if diameter < 12 or diameter > 24:
+            raise ValueError
+        user_data[user_id]['new_diameter'] = diameter
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите ширину обода новых дисков (дюймы):\n\n_P.S. ввод осуществляется от 4 до 13 с шагом 0.5_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_new_rim_width_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_new_diameter_step)
+
+# Шаг 9: Ширина обода новых дисков
+def process_new_rim_width_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        rim_width = float(message.text.replace(',', '.'))
+        if rim_width < 4 or rim_width > 13 or (rim_width * 2 % 1 != 0):
+            raise ValueError
+        user_data[user_id]['new_rim_width'] = rim_width
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add('Вернуться в шины')
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "Введите вылет новых дисков (ET, мм):\n\n_P.S. ввод осуществляется от -55 до 65 с шагом 1_", reply_markup=markup, parse_mode='Markdown')
+        bot.register_next_step_handler(msg, process_new_et_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_new_rim_width_step)
+
+# Шаг 10: Вылет новых дисков и расчет
+def process_new_et_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        et = int(message.text)
+        if et < -55 or et > 65:
+            raise ValueError
+        user_data[user_id]['new_et'] = et
+        calculate_tire(message)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число из диапазона")
+        bot.register_next_step_handler(msg, process_new_et_step)
+
+# Расчет параметров шин и дисков
+def calculate_tire(message):
+    user_id = message.from_user.id
+    data = user_data[user_id]
+
+    # Перевод дюймов в мм (1 дюйм = 25.4 мм)
+    current_diameter_mm = data['current_diameter'] * 25.4
+    new_diameter_mm = data['new_diameter'] * 25.4
+    current_rim_width_mm = data['current_rim_width'] * 25.4
+    new_rim_width_mm = data['new_rim_width'] * 25.4
+
+    # Высота профиля
+    current_profile_height = data['current_width'] * (data['current_profile'] / 100)
+    new_profile_height = data['new_width'] * (data['new_profile'] / 100)
+
+    # Общий диаметр шины
+    current_total_diameter = current_diameter_mm + 2 * current_profile_height
+    new_total_diameter = new_diameter_mm + 2 * new_profile_height
+
+    # Разница в диаметре
+    diameter_diff_mm = new_total_diameter - current_total_diameter
+    diameter_diff_percent = (diameter_diff_mm / current_total_diameter) * 100
+
+    # Влияние на клиренс (половина разницы в диаметре)
+    clearance_diff = diameter_diff_mm / 2
+
+    # Влияние на спидометр
+    speed_diff_percent = -diameter_diff_percent
+
+    # Разница в ширине обода
+    rim_width_diff_mm = new_rim_width_mm - current_rim_width_mm
+
+    # Рекомендации по совместимости
+    recommendation = "✅ Подходит" if abs(diameter_diff_percent) <= 3 and abs(rim_width_diff_mm) <= 25.4 else "⚠️ Не рекомендуется (отклонение > 3% или ширина обода сильно отличается)"
+
+    # Преимущества и недостатки
+    width_effects = ""
+    if data['new_width'] > data['current_width']:
+        width_effects = (
+            "📈 *Увеличится ширина шины:*\n\n"
+            "✅ Лучше внешний вид сзади\n"
+            "✅ Улучшится сцепление и торможение (лето)\n"
+            "✅ Увеличится срок службы шины\n"
+            "❌ Незначительно увеличится расход топлива\n"
+            "❌ Риск затирания подкрылков\n"
+        )
+    elif data['new_width'] < data['current_width']:
+        width_effects = (
+            "📉 *Уменьшится ширина шины:*\n\n"
+            "✅ Улучшится сцепление на льду и снегу\n"
+            "✅ Уменьшится расход топлива\n"
+            "❌ Ухудшится сцепление (лето)\n"
+            "❌ Сократится срок службы шины\n"
+        )
+
+    profile_effects = ""
+    if new_profile_height > current_profile_height:
+        profile_effects = (
+            "📈 *Увеличится высота профиля:*\n\n"
+            "✅ Машина станет мягче\n"
+            "✅ Меньше риск повредить шину/диск\n"
+            "❌ Хуже держит дорогу на скорости\n"
+        )
+    elif new_profile_height < current_profile_height:
+        profile_effects = (
+            "📉 *Уменьшится высота профиля:*\n\n"
+            "✅ Улучшится управляемость\n"
+            "❌ Машина станет жестче\n"
+            "❌ Больше риск повредить диск/шину\n"
+        )
+
+    clearance_effects = ""
+    if clearance_diff > 0:
+        clearance_effects = (
+            "📈 *Увеличится клиренс:*\n\n"
+            "✅ Комфортнее на ямах и бездорожье\n"
+            "❌ Ухудшится управляемость на скорости\n"
+            "❌ Риск затирания подкрылков\n"
+            f"❌ Спидометр занижает на {abs(speed_diff_percent):.1f}%\n"
+        )
+    elif clearance_diff < 0:
+        clearance_effects = (
+            "📉 *Уменьшится клиренс:*\n\n"
+            "✅ Улучшится управляемость на скорости\n"
+            "❌ Менее комфортно на ямах\n"
+            f"❌ Спидометр завышает на {abs(speed_diff_percent):.1f}%\n"
+        )
+
+    # Формирование результата
+    result_message = (
+        "*Результат расчета шин и дисков:*\n\n\n"
+        "*Текущие параметры:*\n\n"
+        f"📏 Шины: {data['current_width']}/{data['current_profile']} R{data['current_diameter']}\n"
+        f"🔍 Диски: {data['current_rim_width']}x{data['current_diameter']} ET {data['current_et']}\n"
+        f"↔️ Ширина шины: {data['current_width']} мм\n"
+        f"↕️ Высота профиля: {current_profile_height:.1f} мм\n"
+        f"🔄 Диаметр: {current_total_diameter:.1f} мм\n"
+        f"↔️ Ширина обода: {current_rim_width_mm:.1f} мм\n\n"
+        "*Новые параметры:*\n\n"
+        f"📏 Шины: {data['new_width']}/{data['new_profile']} R{data['new_diameter']}\n"
+        f"🔍 Диски: {data['new_rim_width']}x{data['new_diameter']} ET {data['new_et']}\n"
+        f"↔️ Ширина шины: {data['new_width']} мм\n"
+        f"↕️ Высота профиля: {new_profile_height:.1f} мм\n"
+        f"🔄 Диаметр: {new_total_diameter:.1f} мм\n"
+        f"↔️ Ширина обода: {new_rim_width_mm:.1f} мм\n\n"
+        "*Сравнение:*\n\n"
+        f"🔄 Разница в диаметре: {diameter_diff_mm:+.1f} мм ({diameter_diff_percent:+.1f}%)\n"
+        f"🚗 Изменение клиренса: {clearance_diff:+.1f} мм\n"
+        f"⏱ Отклонение спидометра: {speed_diff_percent:+.1f}%\n"
+        f"↔️ Разница в ширине обода: {rim_width_diff_mm:+.1f} мм\n\n"
+        f"{width_effects}\n\n"
+        f"{profile_effects}\n\n"
+        f"{clearance_effects}\n\n"
+        f"*Рекомендация:*\n\n{recommendation}"
+    )
+
+    bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
+    save_calculation_to_history(user_id, data, current_total_diameter, new_total_diameter, diameter_diff_mm, diameter_diff_percent)
+    view_tire_calc(message)  # Возвращаем пользователя в меню шинного калькулятора
+
+# Сохранение в историю
+def save_calculation_to_history(user_id, data, current_diameter, new_diameter, diff_mm, diff_percent):
+    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+    
+    # Вычисления для сохранения
+    current_profile_height = data['current_width'] * (data['current_profile'] / 100)
+    new_profile_height = data['new_width'] * (data['new_profile'] / 100)
+    current_rim_width_mm = data['current_rim_width'] * 25.4
+    new_rim_width_mm = data['new_rim_width'] * 25.4
+    diameter_diff_mm = new_diameter - current_diameter
+    diameter_diff_percent = (diameter_diff_mm / current_diameter) * 100
+    clearance_diff = diameter_diff_mm / 2
+    speed_diff_percent = -diameter_diff_percent
+    rim_width_diff_mm = new_rim_width_mm - current_rim_width_mm
+    recommendation = "✅ Подходит" if abs(diameter_diff_percent) <= 3 and abs(rim_width_diff_mm) <= 25.4 else "⚠️ Не рекомендуется (отклонение > 3% или ширина обода сильно отличается)"
+
+    # Полная структура данных для сохранения
+    calculation_data = {
+        'current_tire': f"{data['current_width']}/{data['current_profile']} R{data['current_diameter']}",
+        'current_rim': f"{data['current_rim_width']}x{data['current_diameter']} ET {data['current_et']}",
+        'new_tire': f"{data['new_width']}/{data['new_profile']} R{data['new_diameter']}",
+        'new_rim': f"{data['new_rim_width']}x{data['new_diameter']} ET {data['new_et']}",
+        'current_width': data['current_width'],
+        'current_profile': data['current_profile'],
+        'current_profile_height': current_profile_height,
+        'current_diameter': current_diameter,
+        'current_rim_width_mm': current_rim_width_mm,
+        'current_et': data['current_et'],
+        'new_width': data['new_width'],
+        'new_profile': data['new_profile'],
+        'new_profile_height': new_profile_height,
+        'new_diameter': new_diameter,
+        'new_rim_width_mm': new_rim_width_mm,
+        'new_et': data['new_et'],
+        'diameter_diff_mm': diameter_diff_mm,
+        'diameter_diff_percent': diameter_diff_percent,
+        'clearance_diff': clearance_diff,
+        'speed_diff_percent': speed_diff_percent,
+        'rim_width_diff_mm': rim_width_diff_mm,
+        'recommendation': recommendation,
+        'timestamp': timestamp
+    }
+
+    if str(user_id) not in user_history:
+        user_history[str(user_id)] = {
+            'username': data['username'],
+            'calculations': []
+        }
+
+    user_history[str(user_id)]['calculations'].append(calculation_data)
+    save_user_history_tires()
+
+# ---------- ПРОСМОТР РАСЧЕТОВ ШИН ----------
+
+@bot.message_handler(func=lambda message: message.text == "Просмотр шин")
+def handle_view_tire_calc(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(message)
+        return
+    view_tire_calculations(message.chat.id)
+
+def view_tire_calculations(chat_id):
+    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
+    
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов шин:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']  
+        message_text += f"🕒 *№{i}.* {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_view_tire_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в шины')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+
+def process_view_tire_selection(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            if len(indices) == 1:
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_tire_calc(message)
+                return
+            else:
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_tire_calc(message)
+            return
+
+        for index in valid_indices:
+            calc = calculations[index]
+            
+            # Проверка на наличие всех ключей, с обратной совместимостью
+            required_keys = ['current_width', 'new_width', 'current_profile_height', 'new_profile_height', 
+                             'current_diameter', 'new_diameter', 'current_rim_width_mm', 'new_rim_width_mm',
+                             'diameter_diff_mm', 'diameter_diff_percent', 'clearance_diff', 'speed_diff_percent',
+                             'rim_width_diff_mm', 'recommendation']
+            for key in required_keys:
+                if key not in calc:
+                    bot.send_message(chat_id, f"❌ Данные расчета №{index + 1} устарели или повреждены. Выполните новый расчет.")
+                    view_tire_calc(message)
+                    return
+
+            # Преимущества и недостатки
+            width_effects = ""
+            if calc['new_width'] > calc['current_width']:
+                width_effects = (
+                    "📈 *Увеличится ширина шины:*\n\n"
+                    "✅ Лучше внешний вид сзади\n"
+                    "✅ Улучшится сцепление и торможение (лето)\n"
+                    "✅ Увеличится срок службы шины\n"
+                    "❌ Незначительно увеличится расход топлива\n"
+                    "❌ Риск затирания подкрылков\n"
+                )
+            elif calc['new_width'] < calc['current_width']:
+                width_effects = (
+                    "📉 *Уменьшится ширина шины:*\n\n"
+                    "✅ Улучшится сцепление на льду и снегу\n"
+                    "✅ Уменьшится расход топлива\n"
+                    "❌ Ухудшится сцепление (лето)\n"
+                    "❌ Сократится срок службы шины\n"
+                )
+
+            profile_effects = ""
+            if calc['new_profile_height'] > calc['current_profile_height']:
+                profile_effects = (
+                    "📈 *Увеличится высота профиля:*\n\n"
+                    "✅ Машина станет мягче\n"
+                    "✅ Меньше риск повредить шину/диск\n"
+                    "❌ Хуже держит дорогу на скорости\n"
+                )
+            elif calc['new_profile_height'] < calc['current_profile_height']:
+                profile_effects = (
+                    "📉 *Уменьшится высота профиля:*\n\n"
+                    "✅ Улучшится управляемость\n"
+                    "❌ Машина станет жестче\n"
+                    "❌ Больше риск повредить диск/шину\n"
+                )
+
+            clearance_effects = ""
+            if calc['clearance_diff'] > 0:
+                clearance_effects = (
+                    "📈 *Увеличится клиренс:*\n\n"
+                    "✅ Комфортнее на ямах и бездорожье\n"
+                    "❌ Ухудшится управляемость на скорости\n"
+                    "❌ Риск затирания подкрылков\n"
+                    f"❌ Спидометр занижает на {abs(calc['speed_diff_percent']):.1f}%\n"
+                )
+            elif calc['clearance_diff'] < 0:
+                clearance_effects = (
+                    "📉 *Уменьшится клиренс:*\n\n"
+                    "✅ Улучшится управляемость на скорости\n"
+                    "❌ Менее комфортно на ямах\n"
+                    f"❌ Спидометр завышает на {abs(calc['speed_diff_percent']):.1f}%\n"
+                )
+
+            # Формирование полного результата
+            result_message = (
+                f"*📊 Результат расчета шин №{index + 1}:*\n\n\n"
+                f"*Текущие параметры:*\n\n"
+                f"📏 Шины: {calc['current_tire']}\n"
+                f"🔍 Диски: {calc['current_rim']}\n"
+                f"↔️ Ширина шины: {calc['current_width']} мм\n"
+                f"↕️ Высота профиля: {calc['current_profile_height']:.1f} мм\n"
+                f"🔄 Диаметр: {calc['current_diameter']:.1f} мм\n"
+                f"↔️ Ширина обода: {calc['current_rim_width_mm']:.1f} мм\n\n"
+                f"*Новые параметры:*\n\n"
+                f"📏 Шины: {calc['new_tire']}\n"
+                f"🔍 Диски: {calc['new_rim']}\n"
+                f"↔️ Ширина шины: {calc['new_width']} мм\n"
+                f"↕️ Высота профиля: {calc['new_profile_height']:.1f} мм\n"
+                f"🔄 Диаметр: {calc['new_diameter']:.1f} мм\n"
+                f"↔️ Ширина обода: {calc['new_rim_width_mm']:.1f} мм\n\n"
+                f"*Сравнение:*\n\n"
+                f"🔄 Разница в диаметре: {calc['diameter_diff_mm']:+.1f} мм ({calc['diameter_diff_percent']:+.1f}%)\n"
+                f"🚗 Изменение клиренса: {calc['clearance_diff']:+.1f} мм\n"
+                f"⏱ Отклонение спидометра: {calc['speed_diff_percent']:+.1f}%\n"
+                f"↔️ Разница в ширине обода: {calc['rim_width_diff_mm']:+.1f} мм\n\n"
+                f"{width_effects}\n\n"
+                f"{profile_effects}\n\n"
+                f"{clearance_effects}\n\n"
+                f"*Рекомендация:*\n\n{calc['recommendation']}\n\n"
+                f"🕒 *Дата расчета:* {calc['timestamp']}"
+            )
+            
+            bot.send_message(chat_id, result_message, parse_mode='Markdown')
+
+        view_tire_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
+        view_tire_calc(message)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
+        view_tire_calc(message)
+
+# ---------- УДАЛЕНИЕ РАСЧЕТОВ ШИН ----------
+
+@bot.message_handler(func=lambda message: message.text == "Удаление шин")
+def handle_delete_tire_calc(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(message)
+        return
+    delete_tire_calculations(message.chat.id)
+
+def delete_tire_calculations(chat_id):
+    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
+    
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов шин:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']  
+        message_text += f"🕒 *№{i}.* {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_delete_tire_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в шины')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
+
+def process_delete_tire_selection(message):
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    if message.text == "Вернуться в шины":
+        view_tire_calc(message)
+        return
+    
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов шин!")
+        view_tire_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            if len(indices) == 1:
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_tire_calc(message)
+                return
+            else:
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_tire_calc(message)
+            return
+
+        valid_indices.sort(reverse=True)  # Удаляем с конца, чтобы не сбить индексы
+        deleted_count = 0
+        for index in valid_indices:
+            del calculations[index]
+            deleted_count += 1
+
+        save_user_history_tires()
+        bot.send_message(chat_id, f"✅ Выбранные расчеты шин успешно удалены!")
+        view_tire_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
+        view_tire_calc(message)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
+        view_tire_calc(message)
+
+
+# ---------- РАСЧЕТ НАЛОГА ----------
+
+import os
+import json
+import telebot
+from telebot import types
+import PyPDF2
+import re
+
+# Paths to files
+NALOG_JSON_PATH = os.path.join('files', 'nalog.json')
+USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
+PERECHEN_AUTO_PATH = os.path.join('files', 'Perechen_auto_10mln_rub.pdf')
+NALOG_STAVKI_PATH = os.path.join('files', 'nalog_stavki_region.pdf')
+
+# Global variables
+nalog_data = {}
+user_history = {}
+user_data = {}
+expensive_cars = []
+tax_rates = {}
+
+# Ensure file paths exist and load data
+def ensure_path_and_file(file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    if not os.path.exists(file_path):
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
+
+def load_nalog_data():
+    global nalog_data
+    try:
+        with open(NALOG_JSON_PATH, 'r', encoding='utf-8') as file:
+            nalog_data = json.load(file)
+    except Exception as e:
+        print(f"Ошибка при загрузке файла nalog.json: {e}")
+
+def load_user_history_nalog():
+    global user_history
+    try:
+        if os.path.exists(TIRE_HISTORY_PATH):
+            with open(TIRE_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
+                user_history = json.load(db_file)
+        else:
+            print(f"Файл {TIRE_HISTORY_PATH} не найден! Создание нового...")
+            user_history = {}
+            save_user_history_nalog()
+    except Exception as e:
+        print(f"Ошибка при загрузке истории пользователей: {e}")
+        user_history = {}
+
+def save_user_history_nalog():
+    try:
+        with open(TIRE_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
+            json.dump(user_history, db_file, ensure_ascii=False, indent=2)
+        print(f"Данные сохранены в {TIRE_HISTORY_PATH}: {user_history}")
+    except Exception as e:
+        print(f"Ошибка при сохранении истории: {e}")
+
+def load_expensive_cars():
+    global expensive_cars
+    try:
+        with open(PERECHEN_AUTO_PATH, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text()
+            
+            # Парсинг данных из PDF
+            lines = text.split('\n')
+            current_cost_range = ""
+            car_data = []
+            
+            for line in lines:
+                line = line.strip()
+                if "средней стоимостью от 10 миллионов до 15 миллионов рублей" in line:
+                    current_cost_range = "10-15"
+                elif "средней стоимостью от 15 миллионов рублей" in line:
+                    current_cost_range = "15+"
+                elif line.startswith("|"):
+                    parts = line.split("|")
+                    if len(parts) >= 6:
+                        try:
+                            brand = parts[1].strip()
+                            model = parts[2].strip()
+                            engine_type = parts[3].strip()
+                            engine_volume = parts[4].strip()
+                            years_passed = parts[5].strip()
+                            car_data.append({
+                                "brand": brand,
+                                "model": model,
+                                "engine_type": engine_type,
+                                "engine_volume": engine_volume,
+                                "years_passed": years_passed,
+                                "cost_range": current_cost_range
+                            })
+                        except:
+                            continue
+            expensive_cars = car_data
+    except Exception as e:
+        print(f"Ошибка при загрузке файла Perechen_auto_10mln_rub.pdf: {e}")
+
+def load_tax_rates():
+    global tax_rates
+    try:
+        with open(NALOG_STAVKI_PATH, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text()
+
+            # Разделяем текст на строки
+            lines = text.split('\n')
+            tax_rates = {}
+            current_region_code = None
+            current_vehicle_type = None
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Поиск региона (предполагаем, что регион указан в формате "01 | Республика Адыгея")
+                region_match = re.match(r"(\d{2})\s*\|\s*(.+)", line)
+                if region_match:
+                    current_region_code = region_match.group(1)
+                    region_name = region_match.group(2).strip()
+                    tax_rates[current_region_code] = {
+                        "region_name": region_name,
+                        "rates": {}
+                    }
+                    continue
+
+                # Определяем тип ТС
+                if "Автомобили легковые" in line:
+                    current_vehicle_type = "Автомобили легковые"
+                elif "Автомобили грузовые" in line:
+                    current_vehicle_type = "Автомобили грузовые"
+                elif "Другие самоходные транспортные средства" in line:
+                    current_vehicle_type = "Другие самоходные"
+                elif "Снегоходы, мотосани" in line:
+                    current_vehicle_type = "Снегоходы, мотосани"
+                elif "Катера, моторные лодки" in line:
+                    current_vehicle_type = "Катера, моторные лодки"
+                elif "Яхты и другие парусно-моторные суда" in line:
+                    current_vehicle_type = "Яхты"
+                elif "Гидроциклы" in line:
+                    current_vehicle_type = "Гидроциклы"
+                elif "Несамоходные (буксируемые) суда" in line:
+                    current_vehicle_type = "Несамоходные суда"
+                elif "Самолеты, вертолеты" in line:
+                    current_vehicle_type = "Самолеты, вертолеты"
+                elif "Самолеты, имеющие реактивные двигатели" in line:
+                    current_vehicle_type = "Самолеты с реактивными двигателями"
+                elif "Другие водные и воздушные транспортные средства" in line:
+                    current_vehicle_type = "Другие водные и воздушные"
+
+                # Парсинг ставок
+                if current_region_code and current_vehicle_type:
+                    # Инициализация структуры для текущего типа ТС
+                    if current_vehicle_type not in tax_rates[current_region_code]["rates"]:
+                        tax_rates[current_region_code]["rates"][current_vehicle_type] = {}
+
+                    # Парсинг ставок для легковых автомобилей
+                    if current_vehicle_type == "Автомобили легковые":
+                        power_match = re.match(
+                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?(?:,\s*с\s*года\s*выпуска\s*которых\s*до\s*1\s*числа\s*налогового\s*периода\s*прошло:)?",
+                            line
+                        )
+                        if power_match:
+                            power_limit = int(power_match.group(2))
+                            condition = power_match.group(1)
+                            age_range = None
+                            if "до 5 лет включительно" in line:
+                                age_range = "0-5"
+                            elif "свыше 5 до 10 лет включительно" in line:
+                                age_range = "5-10"
+                            elif "свыше 10 лет" in line:
+                                age_range = "10+"
+                            
+                            rate_match = re.search(r"\|\s*([\d,]+)", line)
+                            if rate_match:
+                                rate = float(rate_match.group(1).replace(',', '.'))
+                                key = f"{condition}_{power_limit}"
+                                if age_range:
+                                    key += f"_{age_range}"
+                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
+
+                    # Парсинг ставок для грузовых автомобилей
+                    elif current_vehicle_type == "Автомобили грузовые":
+                        power_match = re.match(
+                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?(?:,\s*с\s*года\s*выпуска\s*которых\s*до\s*1\s*числа\s*налогового\s*периода\s*прошло:)?",
+                            line
+                        )
+                        if power_match:
+                            power_limit = int(power_match.group(2))
+                            condition = power_match.group(1)
+                            age_range = None
+                            if "до 5 лет включительно" in line:
+                                age_range = "0-5"
+                            elif "свыше 5 до 10 лет включительно" in line:
+                                age_range = "5-10"
+                            elif "свыше 10 лет" in line:
+                                age_range = "10+"
+                            
+                            rate_match = re.search(r"\|\s*([\d,]+)", line)
+                            if rate_match:
+                                rate = float(rate_match.group(1).replace(',', '.'))
+                                key = f"{condition}_{power_limit}"
+                                if age_range:
+                                    key += f"_{age_range}"
+                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
+
+                    # Парсинг ставок для других типов ТС
+                    else:
+                        power_match = re.match(
+                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?",
+                            line
+                        )
+                        if power_match:
+                            power_limit = int(power_match.group(2))
+                            condition = power_match.group(1)
+                            rate_match = re.search(r"\|\s*([\d,]+)", line)
+                            if rate_match:
+                                rate = float(rate_match.group(1).replace(',', '.'))
+                                key = f"{condition}_{power_limit}"
+                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
+                        else:
+                            # Для ТС без мощности (например, несамоходные суда)
+                            rate_match = re.search(r"\|\s*([\d,]+)", line)
+                            if rate_match:
+                                rate = float(rate_match.group(1).replace(',', '.'))
+                                tax_rates[current_region_code]["rates"][current_vehicle_type]["default"] = rate
+
+    except Exception as e:
+        print(f"Ошибка при загрузке файла nalog_stavki_region.pdf: {e}")
+
+ensure_path_and_file(NALOG_JSON_PATH)
+ensure_path_and_file(USER_HISTORY_PATH)
+load_nalog_data()
+load_user_history_nalog()
+load_expensive_cars()
+load_tax_rates()
+
+# Start tax calculation
+@bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
+def start_tax_calculation(message):
+    if not nalog_data:
+        bot.send_message(message.chat.id, "❌ Данные для расчета не найдены!")
+        return
+
+    user_id = message.from_user.id
+    user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
+
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    regions = [region['name'] for region in nalog_data['regions']]
+    for i in range(0, len(regions), 2):
+        if i + 1 < len(regions):
+            markup.row(regions[i], regions[i + 1])
+        else:
+            markup.add(regions[i])
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Выберите ваш регион:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_region_step)
+
+# Step 1: Region
+def process_region_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    region_name = message.text.strip()
+    region = next((r for r in nalog_data['regions'] if r['name'] == region_name), None)
+    if not region:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        bot.register_next_step_handler(msg, process_region_step)
+        return
+
+    user_data[user_id]['region'] = region_name
+    user_data[user_id]['region_code'] = region['code']
+
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    years = nalog_data['years']
+    for i in range(0, len(years), 2):
+        if i + 1 < len(years):
+            markup.row(str(years[i]), str(years[i + 1]))
+        else:
+            markup.add(str(years[i]))
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Выберите год для налога:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_year_step)
+
+# Step 2: Year
+def process_year_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        year = int(message.text)
+        if year not in nalog_data['years']:
+            raise ValueError
+        user_data[user_id]['year'] = year
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        bot.register_next_step_handler(msg, process_year_step)
+        return
+
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    months = nalog_data['ownership_months']
+    for i in range(0, len(months), 2):
+        if i + 1 < len(months):
+            markup.row(months[i], months[i + 1])
+        else:
+            markup.add(months[i])
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Количество месяцев владения ТС:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_ownership_months_step)
+
+# Step 3: Ownership months
+def process_ownership_months_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    month = message.text.strip()
+    if month not in nalog_data['ownership_months']:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        bot.register_next_step_handler(msg, process_ownership_months_step)
+        return
+
+    user_data[user_id]['ownership_months'] = int(month)
+
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    vehicle_types = [vt['name'] for vt in nalog_data['vehicle_types']]
+    for i in range(0, len(vehicle_types), 2):
+        if i + 1 < len(vehicle_types):
+            markup.row(vehicle_types[i], vehicle_types[i + 1])
+        else:
+            markup.add(vehicle_types[i])
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Вид транспортного средства:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_vehicle_type_step)
+
+# Step 4: Vehicle type
+def process_vehicle_type_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    vehicle_type = message.text.strip()
+    vehicle = next((vt for vt in nalog_data['vehicle_types'] if vt['name'] == vehicle_type), None)
+    if not vehicle:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        bot.register_next_step_handler(msg, process_vehicle_type_step)
+        return
+
+    user_data[user_id]['vehicle_type'] = vehicle_type
+    user_data[user_id]['vehicle_code'] = vehicle['code']
+    user_data[user_id]['metric'] = vehicle['metric']
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, f"{vehicle['metric']}:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_metric_value_step)
+
+# Step 4: Metric value (e.g., engine power, gross tonnage, etc.)
+def process_metric_value_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        value = float(message.text.replace(',', '.'))
+        user_data[user_id]['metric_value'] = value
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число")
+        bot.register_next_step_handler(msg, process_metric_value_step)
+        return
+
+    # Если выбраны "Автомобили легковые", спрашиваем про стоимость > 10 млн
+    if user_data[user_id]['vehicle_type'] == "Автомобили легковые":
+        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+        markup.add("Да", "Нет")
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, "ТС стоит больше 10 миллионов рублей?", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_expensive_car_step)
+    else:
+        proceed_to_benefits(message)
+
+# Step 4.1: Expensive car check
+def process_expensive_car_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    if message.text not in ["Да", "Нет"]:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите Да или Нет")
+        bot.register_next_step_handler(msg, process_expensive_car_step)
+        return
+
+    user_data[user_id]['is_expensive'] = message.text == "Да"
+
+    if user_data[user_id]['is_expensive']:
+        # Собираем уникальные марки
+        brands = sorted(set(car['brand'] for car in expensive_cars))
+        brand_list = "\n".join(f"{i+1}. {brand}" for i, brand in enumerate(brands))
+        user_data[user_id]['brands'] = brands
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Марка ТС:\n{brand_list}\n\nВведите номер марки:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_brand_step)
+    else:
+        proceed_to_benefits(message)
+
+# Step 4.1a: Brand selection
+def process_brand_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        brand_idx = int(message.text) - 1
+        brands = user_data[user_id]['brands']
+        if brand_idx < 0 or brand_idx >= len(brands):
+            raise ValueError
+        selected_brand = brands[brand_idx]
+        user_data[user_id]['selected_brand'] = selected_brand
+
+        # Собираем модели для выбранной марки
+        models = sorted(set(car['model'] for car in expensive_cars if car['brand'] == selected_brand))
+        model_list = "\n".join(f"{i+1}. {model}" for i, model in enumerate(models))
+        user_data[user_id]['models'] = models
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Модель ТС:\n{model_list}\n\nВведите номер модели:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_model_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        bot.register_next_step_handler(msg, process_brand_step)
+
+# Step 4.1b: Model selection
+def process_model_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        model_idx = int(message.text) - 1
+        models = user_data[user_id]['models']
+        if model_idx < 0 or model_idx >= len(models):
+            raise ValueError
+        selected_model = models[model_idx]
+        user_data[user_id]['selected_model'] = selected_model
+
+        # Собираем годы выпуска для выбранной марки и модели
+        selected_brand = user_data[user_id]['selected_brand']
+        years_passed_list = sorted(set(car['years_passed'] for car in expensive_cars if car['brand'] == selected_brand and car['model'] == selected_model))
+        years = []
+        current_year = user_data[user_id]['year']
+        for years_passed in years_passed_list:
+            if "до" in years_passed:
+                start, end = map(int, re.findall(r'\d+', years_passed))
+                for y in range(start, end + 1):
+                    years.append(current_year - y)
+            else:
+                years.append(current_year - int(re.search(r'\d+', years_passed).group()))
+        years = sorted(set(years))
+        year_list = "\n".join(f"{i+1}. {year}" for i, year in enumerate(years))
+        user_data[user_id]['years'] = years
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("В главное меню")
+        msg = bot.send_message(message.chat.id, f"Год выпуска:\n{year_list}\n\nВведите номер года:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_year_of_manufacture_step)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        bot.register_next_step_handler(msg, process_model_step)
+
+# Step 4.1c: Year of manufacture
+def process_year_of_manufacture_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    try:
+        year_idx = int(message.text) - 1
+        years = user_data[user_id]['years']
+        if year_idx < 0 or year_idx >= len(years):
+            raise ValueError
+        selected_year = years[year_idx]
+        user_data[user_id]['year_of_manufacture'] = selected_year
+        proceed_to_benefits(message)
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
+        bot.register_next_step_handler(msg, process_year_of_manufacture_step)
+
+# Step 5: Benefits
+def proceed_to_benefits(message):
+    user_id = message.from_user.id
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    benefits = [benefit['description'] for benefit in nalog_data['benefits']]
+    for i in range(0, len(benefits), 2):
+        if i + 1 < len(benefits):
+            markup.row(benefits[i], benefits[i + 1])
+        else:
+            markup.add(benefits[i])
+    markup.add("В главное меню")
+    msg = bot.send_message(message.chat.id, "Имею ли я право на льготу?", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_benefits_step)
+
+def process_benefits_step(message):
+    user_id = message.from_user.id
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    benefit_desc = message.text.strip()
+    benefit = next((b for b in nalog_data['benefits'] if b['description'] == benefit_desc), None)
+    if not benefit:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        bot.register_next_step_handler(msg, process_benefits_step)
+        return
+
+    user_data[user_id]['benefit'] = benefit_desc
+    calculate_tax(message)
+
+# Step 6: Calculate tax
+def calculate_tax(message):
+    user_id = message.from_user.id
+    data = user_data[user_id]
+
+    # Определяем налоговую базу (мощность двигателя, валовая вместимость и т.д.)
+    tax_base = data['metric_value']
+
+    # Определяем налоговую ставку
+    region_code = data['region_code']
+    vehicle_type = data['vehicle_type']
+    rates = tax_rates.get(region_code, {}).get("rates", {}).get(vehicle_type, {})
+
+    rate = 0.0
+    if vehicle_type == "Автомобили легковые" or vehicle_type == "Автомобили грузовые":
+        # Учитываем возраст ТС
+        if 'year_of_manufacture' in data:
+            years_passed = data['year'] - data['year_of_manufacture']
+            if years_passed <= 5:
+                age_range = "0-5"
+            elif years_passed <= 10:
+                age_range = "5-10"
+            else:
+                age_range = "10+"
+        else:
+            age_range = "0-5"  # По умолчанию, если возраст не указан
+
+        # Ищем подходящую ставку
+        if tax_base <= 100:
+            key = f"до_100_{age_range}" if age_range else "до_100"
+            rate = rates.get(key, 0.0)
+        elif tax_base <= 200:
+            key = f"свыше_100_{age_range}" if age_range else "свыше_100"
+            rate = rates.get(key, rates.get(f"до_200_{age_range}", rates.get("до_200", 0.0)))
+        elif tax_base <= 300:
+            key = f"свыше_200_{age_range}" if age_range else "свыше_200"
+            rate = rates.get(key, rates.get(f"до_300_{age_range}", rates.get("до_300", 0.0)))
+        else:
+            key = f"свыше_300_{age_range}" if age_range else "свыше_300"
+            rate = rates.get(key, 0.0)
+
+    else:
+        # Для других типов ТС
+        if tax_base <= 50:
+            rate = rates.get("до_50", 0.0)
+        elif tax_base <= 100:
+            rate = rates.get("до_100", rates.get("свыше_50", 0.0))
+        elif tax_base <= 300:
+            rate = rates.get("свыше_100", 0.0)
+        else:
+            rate = rates.get("свыше_300", rates.get("default", 0.0))
+
+    # Учитываем количество месяцев владения
+    ownership_months = data['ownership_months']
+    months_coefficient = ownership_months / 12
+
+    # Проверяем льготы
+    benefit = data['benefit']
+    benefit_coefficient = 1.0
+    if benefit != "Нет":
+        benefit_coefficient = 0.0  # Полное освобождение от налога
+
+    # Проверяем, стоит ли ТС больше 10 млн рублей
+    increasing_coefficient = 1.0
+    if data.get('is_expensive', False):
+        years_passed = data['year'] - data['year_of_manufacture']
+        if years_passed <= 3:
+            increasing_coefficient = 3.0
+        elif years_passed <= 5:
+            increasing_coefficient = 2.0
+        elif years_passed <= 10:
+            increasing_coefficient = 1.5
+
+    # Расчет налога
+    tax = tax_base * rate * months_coefficient * increasing_coefficient * benefit_coefficient
+
+    # Формируем результат
+    result = (
+        f"Расчет налога за {ownership_months} мес. {data['year']} года\n"
+        f"Для транспортного средства: {data['vehicle_type']}\n"
+        f"С {data['metric'].lower()}: {tax_base}\n"
+        f"Ставка: {rate} руб.\n"
+        f"Сумма налога составит: {tax:,.2f} ₽"
+    )
+
+    bot.send_message(message.chat.id, result, reply_markup=types.ReplyKeyboardRemove())
+    save_user_history_nalog()
 
 
 
