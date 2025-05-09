@@ -3770,7 +3770,7 @@ def fuel_prices_command(message):
     markup.add(item1)
     
     # Отправляем сообщение с просьбой ввести город и клавиатурой
-    bot.send_message(chat_id, "Введите название города (на русском):", reply_markup=markup)
+    bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
 
     # Регистрация следующего шага
     bot.register_next_step_handler(message, process_city_selection)
@@ -3778,14 +3778,25 @@ def fuel_prices_command(message):
 # Обработчик выбора города
 def process_city_selection(message):
     chat_id = message.chat.id
-    
+
     # Проверяем состояние пользователя
     if user_state.get(chat_id) != "choosing_city":
         bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
         return
-    
+
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+
+    # Проверяем, есть ли текст в сообщении
+    if not message.text:
+        bot.send_message(chat_id, "Пожалуйста, введите название города.")
+        # Запросить ввод города снова
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Отправляем сообщение с клавиатурой
+        bot.register_next_step_handler(message, process_city_selection)
         return
 
     city_name = message.text.strip()  # Получаем название города
@@ -3802,7 +3813,7 @@ def process_city_selection(message):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        bot.send_message(chat_id, "Введите название города (на русском):", reply_markup=markup)  # Отправляем сообщение с клавиатурой
+        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)  # Отправляем сообщение с клавиатурой
         bot.register_next_step_handler(message, process_city_selection)
 
 # Определяем доступные типы топлива
@@ -3890,15 +3901,17 @@ def process_fuel_price_selection(message, city_code):
         # Создание клавиатуры с кнопками
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         another_fuel_button = types.KeyboardButton("Посмотреть цены на другое топливо")
+        choose_another_city_button = types.KeyboardButton("Выбрать другой город")  # Новая кнопка
         main_menu_button = types.KeyboardButton("В главное меню")
         markup.add(another_fuel_button)
+        markup.add(choose_another_city_button)
         markup.add(main_menu_button)
-
+        
         # Обновляем состояние пользователя
         user_state[chat_id] = "next_action"
 
         # Отправляем сообщение с клавиатурой
-        sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или вернуться в меню.", reply_markup=markup)
+        sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или выбрать другой город.", reply_markup=markup)
         bot.register_next_step_handler(sent, process_next_action)
 
     except Exception as e:
@@ -3913,6 +3926,19 @@ def process_next_action(message):
 
     if message.text == "В главное меню":
         return_to_menu(message)
+        return
+    elif message.text == "Выбрать другой город":  # Обработка нажатия кнопки "Выбрать другой город"
+        user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
+        # Создаем клавиатуру с кнопкой "В главное меню"
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("В главное меню")
+        markup.add(item1)
+        
+        # Отправляем сообщение с просьбой ввести город и клавиатурой
+        bot.send_message(chat_id, "Введите название города:", reply_markup=markup)
+        
+        # Регистрация следующего шага
+        bot.register_next_step_handler(message, process_city_selection)
         return
 
     # Сброс состояния перед новым выбором топлива
