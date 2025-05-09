@@ -9774,11 +9774,20 @@ BACKUP_DIR = 'backups'
 SOURCE_DIR = '.'
 EXECUTABLE_FILE = '(59 update ) CAR MANAGER TG BOT (official) v0924.py'
 
+# Путь к JSON файлу с админскими сессиями
+ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+
 def normalize_name(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
+# Загрузка админских сессий из JSON файла
+def load_admin_sessions():
+    with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    return data['admin_sessions']
+
 # Обработчик для кнопки "Резервная копия"
-@bot.message_handler(func=lambda message: message.text == 'Резервная копия')
+@bot.message_handler(func=lambda message: message.text == 'Резервная копия' and str(message.chat.id) in load_admin_sessions())
 def show_backup_menu(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add('Создать копию', 'Восстановить данные')
@@ -9798,7 +9807,7 @@ def handle_create_backup(message):
 def handle_restore_backup(message):
     success = restore_latest_backup()
     if success:
-        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа!")
+        bot.send_message(message.chat.id, "Данные успешно восстановлены из последней резервной копии!")
     else:
         bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден")
     show_admin_panel(message)
@@ -9842,7 +9851,6 @@ def restore_latest_backup():
 
     print("Восстановление завершено")
     return True
-
 
 
 # (ADMIN n) ------------------------------------------ "ВКЛ/ВЫКЛ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
