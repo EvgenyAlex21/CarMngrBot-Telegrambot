@@ -1,0 +1,84 @@
+01 - Тверская область - tverskaya_oblast
+02 - Калининградская область - kaliningradskaya_oblast
+03 - Псковская область - pskovskaya_oblast
+04 - Ленинградская область - lenigradskaya_oblast
+05 - Карелия - kareliya
+06 - Мурманская область - murmanskaya_oblast
+07 - Архангельская область - arkhangelskaya_oblast
+08 - Ненецкий округ - nenetskiy_okrug
+09 - Коми - komi
+10 - Ямало-Ненецкий округ - yamalo_nenetskiy_okrug
+11 - Ханты-Мансийский округ - khanty_mansiyskiy_okrug
+12 - Красноярский край - krasnoyarskiy_kray
+13 - Хакасия - khakasiya
+14 - Кемеровская область - kemerovskaya_oblast
+15 - Томская область - tomskaya_oblast
+16 - Новосибирская область - novosibirskaya_oblast
+17 - Республика Алтай - respublika_altay
+18 - Алтайский край - altayskiy_kray
+19 - Омская область - omskaya_oblast
+20 - Тюменская область - tyumenskaya_oblast
+21 - Курганская область - kurgan_oblast
+22 - Свердловская область - sverdlovskaya_oblast
+23 - Пермский край - permskiy_kray
+24 - Челябинская область - chelyabinskaya_oblast
+25 - Оренбургская область - orenburgskaya_oblast
+26 - Башкортостан - bashkortostan
+27 - Смоленская область - smolenskaya_oblast
+28 - Калужская область - kaluzhskaya_oblast
+29 - Брянская область - bryanskaya_oblast
+30 - Тульская область - tulskaya_oblast
+31 - Рязанская область - ryazanskaya_oblast
+32 - Новгородская область - novgorodskaya_oblast
+33 - Вологодская область - vologodskaya_oblast
+34 - Кировская область - kirovskaya_oblast
+35 - Удмуртия - udmutriya
+36 - Костромская область - kostromskaya_oblast
+37 - Владимирская область - vladimirskaya_oblast
+38 - Ивановская область - ivanovskaya_oblast
+39 - Нижегородская область - nizhegorodskaya_oblast
+40 - Курская область - kurskaya_oblast
+41 - Орловская область - orlovskaya_oblast
+42 - Марий Эл - mari_el
+43 - Татарстан - tatarstan
+44 - Чувашия - chuvashiya
+45 - Мордовия - mordoviya
+46 - Ульяновская область - ulyanovskaya_oblast
+47 - Самарская область - samarskaya_oblast
+48 - Саратовская область - saratovskaya_oblast
+49 - Пензенская область - penzenskaya_oblast
+50 - Тамбовская область - tambovskaya_oblast
+51 - Липецкая область - lipetskaya_oblast
+52 - Белгородская область - belgorodskaya_oblast
+53 - Воронежская область - voronezhskaya_oblast
+54 - Волгоградская область - volgogradskaya_oblast
+55 - Ростовская область - rostovskaya_oblast
+56 - Краснодарский край - krasnodarskiy_kray
+57 - Адыгея - adygeya
+58 - Астраханская область - astrakhanskaya_oblast
+59 - Калмыкия - kalmykiya
+60 - Ставропольский край - stavropolskiy_kray
+61 - Карачаево-Черкесия - karachaevo_cherkesiya
+62 - Кабардино-Балкария - kabardino_balkariya
+63 - Дагестан - dagestan
+64 - Чечня - checheniya
+65 - Северная Осетия - severnaya_osetiya
+66 - Ингушетия - ingushetiya
+67 - Якутия - yakutiya
+68 - Тыва - tyva
+69 - Иркутская область - irkutskaya_oblast
+70 - Бурятия - buryatiya
+71 - Забайкальский край - zabaykalskiy_kray
+72 - Амурская область - amurskaya_oblast
+73 - Хабаровский край - khabarovskiy_kray
+74 - Еврейская область - evreyskaya_oblast
+75 - Приморский край - primorskiy_kray
+77 - Чукотка - chukotka
+78 - Камчатский край - kamchatskiy_kray
+79 - Ярославская область - yaroslavskaya_oblast
+80 - Сахалинская область - sakhalinskaya_oblast
+82 - Московская область - moskovskaya_oblast
+90 - Москва - moskva
+96 - Севастополь - sevastopol
+97 - Крым - krym
+99 - Санкт-Петербург - sankt_peterburg

@@ -1,0 +1,2205 @@
+[
+    {
+        "title": "Перечень легковых автомобилей средней стоимостью от 10 миллионов рублей (2025 год)",
+        "subtitle": "средней стоимостью от 10 миллионов до 15 миллионов рублей включительно, с года выпуска которых прошло не более 10 лет",
+        "cars": [
+            {
+                "brand": "AEO",
+                "model": "M9 Extended Range Ultra 6-ти местный",
+                "engine_type": "Гибрид",
+                "engine_displacement": 1499,
+                "age": "1 год"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DB11 Coupe V8",
+                "engine_type": "Бензин",
+                "engine_displacement": 4000,
+                "age": "от 6 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DB9 Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DB9 Volante",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Rapide S",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Rapide S Shadow Edition",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "8 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Rapide S V12",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "8 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "V12 Vantage S Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "V12 Vantage S Roadster",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "V8 Vantage S Roadster",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "V8 Vantage S Roadster Sportshift II",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vantage",
+                "engine_type": "Бензин",
+                "engine_displacement": 4000,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vantage",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vantage V8",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "A7 1.4 TFSI quattro Premium Dynamic",
+                "engine_type": "Бензин",
+                "engine_displacement": 1984,
+                "age": "1 год"
+            },
+            {
+                "brand": "Audi",
+                "model": "A7 1.4 TFSI Black Samurai",
+                "engine_type": "Бензин",
+                "engine_displacement": 1984,
+                "age": "1 год"
+            },
+            {
+                "brand": "Audi",
+                "model": "A7 1.4 TFSI V6 183 kW tiptronic quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 2905,
+                "age": "3 года"
+            },
+            {
+                "brand": "Audi",
+                "model": "A8 5 TFSI V6 250 kW tiptronic quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 2905,
+                "age": "3 года"
+            },
+            {
+                "brand": "Audi",
+                "model": "A8 5 TFSI V8 338 kW tiptronic quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 2905,
+                "age": "3 года"
+            },
+            {
+                "brand": "Audi",
+                "model": "A8 5 TFSI V6 183 kW tiptronic quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 2905,
+                "age": "3 года"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur V8",
+                "engine_type": "Бензин",
+                "engine_displacement": 3993,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur V8 S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3993,
+                "age": "от 8 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur W12",
+                "engine_type": "Бензин",
+                "engine_displacement": 5998,
+                "age": "от 9 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur W12 (new)",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GT Speed",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GT V8S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3993,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GT W12",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GTC Speed",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GTC V8",
+                "engine_type": "Бензин",
+                "engine_displacement": 3993,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GTC V8S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3993,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "New Continental GTC W12",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "530i xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 1998,
+                "age": "1 год"
+            },
+            {
+                "brand": "BMW",
+                "model": "730 Ld xDrive",
+                "engine_type": "Дизель",
+                "engine_displacement": 2993,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "740d xDrive",
+                "engine_type": "Дизель",
+                "engine_displacement": 2993,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "740Li xDrive",
+                "engine_type": "Дизель",
+                "engine_displacement": 2993,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "740Li xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 2998,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "750Li xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "540i xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 2998,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "i8",
+                "engine_type": "Гибрид",
+                "engine_displacement": 1499,
+                "age": "от 8 до 9 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "i8 Roadster",
+                "engine_type": "Гибрид",
+                "engine_displacement": 1499,
+                "age": "от 6 до 7 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M760Li xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 6592,
+                "age": "от 4 до 8 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M8 Cabrio",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M8 Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M8 Gran Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 6 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M850i xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "M850i xDrive",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M850i xDrive Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M850i xDrive Coupe",
+                "engine_type": "Дизель",
+                "engine_displacement": 1995,
+                "age": "1 год"
+            },
+            {
+                "brand": "BMW",
+                "model": "X3 xDrive20d G45",
+                "engine_type": "Бензин",
+                "engine_displacement": 1998,
+                "age": "1 год"
+            },
+            {
+                "brand": "BMW",
+                "model": "X4 xDrive20d G02",
+                "engine_type": "Дизель",
+                "engine_displacement": 1995,
+                "age": "1 год"
+            },
+            {
+                "brand": "BMW",
+                "model": "X5 M",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "X5 M Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X6 M",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X6 M50d",
+                "engine_type": "Дизель",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "X6 M50i",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "X7 M50d",
+                "engine_type": "Дизель",
+                "engine_displacement": 2993,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X7 M50i",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M5",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "M5 Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "M6 M Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "M850i xDrive Gran Coupe",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "3 года"
+            },
+            {
+                "brand": "Cadillac",
+                "model": "Escalade",
+                "engine_type": "Бензин",
+                "engine_displacement": 6162,
+                "age": "3 года"
+            },
+            {
+                "brand": "Cadillac",
+                "model": "Escalade",
+                "engine_type": "Бензин",
+                "engine_displacement": 6162,
+                "age": "3 года"
+            },
+            {
+                "brand": "Chevrolet",
+                "model": "Tahoe RST",
+                "engine_type": "Бензин",
+                "engine_displacement": 5328,
+                "age": "2 года"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "California T",
+                "engine_type": "Бензин",
+                "engine_displacement": 3855,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Genesis",
+                "model": "G90 Elite",
+                "engine_type": "Бензин",
+                "engine_displacement": 3352,
+                "age": "3 года"
+            },
+            {
+                "brand": "Genesis",
+                "model": "G90 Elite",
+                "engine_type": "Бензин",
+                "engine_displacement": 3778,
+                "age": "3 года"
+            },
+            {
+                "brand": "Genesis",
+                "model": "G90 Limousine",
+                "engine_type": "Бензин",
+                "engine_displacement": 5038,
+                "age": "3 года"
+            },
+            {
+                "brand": "Genesis",
+                "model": "G90 Royal",
+                "engine_type": "Бензин",
+                "engine_displacement": 3342,
+                "age": "3 года"
+            },
+            {
+                "brand": "Genesis",
+                "model": "GV80 2.5 T-GDI 8AT 4WD",
+                "engine_type": "Бензин",
+                "engine_displacement": 2497,
+                "age": "1 год"
+            },
+            {
+                "brand": "Genesis",
+                "model": "GV80 Executive 2.5 T-GDI 8AT 4WD",
+                "engine_type": "Бензин",
+                "engine_displacement": 2497,
+                "age": "1 год"
+            },
+            {
+                "brand": "Genesis",
+                "model": "HPPH Z 4WD 4-местный",
+                "engine_type": "Электрический",
+                "engine_displacement": null,
+                "age": "2 года"
+            },
+            {
+                "brand": "HiPhi",
+                "model": "E-HS9 Executive EU LR",
+                "engine_type": "Электрический",
+                "engine_displacement": null,
+                "age": "от 1 до 2 лет (включительно)"
+            },
+            {
+                "brand": "Hongqi",
+                "model": "H9 Executive",
+                "engine_type": "Бензин",
+                "engine_displacement": 2951,
+                "age": "1 год"
+            },
+            {
+                "brand": "Hyundai",
+                "model": "Staria Lounge Inspiration 2.2CRDi 8AT HTRAC",
+                "engine_type": "Дизель",
+                "engine_displacement": 2199,
+                "age": "1 год"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-TYPE R Convertible 5.0 V8 S/C 550 PS AWD",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-Type R Convertible 5.0 V8 S/C 575 PS AWD",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-Type R Coupe 5.0 V8 S/C 575 PS AWD",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-TYPE SVR 5.0 V8 S/C Coupe 575PS AWD AUTO (S17)",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 8 до 9 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-TYPE SVR Convertible 5.0 V8 S/C 575 PS AWD (VR1)",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "F-TYPE SVR Coupe 5.0 V8 S/C 575 PS AWD (VR1)",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "JAGUAR",
+                "model": "XJ 5.0 V8, 510PS S/C LWB Autobiography",
+                "engine_type": "Бензин",
+                "engine_displacement": 5000,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Jeep",
+                "model": "Grand Cherokee",
+                "engine_type": "Бензин",
+                "engine_displacement": 6000,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 7 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan 4 WD",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "9 лет"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan 4 WD Spyder",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "9 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Defender (L663) 5.0 V8 525 PS AWD Auto V8 LE6",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "3 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Defender 3Dr 5.0 V8 525 PS AWD Auto Carpathian Edition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Defender 5Dr 5.0 V8 525 PS AWD Auto Carpathian Edition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C SVAutobiography-TL7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C SVAutobiography Dynamic-TL7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 5 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C SVAutobiography-TL7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover speci",
+                "model": "Range Rover 5.0L LWB 4.4L SDV8 SVAutobiography-TL7",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 4.4L SDV8 Autobiography",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 4.4L SDV8 Fifty",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 4.4L SDV8 Fifty - LE7",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C Autobiography",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "3 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C Autobiography - TL6",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C Autobiography Black - TL7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C Fifty",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L LWB V8 S/C Fifty",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Autobiography",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Autobiography",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Fifty",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Fifty - LE7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C SVA Dynamic Black - LE5",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C SVAutobiography Dynamic",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Vogue SE",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover 5.0L V8 S/C Vogue SE",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 2.0L Si4 PHEV Autobiography",
+                "engine_type": "Гибрид",
+                "engine_displacement": 1997,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 2.0L Si4 PHEV Autobiography - TL6",
+                "engine_type": "Гибрид",
+                "engine_displacement": 1997,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 Autobiography",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 Autobiography - TL6",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 Autobiography Black - TL7",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 Fifty",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 Fifty - LE7",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover LWB 4.4L SDV8 SVAutobiography",
+                "engine_type": "Дизель",
+                "engine_displacement": 4367,
+                "age": "4 года"
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover Sport V8 S/C 5.0 SVR",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": null
+            },
+            {
+                "brand": "Land Rover",
+                "model": "Range Rover Sport V8 S/C 5.0 SVR CARBON",
+                "engine_type": "Бензин",
+                "engine_displacement": 4999,
+                "age": null
+            },
+            {
+                "brand": "Lexus",
+                "model": "LC500",
+                "engine_type": "Бензин",
+                "engine_displacement": 4969,
+                "age": "3 года"
+            },
+            {
+                "brand": "Lexus",
+                "model": "LS350",
+                "engine_type": "Бензин",
+                "engine_displacement": 3445,
+                "age": "3 года"
+            },
+            {
+                "brand": "Lexus",
+                "model": "LS500",
+                "engine_type": "Бензин",
+                "engine_displacement": 3445,
+                "age": "3 года"
+            },
+            {
+                "brand": "Lexus",
+                "model": "LX500D",
+                "engine_type": "Дизель",
+                "engine_displacement": 3445,
+                "age": "3 года"
+            },
+            {
+                "brand": "Lexus",
+                "model": "LX600D",
+                "engine_type": "Дизель",
+                "engine_displacement": 3445,
+                "age": "3 года"
+            },
+            {
+                "brand": "LIXIANG",
+                "model": "L9 4WD Max",
+                "engine_type": "Гибрид",
+                "engine_displacement": 3445,
+                "age": "2 года"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Ghibli Modena S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Ghibli Modena S Q4",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Ghibli S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Ghibli Trofeo",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "GranCabrio",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 3798,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante MODENA",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante MODENA S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante S Granlusso",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante S Gransport",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante Tributo",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Levante Trofeo",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 4 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte GTS Granlusso",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "8 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte GTS GranSport",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "8 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte Modena",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte Modena Q4",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte S Q4 GranSport",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "8 лет"
+            },
+            {
+                "brand": "Maserati",
+                "model": "Quattroporte Trofeo",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "E 200 4M Exclusive",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "G 350 d",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "4 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "G 400 d",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "4 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "G 400 d",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "G 500",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "5 лет"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "G 63 AMG 5 2B",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 300 d 4MATIC Premium",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 300 d 4MATIC Premium",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 300 d 4MATIC Sport Plus",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 350 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 350 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 350 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 400 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 400 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 450 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 450 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 450 d 4MATIC КУПЕ",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 450 d 4MATIC КУПЕ",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "2 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "GLE 450 d 4MATIC",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-Benz",
+                "engine_type": "Дизель",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG E 53 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG E 53 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG E 53 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG E 63 S 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG E 63 S 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 6 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG GLC 43 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 2979,
+                "age": "3 года"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG GLC 63 S 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG GLE 63 S 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG GLS 63 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-Maybach S 600",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG S 63 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 350 d 4MATIC Купе",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 450 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 560 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 560 e 4MATIC Купе",
+                "engine_type": "Гибрид",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 560 Кабриолет",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 600 длинная база",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 600 седан",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 63 AMG 4MATIC Купе",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "S 63 AMG",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Sprinter 317 L3H2",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Sprinter 517 L4H2",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 220d AMG Line+ 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 250d AMG Line+ 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 250d AVG Collection 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 250d EL AMG Line+ 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 250d EL AVG Collection 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 250d Executive 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 300d AVG Collection 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 300d EL AVG Collection 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class 300d Exclusive 4Matic",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class AVANTGARDE 250d",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class AVANTGARDE 300d",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class EXCLUSIVE 220d",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class EXCLUSIVE 250",
+                "engine_type": "Бензин",
+                "engine_displacement": 1951,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class EXCLUSIVE 250d",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "V-class EXCLUSIVE 300d",
+                "engine_type": "Дизель",
+                "engine_displacement": 1950,
+                "age": "от 1 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911",
+                "engine_type": "Бензин",
+                "engine_displacement": 3800,
+                "age": "7 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 CARRERA 4 GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 CARRERA 4 GTS Cabriolet",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 CARRERA 4S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 CARRERA GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 CARRERA GTS Cabriolet",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 GT3",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 GT3 RS",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Targa 4",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Targa 4 GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Targa 4S",
+                "engine_type": "Бензин",
+                "engine_displacement": 2981,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Turbo Cabriolet",
+                "engine_type": "Бензин",
+                "engine_displacement": 3800,
+                "age": "от 9 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Cayenne",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Cayenne Turbo",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Cayenne Turbo S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Cayenne Turbo S E-Hybrid",
+                "engine_type": "Гибрид",
+                "engine_displacement": 3996,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "7 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera",
+                "engine_type": "Бензин",
+                "engine_displacement": 2894,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera 4S E-Hybrid",
+                "engine_type": "Гибрид",
+                "engine_displacement": 2894,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera 4S sport turismo",
+                "engine_type": "Бензин",
+                "engine_displacement": 2894,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera GTS sport turismo",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "4 года"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera Turbo Executive",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera Turbo S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera Turbo S Cabrio II",
+                "engine_type": "Бензин",
+                "engine_displacement": 4806,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Porsche 991 Turbo S Cabrio II",
+                "engine_type": "Бензин",
+                "engine_displacement": 4806,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Porsche 991 Turbo S Coupe II",
+                "engine_type": "Бензин",
+                "engine_displacement": 4806,
+                "age": "10 лет"
+            },
+            {
+                "brand": "Zeekr",
+                "model": "009 4WD WE EDITION",
+                "engine_type": "Электрический",
+                "engine_displacement": null,
+                "age": "2 года"
+            }
+        ]
+    },
+    {
+        "title": "Перечень легковых автомобилей средней стоимостью от 15 миллионов рублей (2025 год)",
+        "subtitle": "средней стоимостью от 15 миллионов рублей, с года выпуска которых прошло не более 20 лет",
+        "cars": [
+            {
+                "brand": "Aston Martin",
+                "model": "DB11 AMR",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DB11 AMR Volante",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DB11 V12 AMR",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBS Superleggera",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBS Superleggera AMR",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 4 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBS Superleggera Volante",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBX",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBX 707",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "DBX AMR",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "3 года"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vanquish",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "от 9 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vanquish S",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "от 7 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vanquish S Volante",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "от 7 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Aston Martin",
+                "model": "Vanquish Volante",
+                "engine_type": "Бензин",
+                "engine_displacement": 5935,
+                "age": "от 9 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "A8 L 60 TFSI e quattro",
+                "engine_type": "Гибрид",
+                "engine_displacement": 2995,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "A8 L 60 TFSI quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "Q8 55 TFSI quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 2995,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "RS Q8",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "RS6 Avant",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "RS7 Sportback",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Audi",
+                "model": "S8 TFSI quattro",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Bentayga",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Bentayga",
+                "engine_type": "Бензин",
+                "engine_displacement": 5950,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Bentayga EWB",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Bentayga S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Bentayga Speed",
+                "engine_type": "Бензин",
+                "engine_displacement": 5950,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Continental GT",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Continental GT Convertible",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Continental GT Speed",
+                "engine_type": "Бензин",
+                "engine_displacement": 5950,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Bentley",
+                "model": "Flying Spur Speed",
+                "engine_type": "Бензин",
+                "engine_displacement": 5950,
+                "age": "2 года"
+            },
+            {
+                "brand": "BMW",
+                "model": "ALPINA B7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 5 до 8 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "ALPINA XB7",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "M8 Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X5 M Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X6 M Competition",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "BMW",
+                "model": "X7 M60i",
+                "engine_type": "Бензин",
+                "engine_displacement": 4395,
+                "age": "2 года"
+            },
+            {
+                "brand": "Bugatti",
+                "model": "Chiron",
+                "engine_type": "Бензин",
+                "engine_displacement": 7993,
+                "age": "от 5 до 9 лет (включительно)"
+            },
+            {
+                "brand": "Bugatti",
+                "model": "Chiron Pur Sport",
+                "engine_type": "Бензин",
+                "engine_displacement": 7993,
+                "age": "от 4 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Bugatti",
+                "model": "Chiron Super Sport",
+                "engine_type": "Бензин",
+                "engine_displacement": 7993,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "488 GTB",
+                "engine_type": "Бензин",
+                "engine_displacement": 3902,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "488 Pista",
+                "engine_type": "Бензин",
+                "engine_displacement": 3902,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "488 Pista Spider",
+                "engine_type": "Бензин",
+                "engine_displacement": 3902,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "812 GTS",
+                "engine_type": "Бензин",
+                "engine_displacement": 6496,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "812 Superfast",
+                "engine_type": "Бензин",
+                "engine_displacement": 6496,
+                "age": "от 6 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "F8 Spider",
+                "engine_type": "Бензин",
+                "engine_displacement": 3902,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "F8 Tributo",
+                "engine_type": "Бензин",
+                "engine_displacement": 3902,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "Portofino",
+                "engine_type": "Бензин",
+                "engine_displacement": 3855,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "Portofino M",
+                "engine_type": "Бензин",
+                "engine_displacement": 3855,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "Roma",
+                "engine_type": "Бензин",
+                "engine_displacement": 3855,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Ferrari",
+                "model": "SF90 Stradale",
+                "engine_type": "Гибрид",
+                "engine_displacement": 3990,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Aventador",
+                "engine_type": "Бензин",
+                "engine_displacement": 6498,
+                "age": "от 10 до 14 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Aventador LP 780-4 Ultimae",
+                "engine_type": "Бензин",
+                "engine_displacement": 6498,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Aventador S",
+                "engine_type": "Бензин",
+                "engine_displacement": 6498,
+                "age": "от 6 до 8 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Aventador SVJ",
+                "engine_type": "Бензин",
+                "engine_displacement": 6498,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan EVO",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan EVO Spyder",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Huracan STO",
+                "engine_type": "Бензин",
+                "engine_displacement": 5204,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Urus",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Lamborghini",
+                "model": "Urus Performante",
+                "engine_type": "Бензин",
+                "engine_displacement": 3996,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "570S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "620R",
+                "engine_type": "Бензин",
+                "engine_displacement": 3799,
+                "age": "от 4 до 5 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "720S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3994,
+                "age": "от 6 до 8 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "720S Spider",
+                "engine_type": "Бензин",
+                "engine_displacement": 3994,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "765LT",
+                "engine_type": "Бензин",
+                "engine_displacement": 3994,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "McLaren",
+                "model": "765LT Spider",
+                "engine_type": "Бензин",
+                "engine_displacement": 3994,
+                "age": "от 2 до 3 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-AMG GT 63 S 4MATIC+",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-Maybach GLS 600 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-Maybach S 580 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 3982,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Mercedes-Benz",
+                "model": "Mercedes-Maybach S 680 4MATIC",
+                "engine_type": "Бензин",
+                "engine_displacement": 5980,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Turbo S",
+                "engine_type": "Бензин",
+                "engine_displacement": 3745,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "911 Turbo S Cabriolet",
+                "engine_type": "Бензин",
+                "engine_displacement": 3745,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Porsche",
+                "model": "Panamera Turbo S E-Hybrid",
+                "engine_type": "Гибрид",
+                "engine_displacement": 3996,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Cullinan",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Cullinan Black Badge",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 4 до 6 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Dawn",
+                "engine_type": "Бензин",
+                "engine_displacement": 6592,
+                "age": "от 8 до 10 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Ghost",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 3 до 5 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Ghost Black Badge",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 3 до 4 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Phantom",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Phantom Extended",
+                "engine_type": "Бензин",
+                "engine_displacement": 6749,
+                "age": "от 5 до 7 лет (включительно)"
+            },
+            {
+                "brand": "Rolls-Royce",
+                "model": "Wraith",
+                "engine_type": "Бензин",
+                "engine_displacement": 6592,
+                "age": "от 9 до 12 лет (включительно)"
+            }
+        ]
+    }
+]
