@@ -1655,7 +1655,16 @@ def confirm_trip_deletion(message):
         return
 
     if message.text == "Удалить все поездки":
-        bot.send_message(user_id, "Вы уверены, что хотите удалить все поездки? (да/нет)")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add(types.KeyboardButton("Вернуться в меню расчета топлива"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        
+        bot.send_message(
+            user_id,
+            "*Вы уверены, что хотите удалить все поездки?*\n\nПожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
         bot.register_next_step_handler(message, confirm_delete_all)
         return
 
@@ -1688,6 +1697,15 @@ def confirm_delete_all(message):
         bot.register_next_step_handler(message, confirm_delete_all)
         return
 
+    # Проверяем нажатие на кнопки "Вернуться в меню расчета топлива" и "В главное меню"
+    if message.text == "Вернуться в меню расчета топлива":
+        reset_and_start_over(user_id)
+        return
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
     user_response = message.text.lower()
 
     if user_response == "да":
@@ -1714,7 +1732,7 @@ def confirm_delete_all(message):
         bot.send_message(user_id, "Удаление всех поездок отменено")
         reset_and_start_over(user_id)
     else:
-        bot.send_message(user_id, "Пожалуйста, ответьте 'Да' для подтверждения или 'Нет' для отмены")
+        bot.send_message(user_id, "Пожалуйста, ответьте *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_delete_all)
 
 # (10) --------------- КОД ДЛЯ "ТРАТ" ---------------
@@ -1794,7 +1812,7 @@ def return_to_menu_2(message):
 # (10.5) --------------- КОД ДЛЯ "ТРАТ" (ОБРАБОТЧИК "ЗАПИСАТЬ ТРАТУ") ---------------
 
 # Обработка данных о расходах
-def save_expense_data(user_id, user_data, selected_transport):
+def save_expense_data(user_id, user_data, selected_transport=None):
     # Задаем новый путь к папке и файлу
     folder_path = os.path.join("data base", "expense")
     if not os.path.exists(folder_path):
@@ -1844,18 +1862,18 @@ def get_user_categories(user_id):
     user_categories = data.get("user_categories", [])
     return default_categories + user_categories
 
-def add_user_category(user_id, new_category):
+def add_user_category(user_id, new_category, selected_transport=""):
     data = load_expense_data(user_id)
     if "user_categories" not in data:
         data["user_categories"] = []
     data["user_categories"].append(new_category)
-    save_expense_data(user_id, data)
+    save_expense_data(user_id, data, selected_transport)
 
-def remove_user_category(user_id, category_to_remove):
+def remove_user_category(user_id, category_to_remove, selected_transport=""):
     data = load_expense_data(user_id)
     if "user_categories" in data and category_to_remove in data["user_categories"]:
         data["user_categories"].remove(category_to_remove)
-        save_expense_data(user_id, data)
+        save_expense_data(user_id, data, selected_transport)
 
 # Основная функция для записи траты
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
@@ -5552,16 +5570,25 @@ def send_map_link(chat_id, start_location, end_location):
     
 # (14) --------------- КОД ДЛЯ "ПОИСК РЕГИОНА ПО ГОСНОМЕРУ" ---------------
 
+ALLOWED_LETTERS = "АВЕКМНОРСТУХABEKMHOPCTYX"  # Допустимые буквы для российских госномеров
+
+def is_valid_car_number(car_number):
+    """
+    Проверяет, соответствует ли введенный госномер формату:
+    1 буква, 3 цифры, 2 буквы, 2 или 3 цифры.
+    """
+    # Регулярное выражение для формата А123АА12 или А123АА123
+    pattern = rf"^[{ALLOWED_LETTERS}]\d{{3}}[{ALLOWED_LETTERS}]{{2}}\d{{2,3}}$"
+    return bool(re.match(pattern, car_number))
+
 @bot.message_handler(func=lambda message: message.text == "Код региона")
 @restricted
 @track_user_activity
 def handle_start4(message):
-    # Проверка активации функции
     if not function_states['Код региона']:
         bot.send_message(message.chat.id, "Эта функция временно недоступна.")
         return
 
-    # Отправка стартового сообщения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
     markup.add(item1)
@@ -5572,50 +5599,41 @@ def handle_start4(message):
     )
     bot.register_next_step_handler(message, process_input)
 
-
 def process_input(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    # Проверка на ввод мультимедийных файлов
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
         bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
         bot.register_next_step_handler(message, process_input)
         return
 
     text = message.text.strip()
-
-    # Клавиатура для действий после успешного ответа
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Ввести еще")
     item2 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
 
-    # Обработка ввода нескольких значений через запятую
-    inputs = [i.strip() for i in text.split(',')]  # Разделяем по запятой и очищаем пробелы
+    inputs = [i.strip() for i in text.split(',')]
+    responses = []
 
-    responses = []  # Список для хранения ответов
     for input_item in inputs:
-        # Обработка ввода кода региона (2-3 цифры)
         if input_item.isdigit() and (2 <= len(input_item) <= 3):
             region_code = input_item
             if region_code in regions:
                 region_name = regions[region_code]
-                response = f"🔍 *Регион для кода {region_code}:* {region_name}\n\n\n"
+                response = f"🔍 *Регион для кода {region_code}:*\n{region_name}\n\n\n"
             else:
-                response = f"Не удалось определить регион для кода {region_code}\n\n"
+                response = f"❌ Не удалось определить регион для кода: *{region_code}*\n\n\n"
         
-        # Обработка ввода госномера (8-9 символов)
-        elif 8 <= len(input_item) <= 9:
+        elif 8 <= len(input_item) <= 9 and is_valid_car_number(input_item.upper()):
             car_number = input_item.upper()
             region_code = car_number[-3:] if len(car_number) == 9 else car_number[-2:]
 
             if region_code in regions:
                 region_name = regions[region_code]
-                
-                # Формирование красивого ответа с эмодзи и гиперссылкой
                 avtocod_url = f"https://avtocod.ru/proverkaavto/{car_number}?rd=GRZ"
                 short_url = shorten_url(avtocod_url)
                 
@@ -5624,27 +5642,20 @@ def process_input(message):
                     f"🔗 [Ссылка на AvtoCod с поиском]({short_url})\n\n\n"
                 )
             else:
-                response = f"Не удалось определить регион для номера {car_number}\n\n"
-
+                response = f"❌ Не удалось определить регион для номера: `{car_number}`\n\n\n"
+        
         else:
-            response = f"Неверный формат для {input_item}. Пожалуйста, введите правильный госномер или код региона.\n\n"
+            response = f"❌ Неверный формат для `{input_item}`. Пожалуйста, введите правильный госномер или код региона\n\n\n"
 
         responses.append(response)
 
-    # Собираем все ответы в одно сообщение с пробелами между ними
     final_response = "".join(responses)
-
-    # Отправляем все ответы в одном сообщении
     bot.send_message(message.chat.id, final_response, reply_markup=markup, parse_mode="Markdown")
-
-    # Запрос действия после успешного ответа
     bot.send_message(message.chat.id, "Вы можете ввести еще или выйти в главное меню")
     bot.register_next_step_handler(message, handle_action_after_response)
 
-
 def handle_action_after_response(message):
     if message.text == "Ввести еще":
-        # Повторный запрос на ввод региона или номера
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("В главное меню")
         markup.add(item1)
@@ -5657,9 +5668,9 @@ def handle_action_after_response(message):
     elif message.text == "В главное меню":
         return_to_menu(message)
     else:
-        # Повторная отправка сообщения с предложением нажать на кнопку после неизвестного ответа
-        bot.send_message(message.chat.id, "Пожалуйста, выберите лействие из меню:")
+        bot.send_message(message.chat.id, "Пожалуйста, выберите действие из меню:")
         bot.register_next_step_handler(message, handle_action_after_response)
+
 
 # (15) --------------- КОД ДЛЯ "ПОГОДЫ" ---------------
 
@@ -6926,36 +6937,40 @@ class States:
     ADDING_TRANSPORT = 1
     CONFIRMING_DELETE = 2
 
+# Хранение данных о транспорте в памяти
+user_transport = {}
+
 # Функции для работы с файлами
 def save_transport_data(user_id, user_data):
-    folder_path = "data base"
+    folder_path = "data base/transport"  # Изменено на подкаталог transport
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
     
     # Сохраняем данные о транспорте
-    with open(os.path.join(folder_path, f"transport_{user_id}.json"), "w", encoding="utf-8") as file:
+    with open(os.path.join(folder_path, f"{user_id}_transport.json"), "w", encoding="utf-8") as file:
         json.dump(user_data, file, ensure_ascii=False, indent=4)
 
 def load_transport_data(user_id):
-    folder_path = "data base"  
+    folder_path = "data base/transport"  # Изменено на подкаталог transport
     try:
-        with open(os.path.join(folder_path, f"transport_{user_id}.json"), "r", encoding="utf-8") as file:
+        with open(os.path.join(folder_path, f"{user_id}_transport.json"), "r", encoding="utf-8") as file:
             data = json.load(file)
     except FileNotFoundError:
         data = []
     return data
 
-# Хранение данных о транспорте в памяти
-user_transport = {}
-
 # Загрузка данных о транспорте при старте бота
 def load_all_transport():
-    users = os.listdir("data base")
+    folder_path = "data base/transport"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    users = os.listdir(folder_path)
     for user_file in users:
-        if user_file.startswith("transport_"):
-            user_id = user_file.split("_")[1].replace(".json", "")
+        if user_file.endswith("_transport.json"):
+            user_id = user_file.split("_")[0]
             user_transport[user_id] = load_transport_data(user_id)
 
+# Пример вызова для загрузки данных
 load_all_transport()
 
 # Команда для управления транспортом
@@ -7056,7 +7071,7 @@ def process_year(message, brand, model):
         if year < 1960 or year > 3000:  # Проверка диапазона
             raise ValueError("Год должен быть в диапазоне от 1960 г. до 3000 г.")
     except ValueError:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите корректный год (диапазон от 1960 г. до 3000 г.). Попробуйте снова.", reply_markup=create_transport_keyboard())
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите корректный год (диапазон от 1960 г. до 3000 г.). Попробуйте снова", reply_markup=create_transport_keyboard())
         bot.register_next_step_handler(message, process_year, brand, model)
         return
 
@@ -7075,11 +7090,27 @@ def process_license_plate(message, brand, model, year):
         manage_transport(message)
         return
 
-    license_plate = message.text
+    # Приведение госномера к верхнему регистру
+    license_plate = message.text.upper()
 
-    # Проверка на длину ГОС.НОМЕРА (8 или 9 символов)
+    # Проверка длины и формата госномера
     if len(license_plate) not in [8, 9]:
-        bot.send_message(user_id, "Ошибка! Госномер должен содержать 8 или 9 символов. Попробуйте снова.", reply_markup=create_transport_keyboard())
+        bot.send_message(user_id, "Ошибка! Госномер должен содержать 8 или 9 символов. Попробуйте снова", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+        return
+
+    # Проверка допустимых букв
+    ALLOWED_LETTERS = "АВЕКМНОРСТУХABEKMHOPCTYX"
+    if not all(char in ALLOWED_LETTERS or char.isdigit() for char in license_plate):
+        bot.send_message(user_id, "Ошибка! Госномер содержит недопустимые символы. Попробуйте снова", reply_markup=create_transport_keyboard())
+        bot.register_next_step_handler(message, process_license_plate, brand, model, year)
+        return
+
+    # Проверка формата госномера
+    import re
+    pattern = r'^[АВЕКМНОРСТУХABEKMHOPCTYX]\d{3}[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\d{2,3}$'
+    if not re.match(pattern, license_plate):
+        bot.send_message(user_id, "Ошибка! Госномер должен соответствовать формату госномеров РФ. Попробуйте снова", reply_markup=create_transport_keyboard())
         bot.register_next_step_handler(message, process_license_plate, brand, model, year)
         return
 
@@ -7089,26 +7120,37 @@ def process_license_plate(message, brand, model, year):
     
     user_transport[user_id].append({"brand": brand, "model": model, "year": year, "license_plate": license_plate})
     save_transport_data(user_id, user_transport[user_id])  # Сохранение данных о транспорте
-    
-    bot.send_message(user_id, f"Транспорт добавлен: {brand} - {model} - {year} - {license_plate}", reply_markup=create_transport_keyboard())
+
+    bot.send_message(user_id, f"🚗 *Транспорт добавлен 🚗*\n\n*{brand} - {model} - {year} - {license_plate}*", parse_mode="Markdown", reply_markup=create_transport_keyboard())
 
     # Переход в меню "Ваш транспорт"
     manage_transport(message)
 
-def delete_expenses_related_to_transport(user_id, transport):
-    expenses_data = load_expense_data(user_id)  # Загрузите текущие расходы
+def delete_expenses_related_to_transport(user_id, transport, selected_transport=""):
+    expenses_data = load_expense_data(user_id)
     if user_id in expenses_data:
         updated_expenses = []
         for expense in expenses_data[user_id]['expenses']:
-            # Проверка на совпадение транспорта
             if expense['transport']['brand'] != transport['brand'] or \
                expense['transport']['model'] != transport['model'] or \
                expense['transport']['year'] != transport['year']:
                 updated_expenses.append(expense)
 
-        # Обновляем данные о расходах
         expenses_data[user_id]['expenses'] = updated_expenses
-        save_expense_data(user_id, expenses_data)  # Сохраняем обновленные данные
+        save_expense_data(user_id, expenses_data, selected_transport)
+
+def delete_repairs_related_to_transport(user_id, transport):
+    repair_data = load_repair_data(user_id)
+    if user_id in repair_data:
+        updated_repairs = []
+        for repair in repair_data[user_id].get("repairs", []):
+            if repair['transport']['brand'] != transport['brand'] or \
+               repair['transport']['model'] != transport['model'] or \
+               repair['transport']['year'] != transport['year']:
+                updated_repairs.append(repair)
+
+        repair_data[user_id]["repairs"] = updated_repairs
+        save_repair_data(user_id, repair_data, selected_transport="")
 
 @bot.message_handler(func=lambda message: message.text == "Удалить транспорт")
 @restricted
@@ -7119,11 +7161,11 @@ def delete_transport(message):
         keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         transport_list = user_transport[user_id]
         
-        # Формирование списка транспорта для удаления
+        # Формируем список транспорта для удаления
         for index, item in enumerate(transport_list, start=1):
-            keyboard.add(f"{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
+            keyboard.add(f"№{index}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}")
         
-        # Добавление кнопок "Вернуться в меню трат и ремонтов" и "В главное меню"
+        # Кнопки "В главное меню" и "Вернуться в ваш транспорт"
         item_main_menu = types.KeyboardButton("В главное меню")
         item_return_transport = types.KeyboardButton("Вернуться в ваш транспорт")
         keyboard.add("Удалить весь транспорт")
@@ -7133,18 +7175,17 @@ def delete_transport(message):
         bot.send_message(user_id, "Выберите транспорт для удаления или вернитесь:", reply_markup=keyboard)
         bot.register_next_step_handler(message, process_transport_selection)
     else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+        bot.send_message(user_id, "У вас нет добавленного транспорта")
 
 def process_transport_selection(message):
     user_id = str(message.chat.id)
     selected_transport = message.text.strip()
 
-    # Проверка на кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
+    # Проверяем, выбрал ли пользователь транспорт из списка или другую опцию
     if selected_transport == "В главное меню":
         return_to_menu(message)
         return
 
-    # Проверка на выбор "Удалить весь транспорт"
     if selected_transport == "Удалить весь транспорт":
         delete_all_transports(message)  # Переход к удалению всех транспортов
         return
@@ -7153,50 +7194,61 @@ def process_transport_selection(message):
         manage_transport(message)
         return
 
-    # Проверяем, выбрал ли пользователь транспорт из списка
     transport_list = user_transport.get(user_id, [])
     if transport_list:
-        # Получаем возможные индексы транспорта
-        possible_indices = [f"{i + 1}." for i in range(len(transport_list))]
-        
-        # Проверка, начинается ли текст с одного из возможных индексов
-        if any(selected_transport.startswith(index) for index in possible_indices):
-            index = int(selected_transport.split('.')[0]) - 1  # Определяем индекс транспорта
-            
-            if 0 <= index < len(transport_list):  # Проверяем, существует ли транспорт с таким индексом
+        # Проверяем, начинается ли текст с номера транспорта
+        try:
+            index = int(selected_transport.split('.')[0].replace("№", "").strip()) - 1
+            if 0 <= index < len(transport_list):
                 transport_to_delete = transport_list[index]
-                
-                # Отправка сообщения с подтверждением удаления
-                bot.send_message(user_id, f"Вы точно хотите удалить данный транспорт: {transport_to_delete['brand']} - {transport_to_delete['model']} - {transport_to_delete['year']} - {transport_to_delete['license_plate']}?\nПожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.", reply_markup=get_return_menu_keyboard())
+                bot.send_message(
+    user_id,
+    f"*Вы точно хотите удалить данный транспорт?\n\n{transport_to_delete['brand']} - {transport_to_delete['model']} - {transport_to_delete['year']} - {transport_to_delete['license_plate']}*\n\n"
+    "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
+    "Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены",
+    parse_mode="Markdown",
+    reply_markup=get_return_menu_keyboard()
+)
                 bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
             else:
-                bot.send_message(user_id, "Неверный выбор. Попробуйте снова.")
-                delete_transport(message)  # Возврат к выбору удаления транспорта
-        else:
-            bot.send_message(user_id, "Ошибка! Пожалуйста, выберите транспорт для удаления из списка.")
-            delete_transport(message)  # Возврат к выбору удаления транспорта
+                raise ValueError("Индекс вне диапазона")
+        except ValueError:
+            bot.send_message(user_id, "Ошибка! Пожалуйста, выберите транспорт для удаления из списка")
+            delete_transport(message)
     else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+        bot.send_message(user_id, "У вас нет добавленного транспорта")
 
 def process_confirmation(message, transport_to_delete):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
 
-    if confirmation == "ДА":
-        if user_id in user_transport:
-            user_transport[user_id].remove(transport_to_delete)  # Удаление элемента
-            delete_expenses_related_to_transport(user_id, transport_to_delete)  # Удаление расходов, связанных с транспортом
-            save_transport_data(user_id, user_transport[user_id])  # Сохранение после удаления
-            bot.send_message(user_id, "Транспорт и связанные с ним траты успешно удалены.")
-        else:
-            bot.send_message(user_id, "Неверный выбор.")
-    elif confirmation == "НЕТ":
-        bot.send_message(user_id, "Удаление отменено.")
-    else:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
-        bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))  # Ожидание повторного ввода
+    # Проверка на "В главное меню" или "Вернуться в ваш транспорт"
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    elif message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
 
-    manage_transport(message)
+    # Проверка подтверждения на "ДА" или "НЕТ"
+    if confirmation == "ДА":
+        if user_id in user_transport and transport_to_delete in user_transport[user_id]:
+            user_transport[user_id].remove(transport_to_delete)
+            delete_expenses_related_to_transport(user_id, transport_to_delete)
+            delete_repairs_related_to_transport(user_id, transport_to_delete)
+            save_transport_data(user_id, user_transport[user_id])
+            update_excel_file(user_id)
+            update_repairs_excel_file(user_id)
+            bot.send_message(user_id, "Транспорт и связанные с ним траты и ремонты успешно удалены")
+            manage_transport(message)  # Возвращаем в меню транспорта
+        else:
+            bot.send_message(user_id, "Ошибка удаления: транспорт не найден")
+    elif confirmation == "НЕТ":
+        bot.send_message(user_id, "Удаление отменено")
+        manage_transport(message)  # Возвращаем в меню транспорта
+    else:
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
+        bot.register_next_step_handler(message, lambda msg: process_confirmation(msg, transport_to_delete))
 
 # Функция для создания клавиатуры с кнопками возврата
 def get_return_menu_keyboard():
@@ -7214,36 +7266,52 @@ def delete_all_transports(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
         # Подтверждение удаления всех транспортов
-        bot.send_message(user_id, "Вы уверены, что хотите удалить весь транспорт? Введите 'ДА' для подтверждения или 'НЕТ' для отмены.", reply_markup=get_return_menu_keyboard())
+        bot.send_message(
+    user_id,
+    "*Вы уверены, что хотите удалить весь транспорт?*\n\n"
+    "Удаление транспорта приведет к удалению всех трат и ремонтов!\n\n"
+    "Введите *ДА* для подтверждения или *НЕТ* для отмены",
+    parse_mode="Markdown",
+    reply_markup=get_return_menu_keyboard()
+)
         bot.register_next_step_handler(message, process_delete_all_confirmation)
     else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта.")
+        bot.send_message(user_id, "У вас нет добавленного транспорта")
 
 def process_delete_all_confirmation(message):
     user_id = str(message.chat.id)
     confirmation = message.text.strip().upper()
 
+    # Проверка на "В главное меню" или "Вернуться в ваш транспорт"
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    elif message.text == "Вернуться в ваш транспорт":
+        manage_transport(message)
+        return
+
+    # Проверка подтверждения на "ДА" или "НЕТ"
     if confirmation == "ДА":
         if user_id in user_transport:
             # Удаляем все транспорты
             transports = user_transport[user_id]
             user_transport[user_id] = []  # Очищаем список
-            save_transport_data(user_id, user_transport[user_id])  # Обновляем сохраненные данные
+            save_transport_data(user_id, user_transport[user_id])
 
-            # Удаляем все расходы, связанные с удаляемым транспортом
             for transport in transports:
                 delete_expenses_related_to_transport(user_id, transport)
+                delete_repairs_related_to_transport(user_id, transport)
 
-            bot.send_message(user_id, "Весь транспорт и связанные с ним траты успешно удалены.")
+            bot.send_message(user_id, "Весь транспорт и связанные с ним траты и ремонты успешно удалены")
+            manage_transport(message)  # Возвращаем в меню транспорта
         else:
-            bot.send_message(user_id, "У вас нет добавленного транспорта.")
+            bot.send_message(user_id, "У вас нет добавленного транспорта")
     elif confirmation == "НЕТ":
-        bot.send_message(user_id, "Удаление отменено.")
+        bot.send_message(user_id, "Удаление отменено")
+        manage_transport(message)  # Возвращаем в меню транспорта
     else:
-        bot.send_message(user_id, "Ошибка! Пожалуйста, введите 'ДА' для подтверждения или 'НЕТ' для отмены.")
-        bot.register_next_step_handler(message, process_delete_all_confirmation)  # Ожидание повторного ввода
-
-    manage_transport(message)
+        bot.send_message(user_id, "Ошибка! Пожалуйста, введите *ДА* для подтверждения или *НЕТ* для отмены", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_delete_all_confirmation)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть транспорт")
 @restricted
@@ -7252,11 +7320,10 @@ def view_transport(message):
     user_id = str(message.chat.id)
     if user_id in user_transport and user_transport[user_id]:
         transport_list = user_transport[user_id]
-        response = "\n\n".join([f"{index + 1}. {item['brand']} - {item['model']} - {item['year']} - {item['license_plate']}" for index, item in enumerate(transport_list)])
-        bot.send_message(user_id, "Ваш транспорт:\n\n" + response)
+        response = "\n\n".join([f"№{index + 1}. {item['brand']} - {item['model']} - {item['year']} - `{item['license_plate']}`" for index, item in enumerate(transport_list)])
+        bot.send_message(user_id, f"🚙 *Ваш транспорт* 🚙\n\n{response}", parse_mode="Markdown", reply_markup=create_transport_keyboard())
     else:
-        bot.send_message(user_id, "У вас нет добавленного транспорта.")
-
+        bot.send_message(user_id, "У вас нет добавленного транспорта")
 
 @bot.message_handler(func=lambda message: message.text == "Вернуться в ваш транспорт")
 @restricted
