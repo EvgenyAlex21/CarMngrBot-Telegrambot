@@ -69,7 +69,6 @@ formatted_time = current_time.strftime('%d.%m.%Y в %H:%M:%S')
 # ---------- 4.1. Декоратор для ограничения действий пользователям, которые были заблокировны администратором ----------
 
 def restricted(func):
-    """Декоратор для ограничения доступа заблокированным пользователям."""
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
         username = message.from_user.username
@@ -1238,6 +1237,7 @@ def create_main_menu():
 @bot.message_handler(commands=['start'])
 @check_subscription_chanal
 @rate_limit_with_captcha
+@check_chat_state
 def start(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -33504,6 +33504,9 @@ def handle_confirm_delete_all_dialogs(message):
 
     return show_communication_menu(message)
 
+
+
+
 # ---------- 37 ЧАТ МЕЖДУ АДМИНОМ И ПОЛЬЗОВАТЕЛЕМ ----------
 
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
@@ -33527,32 +33530,27 @@ ACTIVE_CHATS_PATH = 'data base/admin/chats/active_chats.json'
 CHAT_HISTORY_PATH = 'data base/admin/chats/chat_history.json'
 
 active_chats = {}
-user_requests = {}
+user_requests_chat = {}
 dialog_states = {}
 current_dialogs = {}
 active_user_chats = {}
 active_admin_chats = {}
-user_requests = {}
+user_requests_chat = {}
 
 def load_active_chats():
-    global active_chats, user_requests
+    global active_chats, user_requests_chat
     if os.path.exists(ACTIVE_CHATS_PATH):
         with open(ACTIVE_CHATS_PATH, 'r', encoding='utf-8') as file:
             data = json.load(file)
             active_chats = {int(k): v for k, v in data.get("active_chats", {}).items()}
-            user_requests_data = data.get("user_requests", {})
-            print(f"Тип user_requests_data: {type(user_requests_data)}")  # Логирование
-            if isinstance(user_requests_data, list):
-                print("Ошибка: user_requests_data является списком, сбрасываем в словарь")
-                user_requests = {}
-            else:
-                user_requests = {
-                    int(k): {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in v.items()}
-                    for k, v in user_requests_data.items()
-                }
+            user_requests_chat_data = data.get("user_requests_chat", {})
+            user_requests_chat = {
+                int(k): v if isinstance(v, dict) else {}
+                for k, v in user_requests_chat_data.items()
+            }
     else:
         active_chats = {}
-        user_requests = {}
+        user_requests_chat = {}
 
 load_active_chats()
 
@@ -33560,18 +33558,25 @@ def save_active_chats():
     with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
         data = {
             "active_chats": {str(k): v for k, v in active_chats.items()},
-            "user_requests": {str(k): {date.strftime("%d.%m.%Y"): count for date, count in v.items()} for k, v in user_requests.items()}
+            "user_requests_chat": {str(k): v for k, v in user_requests_chat.items()}
         }
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 def add_user_request(user_id, date, count):
-    if user_id not in user_requests:
-        user_requests[user_id] = {}
-    if date not in user_requests[user_id]:
-        user_requests[user_id][date] = 0
-    if user_requests[user_id][date] >= 3:
+    if user_id not in user_requests_chat:
+        user_requests_chat[user_id] = {}
+
+    today = datetime.now().date().isoformat()
+
+    if today not in user_requests_chat[user_id]:
+        user_requests_chat[user_id][today] = []
+
+    # Проверяем лимит в 3 запроса
+    if len(user_requests_chat[user_id][today]) >= 3:
         return False
-    user_requests[user_id][date] += count
+
+    # Добавляем новый запрос
+    user_requests_chat[user_id][today].append(time.time())
     save_active_chats()
     return True
 
@@ -33768,7 +33773,8 @@ def handle_chat_response(message):
     if user_id in active_chats and active_chats[user_id]["status"] == "pending" and active_chats[user_id]["awaiting_response"]:
         admin_id = active_chats[user_id]["admin_id"]
         users_data = load_users()
-        username = users_data[str(user_id)]['username']
+        username = users_data.get(str(user_id), {}).get('username', 'Unknown')
+        escaped_username = escape_markdown(username)
 
         if admin_id in active_admin_chats:
             bot.send_message(user_id, "❌ Администратор уже начал чат с другим пользователем! Попробуйте позже...", parse_mode="Markdown")
@@ -33789,27 +33795,17 @@ def handle_chat_response(message):
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 markup.add(types.KeyboardButton('Стоп'))
                 bot.send_message(user_id, "✅ Вы на связи с администратором!", parse_mode="Markdown", reply_markup=markup)
-                bot.send_message(admin_id, f"✅ Пользователь {escape_markdown(username)} - `{user_id}` принял запрос на чат!", parse_mode="Markdown", reply_markup=markup)
+                bot.send_message(admin_id, f"✅ Пользователь {escaped_username} - `{user_id}` принял запрос на чат!", parse_mode="Markdown", reply_markup=markup)
                 active_chats[user_id]["status"] = "active"
                 active_chats[user_id]["awaiting_response"] = False
                 active_user_chats[user_id] = admin_id
                 active_admin_chats[admin_id] = user_id
                 save_active_chats()
 
-                for uid, chat_data in list(active_chats.items()):
-                    if chat_data.get("admin_id") == admin_id and uid != user_id:
-                        bot.send_message(uid, "❌ Администратор уже начал чат с другим пользователем! Попробуйте позже...", parse_mode="Markdown")
-                        start_menu(uid)
-                        del active_chats[uid]
-
-                save_active_chats()
-
-        else:
+        else:  # Отклонение запроса
             bot.send_message(user_id, "✅ Вы отклонили запрос на чат!", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
-            bot.send_message(admin_id, f"❌ Пользователь {escape_markdown(username)} - `{user_id}` отклонил запрос на чат!", parse_mode="Markdown")
+            bot.send_message(admin_id, f"❌ Пользователь {escaped_username} - `{user_id}` отклонил запрос на чат!", parse_mode="Markdown")
             del active_chats[user_id]
-            if admin_id in active_chats:
-                del active_chats[admin_id]
             save_active_chats()
             return_to_menu(message)
             return_admin_to_menu(admin_id)
@@ -34071,7 +34067,7 @@ def return_admin_to_menu(admin_id):
 
 ACTIVE_CHATS_PATH = os.path.join(os.path.dirname(__file__), 'data base', 'admin', 'chats', 'active_chats.json')
 active_chats = {}
-user_requests = {}
+user_requests_chat = {}
 
 def ensure_directories_and_file():
     directory = os.path.dirname(ACTIVE_CHATS_PATH)
@@ -34079,60 +34075,12 @@ def ensure_directories_and_file():
         os.makedirs(directory)
     if not os.path.exists(ACTIVE_CHATS_PATH):
         with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
-            json.dump({"active_chats": {}, "user_requests": {}}, file, ensure_ascii=False, indent=4)
+            json.dump({"active_chats": {}, "user_requests_chat": {}}, file, ensure_ascii=False, indent=4)
 
-def check_user_requests_type(func_name):
-    global user_requests
-    if not isinstance(user_requests, dict):
-        user_requests = {}
-
-def load_active_chats():
-    global active_chats, user_requests
-    ensure_directories_and_file()
-    try:
-        with open(ACTIVE_CHATS_PATH, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            active_chats = {int(k): v for k, v in data.get("active_chats", {}).items()}
-            user_requests_data = data.get("user_requests", {})
-            if isinstance(user_requests_data, list):
-                user_requests = {}
-            else:
-                user_requests = {
-                    int(k): {datetime.strptime(date_str, "%d.%m.%Y").date(): count for date_str, count in v.items()}
-                    for k, v in user_requests_data.items()
-                }
-    except json.JSONDecodeError:
-        active_chats = {}
-        user_requests = {}
-        save_active_chats()
-    check_user_requests_type("load_active_chats")
-
-def save_active_chats():
-    global active_chats, user_requests
-    check_user_requests_type("save_active_chats")
-    ensure_directories_and_file()
-    with open(ACTIVE_CHATS_PATH, 'w', encoding='utf-8') as file:
-        data = {
-            "active_chats": {str(k): v for k, v in active_chats.items()},
-            "user_requests": {
-                str(k): {date.strftime("%d.%m.%Y"): count for date, count in v.items()}
-                for k, v in user_requests.items()
-            }
-        }
-        json.dump(data, file, ensure_ascii=False, indent=4)
-
-def add_user_request(user_id, date, count):
-    global user_requests
-    check_user_requests_type("add_user_request")
-    if user_id not in user_requests:
-        user_requests[user_id] = {}
-    if date not in user_requests[user_id]:
-        user_requests[user_id][date] = 0
-    if user_requests[user_id][date] >= 3:
-        return False
-    user_requests[user_id][date] += count
-    save_active_chats()
-    return True
+def check_user_requests_chat_type(func_name):
+    global user_requests_chat
+    if not isinstance(user_requests_chat, dict):
+        user_requests_chat = {}
 
 load_active_chats()
 
@@ -34147,24 +34095,26 @@ load_active_chats()
 @check_subscription
 @check_subscription_chanal
 @text_only_handler
-# @rate_limit_with_captcha
+@rate_limit_with_captcha
 def request_chat_with_admin(message, show_description=True):
-    global active_chats, user_requests
-    check_user_requests_type("request_chat_with_admin")
-    if not isinstance(user_requests, dict):
-        user_requests = {}
+    global active_chats, user_requests_chat
+    check_user_requests_chat_type("request_chat_with_admin")
+    if not isinstance(user_requests_chat, dict):
+        user_requests_chat = {}
     if active_chats is None:
         active_chats = {}
 
     user_id = message.from_user.id
-    today = datetime.now().date()
+    today = datetime.now().date().isoformat()
 
+    # Проверяем, есть ли активный запрос в статусе pending
     if any(chat_data.get("user_id") == user_id and chat_data.get("status") == "pending" for chat_data in active_chats.values()):
-        bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте!")
+        bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте...")
         return
 
-    user_requests_today = user_requests.get(user_id, {}).get(today, 0)
-    if user_requests_today >= 3:
+    # Проверяем лимит запросов
+    user_requests_chat_today = len(user_requests_chat.get(user_id, {}).get(today, []))
+    if user_requests_chat_today >= 3:
         bot.send_message(user_id, "❌ Вы исчерпали лимит запросов на сегодня! Попробуйте завтра...")
         return
 
@@ -34195,24 +34145,27 @@ def request_chat_with_admin(message, show_description=True):
 def handle_chat_topic(message):
     user_id = message.from_user.id
     topic = message.text
-    today = datetime.now().date()
+    today = datetime.now().date().isoformat()
 
     if user_id in active_chats and active_chats[user_id].get("status") == "waiting_for_topic":
-        add_user_request(user_id, today, 1)
-
-        active_chats[user_id] = {
-            "user_id": user_id,
-            "status": "pending",
-            "topic": topic,
-            "awaiting_response": False
-        }
-        save_active_chats()
-
-        bot.send_message(user_id, "✅ Запрос на чат был успешно передан администратору! Ожидаем ответа...")
-        return_to_menu(message)
-        return
-
-    bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте!")
+        # Добавляем запрос в user_requests_chat
+        if add_user_request(user_id, today, 1):
+            active_chats[user_id] = {
+                "user_id": user_id,
+                "status": "pending",
+                "topic": topic,
+                "awaiting_response": False
+            }
+            save_active_chats()
+            bot.send_message(user_id, "✅ Запрос на чат был успешно передан администратору! Ожидаем ответа...")
+            return_to_menu(message)
+        else:
+            bot.send_message(user_id, "❌ Вы исчерпали лимит запросов на сегодня! Попробуйте завтра...")
+            del active_chats[user_id]
+            save_active_chats()
+            return_to_menu(message)
+    else:
+        bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте...")
 
 def check_chat_activity():
     while True:
