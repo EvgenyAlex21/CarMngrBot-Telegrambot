@@ -11699,7 +11699,12 @@ def update_progress(chat_id, message_id, bot, start_time):
         elapsed_time = time.time() - start_time
         with progress_lock:
             if progress >= 100:
-                break  
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"✅ Обработка завершена!\n\nВыполнено: 100%\nПрошло времени: {elapsed_time:.2f} секунд"
+                )
+                break
             current_progress = progress
         bot.edit_message_text(
             chat_id=chat_id,
@@ -11837,6 +11842,9 @@ def process_fuel_price_selection(message, city_code, site_type):
         normal_parts = [normal_prices_message[i:i + max_length] for i in range(0, len(normal_prices_message), max_length)]
         premium_parts = [premium_prices_message[i:i + max_length] for i in range(0, len(premium_prices_message), max_length)]
 
+        with progress_lock:
+            progress = 100
+
         if normal_parts:
             for i, part in enumerate(normal_parts):
                 if i == 0:
@@ -11863,17 +11871,14 @@ def process_fuel_price_selection(message, city_code, site_type):
         sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или выбрать другой город:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_next_action)
 
-        with progress_lock:
-            progress = 100
-
     except Exception as e:
         with progress_lock:
-            progress = 100 
+            progress = 100
         print(f"Ошибка: {e}")
 
         bot.send_message(chat_id, "❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
         show_fuel_price_menu(chat_id, city_code, site_type)
-        return 
+        return
     
 def process_next_action(message):
     chat_id = message.chat.id
@@ -11883,16 +11888,13 @@ def process_next_action(message):
         user_state[chat_id] = "choosing_city"
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
         recent_cities = user_data.get(str(chat_id), {}).get('recent_cities', [])
-
         city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
         if city_buttons:
             markup.row(*city_buttons)
-
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
         markup.add(types.KeyboardButton("В главное меню"))
-        bot.send_message(chat_id, "Введите название города или выберите из последних:", reply_markup=markup)
-
+        bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
         bot.register_next_step_handler(message, process_city_selection)
 
     elif text == "посмотреть цены на другое топливо":
