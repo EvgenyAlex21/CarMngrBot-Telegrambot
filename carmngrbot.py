@@ -123,6 +123,16 @@ def track_user_activity(func):
         return func(message, *args, **kwargs)
     return wrapper
 
+function_states = {
+    'Расход топлива': True,
+    'Траты и ремонты': True,
+    'Найти транспорт': True,
+    'Поиск мест': True,
+    'Погода': True,
+    'Код региона': True,
+    'Цены на топливо': True
+}
+
 @bot.message_handler(commands=['start'])
 @restricted
 @track_user_activity
@@ -248,6 +258,11 @@ def user_agreement_handler(message):
 @restricted
 @track_user_activity
 def handle_fuel_expense(message):
+
+    if not function_states['Расход топлива']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     user_id = message.from_user.id
 
     if user_id not in user_trip_data:
@@ -1588,6 +1603,10 @@ def confirm_delete_all(message):
 @restricted
 @track_user_activity
 def handle_expenses_and_repairs(message):
+    if not function_states['Траты и ремонты']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     user_id = message.from_user.id
 
     expense_data = load_expense_data(user_id).get(str(user_id), {})
@@ -4704,6 +4723,11 @@ def shorten_url(original_url):
 @restricted
 @track_user_activity
 def send_welcome(message):
+
+    if not function_states['Поиск мест']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     user_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -4952,6 +4976,11 @@ location_data = load_location_data()
 @restricted
 @track_user_activity
 def start_transport_search(message):
+
+    if not function_states['Найти транспорт']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     global location_data
     user_id = str(message.from_user.id)
 
@@ -5086,6 +5115,11 @@ def send_map_link(chat_id, start_location, end_location):
 @restricted
 @track_user_activity
 def handle_start4(message):
+
+    if not function_states['Код региона']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
     markup.add(item1)
@@ -5160,6 +5194,11 @@ user_data = {}
 @restricted
 @track_user_activity
 def handle_start_5(message):
+
+    if not function_states['Погода']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+    
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row(telebot.types.KeyboardButton("Отправить геопозицию", request_location=True))
@@ -6038,6 +6077,11 @@ def load_saved_data(city_code):
 @restricted
 @track_user_activity
 def fuel_prices_command(message):
+
+    if not function_states['Цены на топливо']:
+        bot.send_message(message.chat.id, "Эта функция временно недоступна.")
+        return  # Завершаем выполнение функции, если функция деактивирована
+
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
     user_state[chat_id] = "choosing_city"  # Устанавливаем состояние выбора города
@@ -7112,6 +7156,7 @@ def show_admin_panel(message):
     markup = types.ReplyKeyboardMarkup(row_width=2)
     markup.add(
         'Админ',
+        'Вкл/выкл функций',
         'Бан',
         'Статистика',
         'Резервная копия',
@@ -7495,6 +7540,93 @@ def restore_latest_backup():
         print(f'Ошибка при восстановлении из {latest_backup}: {e}')
     
     return True
+
+
+# (ADMIN n) ------------------------------------------ "ВКЛ/ВЫКЛ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
+
+# Путь к файлу с состоянием функций
+FUNCTIONS_STATE_PATH = 'data base/admin/functions_state.json'
+
+# Функция загрузки состояния функций из файла
+def load_function_states():
+    if os.path.exists(FUNCTIONS_STATE_PATH):
+        with open(FUNCTIONS_STATE_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    else:
+        save_function_states()  # Создаем файл с начальным состоянием
+        return function_states
+
+# Сохранение состояния функций в файл
+def save_function_states():
+    with open(FUNCTIONS_STATE_PATH, 'w', encoding='utf-8') as file:
+        json.dump(function_states, file, ensure_ascii=False, indent=4)
+
+# Загрузка состояний функций при старте
+function_states = load_function_states()
+
+def set_function_state(function_name, state):
+    if function_name in function_states:
+        function_states[function_name] = state
+        save_function_states()  # Сохраняем изменения
+        return f"Функция '{function_name}' успешно {'активирована' if state else 'деактивирована'}."
+    else:
+        return "Ошибка: Функция не найдена."
+
+def activate_function(function_name):
+    return set_function_state(function_name, True)
+
+def deactivate_function(function_name):
+    return set_function_state(function_name, False)
+
+# Функция для активации функции через некоторое время
+def activate_function_later(function_name, delay):
+    threading.Timer(delay.total_seconds(), activate_function, args=[function_name]).start()
+
+# Обработчик временной деактивации
+def handle_time_deactivation(time_spec, function_name):
+    try:
+        end_time = datetime.strptime(time_spec, "%H:%M %d.%m.%Y")
+        now = datetime.now()
+        
+        # Проверяем, что время в будущем
+        if end_time > now:
+            deactivate_function(function_name)  # Деактивируем сразу
+            delay = end_time - now  # Вычисляем задержку
+            activate_function_later(function_name, delay)  # Запускаем активацию позже
+        else:
+            print("Указанное время уже прошло.")
+    except ValueError:
+        print("Неверный формат времени. Используйте 'ЧЧ:ММ ДД.ММ.ГГГГ'.")
+
+# Ваша команда для настройки функций
+@bot.message_handler(func=lambda message: message.text == 'Вкл/выкл функций' and message.chat.id in admin_sessions)
+@bot.message_handler(commands=['set_function'])
+def set_function(message):
+    if message.chat.id in admin_sessions:  # Проверяем, является ли пользователь администратором
+        command_parts = message.text.split()
+        if len(command_parts) >= 3:
+            action = command_parts[1]  # activate или deactivate
+            function_name = " ".join(command_parts[2:-2])  # Название функции
+            time_spec = " ".join(command_parts[-2:])  # Временной аргумент
+
+            if action == "activate":
+                response = activate_function(function_name)
+            elif action == "deactivate":
+                if time_spec:  # Если указан временной аргумент
+                    handle_time_deactivation(time_spec, function_name)
+                    response = f"{function_name} будет деактивирована до {time_spec}."
+                else:
+                    response = deactivate_function(function_name)
+            else:
+                response = "Недопустимое действие. Используйте 'activate' или 'deactivate'."
+        else:
+            response = "Используйте команду в формате:\n\n /set_function <activate/deactivate> <function_name> [time]\n\n Например:\n\n /set_function deactivate Траты и ремонты 00:00 01.01.2025."
+        
+        bot.send_message(message.chat.id, response)
+    else:
+        bot.send_message(message.chat.id, "У вас нет прав для выполнения этой команды.")
+
+
 
 # (ADMIN 6) ------------------------------------------ "ВЫХОД ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
