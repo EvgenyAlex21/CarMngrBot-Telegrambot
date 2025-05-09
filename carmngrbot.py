@@ -9767,9 +9767,11 @@ def list_active_users():
 
 # (ADMIN 5) ------------------------------------------ "РЕЗЕРВНАЯ КОПИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
+import zipfile
+
 # Путь к директории для бэкапов и текущего исполняемого файла
-BACKUP_DIR = 'D:\\2024\\carmanger_local\\backups'
-SOURCE_DIR = 'D:\\2024\\carmanger_local'
+BACKUP_DIR = 'backups'
+SOURCE_DIR = '.'
 EXECUTABLE_FILE = '(59 update ) CAR MANAGER TG BOT (official) v0924.py'
 
 def normalize_name(name):
@@ -9778,19 +9780,17 @@ def normalize_name(name):
 # Обработчик для кнопки "Резервная копия"
 @bot.message_handler(func=lambda message: message.text == 'Резервная копия')
 def show_backup_menu(message):
-    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    markup.add(
-        'Создать копию',
-        'Восстановить данные',
-        'В меню админ-панели'
-    )
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup.add('Создать копию', 'Восстановить данные')
+    markup.add('В меню админ-панели')
+
     bot.send_message(message.chat.id, "Выберите действие с резервной копией:", reply_markup=markup)
 
 # Обработчик для кнопки "Создать копию"
 @bot.message_handler(func=lambda message: message.text == 'Создать копию')
 def handle_create_backup(message):
     backup_path = create_backup()
-    bot.send_message(message.chat.id, f"Резервная копия создана:\n\n{backup_path}")
+    bot.send_message(message.chat.id, f"Резервная копия создана!\n\nПуть к резвервной копии: _{backup_path}_", parse_mode="Markdown")
     show_admin_panel(message)
 
 # Обработчик для кнопки "Восстановить данные"
@@ -9798,78 +9798,51 @@ def handle_create_backup(message):
 def handle_restore_backup(message):
     success = restore_latest_backup()
     if success:
-        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа.")
+        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа!")
     else:
-        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден.")
+        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден")
     show_admin_panel(message)
 
 # Функция для создания резервной копии
 def create_backup():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_folder = os.path.join(BACKUP_DIR, f'backup_{timestamp}')
-    
-    os.makedirs(backup_folder, exist_ok=True)
-    
-    for item in os.listdir(SOURCE_DIR):
-        item_path = os.path.join(SOURCE_DIR, item)
-        
-        # Пропускаем папку "backups" и исполняемый файл
-        if item == 'backups' or item == EXECUTABLE_FILE:
-            continue
-        
-        normalized_name = normalize_name(item)
-        dest_path = os.path.join(backup_folder, normalized_name)
-        
-        try:
-            if os.path.isdir(item_path):
-                shutil.copytree(item_path, dest_path, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item_path, dest_path)
-        except Exception as e:
-            print(f'Ошибка при копировании {item_path}: {e}')
+    backup_file = os.path.join(BACKUP_DIR, f'backup_{timestamp}.zip')
 
-    return backup_folder
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+    with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(SOURCE_DIR):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, SOURCE_DIR)
+
+                # Пропускаем папку "backups" и исполняемый файл
+                if BACKUP_DIR in arcname or EXECUTABLE_FILE in arcname:
+                    continue
+
+                zipf.write(file_path, arcname)
+
+    return backup_file
 
 # Функция для восстановления из последнего бэкапа
 def restore_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     if not backups:
-        print("Нет бэкапов для восстановления.")
+        print("Нет бэкапов для восстановления")
         return False
 
     latest_backup = os.path.join(BACKUP_DIR, backups[0])
-    
+
     if not os.path.exists(latest_backup):
-        print(f"Ошибка: Бэкап {latest_backup} не найден.")
+        print(f"Ошибка: Бэкап {latest_backup} не найден")
         return False
-    
-    for item in os.listdir(SOURCE_DIR):
-        item_path = os.path.join(SOURCE_DIR, item)
-        
-        if item == 'backups' or item == EXECUTABLE_FILE:
-            continue
-        
-        try:
-            if os.path.isdir(item_path):
-                shutil.rmtree(item_path, ignore_errors=True)
-            else:
-                os.remove(item_path)
-        except Exception as e:
-            print(f'Ошибка при удалении {item_path}: {e}')
-    
-    try:
-        for item in os.listdir(latest_backup):
-            src_item = os.path.join(latest_backup, item)
-            dest_item = os.path.join(SOURCE_DIR, item)
-            if os.path.isdir(src_item):
-                shutil.copytree(src_item, dest_item, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src_item, dest_item)
-        print("Восстановление завершено.")
-    except Exception as e:
-        print(f'Ошибка при восстановлении из {latest_backup}: {e}')
-    
+
+    with zipfile.ZipFile(latest_backup, 'r') as zipf:
+        zipf.extractall(SOURCE_DIR)
+
+    print("Восстановление завершено")
     return True
+
 
 
 # (ADMIN n) ------------------------------------------ "ВКЛ/ВЫКЛ ФУУНКЦИЙ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
