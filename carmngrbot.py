@@ -1650,6 +1650,12 @@ def add_user_category(user_id, new_category):
     data["user_categories"].append(new_category)
     save_expense_data(user_id, data)
 
+def remove_user_category(user_id, category_to_remove):
+    data = load_expense_data(user_id)
+    if "user_categories" in data and category_to_remove in data["user_categories"]:
+        data["user_categories"].remove(category_to_remove)
+        save_expense_data(user_id, data)
+
 @bot.message_handler(func=lambda message: message.text == "Записать трату")
 def record_expense(message):
     user_id = message.from_user.id
@@ -1691,19 +1697,41 @@ def handle_transport_selection_for_record(message):
     buttons = [types.KeyboardButton(category) for category in categories]
     markup.add(*buttons)
     
+    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
+    markup.add(
+        types.KeyboardButton("Без категории"),
+        types.KeyboardButton("Добавить категорию"),
+        types.KeyboardButton("Удалить категорию")
+    )
+    
     # Добавляем кнопки "Вернуться в меню трат и ремонтов" и "В главное меню"
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
-    markup.add(types.KeyboardButton("Без категории"), types.KeyboardButton("Добавить категорию"))
-    
-    bot.send_message(user_id, "Выберите категорию траты или добавьте новую:", reply_markup=markup)
+    bot.send_message(user_id, "Выберите категорию траты, добавьте новую или удалите существующую:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_category, brand, model, year)
 
 def get_expense_category(message, brand, model, year):
     user_id = message.from_user.id
-    
+
+    # Обработка выбора удаления категории
+    if message.text == "Удалить категорию":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+        categories = get_user_categories(user_id)
+        buttons = [types.KeyboardButton(category) for category in categories]
+        markup.add(*buttons)
+
+        # Кнопки для возврата
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        markup.add(item_return, item_main_menu)
+
+        sent = bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
+        bot.register_next_step_handler(sent, handle_category_removal, brand, model, year)
+        return
+
+    # Обработка добавления новой категории
     if message.text == "Добавить категорию":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
@@ -1714,10 +1742,12 @@ def get_expense_category(message, brand, model, year):
         bot.register_next_step_handler(sent, add_category_and_select, brand, model, year)
         return
 
+    # Обработка возврата в меню
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         return_to_menu(message)
         return
 
+    # Обработка выбора категории для записи траты
     selected_category = message.text if message.text != "Без категории" else ""
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1727,6 +1757,45 @@ def get_expense_category(message, brand, model, year):
 
     bot.send_message(user_id, "Введите название траты:", reply_markup=markup)
     bot.register_next_step_handler(message, get_expense_name, selected_category, brand, model, year)
+
+def handle_category_removal(message, brand, model, year):
+    user_id = message.from_user.id
+    category_to_remove = message.text
+
+    # Загружаем данные и категории пользователя
+    data = load_expense_data(user_id)
+    user_categories = data.get("user_categories", [])
+
+    # Если категория для удаления существует среди пользовательских категорий, удаляем её
+    if category_to_remove in user_categories:
+        user_categories.remove(category_to_remove)
+        data["user_categories"] = user_categories
+        save_expense_data(user_id, data)
+        bot.send_message(user_id, f"Категория '{category_to_remove}' успешно удалена.")
+    else:
+        bot.send_message(user_id, f"Категория '{category_to_remove}' не найдена среди пользовательских категорий.")
+
+    # Возвращаем пользователя на выбор категории после удаления
+    categories = get_user_categories(user_id)
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+    buttons = [types.KeyboardButton(category) for category in categories]
+    markup.add(*buttons)
+    
+    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
+    markup.add(
+        types.KeyboardButton("Без категории"),
+        types.KeyboardButton("Добавить категорию"),
+        types.KeyboardButton("Удалить категорию")
+    )
+    
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return, item_main_menu)
+
+    # Сообщение с предложением выбрать категорию после удаления
+    bot.send_message(user_id, "Выберите категорию траты или добавьте новую:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_expense_category, brand, model, year)
 
 def add_category_and_select(message, brand, model, year):
     user_id = message.from_user.id
@@ -2647,14 +2716,38 @@ def handle_transport_selection_for_repair(message):
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
-    markup.add(types.KeyboardButton("Без категории"), types.KeyboardButton("Добавить категорию"))
+    
+    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
+    markup.add(
+        types.KeyboardButton("Без категории"),
+        types.KeyboardButton("Добавить категорию"),
+        types.KeyboardButton("Удалить категорию")  # Кнопка для удаления категории
+    )
 
     bot.send_message(user_id, "Выберите категорию ремонта или добавьте новую:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_category, brand, model, year)
-
+    
 def get_repair_category(message, brand, model, year):
     user_id = message.from_user.id
 
+    # Получаем категории ремонта
+    categories = get_user_repair_categories(user_id)
+
+    # Проверяем, если пользователь выбрал "Удалить категорию"
+    if message.text == "Удалить категорию":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        buttons = [types.KeyboardButton(category) for category in categories]
+        markup.add(*buttons)
+
+        item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+        item_main_menu = types.KeyboardButton("В главное меню")
+        markup.add(item_return, item_main_menu)
+
+        sent = bot.send_message(user_id, "Выберите категорию для удаления:", reply_markup=markup)
+        bot.register_next_step_handler(sent, handle_repair_category_removal, brand, model, year)
+        return
+
+    # Если пользователь выбрал "Добавить категорию"
     if message.text == "Добавить категорию":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
@@ -2665,19 +2758,72 @@ def get_repair_category(message, brand, model, year):
         bot.register_next_step_handler(sent, add_repair_category_and_select, brand, model, year)
         return
 
+    # Если пользователь вернулся в меню
     if message.text in ["Вернуться в меню трат и ремонтов", "В главное меню"]:
         return_to_menu(message)
         return
 
+    # Если была выбрана категория
     selected_category = message.text if message.text != "Без категории" else ""
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # Создаем клавиатуру с кнопками выбора категории
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+    buttons = [types.KeyboardButton(category) for category in categories]
+    markup.add(*buttons)
+
+    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
+    markup.add(
+        types.KeyboardButton("Без категории"),
+        types.KeyboardButton("Добавить категорию"),
+        types.KeyboardButton("Удалить категорию")
+    )
+
     item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
     item_main_menu = types.KeyboardButton("В главное меню")
     markup.add(item_return, item_main_menu)
 
+    # Спрашиваем название ремонта
     bot.send_message(user_id, "Введите название ремонта:", reply_markup=markup)
     bot.register_next_step_handler(message, get_repair_name, selected_category, brand, model, year)
+
+def handle_repair_category_removal(message, brand, model, year):
+    user_id = message.from_user.id
+    category_to_remove = message.text
+
+    # Загружаем данные и категории ремонта пользователя
+    data = load_repair_data(user_id)
+    user_repair_categories = data.get("user_repair_categories", [])
+
+    # Если категория для удаления существует среди пользовательских категорий, удаляем её
+    if category_to_remove in user_repair_categories:
+        user_repair_categories.remove(category_to_remove)
+        data["user_repair_categories"] = user_repair_categories
+        save_repair_data(user_id, data)
+        bot.send_message(user_id, f"Категория '{category_to_remove}' успешно удалена.")
+    else:
+        bot.send_message(user_id, f"Категория '{category_to_remove}' не найдена среди пользовательских категорий.")
+
+    # Возвращаем пользователя на выбор категории после удаления
+    categories = get_user_repair_categories(user_id)
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+    buttons = [types.KeyboardButton(category) for category in categories]
+    markup.add(*buttons)
+
+    # Добавляем кнопки "Без категории", "Добавить категорию" и "Удалить категорию"
+    markup.add(
+        types.KeyboardButton("Без категории"),
+        types.KeyboardButton("Добавить категорию"),
+        types.KeyboardButton("Удалить категорию")
+    )
+    
+    item_return = types.KeyboardButton("Вернуться в меню трат и ремонтов")
+    item_main_menu = types.KeyboardButton("В главное меню")
+    markup.add(item_return, item_main_menu)
+
+    # Сообщение с предложением выбрать категорию после удаления
+    bot.send_message(user_id, "Выберите категорию ремонта или добавьте новую:", reply_markup=markup)
+    bot.register_next_step_handler(message, get_repair_category, brand, model, year)
 
 def add_repair_category_and_select(message, brand, model, year):
     user_id = message.from_user.id
@@ -3809,6 +3955,7 @@ def translate_weather_description(english_description):
         'light snow': 'небольшой снег',
         'snow': 'снег',
         'heavy snow': 'сильный снегопад',
+        'light rain': 'небольшой дождь',
     }
 
     return translation_dict.get(english_description, english_description)
