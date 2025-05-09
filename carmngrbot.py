@@ -2010,7 +2010,7 @@ def save_expense_to_excel(user_id, expense_data):
                 expense_data["category"],
                 expense_data["name"],
                 expense_data["date"],
-                expense_data["amount"],
+                float(expense_data["amount"]),  # Сохраняем сумму как число
                 expense_data["description"],
             ]
             sheet.append(row_data)
@@ -3099,7 +3099,7 @@ def update_excel_file(user_id):
             expense["category"],
             expense["name"],
             expense["date"],
-            expense["amount"],
+            float(expense["amount"]),  # Сохраняем сумму как число
             expense["description"],
         ]
         summary_sheet.append(row_data)
@@ -3134,7 +3134,7 @@ def update_excel_file(user_id):
                     expense["category"],
                     expense["name"],
                     expense["date"],
-                    expense["amount"],
+                    float(expense["amount"]),  # Сохраняем сумму как число
                     expense["description"],
                 ]
                 transport_sheet.append(row_data)
@@ -3616,7 +3616,7 @@ def save_repair_to_excel(user_id, repair_data):
                 repair_data["category"],
                 repair_data["name"],
                 repair_data["date"],
-                repair_data["amount"],
+                float(repair_data["amount"]),  # Сохраняем сумму как число
                 repair_data["description"],
             ]
             sheet.append(row_data)
@@ -4607,7 +4607,7 @@ def update_repairs_excel_file(user_id):
             repair["category"],
             repair["name"],
             repair["date"],
-            repair["amount"],
+            float(repair["amount"]),  # Сохраняем сумму как число
             repair["description"],
         ]
         summary_sheet.append(row_data)
@@ -4642,7 +4642,7 @@ def update_repairs_excel_file(user_id):
                     repair["category"],
                     repair["name"],
                     repair["date"],
-                    repair["amount"],
+                    float(repair["amount"]),  # Сохраняем сумму как число
                     repair["description"],
                 ]
                 transport_sheet.append(row_data)
@@ -5167,7 +5167,8 @@ def handle_location_5(message):
             latitude = message.location.latitude
             longitude = message.location.longitude
 
-            user_data[message.chat.id] = {'latitude': latitude, 'longitude': longitude}
+            # Сохраняем координаты пользователя
+            save_user_location(message.chat.id, latitude, longitude)
 
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
             markup.row('Сегодня', 'Завтра')
@@ -5185,6 +5186,122 @@ def handle_location_5(message):
         print(f"Ошибка в обработчике 'Геолокация': {e}")
         traceback.print_exc()
         bot.send_message(message.chat.id, "Произошла ошибка при обработке местоположения. Попробуйте позже.")
+
+import telebot
+import threading
+import schedule
+import time
+import json
+import requests
+import traceback
+from datetime import datetime
+
+def save_user_location(chat_id, latitude, longitude):
+    # Путь к файлу с координатами
+    file_path = 'data base/notifications/notifications.json'
+    
+    # Загружаем текущие данные из файла
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            user_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        user_data = {}
+
+    # Сохраняем новые координаты
+    user_data[str(chat_id)] = {'latitude': latitude, 'longitude': longitude}
+
+    # Сохраняем обновленные данные в файл
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(user_data, f, ensure_ascii=False, indent=4)
+
+# Функции для загрузки координат и получения погоды
+def load_user_locations():
+    file_path = 'data base/notifications/notifications.json'
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Ошибка загрузки файла с координатами: {e}")
+        return {}
+
+import traceback
+
+def get_current_weather(coords):
+    try:
+        params = {
+            'lat': coords['latitude'],
+            'lon': coords['longitude'],
+            'appid': API_KEY,
+            'units': 'metric',
+            'lang': 'ru'
+        }
+        response = requests.get(WEATHER_URL, params=params, timeout=30)  # Установите таймаут для запроса
+        
+        print(f"API response status: {response.status_code}")
+        data = response.json()
+        
+        if response.status_code == 200:
+            temperature = round(data['main']['temp'])
+            feels_like = round(data['main']['feels_like'])
+            humidity = data['main']['humidity']
+            pressure = data['main']['pressure']
+            wind_speed = data['wind']['speed']
+            description = translate_weather_description(data['weather'][0]['description'])
+
+            current_time = datetime.now().strftime("%H:%M")
+            current_date = datetime.now().strftime("%d.%m.%Y")
+            coords_str = f"({coords['latitude']}, {coords['longitude']})"
+
+            return (
+                f"*Вам пришло новое уведомление!*🔔\n\n"
+                f"*Погода на {current_date} в {current_time}* 🌞 {coords_str}:\n\n"
+                f"🌡️ *Температура:* {temperature}°C\n"
+                f"🌬️ *Ощущается как:* {feels_like}°C\n"
+                f"💧 *Влажность:* {humidity}%\n"
+                f"〽 *Давление:* {pressure} мм рт. ст.\n"
+                f"💨 *Скорость ветра:* {wind_speed} м/с\n"
+                f"☁️ *Описание:* {description}\n"
+            )
+        else:
+            print(f"Ошибка запроса погоды: код {response.status_code}, сообщение: {data.get('message', 'Нет описания ошибки')}")
+            return None
+    except requests.exceptions.Timeout:
+        print("Ошибка: Время ожидания ответа от сервера истекло.")
+    except requests.exceptions.ConnectionError as e:
+        print(f"Ошибка подключения: {e}")
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
+        traceback.print_exc()  # Если вы хотите все же видеть стек вызовов для отладки
+    return None
+
+def send_weather_notifications():
+    user_locations = load_user_locations()
+    for chat_id, coords in user_locations.items():
+        weather_message = get_current_weather(coords)
+        if weather_message:
+            try:
+                bot.send_message(chat_id, weather_message, parse_mode="Markdown")
+            except Exception as e:
+                print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
+                traceback.print_exc()
+
+# Настройка расписания для отправки уведомлений
+schedule.every().day.at("07:30").do(send_weather_notifications)
+schedule.every().day.at("13:00").do(send_weather_notifications)
+schedule.every().day.at("17:00").do(send_weather_notifications)
+schedule.every().day.at("20:00").do(send_weather_notifications)
+
+# Функция для запуска расписания в отдельном потоке
+def run_schedule():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)  # Проверка расписания каждую секунду
+
+# Запуск потока для расписания
+schedule_thread = threading.Thread(target=run_schedule)
+schedule_thread.daemon = True
+schedule_thread.start()
+       
 
 @bot.message_handler(func=lambda message: message.text in ['Сегодня', 'Завтра', 'Неделя', 'Месяц', 'Вернуться назад'])
 @restricted
@@ -6882,3 +6999,6 @@ def echo_all(message):
 # (17) --------------- КОД ДЛЯ "ЗАПУСК БОТА" ---------------
 if __name__ == '__main__':
     bot.polling(none_stop=True, interval=1, timeout=120, long_polling_timeout=120)
+while True:
+    schedule.run_pending()
+    time.sleep(60)  # Проверка расписания каждые 60 секунд
