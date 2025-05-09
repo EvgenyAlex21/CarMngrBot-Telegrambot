@@ -1059,6 +1059,180 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
 
     bot.send_message(chat_id, summary_message, reply_markup=markup, parse_mode="Markdown")
 
+
+def update_excel_file(user_id):
+    # Определяем путь к папке и файлу
+    folder_path = "data base"
+    file_path = os.path.join(folder_path, f"{user_id}_trips.xlsx")
+
+    # Проверяем, существует ли файл, если нет, создаем его с заголовками
+    if not os.path.exists(file_path):
+        df = pd.DataFrame(columns=[
+            "Дата", "Начальное местоположение", "Конечное местоположение",
+            "Расстояние (км)", "Тип топлива", "Цена топлива (руб/л)",
+            "Расход топлива (л/100 км)", "Количество пассажиров",
+            "Потрачено литров", "Стоимость топлива (руб)", "Стоимость на человека (руб)", "Ссылка на маршрут"
+        ])
+        df.to_excel(file_path, index=False)
+
+    # Загружаем существующие данные
+    df = pd.read_excel(file_path)
+
+    # Получаем данные поездок для пользователя
+    trips = user_trip_data.get(user_id, [])
+
+    # Если поездок нет, удаляем все строки, оставляя только заголовок
+    if not trips:
+        df = df.iloc[0:0]  # Очищаем DataFrame
+    else:
+        # Преобразуем поездки в DataFrame
+        trip_records = []
+        for trip in trips:
+            trip_records.append([
+                trip['start_location']['address'],
+                trip['end_location']['address'],
+                trip['date'],
+                trip['distance'],
+                trip['fuel_type'],
+                trip['price_per_liter'],
+                trip['fuel_consumption'],
+                trip['passengers'],
+                trip['fuel_spent'],
+                trip['fuel_cost'],
+                trip['fuel_cost_per_person'],
+                trip.get('route_link', "Нет ссылки")  # Добавляем ссылку на маршрут
+            ])
+        df = pd.DataFrame(trip_records, columns=[
+            "Начальное местоположение", "Конечное местоположение", "Дата", 
+            "Расстояние (км)", "Тип топлива", "Цена топлива (руб/л)",
+            "Расход топлива (л/100 км)", "Количество пассажиров",
+            "Потрачено литров", "Стоимость топлива (руб)", "Стоимость на человека (руб)", "Ссылка на маршрут"
+        ])
+
+    # Записываем обновленные данные обратно в файл
+    df.to_excel(file_path, index=False)
+
+    # Открываем файл Excel для стилизации
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+
+    # Устанавливаем ширину столбцов на основе максимальной длины содержимого
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter  # Получаем букву столбца
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except Exception as e:
+                pass
+        adjusted_width = (max_length + 2)  # Добавляем небольшое значение для отступа
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+
+    # Центровка всех данных
+    for row in worksheet.iter_rows(min_row=2):  # Пропускаем заголовок
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Добавляем толстые границы для последних 4 колонок
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+    
+    for row in worksheet.iter_rows(min_row=2, min_col=9, max_col=12):  # Колонки 9-12
+        for cell in row:
+            cell.border = thick_border
+
+    # Сохраняем изменения в Excel
+    workbook.save(file_path)
+
+import os
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Border, Side
+
+import pandas as pd
+import os
+from openpyxl import load_workbook
+
+def save_trip_to_excel(user_id, trip):
+    # Путь к папке для хранения данных
+    directory = "data base"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    file_path = os.path.join(directory, f"{user_id}_trips.xlsx")
+
+    # Создание DataFrame для новой поездки
+    new_trip_data = {
+        "Начальное местоположение": trip['start_location']['address'],
+        "Конечное местоположение": trip['end_location']['address'],
+        "Дата": trip['date'],
+        "Расстояние (км)": round(trip.get('distance', None), 2),  # Округление до 2 знаков
+        "Тип топлива": trip.get('fuel_type', None),
+        "Цена топлива (руб/л)": round(trip.get('price_per_liter', None), 2),  # Округление до 2 знаков
+        "Расход топлива (л/100 км)": round(trip.get('fuel_consumption', None), 2),  # Округление до 2 знаков
+        "Количество пассажиров": trip.get('passengers', None),
+        "Потрачено литров": round(trip.get('fuel_spent', None), 2),  # Округление до 2 знаков
+        "Стоимость топлива (руб)": round(trip.get('fuel_cost', None), 2),  # Округление до 2 знаков
+        "Стоимость на человека (руб)": round(trip.get('fuel_cost_per_person', None), 2),  # Округление до 2 знаков
+        "Ссылка на маршрут": trip.get('route_link', None)
+    }
+
+    new_trip_df = pd.DataFrame([new_trip_data])
+
+    # Проверяем, существует ли файл и загружаем существующие данные
+    if os.path.exists(file_path):
+        existing_data = pd.read_excel(file_path)
+
+        # Удаляем пустые столбцы из существующих данных
+        existing_data = existing_data.dropna(axis=1, how='all')
+
+        # Объединяем только если существуют данные в обоих DataFrame
+        if not existing_data.empty and not new_trip_df.empty:
+            updated_data = pd.concat([existing_data, new_trip_df], ignore_index=True)
+        else:
+            updated_data = existing_data if not existing_data.empty else new_trip_df
+    else:
+        updated_data = new_trip_df  # Если файла нет, просто используем новые данные
+
+    # Сохраняем обновленный DataFrame в Excel
+    updated_data.to_excel(file_path, index=False)
+
+    # Открываем файл Excel и растягиваем ячейки
+    workbook = load_workbook(file_path)
+    worksheet = workbook.active
+
+    # Устанавливаем ширину столбцов на основе максимальной длины содержимого
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter  # Получаем букву столбца
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except Exception as e:
+                pass
+        adjusted_width = (max_length + 2)  # Добавляем небольшое значение для отступа
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+
+    # Применяем выравнивание по центру для всех данных
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Выделяем толстые границы для последних 4 колонок
+    thick_border = Border(left=Side(style='thick'), right=Side(style='thick'),
+                          top=Side(style='thick'), bottom=Side(style='thick'))
+
+    for row in worksheet.iter_rows(min_col=worksheet.max_column-3, max_col=worksheet.max_column):
+        for cell in row:
+            cell.border = thick_border
+
+    # Сохраняем изменения в Excel
+    workbook.save(file_path)
+
+
 # (9.14) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "СОХРАНИТЬ ПОЕЗДКУ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Сохранить поездку")
@@ -1067,25 +1241,29 @@ def save_data_handler(message):
     if user_id in temporary_trip_data and temporary_trip_data[user_id]:
         if user_id not in user_trip_data:
             user_trip_data[user_id] = []
-        
+
         # Переносим данные из временных данных в постоянные
         user_trip_data[user_id].extend(temporary_trip_data[user_id])
+
+        # Получаем последнюю поездку
+        last_trip = user_trip_data[user_id][-1]
+
+        # Сохраняем данные поездки в базу данных
+        save_trip_data(user_id) 
+        
+        # Сохраняем последнюю поездку в Excel
+        save_trip_to_excel(user_id, last_trip)
 
         # Очищаем временные данные
         temporary_trip_data[user_id] = []
         
-        # Сохраняем данные поездки в базу данных
-        save_trip_data(user_id) 
-
+        # Создаем клавиатуру для возврата в меню
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в меню расчета топлива")
         item2 = types.KeyboardButton("В главное меню")
-        markup.add(item1)
-        markup.add(item2)
+        markup.add(item1, item2)
         
         bot.send_message(user_id, "Данные поездки успешно сохранены.", reply_markup=markup)
-    else:
-        bot.send_message(user_id, "У вас нет данных для сохранения поездки.")
 
 # (9.15) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "В ГЛАВНОЕ МЕНЮ  ВРЕМЕННЫХ ДАННЫХ") ---------------
 
@@ -1112,6 +1290,7 @@ def restart_handler(message):
     
     start_fuel_calculation_menu(message)
 
+
 # (9.17) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (КОМАНДА "ПОСМОТРЕТЬ ПОЕЗДКИ") ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть поездки")
@@ -1130,7 +1309,8 @@ def view_trips(message):
                 button_text = f"{i}. {start_address} - {end_address}"
                 markup.add(button_text)
             
-            # Добавляем кнопки "Вернуться в меню расчета топлива" и "В главное меню"
+            # Добавляем кнопку для просмотра в Excel
+            markup.add("Посмотреть в Excel")
             markup.add("Вернуться в меню расчета топлива")
             markup.add("В главное меню")
             
@@ -1138,6 +1318,17 @@ def view_trips(message):
             bot.send_message(user_id, "Выберите поездку для просмотра:", reply_markup=markup)
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
+
+@bot.message_handler(func=lambda message: message.text == "Посмотреть в Excel")
+def send_excel_file(message):
+    user_id = message.chat.id
+    excel_file_path = f"data base/{user_id}_trips.xlsx"
+
+    if os.path.exists(excel_file_path):
+        with open(excel_file_path, 'rb') as excel_file:
+            bot.send_document(user_id, excel_file)
+    else:
+        bot.send_message(user_id, "Файл Excel не найден. Убедитесь, что у вас есть сохраненные поездки.")
 
 @bot.message_handler(func=lambda message: message.text and message.text.startswith(tuple([f"{i}. " for i in range(1, 10)])))
 def show_trip_details(message):
@@ -1208,10 +1399,6 @@ def return_to_main_menu(message):
 def ask_for_trip_to_delete(message):
     user_id = message.chat.id
 
-    if message.text == "Вернуться в меню расчета топлива":
-        reset_and_start_over(user_id)
-        return
-
     if user_id in user_trip_data:
         if user_trip_data[user_id]:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -1231,8 +1418,6 @@ def ask_for_trip_to_delete(message):
     else:
         bot.send_message(user_id, "У вас нет сохраненных поездок.")
 
-# (9.19) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ОБРАБОТЧИК УДАЛЕНИЯ ПОЕЗДКИ) ---------------
-
 def confirm_trip_deletion(message):
     user_id = message.chat.id
 
@@ -1249,14 +1434,6 @@ def confirm_trip_deletion(message):
         bot.register_next_step_handler(message, confirm_delete_all)
         return
 
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        return
-    
-    if user_id not in user_trip_data or not user_trip_data[user_id]:
-        bot.send_message(user_id, "У вас нет сохраненных поездок.")
-        return
-
     if not message.text.isdigit():
         bot.send_message(user_id, "Пожалуйста, выберите номер поездки для удаления с помощью кнопок.")
         return
@@ -1265,21 +1442,19 @@ def confirm_trip_deletion(message):
     if 1 <= trip_number <= len(user_trip_data[user_id]):
         deleted_trip = user_trip_data[user_id].pop(trip_number - 1)
         bot.send_message(user_id, f"Поездка номер {trip_number} успешно удалена.")
+        
+        # Обновляем Excel файл
+        update_excel_file(user_id)
+
     else:
         bot.send_message(user_id, "Неверный номер поездки. Пожалуйста, укажите корректный номер.")
 
     reset_and_start_over(user_id)
 
-# (9.20) --------------- КОД ДЛЯ "РАСХОД ТОПЛИВА" (ФУНКЦИЯ ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ ВСЕХ ПОЕЗДОК) ---------------
-
+# Функция для подтверждения удаления всех поездок
 def confirm_delete_all(message):
     user_id = message.chat.id
     
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(user_id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, confirm_delete_all)
-        return 
-
     if message.text is None:
         bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение.")
         bot.register_next_step_handler(message, confirm_delete_all)
@@ -1291,9 +1466,22 @@ def confirm_delete_all(message):
         if user_id in user_trip_data and user_trip_data[user_id]:
             user_trip_data[user_id].clear()
             bot.send_message(user_id, "Все поездки были успешно удалены.")
+            # Очистка Excel файла
+            update_excel_file(user_id)
         else:
             bot.send_message(user_id, "У вас нет поездок для удаления.")
-        reset_and_start_over(user_id)
+            reset_and_start_over(user_id)
+        
+        # Очищаем Excel файл, оставляя только заголовки
+        excel_file = os.path.join('data base', f"{user_id}_trips.xlsx")
+        if os.path.exists(excel_file):
+            workbook = load_workbook(excel_file)
+            sheet = workbook.active
+            for row in sheet.iter_rows(min_row=2, max_row=sheet.max_row):
+                for cell in row:
+                    cell.value = None
+            workbook.save(excel_file)
+
     elif user_response == "нет":
         bot.send_message(user_id, "Удаление всех поездок отменено.")
         reset_and_start_over(user_id)
