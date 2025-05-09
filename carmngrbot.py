@@ -191,6 +191,26 @@ def check_function_state_decorator(function_name):
         return wrapped
     return decorator
 
+# Декоратор для отслеживания вызовов функций
+def track_usage(func_name):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            statistics = load_statistics()
+            current_date = datetime.now().strftime('%d.%m.%Y')
+
+            if current_date not in statistics:
+                statistics[current_date] = {}
+            if func_name not in statistics[current_date]:
+                statistics[current_date][func_name] = 0
+            statistics[current_date][func_name] += 1
+
+            save_statistics(statistics)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 # Старт
 
 @bot.message_handler(commands=['start'])
@@ -264,6 +284,7 @@ def send_website_file(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Расход топлива')
+@track_usage('Расход топлива')  # Добавление отслеживания статистики
 def handle_fuel_expense(message):
 
     user_id = message.from_user.id
@@ -1822,6 +1843,7 @@ def confirm_delete_all(message):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Траты и ремонты')
+@track_usage('Траты и ремонты')  # Добавление отслеживания статистики
 def handle_expenses_and_repairs(message):
 
     user_id = message.from_user.id
@@ -5895,6 +5917,7 @@ def shorten_url(original_url):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Поиск мест')
+@track_usage('Поиск мест')  # Добавление отслеживания статистики
 def send_welcome(message):
 
     user_id = message.chat.id
@@ -6214,6 +6237,7 @@ def handle_location(message):
 # @restricted
 # @track_user_activity
 # @check_chat_state
+# @track_usage('Поиск мест')  # Добавление отслеживания статистики
 # def send_welcome(message):
 #     user_id = message.chat.id
 #     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6493,6 +6517,7 @@ location_data = load_location_data()
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Найти транспорт')
+@track_usage('Найти транспорт')  # Добавление отслеживания статистики
 def start_transport_search(message):
 
     global location_data
@@ -6643,6 +6668,7 @@ def is_valid_car_number(car_number):
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Код региона')
+@track_usage('Код региона')  # Добавление отслеживания статистики
 def handle_start4(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -6750,6 +6776,7 @@ user_data = {}
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Погода')
+@track_usage('Погода')  # Добавление отслеживания статистики
 def handle_start_5(message):
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -7579,6 +7606,7 @@ def load_saved_data(city_code):
 @restricted
 @track_user_activity
 @check_chat_state
+@track_usage('Цены на топливо')  # Добавление отслеживания статистики
 def fuel_prices_command(message):
     chat_id = message.chat.id
     load_citys_users_data()  # Загружаем данные перед использованием
@@ -8491,6 +8519,7 @@ user_tracking = {}
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Анти-радар')
+@track_usage('Анти-радар')  # Добавление отслеживания статистики
 def start_antiradar(message):
     user_id = message.chat.id
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False}
@@ -8746,6 +8775,7 @@ threading.Thread(target=run_scheduler, daemon=True).start()
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Напоминания')
+@track_usage('Напоминания')  # Добавление отслеживания статистики
 def reminders_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Добавить', 'Посмотреть', 'Удалить')
@@ -9139,6 +9169,7 @@ error_codes = load_error_codes()
 @track_user_activity
 @check_chat_state
 @check_function_state_decorator('Коды OBD2')
+@track_usage('Коды OBD2')  # Добавление отслеживания статистики
 def obd2_request(message):
     # Проверка на мультимедийные файлы
     if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
@@ -9235,13 +9266,13 @@ def load_admin_data():
         with open(ADMIN_SESSIONS_PATH, 'r', encoding='utf-8') as file:
             data = json.load(file)
             return {
-                "admin_sessions": set(data.get("admin_sessions", [])),
+                "admin_sessions": data.get("admin_sessions", []),  # Загружаем как список
                 "admins_data": data.get("admins_data", {}),
                 "removed_admins": {k: v for k, v in data.get("removed_admins", {}).items()},
                 "login_password_hash": data.get("login_password_hash", "")
             }
     return {
-        "admin_sessions": set(),
+        "admin_sessions": [],
         "admins_data": {},
         "removed_admins": {},
         "login_password_hash": ""
@@ -9250,7 +9281,7 @@ def load_admin_data():
 def save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins=None):
     with open(ADMIN_SESSIONS_PATH, 'w', encoding='utf-8') as file:
         json.dump({
-            "admin_sessions": list(admin_sessions),
+            "admin_sessions": admin_sessions,  # Сохраняем как список
             "admins_data": admins_data,
             "removed_admins": removed_admins or {},
             "login_password_hash": login_password_hash
@@ -9261,7 +9292,9 @@ def save_admin_data(admin_sessions, admins_data, login_password_hash, removed_ad
 data = load_admin_data()
 admin_sessions = data["admin_sessions"]
 admins_data = data["admins_data"]
+removed_admins = data["removed_admins"]
 login_password_hash = data["login_password_hash"]
+
 
 login_password_hash = hashlib.sha256(f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}".encode()).hexdigest()
 
@@ -9371,17 +9404,16 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
         "last_name": " ",
         "username": username,
         "phone": " ",
-        "permissions": [perm.split(':')[-1].strip() for perm in permissions]
+        "permissions": permissions
     }
     admins_data[admin_id] = user_data
-    admin_sessions.add(admin_id)  # Добавляем в текущие сессии
+    if admin_id not in admin_sessions:
+        admin_sessions.append(admin_id)  # Добавляем в текущие сессии
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
     bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
     if initiator_chat_id:
         bot.send_message(initiator_chat_id, f"Администратор {username} - {admin_id} успешно добавлен.")
-    bot.send_message(admin_id, f"Вам были назначены следующие права: {', '.join(permissions)}")
 
-# Удаление администратора
 def remove_admin(admin_id, initiator_chat_id):
     admin_id = str(admin_id)
     if admin_id in admins_data:
@@ -9391,7 +9423,8 @@ def remove_admin(admin_id, initiator_chat_id):
 
         # Удаляем данные администратора
         del admins_data[admin_id]
-        admin_sessions.discard(admin_id)
+        if admin_id in admin_sessions:
+            admin_sessions.remove(admin_id)  # Удаляем из текущих сессий
 
         # Сохраняем изменения
         save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
@@ -9402,7 +9435,7 @@ def remove_admin(admin_id, initiator_chat_id):
         # Отправляем сообщение инициатору
         bot.send_message(initiator_chat_id, f"Администратор {admin_username} - {admin_id} успешно удалён.")
     else:
-        bot.send_message(initiator_chat_id, f"Администратор с ID {admin_username} - {admin_id} не найден.")
+        bot.send_message(initiator_chat_id, f"Администратор с ID {admin_id} не найден.")
 
 def check_permission(admin_id, permission):
     return permission in admins_data.get(str(admin_id), {}).get("permissions", [])
@@ -9809,13 +9842,6 @@ def process_new_login_and_password_step2(message, new_login):
         return
     update_admin_login_credentials(message, message.chat.id, new_username=new_login, new_password=new_password)
 
-# Загрузка данных из единой базы
-data = load_admin_data()
-admin_sessions = data["admin_sessions"]
-admins_data = data["admins_data"]
-removed_admins = data["removed_admins"]
-login_password_hash = data["login_password_hash"]
-
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
@@ -9867,7 +9893,8 @@ def add_admin(admin_id, username, permissions=None, initiator_chat_id=None):
         "permissions": permissions
     }
     admins_data[admin_id] = user_data
-    admin_sessions.add(admin_id)  # Добавляем в текущие сессии
+    if admin_id not in admin_sessions:
+        admin_sessions.append(admin_id)  # Добавляем в текущие сессии
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
     bot.send_message(admin_id, "Вы стали администратором! Быстрый вход доступен.")
     if initiator_chat_id:
@@ -9882,7 +9909,8 @@ def remove_admin(admin_id, initiator_chat_id):
 
         # Удаляем данные администратора
         del admins_data[admin_id]
-        admin_sessions.discard(admin_id)
+        if admin_id in admin_sessions:
+            admin_sessions.remove(admin_id)  # Удаляем из текущих сессий
 
         # Сохраняем изменения
         save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
@@ -9967,7 +9995,7 @@ def process_remove_admin(message, root_admin_id, initiator_chat_id):
         elif part.isdigit():
             # Если ввод является ID
             admin_id = part
-            if admin_id not in admin_sessions_data['admin_sessions']:
+            if admin_id not in admin_sessions:  # Используем admin_sessions как список
                 bot.send_message(message.chat.id, f"Такого администратора не существует {admin_id}! Попробуйте еще раз.")
                 bot.register_next_step_handler(message, process_remove_admin, root_admin_id, initiator_chat_id)
                 return
@@ -9976,7 +10004,7 @@ def process_remove_admin(message, root_admin_id, initiator_chat_id):
             # Если ввод является username
             username = part
             user_id = next(
-                (user_id for user_id, data in admin_sessions_data['admins_data'].items() if data.get("username") == username),
+                (user_id for user_id, data in admins_data.items() if data.get("username") == username),
                 None
             )
             if not user_id:
@@ -10062,6 +10090,7 @@ def process_add_admin(message, root_admin_id, initiator_chat_id):
 
     save_admin_data(admin_sessions, admins_data, login_password_hash, removed_admins)
     show_admin_panel(message)
+
 
 
 
@@ -10702,16 +10731,50 @@ def process_unblock_method(message):
 
 # (ADMIN 4) ------------------------------------------ "СТАТИСТИКА ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
-# Путь к JSON файлу с админскими сессиями
+
+# Глобальные переменные для отслеживания пользователей
+active_users = {}  # Словарь для отслеживания времени последней активности пользователей
+total_users = set()  # Множество для хранения уникальных пользователей
+
+# Пути к JSON-файлам
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
+USER_DATA_FILE = 'data base/admin/users.json'
+STATS_FILE = 'data base/admin/stats.json'
 
 # Загрузка админских сессий из JSON файла
 def load_admin_sessions():
     with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as file:
         data = json.load(file)
-    return data['admin_sessions']
+    return data.get('admin_sessions', [])
 
-# Функция для проверки прав доступа
+# Загрузка данных пользователей
+def load_user_data():
+    try:
+        with open(USER_DATA_FILE, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
+
+# Сохранение данных пользователей
+def save_user_data(data):
+    with open(USER_DATA_FILE, 'w', encoding='utf-8') as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+# Загрузка статистики из файла
+def load_statistics():
+    try:
+        with open(STATS_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            return {date: {'users': set(data[date]['users'])} for date in data}
+    except FileNotFoundError:
+        return {}
+
+# Сохранение статистики в файл
+def save_statistics(data):
+    with open(STATS_FILE, 'w', encoding='utf-8') as file:
+        json.dump({date: {'users': list(data[date]['users'])} for date in data}, file, indent=4, ensure_ascii=False)
+
+# Проверка прав администратора
 def check_admin_access(message):
     admin_sessions = load_admin_sessions()
     if str(message.chat.id) in admin_sessions:
@@ -10720,22 +10783,16 @@ def check_admin_access(message):
         bot.send_message(message.chat.id, "У вас нет прав доступа для выполнения этой операции.")
         return False
 
-active_users = {}
-total_users = set()
-
-INACTIVE_TIME = timedelta(minutes=5)
-
-function_usage = {'Статистика': 0, 'Отзывы': 0, 'Просмотр файлов БД': 0, 'Просмотр всех файлов': 0}
-
+# Обновление данных о пользователе с экранированием username
 def update_user_activity(user_id, username=None, first_name="", last_name="", phone=""):
     active_users[user_id] = datetime.now()
     total_users.add(user_id)
 
     user_data = load_user_data()
-    current_time = datetime.now().strftime('%d-%m-%Y %H:%M:%S')  # Получаем текущее время в формате DD-MM-YYYY HH:MM:SS
+    current_time = datetime.now().strftime('%d-%m-%Y %H:%M:%S')  # Формат времени
 
     if user_id in user_data:
-        user_data[user_id]['username'] = f"@{username}"
+        user_data[user_id]['username'] = escape_markdown(f"@{username}") if username else ""
         user_data[user_id]['first_name'] = first_name
         user_data[user_id]['last_name'] = last_name
         user_data[user_id]['phone'] = phone
@@ -10745,85 +10802,205 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             'user_id': user_id,
             'first_name': first_name,
             'last_name': last_name,
-            'username': f"@{username}",
+            'username': escape_markdown(f"@{username}") if username else "",
             'phone': phone,
             'last_active': current_time,
-            'blocked': False
+            'blocked': False,
+            'actions': 0,  # Добавлено для отслеживания действий
+            'session_time': 0,  # Добавлено для отслеживания времени сессии
+            'returning': False  # Добавлено для отслеживания возвращающихся пользователей
         }
     save_user_data(user_data)
 
+    # Обновление статистики
+    statistics = load_statistics()
+    today = datetime.now().strftime('%d.%m.%Y')
+    if today not in statistics:
+        statistics[today] = {'users': set()}
+    statistics[today]['users'].add(user_id)
+    save_statistics(statistics)
+
+# Проверить, активен ли пользователь
 def is_user_active(last_active):
-    """Проверить, активен ли пользователь."""
-    active_threshold = 5 * 60  # 5 минут
     try:
         last_active_time = datetime.strptime(last_active, '%d-%m-%Y %H:%M:%S')
     except ValueError:
-        try:
-            last_active_time = datetime.fromisoformat(last_active)
-        except ValueError:
-            return False
-    active = (datetime.now() - last_active_time).total_seconds() < active_threshold
-    print(f"Пользователь активен: {active}, последний актив: {last_active}, текущее время: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}")  # Отладочная информация
-    return active
+        return False
+    return (datetime.now() - last_active_time).total_seconds() < 1 * 60  # 5 минут
 
+# Получение статистики за определённый период
+def get_aggregated_statistics(period='all'):
+    statistics = load_statistics()
+    today = datetime.now()
+    result = defaultdict(int)
+
+    for date_str, usage in statistics.items():
+        record_date = datetime.strptime(date_str, '%d.%m.%Y')
+
+        if period == 'day' and record_date.date() == today.date():
+            for func_name, count in usage.items():
+                result[func_name] += count
+        elif period == 'week' and today - timedelta(days=today.weekday()) <= record_date <= today:
+            for func_name, count in usage.items():
+                result[func_name] += count
+        elif period == 'month' and record_date.year == today.year and record_date.month == today.month:
+            for func_name, count in usage.items():
+                result[func_name] += count
+        elif period == 'year' and record_date.year == today.year:
+            for func_name, count in usage.items():
+                result[func_name] += count
+        elif period == 'all':
+            for func_name, count in usage.items():
+                result[func_name] += count
+
+    return dict(result)
+
+# Получить статистику пользователей
 def get_statistics():
-    """Получить статистику пользователей."""
-    users_data = load_user_data()  # Загрузка данных пользователей
+    users_data = load_user_data()
     online_users = len([user for user in users_data.values() if is_user_active(user["last_active"]) and not user['blocked']])
     total_users = len(users_data)
 
-    function_usage = {
-        "Статистика": 0,
-        "Отзывы": 0
-    }
+    statistics = load_statistics()
+    today = datetime.now().strftime('%d.%m.%Y')
+    week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime('%d.%m.%Y')
+    month_start = datetime.now().replace(day=1).strftime('%d.%m.%Y')
+    year_start = datetime.now().replace(month=1, day=1).strftime('%d.%m.%Y')
 
-    print(f"Всего пользователей: {total_users}, Онлайн пользователей: {online_users}")  # Отладочная информация
+    users_today = len(statistics.get(today, {}).get('users', set()))
+    users_week = len(set().union(*[data.get('users', set()) for date, data in statistics.items() if week_start <= date <= today]))
+    users_month = len(set().union(*[data.get('users', set()) for date, data in statistics.items() if month_start <= date <= today]))
+    users_year = len(set().union(*[data.get('users', set()) for date, data in statistics.items() if year_start <= date <= today]))
 
-    return online_users, total_users, function_usage
+    return online_users, total_users, users_today, users_week, users_month, users_year
 
+# Получить список активных пользователей
 def list_active_users():
-    """Получить список активных пользователей с их ID и нумерацией."""
-    users_data = load_user_data()  # Загрузка данных пользователей
+    users_data = load_user_data()
     active_users = [
-        f"{index + 1}) {user_id}: {user['username']}"
+        f"{index + 1}) {user_id}: {user.get('username', 'Неизвестный')}"
         for index, (user_id, user) in enumerate(users_data.items())
         if is_user_active(user["last_active"]) and not user['blocked']
     ]
     return "\n".join(active_users) if active_users else None
 
-# Пример обработчика для команды статистики
+# Получить ТОП пользователей
+def get_top_users(top_n=10):
+    users_data = load_user_data()
+    user_activity = {user_id: user['last_active'] for user_id, user in users_data.items() if not user['blocked']}
+    sorted_users = sorted(user_activity.items(), key=lambda x: x[1], reverse=True)
+    top_users = sorted_users[:top_n]
+    return [f"{index + 1}) {user_id}: {users_data[user_id].get('username', 'Неизвестный')}" for index, (user_id, _) in enumerate(top_users)]
+
+# Получить последние действия пользователей
+def get_recent_actions(limit=10):
+    users_data = load_user_data()
+    recent_actions = sorted(users_data.items(), key=lambda x: x[1]['last_active'], reverse=True)
+    return [f"{user_id}: {user['username']} - {user['last_active']}" for user_id, user in recent_actions[:limit]]
+
+# Получить наиболее активное время использования бота
+def get_peak_usage_time():
+    statistics = load_statistics()
+    usage_times = defaultdict(int)
+
+    for date_str, usage in statistics.items():
+        record_date = datetime.strptime(date_str, '%d.%m.%Y')
+        for func_name, count in usage.items():
+            usage_times[record_date.hour] += count
+
+    peak_hour = max(usage_times, key=usage_times.get)
+    return peak_hour, usage_times[peak_hour]
+
+# Получить версию бота
+def get_bot_version():
+    return "1.92.0"  # Пример версии
+
+# Получить аптайм бота
+def get_uptime():
+    start_time = datetime(2025, 1, 1)  # Пример времени запуска
+    uptime = datetime.now() - start_time
+    days, seconds = uptime.days, uptime.seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{days} дней, {hours}:{minutes} часов"
+
+# Создание кнопок для подменю
+def create_submenu_buttons():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons = [
+        types.KeyboardButton("Пользователи"),
+        types.KeyboardButton("Версия и аптайм"),
+        types.KeyboardButton("Использование функций"),
+        types.KeyboardButton("В меню админ-панели")
+    ]
+    markup.add(*buttons)
+    return markup
+
+# Обработчик команды "Статистика"
 @bot.message_handler(func=lambda message: message.text == 'Статистика')
 def show_statistics(message):
-
-    admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Статистика'):
-        bot.send_message(message.chat.id, "У вас нет прав доступа к этой функции.")
-        return
-
-    """Показать статистику пользователей."""
     if not check_admin_access(message):
         return
 
-    online_count, total_count, function_usage = get_statistics()  # Получаем статистику
+    bot.send_message(message.chat.id, "Выберите категорию статистики:", reply_markup=create_submenu_buttons())
 
-    # Получаем список активных пользователей
-    active_user_list = list_active_users()  # Получаем список активных пользователей
+# Функция для экранирования специальных символов Markdown
+def escape_markdown(text):
+    # Экранируем специальные символы Markdown
+    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
-    response_message = (
-        f"Пользователи онлайн: {online_count}\n"
-        f"Всего пользователей: {total_count}\n\n"
-        f"Использование функций:\n"
-        f"Статистика: {function_usage['Статистика']}\n"
-        f"Отзывы: {function_usage['Отзывы']}"
-    )
+@bot.message_handler(func=lambda message: message.text in ["Пользователи", "Версия и аптайм", "Использование функций", "В меню админ-панели"])
+def handle_submenu_buttons(message):
+    if not check_admin_access(message):
+        return
 
-    bot.send_message(message.chat.id, response_message)
+    if message.text == "Пользователи":
+        online_count, total_count, users_today, users_week, users_month, users_year = get_statistics()
+        active_user_list = list_active_users()
+        response_message = (
+            f"*🌐 Пользователи онлайн:* {online_count}\n"
+            f"*👥 Всего пользователей:* {total_count}\n\n"
+            f"*📅 Пользователи за день:* {users_today}\n"
+            f"*📅 Пользователи за неделю:* {users_week}\n"
+            f"*📅 Пользователи за месяц:* {users_month}\n"
+            f"*📅 Пользователи за год:* {users_year}\n\n\n"
+        )
+        if active_user_list:
+            response_message += f"*🌐 Пользователи онлайн:*\n\n"
+            for user in active_user_list.split('\n'):
+                response_message += f"👤 {user}\n"
+        else:
+            response_message += "*🌐 Нет активных пользователей*"
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+    elif message.text == "Версия и аптайм":
+        bot_version = get_bot_version()
+        uptime = get_uptime()
+        bot.send_message(message.chat.id, f"*🤖 Версия бота:* {bot_version}\n\n*⏳ Аптайм бота:* {uptime}", parse_mode='Markdown')
+    elif message.text == "Использование функций":
+        stats_day = get_aggregated_statistics('day')
+        stats_week = get_aggregated_statistics('week')
+        stats_month = get_aggregated_statistics('month')
+        stats_year = get_aggregated_statistics('year')
+        stats_all = get_aggregated_statistics('all')
 
-    if active_user_list:
-        bot.send_message(message.chat.id, "Пользователи онлайн:\n" + active_user_list)
-    else:
-        bot.send_message(message.chat.id, "Нет активных пользователей.")
+        response_message = (
+            "*📊 Использование функций:*\n\n\n"
+            "☀️ *[За день]* ☀️\n\n" +
+            "\n".join([f"{key}: {value}" for key, value in stats_day.items()]) +
+            "\n\n7️⃣ *[За неделю]* 7️⃣\n\n" +
+            "\n".join([f"{key}: {value}" for key, value in stats_week.items()]) +
+            "\n\n🗓️ *[За месяц]* 🗓️\n\n" +
+            "\n".join([f"{key}: {value}" for key, value in stats_month.items()]) +
+            "\n\n⌛ *[За год]* ⌛\n\n" +
+            "\n".join([f"{key}: {value}" for key, value in stats_year.items()]) +
+            "\n\n♾️ *[За всё время]* ♾️\n\n" +
+            "\n".join([f"{key}: {value}" for key, value in stats_all.items()])
+        )
+        bot.send_message(message.chat.id, response_message, parse_mode='Markdown')
+    elif message.text == "В меню админ-панели":
+        bot.send_message(message.chat.id, "Выберите категорию статистики:", reply_markup=create_submenu_buttons())
 
+        
 # (ADMIN 5) ------------------------------------------ "РЕЗЕРВНАЯ КОПИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 import zipfile
@@ -11314,7 +11491,7 @@ def process_disable_function_time_step(message, function_names, date_str, origin
 # (ADMIN n) ------------------------------------------ "ОПОВЕЩЕНИЯ ДЛЯ АДМИН-ПАНЕЛИ" ---------------------------------------------------
 
 # Путь к файлу
-DATABASE_PATH = 'data base/admin/alerts.json'
+DATABASE_PATH = 'data base/admin/chats/alerts.json'
 ADMIN_SESSIONS_FILE = 'data base/admin/admin_sessions.json'
 USER_DATA_PATH = 'data base/admin/users.json'  # Путь к файлу с данными пользователей
 
@@ -12666,6 +12843,11 @@ def show_communication_menu(message):
 
 # Команда для пользователя для запроса чата с администратором
 @bot.message_handler(func=lambda message: message.text == "Чат с админом")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_function_state_decorator('Чат с админом')
+@track_usage('Чат с админом')  # Добавление отслеживания статистики
 @bot.message_handler(commands=['chat_with_admin'])
 def request_chat_with_admin(message):
     global active_chats  # Объявляем active_chats как глобальную переменную
