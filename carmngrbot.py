@@ -14,6 +14,7 @@ import requests
 import zipfile
 import signal
 import traceback
+import chardet
 import logging
 import time
 import calendar
@@ -12721,7 +12722,7 @@ def get_exchange_rates_message():
     try:
         exchange_rates = fetch_exchange_rates_cbr()
         current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
-        rates_message = f"\n*Актуальные курсы валют на {current_time}:*\n\n"
+        rates_message = f"*Актуальные курсы валют на {current_time}:*\n\n"
         for currency, rate in exchange_rates.items():
             if currency in CURRENCY_NAMES:
                 name, emoji = CURRENCY_NAMES[currency]
@@ -13292,27 +13293,40 @@ os.chdir(script_dir)
 
 camera_data = []
 coordinates = []
-camera_tree = None 
+camera_tree = None
 
-try:
-    with open('files/milestones.csv', mode='r', encoding='cp1251') as file:
-        reader = csv.DictReader(file, delimiter=';')
-        for row in reader:
-            try:
-                latitude = float(row['gps_y'])
-                longitude = float(row['gps_x'])
-                camera_data.append({
-                    'id': row['camera_id'],
-                    'latitude': latitude,
-                    'longitude': longitude,
-                    'description': row['camera_place'],
-                })
-                coordinates.append((latitude, longitude))
-            except ValueError as e:
-                print(f"Ошибка преобразования координат: {e}")
-                continue
-except Exception as e:
-    print(f"Ошибка чтения файла: {e}")
+def read_csv_with_encoding(file_path):
+    try:
+        with open(file_path, mode='r', encoding='utf-8') as file:
+            reader = csv.DictReader(file, delimiter=';')
+            data = []
+            for row in reader:
+                try:
+                    latitude = float(row['gps_y'])
+                    longitude = float(row['gps_x'])
+                    data.append({
+                        'id': row['camera_id'],
+                        'latitude': latitude,
+                        'longitude': longitude,
+                        'description': row['camera_place'],
+                    })
+                except ValueError as e:
+                    print(f"Ошибка преобразования координат: {e}")
+                    continue
+        return data
+    except UnicodeDecodeError:
+        print("Ошибка: Файл не в кодировке UTF-8")
+        return []
+
+file_path = os.path.join(script_dir, 'files', 'milestones.csv')
+if os.path.exists(file_path):
+    try:
+        camera_data = read_csv_with_encoding(file_path)
+        coordinates = [(cam['latitude'], cam['longitude']) for cam in camera_data]
+    except Exception as e:
+        print(f"Ошибка чтения файла: {e}")
+else:
+    print("Файл milestones.csv отсутствует! Загрузите файл вручную!")
 
 if coordinates and all(len(coord) == 2 for coord in coordinates):
     camera_tree = cKDTree(coordinates)
@@ -13332,6 +13346,10 @@ user_tracking = {}
 @rate_limit_with_captcha
 def start_antiradar(message):
     user_id = message.chat.id
+    if not os.path.exists(file_path) or camera_tree is None:
+        bot.send_message(user_id, "❌ База данных камер отсутствует!\nПожалуйста, попробуйте позже...")
+        return
+    
     user_tracking[user_id] = {'tracking': True, 'notification_ids': [], 'last_notified_camera': {}, 'location': None, 'started': False, 'database_missing_notified': False}
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -13340,11 +13358,12 @@ def start_antiradar(message):
     keyboard.add(button_geo)
     keyboard.add(button_off_geo)
     bot.send_message(
-    user_id,
-    "⚠️ Пожалуйста, разрешите *доступ к геопозиции* для запуска анти-радара!\n\nНажмите кнопку, чтобы отправить геопозицию...\n\n"
-    "_P.S. Функция анти-радар находится в бета-версии! Данные камер не обнавляются автоматически из-за ограничений telegram!_",
-    reply_markup=keyboard,
-    parse_mode="Markdown")
+        user_id,
+        "⚠️ Пожалуйста, разрешите *доступ к геопозиции* для запуска анти-радара!\n\nНажмите кнопку, чтобы отправить геопозицию...\n\n"
+        "_P.S. Функция анти-радар находится в бета-версии! Данные камер не обновляются автоматически из-за ограничений telegram! Обновляйте свою геопозицию вручную!_",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
 
     message_text = "⚠️ Внимание! Камеры впереди:\n\n"
     sent_message = bot.send_message(user_id, message_text, parse_mode="Markdown")
@@ -13365,11 +13384,15 @@ def start_antiradar(message):
 def handle_antiradar_location(message):
     user_id = message.chat.id
 
+    if not os.path.exists(file_path) or camera_tree is None:
+        bot.send_message(user_id, "❌ База данных камер отсутствует!\nПожалуйста, попробуйте позже...")
+        return
+
     if message.location:
         latitude = message.location.latitude
         longitude = message.location.longitude
     else:
-        bot.send_message(user_id, "Геолокация недоступна! Попробуйте снова")
+        bot.send_message(user_id, "❌ Геолокация недоступна!\nПопробуйте снова")
         return
 
     if user_tracking.get(user_id, {}).get('tracking', False):
@@ -13413,19 +13436,19 @@ def delete_messages(user_id, message_id):
     except:
         pass
 
-MAX_CAMERAS_IN_MESSAGE = 5 
-ALERT_DISTANCE = 150  
-EXIT_DISTANCE = 50  
-IN_ZONE_DISTANCE = 15 
+MAX_CAMERAS_IN_MESSAGE = 3
+ALERT_DISTANCE = 500
+EXIT_DISTANCE = 100
+IN_ZONE_DISTANCE = 50
 
 def track_user_location(user_id, initial_location):
     def monitor():
         while user_tracking.get(user_id, {}).get('tracking', False):
             if camera_tree is None:
                 if not user_tracking[user_id].get('database_missing_notified', False):
-                    bot.send_message(user_id, "❌ База данных камер отсутствует! Пожалуйста, попробуйте позже...")
+                    bot.send_message(user_id, "❌ База данных камер отсутствует!\nПожалуйста, попробуйте позже...")
                     user_tracking[user_id]['database_missing_notified'] = True
-                time.sleep(3)  
+                time.sleep(3)
                 continue
 
             user_location = user_tracking[user_id]['location']
@@ -13446,10 +13469,13 @@ def track_user_location(user_id, initial_location):
                         user_tracking[user_id]['last_notified_camera'][camera_address] = {
                             'entered': False,
                             'exited': False,
-                            'in_zone': False
+                            'in_zone': False,
+                            'notified_once': {'entered': False, 'in_zone': False, 'exited': False}
                         }
 
-                    if actual_distance <= ALERT_DISTANCE and not user_tracking[user_id]['last_notified_camera'][camera_address]['entered']:
+                    if (actual_distance <= ALERT_DISTANCE and 
+                        not user_tracking[user_id]['last_notified_camera'][camera_address]['entered'] and
+                        not user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['entered']):
                         notification_message = (
                             f"⚠️ Вы приближаетесь к камере!\n\n"
                             f"📷 Расстояние - *{actual_distance} м.*\n"
@@ -13459,10 +13485,13 @@ def track_user_location(user_id, initial_location):
                             sent_message = bot.send_message(user_id, notification_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(sent_message.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['entered'] = True
+                            user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['entered'] = True
                         except:
                             pass
 
-                    if actual_distance <= IN_ZONE_DISTANCE and not user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone']:
+                    if (actual_distance <= IN_ZONE_DISTANCE and 
+                        not user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone'] and
+                        not user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['in_zone']):
                         in_zone_message = (
                             f"📍 Вы находитесь в зоне действия камеры!\n\n"
                             f"🗺️ *{camera_address}*"
@@ -13471,10 +13500,13 @@ def track_user_location(user_id, initial_location):
                             in_zone_sent = bot.send_message(user_id, in_zone_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(in_zone_sent.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['in_zone'] = True
+                            user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['in_zone'] = True
                         except:
                             pass
 
-                    if actual_distance > EXIT_DISTANCE and user_tracking[user_id]['last_notified_camera'][camera_address]['entered']:
+                    if (actual_distance > EXIT_DISTANCE and 
+                        user_tracking[user_id]['last_notified_camera'][camera_address]['entered'] and
+                        not user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['exited']):
                         exit_message = (
                             f"🔔 Вы вышли из зоны действия камеры!\n\n"
                             f"🗺️ *{camera_address}*"
@@ -13483,6 +13515,7 @@ def track_user_location(user_id, initial_location):
                             exit_sent_message = bot.send_message(user_id, exit_message, parse_mode="Markdown")
                             user_tracking[user_id]['notification_ids'].append(exit_sent_message.message_id)
                             user_tracking[user_id]['last_notified_camera'][camera_address]['exited'] = True
+                            user_tracking[user_id]['last_notified_camera'][camera_address]['notified_once']['exited'] = True
                         except:
                             pass
 
