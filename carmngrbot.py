@@ -5334,38 +5334,88 @@ def load_city_names(file_path):
     return city_names
 
 
+# def send_weather_notifications():
+#     user_locations = load_user_locations()
+#     city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
+    
+#     for chat_id, coords in user_locations.items():
+#         weather_message = get_current_weather(coords)
+        
+#         if weather_message:
+#             city_code = coords.get('city_code')
+#             city_name = city_names.get(city_code, city_code)  # Получаем название города
+#             average_prices = get_average_fuel_prices(city_code)
+
+#              # Получаем текущую дату и время
+#             current_time = datetime.now().strftime("%d.%m.%Y в %H:%M") 
+
+#             fuel_prices_message = ""
+#             if average_prices:
+#                 fuel_prices_message = "\n*Актуальные цены на топливо (город {}) на дату {}:*\n\n".format(city_name, current_time)
+#                 for fuel_type, price in average_prices.items():
+#                     fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
+
+#             try:
+#                 bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
+#             except Exception as e:
+#                 print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
+#                 traceback.print_exc()
+
 def send_weather_notifications():
     user_locations = load_user_locations()
-    city_names = load_city_names('files/combined_cities.txt')  # Загружаем названия городов
+    city_names = load_city_names('files/combined_cities.txt')  # Загрузка названий городов
     
     for chat_id, coords in user_locations.items():
-        weather_message = get_current_weather(coords)
+        # Проверяем, есть ли у пользователя координаты и/или код города
+        has_coordinates = coords.get('latitude') is not None and coords.get('longitude') is not None
+        city_code = coords.get('city_code')
+        has_city = bool(city_code)
         
-        if weather_message:
-            city_code = coords.get('city_code')
+        # Определяем, какое уведомление отправить
+        weather_message = None
+        fuel_prices_message = None
+        
+        # Если есть координаты, отправляем уведомление с погодой
+        if has_coordinates:
+            weather_message = get_current_weather(coords)
+        
+        # Если есть город, отправляем уведомление с ценами на топливо
+        if has_city:
             city_name = city_names.get(city_code, city_code)  # Получаем название города
             average_prices = get_average_fuel_prices(city_code)
-
-             # Получаем текущую дату и время
-            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M") 
-
-            fuel_prices_message = ""
+            
+            # Получаем текущую дату и время
+            current_time = datetime.now().strftime("%d.%m.%Y в %H:%M")
+            
             if average_prices:
                 fuel_prices_message = "\n*Актуальные цены на топливо (город {}) на дату {}:*\n\n".format(city_name, current_time)
                 for fuel_type, price in average_prices.items():
                     fuel_prices_message += f"⛽ *{fuel_type}:* {price:.2f} руб./л.\n"
-
-            try:
-                bot.send_message(chat_id, weather_message + fuel_prices_message, parse_mode="Markdown")
-            except Exception as e:
-                print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
-                traceback.print_exc()
+        
+        # Отправляем уведомление в зависимости от данных пользователя
+        try:
+            if has_coordinates and has_city:
+                # Пользователь 3 — отправляем полное уведомление (погода и цены на топливо)
+                message = (weather_message or "") + (fuel_prices_message or "")
+                bot.send_message(chat_id, message, parse_mode="Markdown")
+            elif has_coordinates and not has_city:
+                # Пользователь 1 — отправляем только уведомление с погодой
+                if weather_message:
+                    bot.send_message(chat_id, weather_message, parse_mode="Markdown")
+            elif has_city and not has_coordinates:
+                # Пользователь 2 — отправляем только уведомление с ценами на топливо
+                if fuel_prices_message:
+                    bot.send_message(chat_id, fuel_prices_message, parse_mode="Markdown")
+            # Пользователь 4 (без координат и города) не получает уведомления
+        except Exception as e:
+            print(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
+            traceback.print_exc()
 
 # Настройка расписания для отправки уведомлений
 schedule.every().day.at("07:30").do(send_weather_notifications)
 schedule.every().day.at("13:00").do(send_weather_notifications)
 schedule.every().day.at("17:00").do(send_weather_notifications)
-schedule.every().day.at("20:00").do(send_weather_notifications)
+schedule.every().day.at("22:54").do(send_weather_notifications)
 
 # Функция для запуска расписания в отдельном потоке
 def run_schedule():
