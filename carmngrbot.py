@@ -3481,16 +3481,38 @@ location_data = load_location_data()
 
 # (13.2) --------------- КОД ДЛЯ "ПОИСКА ТРАНСПОРТА" (ОБРАБОТЧИК "НАЙТИ ТРАНСПОРТ") ---------------
 
+# Обработчик для команды "Найти транспорт"
 @bot.message_handler(func=lambda message: message.text == "Найти транспорт")
-def start3(message):
+def start_transport_search(message):
     global location_data
     user_id = str(message.from_user.id)
 
-    if user_id in location_data and location_data[user_id]['start_location'] is not None:
-        location_data[user_id]['start_location'] = None
-        location_data[user_id]['end_location'] = None
-        save_location_data(location_data)
+    # Если уже начат процесс (начальная геопозиция была сохранена)
+    if user_id in location_data and location_data[user_id].get('start_location') is not None and location_data[user_id].get('end_location') is None:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        item1 = types.KeyboardButton("Продолжить")
+        item2 = types.KeyboardButton("Начать заново")
+        item3 = types.KeyboardButton("В главное меню")
+        markup.add(item1, item2)
+        markup.add(item3)
+        bot.send_message(message.chat.id, "Хотите продолжить с того места, где остановились?", reply_markup=markup)
+        bot.register_next_step_handler(message, continue_or_restart)
+    else:
+        start_new_transport_search(message)
 
+# Функция для начала нового поиска транспорта
+def start_new_transport_search(message):
+    global location_data
+    user_id = str(message.from_user.id)
+
+    # Очищаем данные для нового поиска
+    location_data[user_id] = {'start_location': None, 'end_location': None}
+    save_location_data(location_data)
+
+    request_transport_location(message)
+
+# Функция для запроса геопозиции транспорта
+def request_transport_location(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
     item2 = types.KeyboardButton("В главное меню")
@@ -3498,19 +3520,43 @@ def start3(message):
     markup.add(item2)
 
     bot.send_message(message.chat.id, "Отправьте геопозицию транспорта:", reply_markup=markup)
-
     bot.register_next_step_handler(message, handle_car_location)
 
-# (13.3) --------------- КОД ДЛЯ "ПОИСКА ТРАНСПОРТА" (ОБРАБОТЧИК "ЛОКАЦИЯ") ---------------
+# Обработка ответа на предложение продолжить или начать заново
+def continue_or_restart(message):
+    if message.text == "Продолжить":
+        # После продолжения вернем кнопки для отправки геопозиции
+        request_user_location(message)
+    elif message.text == "Начать заново":
+        start_new_transport_search(message)
+    else:
+        return_to_menu(message)
 
+# Функция для запроса геопозиции пользователя
+def request_user_location(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Отправить геопозицию", request_location=True)
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    bot.send_message(message.chat.id, "Теперь отправьте свою геопозицию:", reply_markup=markup)
+    bot.register_next_step_handler(message, handle_car_location)
+
+# Обработка геопозиции транспорта и пользователя
 @bot.message_handler(content_types=['location'])
 def handle_car_location(message):
     global location_data
     user_id = str(message.from_user.id)
 
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
     if user_id not in location_data:
         location_data[user_id] = {'start_location': None, 'end_location': None}
 
+    # Сохранение геопозиции транспорта
     if location_data[user_id]['start_location'] is None:
         if message.location is not None:
             location_data[user_id]['start_location'] = {
@@ -3518,17 +3564,16 @@ def handle_car_location(message):
                 LONGITUDE_KEY: message.location.longitude
             }
 
-            bot.send_message(message.chat.id, "Геопозиция транспорта сохранена.\n\nТеперь отправьте свою геопозицию:")
-            bot.register_next_step_handler(message, handle_car_location)
+            # Сохраняем, что процесс поиска начат
+            location_data[user_id]['process'] = 'in_progress'
+            save_location_data(location_data)
+
+            # Запрашиваем геопозицию пользователя
+            request_user_location(message)
         else:
+            handle_location_error(message)
 
-            if message.text == "В главное меню":
-                return_to_menu(message)
-                return
-
-            bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию транспорта. Попробуйте еще раз.")
-            bot.register_next_step_handler(message, handle_car_location)
-
+    # Сохранение геопозиции пользователя
     elif location_data[user_id]['end_location'] is None:
         if message.location is not None:
             location_data[user_id]['end_location'] = {
@@ -3536,7 +3581,10 @@ def handle_car_location(message):
                 LONGITUDE_KEY: message.location.longitude
             }
 
+            # Завершаем процесс, сохранив данные
+            location_data[user_id]['process'] = 'completed'
             save_location_data(location_data)
+
             send_map_link(message.chat.id, location_data[user_id]['start_location'], location_data[user_id]['end_location'])
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Найти транспорт")
@@ -3545,37 +3593,23 @@ def handle_car_location(message):
             markup.add(item2)
             bot.send_message(message.chat.id, "Вы можете найти транспорт еще раз.", reply_markup=markup)
         else:
+            handle_location_error(message)
 
-            if message.text == "В главное меню":
-                return_to_menu(message)
-                return
+# Функция обработки ошибки при получении геопозиции
+def handle_location_error(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
 
-            bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию вашего места. Попробуйте еще раз.")
-            bot.register_next_step_handler(message, handle_car_location)
+    bot.send_message(message.chat.id, "Извините, не удалось получить геопозицию. Попробуйте еще раз.")
+    bot.register_next_step_handler(message, handle_car_location)
 
-# (13.4) --------------- КОД ДЛЯ "ПОИСКА ТРАНСПОРТА" (ОБРАБОТЧИК "НАЙТИ ТРАНСПОРТ") ---------------
-
-@bot.message_handler(func=lambda message: message.text == "Найти транспорт")
-def find_car(message):
-    global location_data
-    user_id = str(message.from_user.id)
-
-    if user_id in location_data and location_data[user_id]['start_location'] is not None:
-        location_data[user_id]['start_location'] = None
-        location_data[user_id]['end_location'] = None
-        save_location_data(location_data)
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    item = types.KeyboardButton("Отправить геопозицию", request_location=True)
-    markup.add(item)
-
-    bot.send_message(message.chat.id, "Отправьте геопозицию транспорта:", reply_markup=markup)
-
+# Отправка карты с маршрутом
 def send_map_link(chat_id, start_location, end_location):
     map_url = f"https://yandex.ru/maps/?rtext={end_location[LATITUDE_KEY]},{end_location[LONGITUDE_KEY]}~{start_location[LATITUDE_KEY]},{start_location[LONGITUDE_KEY]}&rtt=pd"
     short_url = shorten_url(map_url)    
     bot.send_message(chat_id, f"Маршрут для поиска:\n\n{short_url}")
-
+    
 # (14) --------------- КОД ДЛЯ "ПОИСК РЕГИОНА ПО ГОСНОМЕРУ" ---------------
 
 @bot.message_handler(func=lambda message: message.text == "Код региона")
