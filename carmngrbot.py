@@ -14256,7 +14256,7 @@ def process_delete_autokredit_selection(message):
 @bot.message_handler(func=lambda message: message.text == "Шины")
 def view_tire_calc(message):
     description = (
-        "ℹ️ *Краткая справка по шинному калькулятору*\n\n"
+        "ℹ️ *Краткая справка по шинному калькулятору*\n\n\n"
         "📌 *Расчет шин и дисков:*\n"
         "Расчет выполняется на основе данных - *ширина, профиль и диаметр текущих шин, ширина обода и вылет текущих дисков, а также параметры новых шин и дисков*\n"
         "_P.S. Калькулятор предоставляет ориентировочные данные для сравнения. Совместимость зависит от конструкции автомобиля и может отличаться!_\n\n"
@@ -15033,18 +15033,12 @@ def process_delete_tire_selection(message):
 
 # ---------- РАСЧЕТ НАЛОГА ----------
 
-import os
-import json
-import telebot
-from telebot import types
-import PyPDF2
-import re
 
 # Paths to files
 NALOG_JSON_PATH = os.path.join('files', 'nalog.json')
 USER_HISTORY_PATH = os.path.join('data base', 'calculators', 'nalog', 'nalog_users.json')
-PERECHEN_AUTO_PATH = os.path.join('files', 'Perechen_auto_10mln_rub.pdf')
-NALOG_STAVKI_PATH = os.path.join('files', 'nalog_stavki_region.pdf')
+PERECHEN_AUTO_PATH = os.path.join('files', 'auto_10mln_rub_2025.json')  # Обновленный путь
+TRANSPORT_TAX_BASE_PATH = os.path.join('files', 'transport_tax_{year}.json')
 
 # Global variables
 nalog_data = {}
@@ -15052,6 +15046,7 @@ user_history = {}
 user_data = {}
 expensive_cars = []
 tax_rates = {}
+available_years = [2021, 2022, 2023, 2024, 2025]  # Список доступных годов
 
 # Ensure file paths exist and load data
 def ensure_path_and_file(file_path):
@@ -15071,11 +15066,11 @@ def load_nalog_data():
 def load_user_history_nalog():
     global user_history
     try:
-        if os.path.exists(TIRE_HISTORY_PATH):
-            with open(TIRE_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
+        if os.path.exists(USER_HISTORY_PATH):
+            with open(USER_HISTORY_PATH, 'r', encoding='utf-8') as db_file:
                 user_history = json.load(db_file)
         else:
-            print(f"Файл {TIRE_HISTORY_PATH} не найден! Создание нового...")
+            print(f"Файл {USER_HISTORY_PATH} не найден! Создание нового...")
             user_history = {}
             save_user_history_nalog()
     except Exception as e:
@@ -15084,196 +15079,79 @@ def load_user_history_nalog():
 
 def save_user_history_nalog():
     try:
-        with open(TIRE_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
+        with open(USER_HISTORY_PATH, 'w', encoding='utf-8') as db_file:
             json.dump(user_history, db_file, ensure_ascii=False, indent=2)
-        print(f"Данные сохранены в {TIRE_HISTORY_PATH}: {user_history}")
     except Exception as e:
         print(f"Ошибка при сохранении истории: {e}")
 
 def load_expensive_cars():
     global expensive_cars
     try:
-        with open(PERECHEN_AUTO_PATH, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-            
-            # Парсинг данных из PDF
-            lines = text.split('\n')
-            current_cost_range = ""
+        with open(PERECHEN_AUTO_PATH, 'r', encoding='utf-8') as file:
+            data = json.load(file)  # Теперь data — это массив
             car_data = []
-            
-            for line in lines:
-                line = line.strip()
-                if "средней стоимостью от 10 миллионов до 15 миллионов рублей" in line:
-                    current_cost_range = "10-15"
-                elif "средней стоимостью от 15 миллионов рублей" in line:
-                    current_cost_range = "15+"
-                elif line.startswith("|"):
-                    parts = line.split("|")
-                    if len(parts) >= 6:
-                        try:
-                            brand = parts[1].strip()
-                            model = parts[2].strip()
-                            engine_type = parts[3].strip()
-                            engine_volume = parts[4].strip()
-                            years_passed = parts[5].strip()
-                            car_data.append({
-                                "brand": brand,
-                                "model": model,
-                                "engine_type": engine_type,
-                                "engine_volume": engine_volume,
-                                "years_passed": years_passed,
-                                "cost_range": current_cost_range
-                            })
-                        except:
-                            continue
+            for section in data:
+                cost_range = "10-15" if "10 миллионов до 15 миллионов рублей" in section['subtitle'] else "15+"
+                for car in section['cars']:
+                    car_data.append({
+                        "brand": car['brand'],
+                        "model": car['model'],
+                        "engine_type": car['engine_type'],
+                        "engine_volume": str(car['engine_displacement']) if car['engine_displacement'] is not None else "N/A",
+                        "years_passed": car['age'],
+                        "cost_range": cost_range
+                    })
             expensive_cars = car_data
+    except json.JSONDecodeError as e:
+        print(f"Ошибка при разборе JSON в файле auto_10mln_rub_2025.json: {e}")
     except Exception as e:
-        print(f"Ошибка при загрузке файла Perechen_auto_10mln_rub.pdf: {e}")
+        print(f"Ошибка при загрузке файла auto_10mln_rub_2025.json: {e}")
 
-def load_tax_rates():
+def load_tax_rates(year):
     global tax_rates
     try:
-        with open(NALOG_STAVKI_PATH, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-
-            # Разделяем текст на строки
-            lines = text.split('\n')
-            tax_rates = {}
-            current_region_code = None
-            current_vehicle_type = None
-
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Поиск региона (предполагаем, что регион указан в формате "01 | Республика Адыгея")
-                region_match = re.match(r"(\d{2})\s*\|\s*(.+)", line)
-                if region_match:
-                    current_region_code = region_match.group(1)
-                    region_name = region_match.group(2).strip()
-                    tax_rates[current_region_code] = {
-                        "region_name": region_name,
-                        "rates": {}
-                    }
-                    continue
-
-                # Определяем тип ТС
-                if "Автомобили легковые" in line:
-                    current_vehicle_type = "Автомобили легковые"
-                elif "Автомобили грузовые" in line:
-                    current_vehicle_type = "Автомобили грузовые"
-                elif "Другие самоходные транспортные средства" in line:
-                    current_vehicle_type = "Другие самоходные"
-                elif "Снегоходы, мотосани" in line:
-                    current_vehicle_type = "Снегоходы, мотосани"
-                elif "Катера, моторные лодки" in line:
-                    current_vehicle_type = "Катера, моторные лодки"
-                elif "Яхты и другие парусно-моторные суда" in line:
-                    current_vehicle_type = "Яхты"
-                elif "Гидроциклы" in line:
-                    current_vehicle_type = "Гидроциклы"
-                elif "Несамоходные (буксируемые) суда" in line:
-                    current_vehicle_type = "Несамоходные суда"
-                elif "Самолеты, вертолеты" in line:
-                    current_vehicle_type = "Самолеты, вертолеты"
-                elif "Самолеты, имеющие реактивные двигатели" in line:
-                    current_vehicle_type = "Самолеты с реактивными двигателями"
-                elif "Другие водные и воздушные транспортные средства" in line:
-                    current_vehicle_type = "Другие водные и воздушные"
-
-                # Парсинг ставок
-                if current_region_code and current_vehicle_type:
-                    # Инициализация структуры для текущего типа ТС
-                    if current_vehicle_type not in tax_rates[current_region_code]["rates"]:
-                        tax_rates[current_region_code]["rates"][current_vehicle_type] = {}
-
-                    # Парсинг ставок для легковых автомобилей
-                    if current_vehicle_type == "Автомобили легковые":
-                        power_match = re.match(
-                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?(?:,\s*с\s*года\s*выпуска\s*которых\s*до\s*1\s*числа\s*налогового\s*периода\s*прошло:)?",
-                            line
-                        )
-                        if power_match:
-                            power_limit = int(power_match.group(2))
-                            condition = power_match.group(1)
-                            age_range = None
-                            if "до 5 лет включительно" in line:
-                                age_range = "0-5"
-                            elif "свыше 5 до 10 лет включительно" in line:
-                                age_range = "5-10"
-                            elif "свыше 10 лет" in line:
-                                age_range = "10+"
-                            
-                            rate_match = re.search(r"\|\s*([\d,]+)", line)
-                            if rate_match:
-                                rate = float(rate_match.group(1).replace(',', '.'))
-                                key = f"{condition}_{power_limit}"
-                                if age_range:
-                                    key += f"_{age_range}"
-                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
-
-                    # Парсинг ставок для грузовых автомобилей
-                    elif current_vehicle_type == "Автомобили грузовые":
-                        power_match = re.match(
-                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?(?:,\s*с\s*года\s*выпуска\s*которых\s*до\s*1\s*числа\s*налогового\s*периода\s*прошло:)?",
-                            line
-                        )
-                        if power_match:
-                            power_limit = int(power_match.group(2))
-                            condition = power_match.group(1)
-                            age_range = None
-                            if "до 5 лет включительно" in line:
-                                age_range = "0-5"
-                            elif "свыше 5 до 10 лет включительно" in line:
-                                age_range = "5-10"
-                            elif "свыше 10 лет" in line:
-                                age_range = "10+"
-                            
-                            rate_match = re.search(r"\|\s*([\d,]+)", line)
-                            if rate_match:
-                                rate = float(rate_match.group(1).replace(',', '.'))
-                                key = f"{condition}_{power_limit}"
-                                if age_range:
-                                    key += f"_{age_range}"
-                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
-
-                    # Парсинг ставок для других типов ТС
-                    else:
-                        power_match = re.match(
-                            r"(до|свыше)\s*(\d+)\s*л\.с\.\s*\((до|свыше)\s*([\d,]+)\s*кВт\)(?:\s*включительно)?",
-                            line
-                        )
-                        if power_match:
-                            power_limit = int(power_match.group(2))
-                            condition = power_match.group(1)
-                            rate_match = re.search(r"\|\s*([\d,]+)", line)
-                            if rate_match:
-                                rate = float(rate_match.group(1).replace(',', '.'))
-                                key = f"{condition}_{power_limit}"
-                                tax_rates[current_region_code]["rates"][current_vehicle_type][key] = rate
-                        else:
-                            # Для ТС без мощности (например, несамоходные суда)
-                            rate_match = re.search(r"\|\s*([\d,]+)", line)
-                            if rate_match:
-                                rate = float(rate_match.group(1).replace(',', '.'))
-                                tax_rates[current_region_code]["rates"][current_vehicle_type]["default"] = rate
-
+        tax_file_path = TRANSPORT_TAX_BASE_PATH.format(year=year)
+        if not os.path.exists(tax_file_path):
+            raise FileNotFoundError(f"Файл {tax_file_path} не найден!")
+        with open(tax_file_path, 'r', encoding='utf-8') as file:
+            tax_rates = json.load(file)
     except Exception as e:
-        print(f"Ошибка при загрузке файла nalog_stavki_region.pdf: {e}")
+        print(f"Ошибка при загрузке файла transport_tax_{year}.json: {e}")
+        tax_rates = {}
 
+# Инициализация данных
 ensure_path_and_file(NALOG_JSON_PATH)
 ensure_path_and_file(USER_HISTORY_PATH)
 load_nalog_data()
 load_user_history_nalog()
 load_expensive_cars()
-load_tax_rates()
+load_tax_rates(2025)  # Загружаем данные за 2025 год по умолчанию
+
+# Обработчик команды "Налог"
+@bot.message_handler(func=lambda message: message.text == "Налог")
+def view_nalog_calc(message):
+    global stored_message
+    stored_message = message
+
+    description = (
+        "ℹ️ *Краткая справка по расчету транспортного налога*\n\n\n"
+        "📌 *Расчет налога:*\n"
+        "Расчет ведется по следующим данным - *регион, тип ТС, мощность двигателя, количество месяцев владения, наличие льгот, стоимость ТС (для авто дороже 10 млн руб.)*\n"
+        "_P.S. Региональный коэффициент завышен. Мы работаем над этим. Если хотите узнать без калькулятора, следуйте по формуле:_\n"
+        "_Сумма налога (руб.) = налоговая база (л.с.) × ставка (руб.) × (количество полных месяцев владения / 12 месяцев)_\n\n"
+        "📌 *Просмотр налогов:*\n"
+        "Вы можете посмотреть свои предыдущие расчеты с указанием всех параметров\n\n"
+        "📌 *Удаление налогов:*\n"
+        "Вы можете удалить свои расчеты, если они вам больше не нужны"
+    )
+
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Рассчитать налог', 'Просмотр налогов', 'Удаление налогов')
+    markup.add('Вернуться в калькуляторы')
+    markup.add('В главное меню')
+
+    bot.send_message(message.chat.id, description, parse_mode='Markdown')
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 # Start tax calculation
 @bot.message_handler(func=lambda message: message.text == "Рассчитать налог")
@@ -15285,13 +15163,14 @@ def start_tax_calculation(message):
     user_id = message.from_user.id
     user_data[user_id] = {'user_id': user_id, 'username': message.from_user.username}
 
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
-    regions = [region['name'] for region in nalog_data['regions']]
+    markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    regions = list(tax_rates.keys())
     for i in range(0, len(regions), 2):
         if i + 1 < len(regions):
             markup.row(regions[i], regions[i + 1])
         else:
             markup.add(regions[i])
+    markup.add("Вернуться в налог")       
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите ваш регион:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_region_step)
@@ -15300,27 +15179,30 @@ def start_tax_calculation(message):
 def process_region_step(message):
     user_id = message.from_user.id
 
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
     region_name = message.text.strip()
-    region = next((r for r in nalog_data['regions'] if r['name'] == region_name), None)
-    if not region:
+    if region_name not in tax_rates:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
         bot.register_next_step_handler(msg, process_region_step)
         return
 
     user_data[user_id]['region'] = region_name
-    user_data[user_id]['region_code'] = region['code']
 
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
-    years = nalog_data['years']
+    markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    years = [str(year) for year in available_years]
     for i in range(0, len(years), 2):
         if i + 1 < len(years):
-            markup.row(str(years[i]), str(years[i + 1]))
+            markup.row(years[i], years[i + 1])
         else:
-            markup.add(str(years[i]))
+            markup.add(years[i])
+    markup.add("Вернуться в налог")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите год для налога:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_year_step)
@@ -15329,27 +15211,37 @@ def process_region_step(message):
 def process_year_step(message):
     user_id = message.from_user.id
 
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
     try:
         year = int(message.text)
-        if year not in nalog_data['years']:
+        if year not in available_years:
             raise ValueError
         user_data[user_id]['year'] = year
+        load_tax_rates(year)
+        if not tax_rates:
+            bot.send_message(message.chat.id, f"❌ Данные за `{year}` год отсутствуют!", parse_mode='Markdown')
+            view_nalog_calc(message)
+            return
     except ValueError:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный год")
         bot.register_next_step_handler(msg, process_year_step)
         return
 
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
-    months = nalog_data['ownership_months']
+    markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    months = [str(i) for i in range(1, 13)]
     for i in range(0, len(months), 2):
         if i + 1 < len(months):
             markup.row(months[i], months[i + 1])
         else:
             markup.add(months[i])
+    markup.add("Вернуться в налог")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Количество месяцев владения ТС:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_ownership_months_step)
@@ -15358,25 +15250,32 @@ def process_year_step(message):
 def process_ownership_months_step(message):
     user_id = message.from_user.id
 
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    month = message.text.strip()
-    if month not in nalog_data['ownership_months']:
-        msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
+    try:
+        months = int(message.text)
+        if months < 1 or months > 12:
+            raise ValueError
+        user_data[user_id]['ownership_months'] = months
+    except ValueError:
+        msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите число от 1 до 12")
         bot.register_next_step_handler(msg, process_ownership_months_step)
         return
 
-    user_data[user_id]['ownership_months'] = int(month)
-
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
-    vehicle_types = [vt['name'] for vt in nalog_data['vehicle_types']]
+    markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    vehicle_types = list(tax_rates[user_data[user_id]['region']].keys())
     for i in range(0, len(vehicle_types), 2):
         if i + 1 < len(vehicle_types):
             markup.row(vehicle_types[i], vehicle_types[i + 1])
         else:
             markup.add(vehicle_types[i])
+    markup.add("Вернуться в налог")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Вид транспортного средства:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_vehicle_type_step)
@@ -15385,29 +15284,36 @@ def process_ownership_months_step(message):
 def process_vehicle_type_step(message):
     user_id = message.from_user.id
 
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
     vehicle_type = message.text.strip()
-    vehicle = next((vt for vt in nalog_data['vehicle_types'] if vt['name'] == vehicle_type), None)
-    if not vehicle:
+    if vehicle_type not in tax_rates[user_data[user_id]['region']]:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
         bot.register_next_step_handler(msg, process_vehicle_type_step)
         return
 
     user_data[user_id]['vehicle_type'] = vehicle_type
-    user_data[user_id]['vehicle_code'] = vehicle['code']
-    user_data[user_id]['metric'] = vehicle['metric']
+    user_data[user_id]['metric'] = "Мощность двигателя (л.с.)"
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("Вернуться в налог")
     markup.add("В главное меню")
-    msg = bot.send_message(message.chat.id, f"{vehicle['metric']}:", reply_markup=markup)
+    msg = bot.send_message(message.chat.id, f"Введите мощность двигателя (л.с.):", reply_markup=markup)
     bot.register_next_step_handler(msg, process_metric_value_step)
 
-# Step 4: Metric value (e.g., engine power, gross tonnage, etc.)
+# Step 5: Metric value (e.g., engine power)
 def process_metric_value_step(message):
     user_id = message.from_user.id
+
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -15421,19 +15327,23 @@ def process_metric_value_step(message):
         bot.register_next_step_handler(msg, process_metric_value_step)
         return
 
-    # Если выбраны "Автомобили легковые", спрашиваем про стоимость > 10 млн
-    if user_data[user_id]['vehicle_type'] == "Автомобили легковые":
-        markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    if user_data[user_id]['vehicle_type'] == "Легковые автомобили":
+        markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
         markup.add("Да", "Нет")
+        markup.add("Вернуться в налог")
         markup.add("В главное меню")
         msg = bot.send_message(message.chat.id, "ТС стоит больше 10 миллионов рублей?", reply_markup=markup)
         bot.register_next_step_handler(msg, process_expensive_car_step)
     else:
         proceed_to_benefits(message)
 
-# Step 4.1: Expensive car check
+# Step 5.1: Expensive car check
 def process_expensive_car_step(message):
     user_id = message.from_user.id
+
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -15447,21 +15357,25 @@ def process_expensive_car_step(message):
     user_data[user_id]['is_expensive'] = message.text == "Да"
 
     if user_data[user_id]['is_expensive']:
-        # Собираем уникальные марки
         brands = sorted(set(car['brand'] for car in expensive_cars))
-        brand_list = "\n".join(f"{i+1}. {brand}" for i, brand in enumerate(brands))
+        brand_list = "\n".join(f"📜 №{i+1}. {brand}" for i, brand in enumerate(brands))
         user_data[user_id]['brands'] = brands
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, f"Марка ТС:\n{brand_list}\n\nВведите номер марки:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, f"*Марка ТС:*\n\n{brand_list}\n\nВведите номер марки:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_brand_step)
     else:
         proceed_to_benefits(message)
 
-# Step 4.1a: Brand selection
+# Step 5.1a: Brand selection
 def process_brand_step(message):
     user_id = message.from_user.id
+
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -15475,22 +15389,26 @@ def process_brand_step(message):
         selected_brand = brands[brand_idx]
         user_data[user_id]['selected_brand'] = selected_brand
 
-        # Собираем модели для выбранной марки
         models = sorted(set(car['model'] for car in expensive_cars if car['brand'] == selected_brand))
-        model_list = "\n".join(f"{i+1}. {model}" for i, model in enumerate(models))
+        model_list = "\n".join(f"✨ №{i+1}. {model}" for i, model in enumerate(models))
         user_data[user_id]['models'] = models
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, f"Модель ТС:\n{model_list}\n\nВведите номер модели:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, f"*Модель ТС:*\n\n{model_list}\n\nВведите номер модели:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_model_step)
     except ValueError:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_brand_step)
 
-# Step 4.1b: Model selection
+# Step 5.1b: Model selection
 def process_model_step(message):
     user_id = message.from_user.id
+
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -15504,33 +15422,48 @@ def process_model_step(message):
         selected_model = models[model_idx]
         user_data[user_id]['selected_model'] = selected_model
 
-        # Собираем годы выпуска для выбранной марки и модели
         selected_brand = user_data[user_id]['selected_brand']
         years_passed_list = sorted(set(car['years_passed'] for car in expensive_cars if car['brand'] == selected_brand and car['model'] == selected_model))
         years = []
         current_year = user_data[user_id]['year']
         for years_passed in years_passed_list:
-            if "до" in years_passed:
-                start, end = map(int, re.findall(r'\d+', years_passed))
-                for y in range(start, end + 1):
-                    years.append(current_year - y)
+            if "от" in years_passed and "до" in years_passed:
+                match = re.search(r'от (\d+) до (\d+)', years_passed)
+                if match:
+                    start, end = map(int, match.groups())
+                    for y in range(start, end + 1):
+                        years.append(current_year - y)
+            elif "до" in years_passed:
+                match = re.search(r'до (\d+)', years_passed)
+                if match:
+                    end = int(match.group(1))
+                    for y in range(0, end + 1):
+                        years.append(current_year - y)
             else:
-                years.append(current_year - int(re.search(r'\d+', years_passed).group()))
+                match = re.search(r'(\d+)', years_passed)
+                if match:
+                    y = int(match.group(1))
+                    years.append(current_year - y)
         years = sorted(set(years))
-        year_list = "\n".join(f"{i+1}. {year}" for i, year in enumerate(years))
+        year_list = "\n".join(f"📅 №{i+1}. {year}" for i, year in enumerate(years))
         user_data[user_id]['years'] = years
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("Вернуться в налог")
         markup.add("В главное меню")
-        msg = bot.send_message(message.chat.id, f"Год выпуска:\n{year_list}\n\nВведите номер года:", reply_markup=markup)
+        msg = bot.send_message(message.chat.id, f"*Год выпуска:*\n\n{year_list}\n\nВведите номер года:", reply_markup=markup, parse_mode='Markdown')
         bot.register_next_step_handler(msg, process_year_of_manufacture_step)
     except ValueError:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_model_step)
 
-# Step 4.1c: Year of manufacture
+# Step 5.1c: Year of manufacture
 def process_year_of_manufacture_step(message):
     user_id = message.from_user.id
+
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
 
     if message.text == "В главное меню":
         return_to_menu(message)
@@ -15548,16 +15481,13 @@ def process_year_of_manufacture_step(message):
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Введите правильный номер")
         bot.register_next_step_handler(msg, process_year_of_manufacture_step)
 
-# Step 5: Benefits
+# Step 6: Benefits
 def proceed_to_benefits(message):
     user_id = message.from_user.id
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
-    benefits = [benefit['description'] for benefit in nalog_data['benefits']]
-    for i in range(0, len(benefits), 2):
-        if i + 1 < len(benefits):
-            markup.row(benefits[i], benefits[i + 1])
-        else:
-            markup.add(benefits[i])
+    markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
+    benefits = ["Нет", "Да"]
+    markup.add(*benefits)
+    markup.add("Вернуться в налог")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Имею ли я право на льготу?", reply_markup=markup)
     bot.register_next_step_handler(msg, process_benefits_step)
@@ -15565,13 +15495,16 @@ def proceed_to_benefits(message):
 def process_benefits_step(message):
     user_id = message.from_user.id
 
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
     benefit_desc = message.text.strip()
-    benefit = next((b for b in nalog_data['benefits'] if b['description'] == benefit_desc), None)
-    if not benefit:
+    if benefit_desc not in ["Нет", "Да"]:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
         bot.register_next_step_handler(msg, process_benefits_step)
         return
@@ -15579,57 +15512,30 @@ def process_benefits_step(message):
     user_data[user_id]['benefit'] = benefit_desc
     calculate_tax(message)
 
-# Step 6: Calculate tax
+# Step 7: Calculate tax
 def calculate_tax(message):
     user_id = message.from_user.id
     data = user_data[user_id]
 
-    # Определяем налоговую базу (мощность двигателя, валовая вместимость и т.д.)
+    # Налоговая база
     tax_base = data['metric_value']
 
     # Определяем налоговую ставку
-    region_code = data['region_code']
+    region = data['region']
     vehicle_type = data['vehicle_type']
-    rates = tax_rates.get(region_code, {}).get("rates", {}).get(vehicle_type, {})
-
+    rates = tax_rates[region][vehicle_type]
+    
     rate = 0.0
-    if vehicle_type == "Автомобили легковые" or vehicle_type == "Автомобили грузовые":
-        # Учитываем возраст ТС
-        if 'year_of_manufacture' in data:
-            years_passed = data['year'] - data['year_of_manufacture']
-            if years_passed <= 5:
-                age_range = "0-5"
-            elif years_passed <= 10:
-                age_range = "5-10"
-            else:
-                age_range = "10+"
-        else:
-            age_range = "0-5"  # По умолчанию, если возраст не указан
-
-        # Ищем подходящую ставку
-        if tax_base <= 100:
-            key = f"до_100_{age_range}" if age_range else "до_100"
-            rate = rates.get(key, 0.0)
-        elif tax_base <= 200:
-            key = f"свыше_100_{age_range}" if age_range else "свыше_100"
-            rate = rates.get(key, rates.get(f"до_200_{age_range}", rates.get("до_200", 0.0)))
-        elif tax_base <= 300:
-            key = f"свыше_200_{age_range}" if age_range else "свыше_200"
-            rate = rates.get(key, rates.get(f"до_300_{age_range}", rates.get("до_300", 0.0)))
-        else:
-            key = f"свыше_300_{age_range}" if age_range else "свыше_300"
-            rate = rates.get(key, 0.0)
-
-    else:
-        # Для других типов ТС
-        if tax_base <= 50:
-            rate = rates.get("до_50", 0.0)
-        elif tax_base <= 100:
-            rate = rates.get("до_100", rates.get("свыше_50", 0.0))
-        elif tax_base <= 300:
-            rate = rates.get("свыше_100", 0.0)
-        else:
-            rate = rates.get("свыше_300", rates.get("default", 0.0))
+    for condition, value in rates.items():
+        if "до" in condition:
+            limit = float(condition.split()[1])
+            if tax_base <= limit:
+                rate = value
+                break
+        elif "свыше" in condition:
+            limit = float(condition.split()[1])
+            if tax_base > limit:
+                rate = value
 
     # Учитываем количество месяцев владения
     ownership_months = data['ownership_months']
@@ -15637,35 +15543,290 @@ def calculate_tax(message):
 
     # Проверяем льготы
     benefit = data['benefit']
-    benefit_coefficient = 1.0
-    if benefit != "Нет":
-        benefit_coefficient = 0.0  # Полное освобождение от налога
+    benefit_coefficient = 1.0 if benefit == "Нет" else 0.0
 
     # Проверяем, стоит ли ТС больше 10 млн рублей
     increasing_coefficient = 1.0
+    expensive_details = "Нет"
     if data.get('is_expensive', False):
         years_passed = data['year'] - data['year_of_manufacture']
         if years_passed <= 3:
             increasing_coefficient = 3.0
+            expensive_details = f"Да (коэффициент 3.0, до 3 лет с выпуска: {data['year_of_manufacture']})"
         elif years_passed <= 5:
             increasing_coefficient = 2.0
+            expensive_details = f"Да (коэффициент 2.0, 3-5 лет с выпуска: {data['year_of_manufacture']})"
         elif years_passed <= 10:
             increasing_coefficient = 1.5
+            expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {data['year_of_manufacture']})"
 
     # Расчет налога
     tax = tax_base * rate * months_coefficient * increasing_coefficient * benefit_coefficient
 
     # Формируем результат
-    result = (
-        f"Расчет налога за {ownership_months} мес. {data['year']} года\n"
-        f"Для транспортного средства: {data['vehicle_type']}\n"
-        f"С {data['metric'].lower()}: {tax_base}\n"
-        f"Ставка: {rate} руб.\n"
-        f"Сумма налога составит: {tax:,.2f} ₽"
+    result_message = (
+        f"*📊 Итоговый расчет транспортного налога*\n\n\n"
+        f"*Ваши данные:*\n\n"
+        f"🌍 *Регион:* {data['region']}\n"
+        f"📅 *Год:* {data['year']}\n"
+        f"🚗 *Тип ТС:* {data['vehicle_type']}\n"
+        f"💪 *Мощность двигателя:* {tax_base} л.с.\n"
+        f"⏳ *Месяцев владения:* {ownership_months}\n"
+        f"💰 *ТС дороже 10 млн руб.:* {expensive_details}\n"
+        f"⭐ *Льготы:* {benefit}\n"
+        f"\n*Итоговый расчет:*\n\n"
+        f"💰 *Сумма налога:* {tax:,.2f} руб.\n"
+        f"\n*Параметры расчета:*\n\n"
+        f"📏 *Налоговая база:* {tax_base} л.с.\n"
+        f"💵 *Ставка:* {rate} руб./л.с.\n"
+        f"⭐ *Коэффициент владения:* {months_coefficient:.2f} ({ownership_months}/12)\n"
+        f"⭐ *Повышающий коэффициент:* {increasing_coefficient}\n"
+        f"⭐ *Льготный коэффициент:* {benefit_coefficient}"
     )
 
-    bot.send_message(message.chat.id, result, reply_markup=types.ReplyKeyboardRemove())
+    # Сохранение в историю
+    timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
+    calculation_data = {
+        'region': data['region'],
+        'year': data['year'],
+        'vehicle_type': data['vehicle_type'],
+        'engine_power': tax_base,
+        'ownership_months': ownership_months,
+        'is_expensive': data.get('is_expensive', False),
+        'benefit': benefit,
+        'tax': tax,
+        'rate': rate,
+        'months_coefficient': months_coefficient,
+        'increasing_coefficient': increasing_coefficient,
+        'benefit_coefficient': benefit_coefficient,
+        'timestamp': timestamp
+    }
+    if data.get('is_expensive', False):
+        calculation_data['year_of_manufacture'] = data['year_of_manufacture']
+        calculation_data['selected_brand'] = data['selected_brand']
+        calculation_data['selected_model'] = data['selected_model']
+
+    if str(user_id) not in user_history:
+        user_history[str(user_id)] = {
+            'username': data['username'],
+            'calculations': []
+        }
+    user_history[str(user_id)]['calculations'].append(calculation_data)
     save_user_history_nalog()
+
+    bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    view_nalog_calc(message)
+
+# Просмотр расчетов
+
+@bot.message_handler(func=lambda message: message.text == "Просмотр налогов")
+def handle_view_nalog(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(message)
+        return
+    view_nalog_calculations(message.chat.id)
+
+def view_nalog_calculations(chat_id):
+    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
+    
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов налога:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']
+        message_text += f"🕒 *№{i}.* {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_view_nalog_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в налог')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+
+def process_view_nalog_selection(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            if len(indices) == 1:
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_nalog_calc(message)
+                return
+            else:
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_nalog_calc(message)
+            return
+
+        for index in valid_indices:
+            calc = calculations[index]
+            expensive_details = "Нет"
+            if calc['is_expensive']:
+                years_passed = calc['year'] - calc['year_of_manufacture']
+                if years_passed <= 3:
+                    expensive_details = f"Да (коэффициент 3.0, до 3 лет с выпуска: {calc['year_of_manufacture']})"
+                elif years_passed <= 5:
+                    expensive_details = f"Да (коэффициент 2.0, 3-5 лет с выпуска: {calc['year_of_manufacture']})"
+                elif years_passed <= 10:
+                    expensive_details = f"Да (коэффициент 1.5, 5-10 лет с выпуска: {calc['year_of_manufacture']})"
+
+            result_message = (
+                f"*📊 Итоговый расчет транспортного налога №{index + 1}*\n\n\n"
+                f"*Ваши данные:*\n\n"
+                f"🌍 *Регион:* {calc['region']}\n"
+                f"📅 *Год:* {calc['year']}\n"
+                f"🚗 *Тип ТС:* {calc['vehicle_type']}\n"
+                f"💪 *Мощность двигателя:* {calc['engine_power']} л.с.\n"
+                f"⏳ *Месяцев владения:* {calc['ownership_months']}\n"
+                f"💰 *ТС дороже 10 млн руб.:* {expensive_details}\n"
+                f"⭐ *Льготы:* {calc['benefit']}\n"
+                f"\n*Итоговый расчет:*\n\n"
+                f"💰 *Сумма налога:* {calc['tax']:,.2f} руб.\n"
+                f"\n*Параметры расчета:*\n\n"
+                f"📏 *Налоговая база:* {calc['engine_power']} л.с.\n"
+                f"💵 *Ставка:* {calc['rate']} руб./л.с.\n"
+                f"⭐ *Коэффициент владения:* {calc['months_coefficient']:.2f} ({calc['ownership_months']}/12)\n"
+                f"⭐ *Повышающий коэффициент:* {calc['increasing_coefficient']}\n"
+                f"⭐ *Льготный коэффициент:* {calc['benefit_coefficient']}\n"
+                f"\n🕒 *Дата расчета:* {calc['timestamp']}"
+            )
+            bot.send_message(chat_id, result_message, parse_mode='Markdown')
+
+        view_nalog_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
+        view_nalog_calc(message)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Произошла ошибка: {str(e)}")
+        view_nalog_calc(message)
+
+# Удаление расчетов
+@bot.message_handler(func=lambda message: message.text == "Удаление налогов")
+def handle_delete_nalog(message):
+    user_id = str(message.from_user.id)
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(message)
+        return
+    delete_nalog_calculations(message.chat.id)
+
+def delete_nalog_calculations(chat_id):
+    user_id = str(bot.get_chat_member(chat_id, chat_id).user.id)
+    
+    if user_id not in user_history or not user_history[user_id]['calculations']:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(bot.get_chat(chat_id))
+        return
+
+    calculations = user_history[user_id]['calculations']
+    message_text = "*Список ваших расчетов налога:*\n\n"
+
+    for i, calc in enumerate(calculations, 1):
+        timestamp = calc['timestamp']
+        message_text += f"🕒 *№{i}.* {timestamp}\n"
+
+    msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
+    bot.register_next_step_handler(msg, process_delete_nalog_selection)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в налог')
+    markup.add('В главное меню')
+    bot.send_message(chat_id, "Введите номера для удаления расчетов:", reply_markup=markup)
+
+def process_delete_nalog_selection(message):
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+    if message.text == "Вернуться в налог":
+        view_nalog_calc(message)
+        return
+
+    chat_id = message.chat.id
+    user_id = str(message.from_user.id)
+
+    calculations = user_history.get(user_id, {}).get('calculations', [])
+    if not calculations:
+        bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
+        view_nalog_calc(message)
+        return
+
+    try:
+        indices = [int(num.strip()) - 1 for num in message.text.split(',')]
+        valid_indices = []
+        invalid_indices = []
+
+        for index in indices:
+            if 0 <= index < len(calculations):
+                valid_indices.append(index)
+            else:
+                invalid_indices.append(index + 1)
+
+        if invalid_indices:
+            if len(indices) == 1:
+                bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+                view_nalog_calc(message)
+                return
+            else:
+                invalid_str = ", ".join(map(str, invalid_indices))
+                bot.send_message(chat_id, f"❌ Некорректные номера `{invalid_str}`! Они будут пропущены...", parse_mode='Markdown')
+
+        if not valid_indices:
+            bot.send_message(chat_id, "❌ Некорректный номер! Пожалуйста, выберите существующие расчеты из списка")
+            view_nalog_calc(message)
+            return
+
+        valid_indices.sort(reverse=True)
+        for index in valid_indices:
+            del calculations[index]
+
+        save_user_history_nalog()
+        bot.send_message(chat_id, f"✅ Выбранные расчеты налога успешно удалены!")
+        view_nalog_calc(message)
+
+    except ValueError:
+        bot.send_message(chat_id, "❌ Некорректный ввод! Введите числа через запятую")
+        view_nalog_calc(message)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Произошла ошибка при удалении: {str(e)}")
+        view_nalog_calc(message)
+
 
 
 
