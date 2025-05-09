@@ -553,6 +553,10 @@ FREE_FEATURES = [
     "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу"
 ]
 
+import os
+import json
+import shutil
+
 def load_payment_data():
     default_promo_codes = {
         "CARMNGRBOT25": {"uses": 5, "discount": 15, "active": True, "used_by": []},
@@ -567,18 +571,18 @@ def load_payment_data():
     }
 
     default_data = {
-        'subscriptions': {'users': {}}, 
+        'subscriptions': {'users': {}},
         'referrals': {
-            'links': {}, 
-            'stats': {}, 
+            'links': {},
+            'stats': {},
             'bonuses': {},
             'leaderboard_history': {
                 'current_leader': None,
                 'leader_start_date': None,
                 'days_at_top': 0
             }
-        }, 
-        'all_users_total_amount': 0, 
+        },
+        'all_users_total_amount': 0,
         'promo_codes': default_promo_codes,
         'ad_channels': default_ad_channels
     }
@@ -649,6 +653,7 @@ def load_payment_data():
             if chat_id not in default_ad_channels:
                 data['ad_channels'][chat_id]['active'] = False
 
+    # Инициализация promo_codes
     for promo_code, promo_data in default_promo_codes.items():
         if promo_code not in data['promo_codes']:
             data['promo_codes'][promo_code] = promo_data
@@ -661,6 +666,10 @@ def load_payment_data():
         data['subscriptions']['users'][user_id].setdefault('points_history', [])
         data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
         data['subscriptions']['users'][user_id].setdefault('last_promo_used', None)
+        # Добавляем поля для бонусов
+        data['subscriptions']['users'][user_id].setdefault('daily_bonus_date', None)
+        data['subscriptions']['users'][user_id].setdefault('last_bonus_timestamp', None)
+        data['subscriptions']['users'][user_id].setdefault('streak_days', 0)
 
     return data
 
@@ -764,61 +773,61 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
     now = datetime.now()
     today = now.strftime('%d.%m.%Y')
 
-    user_data = load_user_data()
     statistics = load_statistics()
     data = load_payment_data()
     users_data = load_users_data()
 
     formatted_username = f"@{username}" if username else ""
 
-    # Инициализация данных пользователя
-    if user_id in user_data:
-        user_data[user_id]['username'] = formatted_username
-        user_data[user_id]['first_name'] = first_name or ""
-        user_data[user_id]['last_name'] = last_name or ""
-        user_data[user_id]['phone'] = phone
-        user_data[user_id]['last_active'] = current_time
-    else:
-        user_data[user_id] = {
-            'user_id': user_id,
-            'first_name': first_name or "",
-            'last_name': last_name or "",
-            'username': formatted_username,
-            'phone': phone,
-            'last_active': current_time,
-            'blocked': False,
-            'actions': 0,
-            'session_time': 0,
-            'returning': False,
-            'daily_bonus_date': None,
-            'last_bonus_timestamp': None,  # Добавляем поле для точной временной метки
-            'streak_days': 0
+    # Обновление данных в payments.json
+    if user_id_str not in data['subscriptions']['users']:
+        data['subscriptions']['users'][user_id_str] = {
+            "username": formatted_username or "неизвестный",
+            "plans": [],
+            "total_amount": 0,
+            "referral_points": 0,
+            "free_feature_trials": {},
+            "promo_usage_history": [],
+            "referral_milestones": {},
+            "points_history": [],
+            "last_promo_used": None,
+            "daily_bonus_date": None,
+            "last_bonus_timestamp": None,
+            "streak_days": 0
         }
 
+    user_subscription = data['subscriptions']['users'][user_id_str]
+    user_subscription['username'] = formatted_username or user_subscription.get('username', "неизвестный")
+
     # Проверка и начисление ежедневного бонуса
-    last_bonus_timestamp = user_data[user_id].get('last_bonus_timestamp')
+    last_bonus_date = user_subscription.get('daily_bonus_date')
     join_date = users_data.get(user_id_str, {}).get('join_date', now.strftime("%d.%m.%Y в %H:%M"))
     days_since_join = (now - datetime.strptime(join_date, "%d.%m.%Y в %H:%M")).days
     bonus_points = 1.0 if days_since_join <= 7 else 0.5  # Двойные баллы в первые 7 дней
 
-    # Проверяем, можно ли начислить бонус
+    # Проверяем, можно ли начислить бонус (только один раз в календарный день)
     can_award_bonus = False
-    if not last_bonus_timestamp:
+    if not last_bonus_date or last_bonus_date != today:
         can_award_bonus = True
-    else:
-        last_bonus_dt = datetime.strptime(last_bonus_timestamp, "%d.%m.%Y в %H:%M:%S")
-        time_since_last_bonus = now - last_bonus_dt
-        if time_since_last_bonus.total_seconds() >= 24 * 3600:  # Прошло 24 часа
-            can_award_bonus = True
 
     if can_award_bonus:
-        user_data[user_id]['last_bonus_timestamp'] = current_time
-        user_data[user_id]['daily_bonus_date'] = today
-        user_data[user_id]['streak_days'] = user_data[user_id].get('streak_days', 0) + 1
+        user_subscription['last_bonus_timestamp'] = current_time
+        user_subscription['daily_bonus_date'] = today
+        streak_days = user_subscription.get('streak_days', 0)
 
-        data['subscriptions']['users'].setdefault(user_id_str, {}).setdefault('referral_points', 0)
-        data['subscriptions']['users'][user_id_str]['referral_points'] += bonus_points
-        data['subscriptions']['users'][user_id_str].setdefault('points_history', []).append({
+        # Проверяем, был ли пропущен день
+        if last_bonus_date:
+            last_date = datetime.strptime(last_bonus_date, "%d.%m.%Y")
+            if (now.date() - last_date.date()).days == 1:
+                streak_days += 1  # Продолжаем стрик
+            else:
+                streak_days = 1  # Сбрасываем стрик
+        else:
+            streak_days = 1  # Первый вход
+
+        user_subscription['streak_days'] = streak_days
+        user_subscription['referral_points'] += bonus_points
+        user_subscription['points_history'].append({
             "action": "earned",
             "points": bonus_points,
             "reason": "Ежедневный вход",
@@ -826,9 +835,9 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         })
 
         # Бонус за 7 дней непрерывной активности
-        if user_data[user_id]['streak_days'] % 7 == 0:
-            data['subscriptions']['users'][user_id_str]['referral_points'] += 2
-            data['subscriptions']['users'][user_id_str]['points_history'].append({
+        if streak_days % 7 == 0:
+            user_subscription['referral_points'] += 2
+            user_subscription['points_history'].append({
                 "action": "earned",
                 "points": 2,
                 "reason": "7 дней непрерывной активности",
@@ -838,15 +847,8 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
                 "🎉 *7 дней активности подряд!*\n"
                 "✨ Вы получили *+2 балла*! Продолжайте в том же духе!"
             ), parse_mode="Markdown")
-    else:
-        # Если бонус уже начислен сегодня, сбрасываем стрик только если пропущен день
-        last_bonus_date = user_data[user_id].get('daily_bonus_date')
-        if last_bonus_date and last_bonus_date != today:
-            last_date = datetime.strptime(last_bonus_date, "%d.%m.%Y")
-            if (now - last_date).days > 1:
-                user_data[user_id]['streak_days'] = 0
 
-    # Остальной код без изменений
+    # Обновление данных в users.json
     if user_id_str not in users_data:
         users_data[user_id_str] = {
             "username": formatted_username or "неизвестный",
@@ -873,22 +875,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
         users_data[user_id_str].setdefault('usage_stats', {})
         users_data[user_id_str].setdefault('join_date', now.strftime("%d.%m.%Y в %H:%M"))
 
-    if user_id_str not in data['subscriptions']['users']:
-        data['subscriptions']['users'][user_id_str] = {
-            "username": formatted_username or "неизвестный",
-            "plans": [],
-            "total_amount": 0,
-            "referral_points": 0,
-            "free_feature_trials": {},
-            "promo_usage_history": [],
-            "referral_milestones": {},
-            "points_history": [],
-            "last_promo_used": None
-        }
-    else:
-        data['subscriptions']['users'][user_id_str]['username'] = formatted_username or data['subscriptions']['users'][user_id_str].get('username', "неизвестный")
-        data['subscriptions']['users'][user_id_str].setdefault('last_promo_used', None)
-
+    # Обновление статистики
     today_stats = datetime.now().strftime('%d.%m.%Y')
     if today_stats not in statistics:
         statistics[today_stats] = {'users': set(), 'functions': {}}
@@ -898,7 +885,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             statistics[today_stats]['functions'][function_name] = 0
         statistics[today_stats]['functions'][function_name] += 1
 
-    save_user_data(user_data)
+    # Сохранение данных
     save_statistics(statistics)
     save_payments_data(data)
     save_users_data(users_data)
@@ -1143,130 +1130,225 @@ def process_successful_payment(message):
     payment_info = message.successful_payment
     data = load_payment_data()
     users_data = load_users_data()
-    user_data = data['subscriptions']['users'].get(user_id, {"plans": []})
-    
-    plan_key = payment_info.invoice_payload
-    plan_info = SUBSCRIPTION_PLANS[plan_key]
-    base_price = plan_info["base_price"]
-    fictitious_discount = plan_info["fictitious_discount"]
-    plan_duration = plan_info["duration"]
-    
-    user_discount = users_data.get(user_id, {}).get('discount', 0)
-    discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
-    
-    discounted_price = base_price * (1 - user_discount / 100)
-    price = max(1, round(discounted_price - fictitious_discount, 2))
-    
-    latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-    new_end = latest_end + timedelta(days=plan_duration)
-    
-    consecutive_months = users_data.get(user_id, {}).get('consecutive_months', 0)
-    if (datetime.now() - latest_end).days <= 1:
-        consecutive_months += 1
-    else:
-        consecutive_months = 1
-    
-    # Проверка скидки за лояльность
-    discount = users_data.get(user_id, {}).get('discount', 0)
-    if consecutive_months >= 3 and discount < 15:
-        discount = 15
-        discount_type = "loyalty"
-        bot.send_message(user_id, (
-            "🎉 *Спасибо за лояльность!* 🎉\n"
-            f"✨ Вы получили скидку *15%* за {consecutive_months} месяцев подписки подряд!\n"
-            "🚀 Скидка применится к следующей покупке!"
-        ), parse_mode="Markdown")
-    
-    user_data['plans'].append({
-        "plan_name": plan_key.split('_')[0],
-        "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
-        "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
-        "price": price,
-        "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
-        "provider_payment_charge_id": payment_info.provider_payment_charge_id,
-        "source": "user",
-        "user_discount": user_discount,
-        "fictitious_discount": fictitious_discount
-    })
-    user_data['total_amount'] = user_data.get('total_amount', 0) + price
-    data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
-    
-    # Начисление баллов
-    is_first_purchase = not any(plan.get('source', 'unknown') == "user" for plan in user_data['plans'][:-1])
-    join_date = users_data.get(user_id, {}).get('join_date', datetime.now().strftime("%d.%m.%Y в %H:%M"))
-    days_since_join = (datetime.now() - datetime.strptime(join_date, "%d.%m.%Y в %H:%M")).days
-    bonus_multiplier = 2 if days_since_join <= 7 else 1  # Двойные баллы в первую неделю
-    
-    bonus_points = 0
-    if is_first_purchase:
-        bonus_points = {7: 5, 31: 10, 365: 15}.get(plan_duration, 0)
-        bonus_msg = f"Первая покупка подписки на {plan_duration} дней"
-        notify_msg = f"✨ Вы получили *+{bonus_points * bonus_multiplier} баллов* за первую подписку на {plan_duration} дней!\n"
-    else:
-        bonus_points = {7: 1, 31: 3, 365: 10}.get(plan_duration, 0)
-        bonus_msg = f"Покупка подписки на {plan_duration} дней"
-        notify_msg = f"✨ Вы получили *+{bonus_points * bonus_multiplier} баллов* за подписку!\n"
-    
-    # Бонус за годовой план (+10%)
-    if plan_duration == 365:
-        bonus_points = bonus_points * 1.1
-        notify_msg += "🎉 *+10% баллов за годовой план!*\n"
+    user_data = data['subscriptions']['users'].setdefault(user_id, {"plans": [], "total_amount": 0, "referral_points": 0})
 
-    if bonus_points > 0:
-        bonus_points *= bonus_multiplier
-        data['subscriptions']['users'].setdefault(user_id, {}).setdefault('referral_points', 0)
-        data['subscriptions']['users'][user_id]['referral_points'] += bonus_points
-        data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
-            "action": "earned",
-            "points": bonus_points,
-            "reason": bonus_msg,
-            "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+    payload = payment_info.invoice_payload
+
+    # Проверяем, является ли платеж подпиской или покупкой из магазина
+    if payload in SUBSCRIPTION_PLANS:
+        plan_key = payload
+        plan_info = SUBSCRIPTION_PLANS[plan_key]
+        base_price = plan_info["base_price"]
+        fictitious_discount = plan_info["fictitious_discount"]
+        plan_duration = plan_info["duration"]
+
+        user_discount = users_data.get(user_id, {}).get('discount', 0)
+        discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
+
+        discounted_price = base_price * (1 - user_discount / 100)
+        price = max(1, round(discounted_price - fictitious_discount, 2))
+
+        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
+        new_end = latest_end + timedelta(days=plan_duration)
+
+        consecutive_months = users_data.get(user_id, {}).get('consecutive_months', 0)
+        if (datetime.now() - latest_end).days <= 1:
+            consecutive_months += 1
+        else:
+            consecutive_months = 1
+
+        # Проверка скидки за лояльность
+        discount = users_data.get(user_id, {}).get('discount', 0)
+        if consecutive_months >= 3 and discount < 15:
+            discount = 15
+            discount_type = "loyalty"
+            bot.send_message(user_id, (
+                "🎉 *Спасибо за лояльность!* 🎉\n"
+                f"✨ Вы получили скидку *15%* за {consecutive_months} месяцев подписки подряд!\n"
+                "🚀 Скидка применится к следующей покупке!"
+            ), parse_mode="Markdown")
+
+        user_data['plans'].append({
+            "plan_name": plan_key.split('_')[0],
+            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
+            "price": price,
+            "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
+            "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+            "source": "user",
+            "user_discount": user_discount,
+            "fictitious_discount": fictitious_discount
         })
+        user_data['total_amount'] = user_data.get('total_amount', 0) + price
+        data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
+
+        # Начисление бонусных баллов за подписку
+        is_first_purchase = not any(plan.get('source', 'unknown') == "user" for plan in user_data['plans'][:-1])
+        join_date = users_data.get(user_id, {}).get('join_date', datetime.now().strftime("%d.%m.%Y в %H:%M"))
+        days_since_join = (datetime.now() - datetime.strptime(join_date, "%d.%m.%Y в %H:%M")).days
+        bonus_multiplier = 2 if days_since_join <= 7 else 1
+
+        bonus_points = 0
+        if is_first_purchase:
+            bonus_points = {7: 5, 31: 10, 365: 15}.get(plan_duration, 0)
+            bonus_msg = f"Первая покупка подписки на {plan_duration} дней"
+            notify_msg = f"✨ Вы получили *+{bonus_points * bonus_multiplier} баллов* за первую подписку на {plan_duration} дней!\n"
+        else:
+            bonus_points = {7: 1, 31: 3, 365: 10}.get(plan_duration, 0)
+            bonus_msg = f"Покупка подписки на {plan_duration} дней"
+            notify_msg = f"✨ Вы получили *+{bonus_points * bonus_multiplier} баллов* за подписку!\n"
+
+        if plan_duration == 365:
+            bonus_points = bonus_points * 1.1
+            notify_msg += "🎉 *+10% баллов за годовой план!*\n"
+
+        if bonus_points > 0:
+            bonus_points *= bonus_multiplier
+            user_data['referral_points'] += bonus_points
+            user_data.setdefault('points_history', []).append({
+                "action": "earned",
+                "points": bonus_points,
+                "reason": bonus_msg,
+                "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+            })
+            bot.send_message(user_id, (
+                f"🎁 *Спасибо за покупку!*\n\n"
+                f"{notify_msg}"
+                "🚀 Используйте их в реферальной системе!"
+            ), parse_mode="Markdown")
+
+        # Начисление бонусных дней реферу
+        referrer_id = next((uid for uid, refs in data['referrals']['stats'].items() if user_id in refs), None)
+        if referrer_id:
+            bonus_days = {7: 1, 31: 3, 365: 10}.get(plan_duration, 1)
+            new_end_referrer = set_free_trial_period(referrer_id, bonus_days, "referral_activity")
+            bot.send_message(referrer_id, (
+                "🎉 *Ваш реферал купил подписку!* 🎉\n\n"
+                f"✨ Вы получили *+{bonus_days} день(дня/дней)*!\n"
+                f"⏳ *Активно до: *{new_end_referrer.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
+                "Спасибо за приглашение! 😊"
+            ), parse_mode="Markdown")
+
+        users_data.setdefault(user_id, {})
+        users_data[user_id]['consecutive_months'] = consecutive_months
+
+        if user_discount > 0 and discount_type == "promo":
+            bot.send_message(user_id, (
+                "🎉 Ваша скидка в размере {}% была успешно применена!\n"
+                "🚀 Теперь скидка сброшена. Используйте новые промокоды для получения скидок!"
+            ).format(user_discount), parse_mode="Markdown")
+            users_data[user_id]['discount'] = 0
+            users_data[user_id]['discount_type'] = None
+        else:
+            users_data[user_id]['discount'] = discount
+            users_data[user_id]['discount_type'] = discount_type
+
+        data['subscriptions']['users'][user_id] = user_data
+        save_payments_data(data)
+        save_users_data(users_data)
+
         bot.send_message(user_id, (
-            f"🎁 *Спасибо за покупку!*\n\n"
-            f"{notify_msg}"
-            "🚀 Используйте их в реферальной системе!"
+            "🎉 *Спасибо за оплату*!\n\n"
+            f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⏳ *Подписка будет активна до:*\n{new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
+            f"💰 *Оплачено*: {price:.2f} ₽\n"
+            "😊 Приятного использования!"
         ), parse_mode="Markdown")
-    
-    # Начисление бонусных дней реферу
-    referrer_id = next((uid for uid, refs in data['referrals']['stats'].items() if user_id in refs), None)
-    if referrer_id:
-        bonus_days = {7: 1, 31: 3, 365: 10}.get(plan_duration, 1)  # Увеличено для годового плана
-        new_end_referrer = set_free_trial_period(referrer_id, bonus_days, "referral_activity")
-        bot.send_message(referrer_id, (
-            "🎉 *Ваш реферал купил подписку!* 🎉\n\n"
-            f"✨ Вы получили *+{bonus_days} день(дня/дней)*!\n"
-            f"⏳ *Активно до: *{new_end_referrer.strftime('%d.%m.%Y в %H:%M')}*!\n\n"
-            "Спасибо за приглашение! 😊"
-        ), parse_mode="Markdown")
-    
-    users_data.setdefault(user_id, {})
-    users_data[user_id]['consecutive_months'] = consecutive_months
-    
-    # Сбрасываем одноразовую скидку после покупки
-    if user_discount > 0 and discount_type == "promo":
-        bot.send_message(user_id, (
-            "🎉 Ваша скидка в размере {}% была успешно применена!\n"
-            "🚀 Теперь скидка сброшена. Используйте новые промокоды для получения скидок!"
-        ).format(user_discount), parse_mode="Markdown")
-        users_data[user_id]['discount'] = 0
-        users_data[user_id]['discount_type'] = None
+
+    elif payload in STORE_ITEMS:
+        item_info = STORE_ITEMS[payload]
+        base_price = item_info["base_price"]
+        fictitious_discount = item_info["fictitious_discount"]
+        user_discount = users_data.get(user_id, {}).get('discount', 0)
+        discount_type = users_data.get(user_id, {}).get('discount_type', 'promo')
+
+        price = max(1, round(base_price * (1 - user_discount / 100) - fictitious_discount, 2))
+
+        # Проверяем лимиты
+        today = datetime.now().strftime("%d.%m.%Y")
+        monthly_key = datetime.now().strftime("%m.%Y")
+        user_data.setdefault('store_purchases', {}).setdefault(today, {'points': 0, 'days': 0})
+        user_data['store_purchases'].setdefault('monthly', {}).setdefault(monthly_key, {'points': 0, 'days': 0})
+
+        if payload.startswith("points_"):
+            points = item_info["points"]
+            if user_data['store_purchases']['monthly'][monthly_key]['points'] + points > 3000:
+                bot.send_message(user_id, (
+                    "⚠️ Вы превысили месячный лимит покупки баллов (3000)!\n"
+                    "Попробуйте снова в следующем месяце."
+                ), parse_mode="Markdown")
+                return
+
+            user_data['referral_points'] += points
+            user_data.setdefault('points_history', []).append({
+                "action": "earned",
+                "points": points,
+                "reason": f"Покупка {item_info['label']}",
+                "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
+            })
+            user_data['store_purchases'][today]['points'] += points
+            user_data['store_purchases']['monthly'][monthly_key]['points'] += points
+
+            bot.send_message(user_id, (
+                f"🎉 *Спасибо за покупку!*\n\n"
+                f"💰 *Оплачено*: {price:.2f} ₽\n"
+                f"🎁 *Получено*: {points} баллов\n"
+                "🚀 Используйте их в реферальной системе!"
+            ), parse_mode="Markdown")
+
+        elif payload.startswith("time_"):
+            duration = item_info["duration"]
+            if user_data['store_purchases']['monthly'][monthly_key]['days'] + duration > 300:
+                bot.send_message(user_id, (
+                    "⚠️ Вы превысили месячный лимит покупки времени (300 дней)!\n"
+                    "Попробуйте снова в следующем месяце."
+                ), parse_mode="Markdown")
+                return
+
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
+            new_end = latest_end + timedelta(days=duration)
+
+            user_data['plans'].append({
+                "plan_name": "store_time",
+                "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+                "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
+                "price": price,
+                "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
+                "provider_payment_charge_id": payment_info.provider_payment_charge_id,
+                "source": "store",
+                "user_discount": user_discount,
+                "fictitious_discount": fictitious_discount
+            })
+            user_data['store_purchases'][today]['days'] += duration
+            user_data['store_purchases']['monthly'][monthly_key]['days'] += duration
+
+            bot.send_message(user_id, (
+                f"🎉 *Спасибо за покупку!*\n\n"
+                f"💰 *Оплачено*: {price:.2f} ₽\n"
+                f"⏳ *Добавлено*: {duration} день(дня/дней)\n"
+                f"📅 *Подписка активна до*: {new_end.strftime('%d.%m.%Y в %H:%M')}\n"
+                "😊 Приятного использования!"
+            ), parse_mode="Markdown")
+
+        user_data['total_amount'] = user_data.get('total_amount', 0) + price
+        data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
+
+        # Сбрасываем одноразовую скидку, если она была применена
+        if user_discount > 0 and discount_type == "promo":
+            bot.send_message(user_id, (
+                "🎉 Ваша скидка в размере {}% была успешно применена!\n"
+                "🚀 Теперь скидка сброшена. Используйте новые промокоды для получения скидок!"
+            ).format(user_discount), parse_mode="Markdown")
+            users_data[user_id]['discount'] = 0
+            users_data[user_id]['discount_type'] = None
+
+        data['subscriptions']['users'][user_id] = user_data
+        save_payments_data(data)
+        save_users_data(users_data)
+
     else:
-        users_data[user_id]['discount'] = discount
-        users_data[user_id]['discount_type'] = discount_type
-    
-    data['subscriptions']['users'][user_id] = user_data
-    save_payments_data(data)
-    save_users_data(users_data)
-    
-    bot.send_message(user_id, (
-        "🎉 *Спасибо за оплату*!\n\n"
-        f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
-        f"⏳ *Подписка будет активна до:*\n{new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
-        f"💰 *Оплачено*: {price:.2f} ₽\n"
-        "😊 Приятного использования!"
-    ), parse_mode="Markdown")
-    
+        bot.send_message(user_id, "❌ Неизвестный тип платежа. Обратитесь в поддержку.")
+
     markup = create_main_menu()
     bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
 
@@ -1274,19 +1356,19 @@ def process_successful_payment(message):
 SUBSCRIPTION_PLANS = {
     "weekly_subscription_7": {
         "base_price": 149,
-        "fictitious_discount": 50,
+        "fictitious_discount": 0,
         "label": "Неделя",
         "duration": 7
     },
     "monthly_subscription_31": {
         "base_price": 399,
-        "fictitious_discount": 100,
+        "fictitious_discount": 0,
         "label": "Месяц",
         "duration": 31
     },
     "yearly_subscription_365": {
         "base_price": 2999,
-        "fictitious_discount": 500,
+        "fictitious_discount": 0,
         "label": "Год",
         "duration": 365
     }
@@ -2228,6 +2310,7 @@ def refferal_payments_function(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Ваша ссылка', 'Ваши рефералы и бонусы')
     markup.add('Топ рефералов', 'Баллы')  
+    markup.add('Магазин')  # Новый пункт
     markup.add('Ввести промокод', 'Рекламные каналы')
     markup.add('Вернуться в подписку')
     markup.add('В главное меню')
@@ -3122,14 +3205,16 @@ def gift_points_handler(message):
         return_to_scores_menu(message)
         return
     
-    # Проверяем наличие рефералов
+    # Формируем список рефералов
     referrals = list(set(data['referrals']['stats'].get(user_id, [])))
     referral_message = ""
     if referrals:
-        referral_message = "*Ваши рефералы:*\n\n"
+        referral_message = "*Список ваших рефералов для подарка:*\n\n"
         for idx, referral_id in enumerate(referrals, 1):
             referral_username = data['subscriptions']['users'].get(referral_id, {}).get('username', 'неизвестный')
-            referral_message += f"{idx}. {referral_username} (ID: {referral_id})\n"
+            # Экранируем username для корректного отображения
+            escaped_username = escape_markdown(referral_username)
+            referral_message += f"№{idx}. {escaped_username} - `{referral_id}`\n"
         referral_message += "\n"
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -3140,7 +3225,7 @@ def gift_points_handler(message):
     bot.send_message(message.chat.id, (
         f"{referral_message}"
         "🎁 *Подарить баллы*\n\n"
-        "Введите *username* (с @) или *ID* пользователя, которому хотите подарить баллы:"
+        "Введите username (с @) или ID пользователя, которому хотите подарить баллы:"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_gift_recipient, points)
 
@@ -3299,7 +3384,7 @@ def gift_time_handler(message):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     
-    # Проверяем лимит на подарок времени (1 раз в 24 часа)
+    # Проверяем лимит на подарок времени
     last_gift_time = next(
         (entry['date'] for entry in reversed(data['subscriptions']['users'].get(user_id, {}).get('points_history', []))
          if "Подарок времени" in entry['reason']),
@@ -3314,6 +3399,7 @@ def gift_time_handler(message):
             f"❌ Вы уже дарили время сегодня!\n"
             f"⏳ Следующий подарок доступен через {hours_left} ч. {minutes_left} мин."
         ), parse_mode="Markdown")
+        return_to_gifts_menu(message)
         return
     
     # Проверяем наличие активных купленных подписок
@@ -3330,6 +3416,7 @@ def gift_time_handler(message):
             "❌ У вас нет активных купленных подписок для подарка!\n\n"
             "🚀 Купите подписку, чтобы делиться временем с друзьями!"
         ), parse_mode="Markdown")
+        return_to_gifts_menu(message)
         return
     
     # Проверяем, что у отправителя осталось больше 1 дня подписки
@@ -3345,16 +3432,19 @@ def gift_time_handler(message):
             "❌ У вас осталось менее 1 дня подписки!\n"
             "⏳ Пожалуйста, продлите подписку, чтобы дарить время."
         ), parse_mode="Markdown")
+        return_to_gifts_menu(message)
         return
     
-    # Проверяем наличие рефералов
+    # Формируем список рефералов
     referrals = list(set(data['referrals']['stats'].get(user_id, [])))
     referral_message = ""
     if referrals:
-        referral_message = "*Ваши рефералы:*\n\n"
+        referral_message = "*Список ваших рефералов для подарка:*\n\n"
         for idx, referral_id in enumerate(referrals, 1):
             referral_username = data['subscriptions']['users'].get(referral_id, {}).get('username', 'неизвестный')
-            referral_message += f"{idx}. {referral_username} (ID: {referral_id})\n"
+            # Экранируем username для корректного отображения
+            escaped_username = escape_markdown(referral_username)
+            referral_message += f"№{idx}. {escaped_username} - `{referral_id}`\n"
         referral_message += "\n"
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -3370,7 +3460,7 @@ def gift_time_handler(message):
         f"💡 Это примерно {total_remaining_minutes // 1440} дней, "
         f"{(total_remaining_minutes % 1440) // 60} часов, "
         f"{total_remaining_minutes % 60} минут\n\n"
-        "Введите *username* (с @) или *ID* пользователя, которому хотите подарить время:"
+        "Введите username (с @) или ID пользователя, которому хотите подарить время:"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_gift_time_recipient, total_remaining_minutes)
 
@@ -3764,7 +3854,256 @@ def check_ad_subscription(call):
     ), parse_mode="Markdown")
     bot.answer_callback_query(call.id, "Спасибо за подписку!")
 
-    
+
+STORE_ITEMS = {
+    "points_5": {
+        "base_price": 20,
+        "fictitious_discount": 0,
+        "label": "5 баллов",
+        "points": 5
+    },
+    "points_10": {
+        "base_price": 38,
+        "fictitious_discount": 0,
+        "label": "10 баллов",
+        "points": 10
+    },
+    "points_15": {
+        "base_price": 54,
+        "fictitious_discount": 0,
+        "label": "15 баллов",
+        "points": 15
+    },
+    "points_30": {
+        "base_price": 105,
+        "fictitious_discount": 0,
+        "label": "30 баллов",
+        "points": 30
+    },
+    "points_50": {
+        "base_price": 170,
+        "fictitious_discount": 0,
+        "label": "50 баллов",
+        "points": 50
+    },
+    "points_75": {
+        "base_price": 247.5,
+        "fictitious_discount": 0,
+        "label": "75 баллов",
+        "points": 75
+    },
+    "points_100": {
+        "base_price": 320,
+        "fictitious_discount": 0,
+        "label": "100 баллов",
+        "points": 100
+    },
+    "points_150": {
+        "base_price": 465,
+        "fictitious_discount": 0,
+        "label": "150 баллов",
+        "points": 150
+    },
+    "points_250": {
+        "base_price": 750,
+        "fictitious_discount": 0,
+        "label": "250 баллов",
+        "points": 250
+    },
+    "points_350": {
+        "base_price": 1015,
+        "fictitious_discount": 0,
+        "label": "350 баллов",
+        "points": 350
+    },
+    "points_500": {
+        "base_price": 1400,
+        "fictitious_discount": 0,
+        "label": "500 баллов",
+        "points": 500
+    },
+    "points_1000": {
+        "base_price": 2800,
+        "fictitious_discount": 0,
+        "label": "1000 баллов",
+        "points": 1000
+    },
+    "time_1day": {
+        "base_price": 30,
+        "fictitious_discount": 0,
+        "label": "1 день подписки",
+        "duration": 1
+    },
+    "time_3days": {
+        "base_price": 85,
+        "fictitious_discount": 0,
+        "label": "3 дня подписки",
+        "duration": 3
+    },
+    "time_7days": {
+        "base_price": 175,
+        "fictitious_discount": 0,
+        "label": "7 дней подписки",
+        "duration": 7
+    },
+    "time_15days": {
+        "base_price": 360,
+        "fictitious_discount": 0,
+        "label": "15 дней подписки",
+        "duration": 15
+    },
+    "time_182days": {
+        "base_price": 4914,
+        "fictitious_discount": 0,
+        "label": "6 месяцев подписки",
+        "duration": 182
+    }
+}
+
+@bot.message_handler(func=lambda message: message.text == "Магазин")
+def send_store_options(message):
+    user_id = str(message.from_user.id)
+    users_data = load_users_data()
+    user_discount = users_data.get(user_id, {}).get('discount', 0)
+    markup = InlineKeyboardMarkup()
+
+    # Пакеты баллов
+    points_items = {k: v for k, v in STORE_ITEMS.items() if k.startswith("points_")}
+    time_items = {k: v for k, v in STORE_ITEMS.items() if k.startswith("time_")}
+
+    # Заголовок для баллов
+    markup.add(InlineKeyboardButton("📍 Пакеты баллов", callback_data="noop"))
+
+    # Два столбца для баллов
+    points_left = ["points_5", "points_15", "points_50", "points_100", "points_250", "points_500"]
+    points_right = ["points_10", "points_30", "points_75", "points_150", "points_350", "points_1000"]
+
+    for left_key, right_key in zip(points_left, points_right):
+        left_item = STORE_ITEMS[left_key]
+        right_item = STORE_ITEMS[right_key]
+        left_price = max(1, round(left_item["base_price"] * (1 - user_discount / 100), 2))
+        right_price = max(1, round(right_item["base_price"] * (1 - user_discount / 100), 2))
+        left_button = InlineKeyboardButton(f"💰 {left_item['label']} ({left_price:.2f} ₽)", callback_data=left_key)
+        right_button = InlineKeyboardButton(f"💰 {right_item['label']} ({right_price:.2f} ₽)", callback_data=right_key)
+        markup.add(left_button, right_button)
+
+    # Заголовок для времени
+    markup.add(InlineKeyboardButton("⏳ Пакеты времени", callback_data="noop"))
+
+    # Два столбца для времени
+    time_left = ["time_1day", "time_7days", "time_182days"]
+    time_right = ["time_3days", "time_15days"]
+
+    for i in range(max(len(time_left), len(time_right))):
+        left_button = None
+        right_button = None
+        if i < len(time_left):
+            left_key = time_left[i]
+            left_item = STORE_ITEMS[left_key]
+            left_price = max(1, round(left_item["base_price"] * (1 - user_discount / 100), 2))
+            left_button = InlineKeyboardButton(f"⏰ {left_item['label']} ({left_price:.2f} ₽)", callback_data=left_key)
+        if i < len(time_right):
+            right_key = time_right[i]
+            right_item = STORE_ITEMS[right_key]
+            right_price = max(1, round(right_item["base_price"] * (1 - user_discount / 100), 2))
+            right_button = InlineKeyboardButton(f"⏰ {right_item['label']} ({right_price:.2f} ₽)", callback_data=right_key)
+        if left_button and right_button:
+            markup.add(left_button, right_button)
+        elif left_button:
+            markup.add(left_button)
+
+    bot.send_message(user_id, (
+        "🏪 *Магазин баллов и времени*\n\n"
+        f"🎁 *Ваша скидка*: {user_discount}% + акционная скидка\n\n"
+        "📍 *Пакеты баллов*:\n"
+        "Покупайте баллы для обмена на время, скидки или подарки друзьям!\n\n"
+        "⏳ *Пакеты времени*:\n"
+        "Добавьте дни к вашей подписке для полного доступа к функциям!\n\n"
+        "Выберите товар:"
+    ), reply_markup=markup, parse_mode="Markdown")
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в реферальную систему')
+    markup.add('Вернуться в подписку')
+    markup.add('В главное меню')
+    bot.send_message(user_id, "Выберите товар для покупки:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "Вернуться в магазин")
+def return_to_store(message):
+    send_store_options(message)
+
+@bot.callback_query_handler(func=lambda call: call.data in STORE_ITEMS)
+def send_store_invoice(call):
+    user_id = str(call.from_user.id)
+    item_key = call.data
+    item_info = STORE_ITEMS[item_key]
+    base_price = item_info["base_price"]
+    fictitious_discount = item_info["fictitious_discount"]
+    label = item_info["label"]
+
+    users_data = load_users_data()
+    user_discount = users_data.get(user_id, {}).get('discount', 0)
+
+    # Рассчитываем цену
+    user_discount_amount = round(base_price * (user_discount / 100), 2)
+    discounted_price = base_price - user_discount_amount
+    final_price = round(discounted_price - fictitious_discount, 2)
+    if final_price < 1:
+        final_price = 1
+        fictitious_discount = 0
+        user_discount_amount = base_price - 1
+
+    provider_token = PAYMENT_PROVIDER_TOKEN
+    currency = "RUB"
+    invoice_payload = item_key
+
+    bot_functions = (
+        "🚀 Покупайте баллы для обмена на время, скидки или подарки, "
+        "или добавляйте время подписки для полного доступа к функциям!"
+    )
+
+    title = f"🏪 Покупка: {label}"
+    description = (
+        f"✨ {label} для вашего аккаунта!\n"
+        f"💰 Базовая цена: {base_price:.2f} ₽\n"
+    )
+    prices = [types.LabeledPrice(label, int(base_price * 100))]
+
+    if user_discount > 0:
+        description += f"🏷️ Скидка {user_discount}%: -{user_discount_amount:.2f} ₽\n"
+        prices.append(types.LabeledPrice(f"Скидка {user_discount}%", -int(user_discount_amount * 100)))
+
+    if fictitious_discount > 0 and final_price > 1:
+        description += f"🎁 Акционная скидка: -{fictitious_discount:.2f} ₽\n"
+        prices.append(types.LabeledPrice("Акционная скидка", -int(fictitious_discount * 100)))
+
+    description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
+
+    try:
+        bot.send_invoice(
+            chat_id=user_id,
+            title=title,
+            description=description,
+            invoice_payload=invoice_payload,
+            provider_token=provider_token,
+            currency=currency,
+            prices=prices,
+            start_parameter="store"
+        )
+    except Exception as e:
+        bot.send_message(user_id, "❌ Ошибка при создании платежа. Попробуйте позже или обратитесь в поддержку.")
+        print(f"Ошибка при отправке инвойса для user_id={user_id}: {e}")
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Вернуться в реферальную систему')
+    markup.add('Вернуться в подписку')
+    markup.add('В главное меню')
+    bot.send_message(user_id, "Выберите товар для покупки:", reply_markup=markup)
+
+
+
+
 # ---------- 8. ВЫХОД В ГЛАВНОЕ МЕНЮ ----------
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню")
