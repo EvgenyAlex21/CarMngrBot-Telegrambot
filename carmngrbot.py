@@ -25,7 +25,7 @@ from requests.exceptions import ReadTimeout, ConnectionError
 from scipy.spatial import cKDTree
 import threading
 import csv
-
+import shutil
 
 # (2) --------------- ТОКЕН БОТА ---------------
 
@@ -7168,11 +7168,129 @@ def verify_password(message, username):
         bot.send_message(message.chat.id, "Неверные логин или пароль. Попробуйте снова.")
         handle_admin_login(message)
 
+import shutil
+
+# Путь к директории для бэкапов и текущего исполняемого файла
+BACKUP_DIR = 'D:\\2024\\carmanger_local\\backups'
+SOURCE_DIR = 'D:\\2024\\carmanger_local'
+EXECUTABLE_FILE = 'CAR MANAGER TG BOT (official) v0924.py'
+
+def normalize_name(name):
+    return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+# Функция для создания резервной копии
+def create_backup():
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_folder = os.path.join(BACKUP_DIR, f'backup_{timestamp}')
+    
+    os.makedirs(backup_folder, exist_ok=True)
+    
+    for item in os.listdir(SOURCE_DIR):
+        item_path = os.path.join(SOURCE_DIR, item)
+        
+        # Пропускаем папку "backups" и исполняемый файл
+        if item == 'backups' or item == EXECUTABLE_FILE:
+            continue
+        
+        normalized_name = normalize_name(item)
+        dest_path = os.path.join(backup_folder, normalized_name)
+        
+        try:
+            if os.path.isdir(item_path):
+                shutil.copytree(item_path, dest_path, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item_path, dest_path)
+        except Exception as e:
+            print(f'Ошибка при копировании {item_path}: {e}')
+
+    return backup_folder
+
+# Функция для восстановления из последнего бэкапа
+def restore_latest_backup():
+    backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
+    if not backups:
+        print("Нет бэкапов для восстановления.")
+        return False
+
+    latest_backup = os.path.join(BACKUP_DIR, backups[0])
+    
+    if not os.path.exists(latest_backup):
+        print(f"Ошибка: Бэкап {latest_backup} не найден.")
+        return False
+    
+    for item in os.listdir(SOURCE_DIR):
+        item_path = os.path.join(SOURCE_DIR, item)
+        
+        if item == 'backups' or item == EXECUTABLE_FILE:
+            continue
+        
+        try:
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+            else:
+                os.remove(item_path)
+        except Exception as e:
+            print(f'Ошибка при удалении {item_path}: {e}')
+    
+    try:
+        for item in os.listdir(latest_backup):
+            src_item = os.path.join(latest_backup, item)
+            dest_item = os.path.join(SOURCE_DIR, item)
+            if os.path.isdir(src_item):
+                shutil.copytree(src_item, dest_item, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src_item, dest_item)
+        print("Восстановление завершено.")
+    except Exception as e:
+        print(f'Ошибка при восстановлении из {latest_backup}: {e}')
+    
+    return True
+
 # Показ админ-панели
 def show_admin_panel(message):
     markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add('Включить бота', 'Выключить бота', 'Просмотр пользователей', 'Блокировка пользователей', 'Разблокировать пользователя', 'Статистика', 'Выход')
+    markup.add(
+        'Просмотр пользователей',
+        'Блокировка пользователей',
+        'Разблокировать пользователя',
+        'Статистика',
+        'Резервная копия',
+        'Выход'
+    )
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
+# Обработчик для кнопки "Резервная копия"
+@bot.message_handler(func=lambda message: message.text == 'Резервная копия')
+def show_backup_menu(message):
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add(
+        'Создать копию',
+        'Восстановить данные',
+        'В меню админ-панели'
+    )
+    bot.send_message(message.chat.id, "Выберите действие с резервной копией:", reply_markup=markup)
+
+# Обработчик для кнопки "Создать копию"
+@bot.message_handler(func=lambda message: message.text == 'Создать копию')
+def handle_create_backup(message):
+    backup_path = create_backup()
+    bot.send_message(message.chat.id, f"Резервная копия создана:\n\n{backup_path}")
+    show_admin_panel(message)
+
+# Обработчик для кнопки "Восстановить данные"
+@bot.message_handler(func=lambda message: message.text == 'Восстановить данные')
+def handle_restore_backup(message):
+    success = restore_latest_backup()
+    if success:
+        bot.send_message(message.chat.id, "Данные успешно восстановлены из последнего бэкапа.")
+    else:
+        bot.send_message(message.chat.id, "Ошибка: последний бэкап не найден.")
+    show_admin_panel(message)
+
+# Обработчик для кнопки "В меню админ-панели"
+@bot.message_handler(func=lambda message: message.text == 'В меню админ-панели')
+def handle_return_to_admin_panel(message):
+    show_admin_panel(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Просмотр пользователей' and message.chat.id in admin_sessions)
 def view_users(message):
