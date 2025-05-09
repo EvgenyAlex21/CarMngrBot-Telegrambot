@@ -1513,7 +1513,7 @@ def view_trips(message):
 @track_user_activity
 def send_excel_file(message):
     user_id = message.chat.id
-    excel_file_path = f"data base/{user_id}_trips.xlsx"
+    excel_file_path = f"data base/trip/excel/{user_id}_trips.xlsx"
 
     if os.path.exists(excel_file_path):
         with open(excel_file_path, 'rb') as excel_file:
@@ -5246,63 +5246,110 @@ def send_map_link(chat_id, start_location, end_location):
 @restricted
 @track_user_activity
 def handle_start4(message):
-
+    # Проверка активации функции
     if not function_states['Код региона']:
         bot.send_message(message.chat.id, "Эта функция временно недоступна.")
-        return  # Завершаем выполнение функции, если функция деактивирована
+        return
 
+    # Отправка стартового сообщения
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("В главное меню")
     markup.add(item1)
+    bot.send_message(
+        message.chat.id,
+        "Отправьте один или несколько государственных номеров (8 - 9 символов) или кодов региона (2 - 3 цифры), разделенных запятой:",
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(message, process_input)
 
-    bot.send_message(message.chat.id, "Отправьте государственный номер автомобиля, состоящий из 8 или 9 символов (РФ), для определения региона и выдачи краткой информации через сервис AvtoCod.", reply_markup=markup)
 
-    bot.register_next_step_handler(message, handle_text)
-
-def handle_text(message):
+def process_input(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
 
-    if message.text == "Ввести ещё один":
+    # Проверка на ввод мультимедийных файлов
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
+        bot.register_next_step_handler(message, process_input)
+        return
+
+    text = message.text.strip()
+
+    # Клавиатура для действий после успешного ответа
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    item1 = types.KeyboardButton("Ввести еще")
+    item2 = types.KeyboardButton("В главное меню")
+    markup.add(item1)
+    markup.add(item2)
+
+    # Обработка ввода нескольких значений через запятую
+    inputs = [i.strip() for i in text.split(',')]  # Разделяем по запятой и очищаем пробелы
+
+    responses = []  # Список для хранения ответов
+    for input_item in inputs:
+        # Обработка ввода кода региона (2-3 цифры)
+        if input_item.isdigit() and (2 <= len(input_item) <= 3):
+            region_code = input_item
+            if region_code in regions:
+                region_name = regions[region_code]
+                response = f"🔍 *Регион для кода {region_code}:* {region_name}\n\n\n"
+            else:
+                response = f"Не удалось определить регион для кода {region_code}\n\n"
+        
+        # Обработка ввода госномера (8-9 символов)
+        elif 8 <= len(input_item) <= 9:
+            car_number = input_item.upper()
+            region_code = car_number[-3:] if len(car_number) == 9 else car_number[-2:]
+
+            if region_code in regions:
+                region_name = regions[region_code]
+                
+                # Формирование красивого ответа с эмодзи и гиперссылкой
+                avtocod_url = f"https://avtocod.ru/proverkaavto/{car_number}?rd=GRZ"
+                short_url = shorten_url(avtocod_url)
+                
+                response = (
+                    f"🔍 Регион для номера `{car_number}`: {region_name}\n\n"
+                    f"🔗 [Ссылка на AvtoCod с поиском]({short_url})\n\n\n"
+                )
+            else:
+                response = f"Не удалось определить регион для номера {car_number}\n\n"
+
+        else:
+            response = f"Неверный формат для {input_item}. Пожалуйста, введите правильный госномер или код региона.\n\n"
+
+        responses.append(response)
+
+    # Собираем все ответы в одно сообщение с пробелами между ними
+    final_response = "".join(responses)
+
+    # Отправляем все ответы в одном сообщении
+    bot.send_message(message.chat.id, final_response, reply_markup=markup, parse_mode="Markdown")
+
+    # Запрос действия после успешного ответа
+    bot.send_message(message.chat.id, "Вы можете ввести еще или выйти в главное меню")
+    bot.register_next_step_handler(message, handle_action_after_response)
+
+
+def handle_action_after_response(message):
+    if message.text == "Ввести еще":
+        # Повторный запрос на ввод региона или номера
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        bot.send_message(message.chat.id, "Отправьте государственный номер автомобиля, состоящий из 8 или 9 символов (РФ), для определения региона и выдачи краткой информации через сервис AvtoCod.", reply_markup=markup)
-        bot.register_next_step_handler(message, handle_text)
-        return
-
-    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
-        bot.send_message(message.chat.id, "Извините, но отправка мультимедийных файлов не разрешена. Пожалуйста, введите текстовое сообщение.")
-        bot.register_next_step_handler(message, handle_text)  # Ожидаем новое текстовое сообщение
-        return
-
-    if 8 <= len(message.text) <= 9:
-        car_number = message.text.upper()
-        region_code = car_number[-3:] if len(car_number) == 9 else car_number[-2:] 
-        if region_code in regions:
-            region_name = regions[region_code]
-            response = f"Регион для номера {car_number}: {region_name}"
-
-            avtocod_url = f"https://avtocod.ru/proverkaavto/{car_number}?rd=GRZ"
-            short_url = shorten_url(avtocod_url)
-            response += f"\n\nСсылка на AvtoCod с поиском:\n\n{short_url}"
-
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            item1 = types.KeyboardButton("Ввести ещё один")
-            item2 = types.KeyboardButton("В главное меню")
-            markup.add(item1)
-            markup.add(item2)
-
-            bot.send_message(message.chat.id, response, reply_markup=markup)
-        else:
-            response = "Не удалось определить регион для указанного номера."
-            bot.send_message(message.chat.id, response)
+        bot.send_message(
+            message.chat.id,
+            "Отправьте один или несколько государственных номеров (8 - 9 символов) или кодов региона (2 - 3 цифры), разделённых запятой:",
+            reply_markup=markup
+        )
+        bot.register_next_step_handler(message, process_input)
+    elif message.text == "В главное меню":
+        return_to_menu(message)
     else:
-        response = "Введите государственный номер автомобиля, состоящий из 8 или 9 символов."
-        bot.send_message(message.chat.id, response)
-
-    bot.register_next_step_handler(message, handle_text)
+        # Повторная отправка сообщения с предложением нажать на кнопку после неизвестного ответа
+        bot.send_message(message.chat.id, "Пожалуйста, выберите лействие из меню:")
+        bot.register_next_step_handler(message, handle_action_after_response)
 
 # (15) --------------- КОД ДЛЯ "ПОГОДЫ" ---------------
 
