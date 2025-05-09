@@ -135,9 +135,13 @@ def start(message):
     item4 = types.KeyboardButton("Поиск мест")
     item5 = types.KeyboardButton("Погода")
     item6 = types.KeyboardButton("Код региона")
+    item7 = types.KeyboardButton("Цены на топливо")
+    
     markup.add(item1, item2)
     markup.add(item3, item4)
-    markup.add(item5, item6)
+    markup.add(item5, item7)
+    markup.add(item6)
+
     bot.send_message(chat_id, "Добро пожаловать! Выберите действие из меню:", reply_markup=markup)
 
 # (6) --------------- ОБРАБОТЧИК КОМАНДЫ /MAINMENU ---------------
@@ -344,7 +348,11 @@ def process_start_location_step(message):
 
     if message.location:  # Если пользователь отправил геолокацию
         location = message.location
-        start_address = geolocator.reverse((location.latitude, location.longitude)).address
+        try:
+            start_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
+        except GeocoderUnavailable:
+            bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
+            return
         trip_data[chat_id] = {
             "start_location": {
                 "address": start_address,
@@ -355,7 +363,11 @@ def process_start_location_step(message):
         bot.send_message(chat_id, f"Ваше начальное местоположение:\n\n{start_address}")
     else:  # Если пользователь ввел текстовое местоположение
         start_location = message.text
-        location = geolocator.geocode(start_location)
+        try:
+            location = geolocator.geocode(start_location, timeout=10)
+        except GeocoderUnavailable:
+            bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
+            return
         if location:
             trip_data[chat_id] = {
                 "start_location": {
@@ -396,7 +408,11 @@ def process_end_location_step(message):
 
     if message.location:  # Если пользователь отправил геолокацию
         location = message.location
-        end_address = geolocator.reverse((location.latitude, location.longitude)).address
+        try:
+            end_address = geolocator.reverse((location.latitude, location.longitude), timeout=10).address
+        except GeocoderUnavailable:
+            bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
+            return
         trip_data[chat_id]["end_location"] = {
             "address": end_address,
             "latitude": location.latitude,
@@ -405,7 +421,11 @@ def process_end_location_step(message):
         bot.send_message(chat_id, f"Ваше конечное местоположение:\n\n{end_address}")
     else:  # Если пользователь ввел текстовое местоположение
         end_location = message.text
-        location = geolocator.geocode(end_location)
+        try:
+            location = geolocator.geocode(end_location, timeout=10)
+        except GeocoderUnavailable:
+            bot.send_message(chat_id, "Сервис геолокации временно недоступен. Попробуйте позже.")
+            return
         if location:
             trip_data[chat_id]["end_location"] = {
                 "address": end_location,
@@ -418,12 +438,10 @@ def process_end_location_step(message):
             bot.register_next_step_handler(sent, process_end_location_step)
             return
 
-    # Рассчитать расстояние между точками
     start_coords = (trip_data[chat_id]["start_location"]["latitude"], trip_data[chat_id]["start_location"]["longitude"])
     end_coords = (trip_data[chat_id]["end_location"]["latitude"], trip_data[chat_id]["end_location"]["longitude"])
     distance_km = geodesic(start_coords, end_coords).kilometers
 
-    # Предлагаем пользователю выбрать между автоматическим расстоянием и вводом своего
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item_auto = types.KeyboardButton("Использовать автоматическое расстояние")
     item_input = types.KeyboardButton("Ввести свое расстояние")
@@ -3527,6 +3545,177 @@ def send_forecast_monthly(chat_id, coords, url, days=30):
         print(f"Ошибка при отправке прогноза на месяц: {e}")
         traceback.print_exc()
         bot.send_message(chat_id, "Произошла ошибка при запросе прогноза на месяц. Попробуйте позже.")
+
+
+# ЦЕНЫ НА ТОПЛИВО
+
+# Добавляем словарь для отслеживания состояния пользователя
+user_state = {}
+
+# Обработчик команды "Цены на топливо"
+@bot.message_handler(func=lambda message: message.text == "Цены на топливо")
+def fuel_prices_command(message):
+    chat_id = message.chat.id
+    user_state[chat_id] = "choosing_fuel"  # Устанавливаем состояние выбора топлива
+    show_fuel_price_menu(chat_id)
+
+# Определяем доступные типы топлива
+fuel_types = ["АИ-92", "АИ-95", "АИ-98", "АИ-100", "ДТ", "Газ"]
+
+# Функция для создания клавиатуры с типами топлива
+def show_fuel_price_menu(chat_id):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    
+    # Добавляем кнопки с типами топлива
+    row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]] 
+    row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]] 
+    row3 = [KeyboardButton("В главное меню")]
+    
+    markup.add(*row1, *row2, *row3)
+    
+    sent = bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
+    bot.register_next_step_handler(sent, process_fuel_price_selection)
+
+# Обработчик выбора топлива
+def process_fuel_price_selection(message):
+    chat_id = message.chat.id
+
+    # Проверка состояния пользователя
+    if user_state.get(chat_id) != "choosing_fuel":
+        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+        return
+
+    # Запрет на мультимедийные сообщения
+    if message.photo or message.video or message.document or message.animation or message.sticker or message.location or message.audio or message.contact or message.voice or message.video_note:
+        sent = bot.send_message(chat_id, "Извините, мультимедийные файлы не разрешены. Пожалуйста, отправьте текстовое сообщение.")
+        bot.register_next_step_handler(sent, process_fuel_price_selection)
+        return
+
+    selected_fuel_type = message.text.strip().lower()
+
+    if message.text == "В главное меню":
+        return_to_menu(message)
+        return
+
+    # Соответствие типов топлива
+    fuel_type_mapping = {
+        "аи-92": "аи-92",
+        "аи-95": "аи-95",
+        "аи-98": "аи-98",
+        "аи-100": "аи-100",		
+        "дт": "дт",
+        "газ": "газ спбт",		
+    }
+
+    # Проверка корректности выбранного топлива
+    if selected_fuel_type not in fuel_type_mapping:
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов.")
+        bot.register_next_step_handler(sent, process_fuel_price_selection)
+        return
+
+    actual_fuel_type = fuel_type_mapping[selected_fuel_type]
+
+    # Получаем цены на топливо с сайта
+    try:
+        fuel_prices = get_fuel_prices_from_site(actual_fuel_type)
+        if not fuel_prices:
+            raise ValueError("Нет данных по ценам.")
+
+        # Группировка цен по брендам
+        brand_prices = {}
+        for brand, fuel_type, price in fuel_prices:
+            price = float(price)  # Преобразуем цену в число
+            if brand not in brand_prices:
+                brand_prices[brand] = []
+            brand_prices[brand].append(price)
+
+        # Вычисление средней цены для каждого бренда
+        averaged_prices = {brand: sum(prices) / len(prices) for brand, prices in brand_prices.items()}
+
+        # Сортировка по средней цене (от меньшей к большей)
+        sorted_prices = sorted(averaged_prices.items(), key=lambda x: x[1])
+
+        # Формируем нумерованный список с пробелами
+        prices_message = "\n\n".join([f"{i + 1}. {brand} - {avg_price:.2f} руб./л" for i, (brand, avg_price) in enumerate(sorted_prices)])
+
+        # Отправляем сообщение с результатом
+        bot.send_message(chat_id, f"Актуальные цены на {actual_fuel_type.upper()}:\n\n{prices_message}")
+
+        # Создание клавиатуры с кнопками
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        another_fuel_button = types.KeyboardButton("Посмотреть цены на другое топливо")
+        main_menu_button = types.KeyboardButton("В главное меню")
+        markup.add(another_fuel_button)
+        markup.add(main_menu_button)
+
+        # Обновляем состояние пользователя
+        user_state[chat_id] = "next_action"
+
+        # Отправляем сообщение с клавиатурой
+        sent = bot.send_message(chat_id, "Вы можете посмотреть цены на другое топливо или вернуться в меню.", reply_markup=markup)
+        bot.register_next_step_handler(sent, process_next_action)
+
+    except Exception as e:
+        bot.send_message(chat_id, f"Ошибка получения цен: {e}")
+        return
+
+# Обработчик для следующего шага
+def process_next_action(message):
+    chat_id = message.chat.id
+
+    # Проверяем, что пользователь находится в нужном состоянии
+    if user_state.get(chat_id) != "next_action":
+        bot.send_message(chat_id, "Пожалуйста, используйте доступные кнопки для навигации.")
+        return
+
+    if message.text == "Посмотреть цены на другое топливо":
+        # Переключаем состояние обратно на выбор топлива
+        user_state[chat_id] = "choosing_fuel"
+        show_fuel_price_menu(chat_id)  # Отображаем клавиатуру снова
+    elif message.text == "В главное меню":
+        return_to_menu(message)
+    else:
+        sent = bot.send_message(chat_id, "Пожалуйста, выберите один из предложенных вариантов.")
+        bot.register_next_step_handler(sent, process_next_action)
+
+# Возврат в главное меню
+def return_to_menu(message):
+    chat_id = message.chat.id
+    user_state.pop(chat_id, None)  # Очищаем состояние пользователя
+    start(message)
+
+# Функция для получения данных с сайта
+def get_fuel_prices_from_site(selected_fuel_type):
+    url = 'https://azsprice.ru/benzin-cheboksary'  # Замените на актуальный URL
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    table = soup.find('table')
+    if not table:
+        raise ValueError("Не найдена таблица с ценами.")
+
+    fuel_prices = []
+
+    rows = table.find_all('tr')
+    for row in rows[1:]:
+        columns = row.find_all('td')
+        if len(columns) < 5:
+            continue
+        
+        brand = columns[1].text.strip()  # Бренд
+        fuel_type = columns[2].text.strip()  # Марка топлива
+        today_price = clean_price(columns[3].text.strip())  # Цена
+
+        # Сравниваем тип топлива с выбранным
+        if fuel_type.lower() == selected_fuel_type.lower() and today_price:
+            fuel_prices.append((brand, fuel_type, today_price))
+    
+    return fuel_prices
+
+# Функция для очистки цены от лишних символов
+def clean_price(price):
+    cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
+    return cleaned_price
 
 # (16) --------------- КОД ДЛЯ "ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЙ ОТ TG" ---------------
 
