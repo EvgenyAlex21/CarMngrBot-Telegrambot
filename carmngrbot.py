@@ -537,6 +537,12 @@ def load_payment_data():
         "EVGENYALEX": {"uses": 5, "discount": 10, "active": True, "used_by": []}
     }
 
+    default_ad_channels = {
+        "-1002591560088": {"name": "CarMngrBot News", "active": True},
+        "-1001234567890": {"name": "Auto Tips Daily", "active": True},
+        "-1009876543210": {"name": "Drive & Save", "active": True}
+    }
+
     default_data = {
         'subscriptions': {'users': {}}, 
         'referrals': {
@@ -550,7 +556,8 @@ def load_payment_data():
             }
         }, 
         'all_users_total_amount': 0, 
-        'promo_codes': default_promo_codes
+        'promo_codes': default_promo_codes,
+        'ad_channels': default_ad_channels  # Добавляем каналы
     }
 
     if not os.path.exists(PAYMENTS_DATABASE_PATH):
@@ -589,6 +596,7 @@ def load_payment_data():
         print(error_msg)
         raise Exception(f"Ошибка при загрузке {PAYMENTS_DATABASE_PATH}: {e}")
 
+    # Инициализация referrals, если отсутствует
     if 'referrals' not in data:
         data['referrals'] = {
             'links': {},
@@ -607,6 +615,19 @@ def load_payment_data():
             'days_at_top': 0
         }
 
+    # Инициализация ad_channels, если отсутствует
+    if 'ad_channels' not in data:
+        data['ad_channels'] = default_ad_channels
+    else:
+        # Синхронизируем с default_ad_channels
+        for chat_id, channel_data in default_ad_channels.items():
+            if chat_id not in data['ad_channels']:
+                data['ad_channels'][chat_id] = channel_data
+        # Проверяем удалённые каналы
+        for chat_id in list(data['ad_channels'].keys()):
+            if chat_id not in default_ad_channels:
+                data['ad_channels'][chat_id]['active'] = False
+
     for promo_code, promo_data in default_promo_codes.items():
         if promo_code not in data['promo_codes']:
             data['promo_codes'][promo_code] = promo_data
@@ -619,7 +640,6 @@ def load_payment_data():
         data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
         data['subscriptions']['users'][user_id].setdefault('points_history', [])
         data['subscriptions']['users'][user_id].setdefault('ad_channels_subscribed', [])
-        # Добавляем last_promo_used
         data['subscriptions']['users'][user_id].setdefault('last_promo_used', None)
 
     return data
@@ -696,6 +716,24 @@ def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
         return False
     except Exception as e:
         print(f"Неизвестная ошибка при проверке подписки пользователя {user_id}: {e}")
+        return False
+
+# Глобальная инициализация AD_CHANNELS
+def initialize_ad_channels():
+    data = load_payment_data()
+    return {chat_id: channel['name'] for chat_id, channel in data['ad_channels'].items() if channel['active']}
+
+AD_CHANNELS = initialize_ad_channels()
+
+def is_channel_available(chat_id):
+    try:
+        chat = bot.get_chat(chat_id)
+        return chat.type in ['channel', 'group', 'supergroup']
+    except telebot.apihelper.ApiTelegramException as e:
+        print(f"Ошибка при проверке канала {chat_id}: {e}")
+        return False
+    except Exception as e:
+        print(f"Неизвестная ошибка при проверке канала {chat_id}: {e}")
         return False
 
 def update_user_activity(user_id, username=None, first_name="", last_name="", phone="", function_name=None):
@@ -2288,6 +2326,7 @@ def process_promo_code(message):
 def gifts_menu(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Подарить баллы', 'История подарков', 'Подарить время')
+    markup.add('Вернуться в баллы')
     markup.add('Вернуться в реферальную систему')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из меню подарков:", reply_markup=markup, parse_mode="Markdown")
@@ -2320,9 +2359,8 @@ def gift_points_handler(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в подарки"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add("Вернуться в подарки", "Вернуться в баллы")
+    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     bot.send_message(message.chat.id, (
@@ -2364,9 +2402,8 @@ def process_gift_recipient(message, sender_points):
     
     if not recipient_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
@@ -2378,9 +2415,8 @@ def process_gift_recipient(message, sender_points):
     
     if recipient_id == user_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
@@ -2393,9 +2429,8 @@ def process_gift_recipient(message, sender_points):
     recipient_username = data['subscriptions']['users'][recipient_id].get('username', 'неизвестный')
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в подарки"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add("Вернуться в подарки", "Вернуться в баллы")
+    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     bot.send_message(message.chat.id, (
@@ -2471,9 +2506,8 @@ def process_gift_amount(message, recipient_id, sender_points):
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         error_msg = str(e) if str(e) != "invalid literal for int() with base 10: '" + message.text + "'" else "Введите корректное число!"
@@ -2545,9 +2579,8 @@ def process_gift_amount(message, recipient_id, sender_points):
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         error_msg = str(e) if str(e) != "invalid literal for int() with base 10: '" + message.text + "'" else "Введите корректное число!"
@@ -2609,9 +2642,8 @@ def gift_time_handler(message):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в подарки"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))    
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add("Вернуться в подарки", "Вернуться в баллы")
+    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     
@@ -2659,9 +2691,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     
     if not recipient_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
@@ -2673,9 +2704,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     
     if recipient_id == user_id:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))        
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         bot.send_message(message.chat.id, (
@@ -2699,9 +2729,8 @@ def process_gift_time_recipient(message, total_available_minutes):
     # Добавляем кнопки для выбора единиц времени
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("Минуты"), types.KeyboardButton("Часы"), types.KeyboardButton("Дни"))
-    markup.add(types.KeyboardButton("Вернуться в подарки"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))    
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add("Вернуться в подарки", "Вернуться в баллы")
+    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     
@@ -2736,9 +2765,8 @@ def process_gift_time_unit(message, recipient_id, total_available_minutes):
         return
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("Вернуться в подарки"))
-    markup.add(types.KeyboardButton("Вернуться в баллы"))       
-    markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+    markup.add("Вернуться в подарки", "Вернуться в баллы")
+    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     
@@ -2888,9 +2916,8 @@ def process_gift_time_amount(message, recipient_id, total_available_minutes, uni
         
     except ValueError as e:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("Вернуться в подарки"))
-        markup.add(types.KeyboardButton("Вернуться в баллы"))
-        markup.add(types.KeyboardButton("Вернуться в реферальную систему"))
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
         error_msg = str(e) if str(e).startswith(("Недостаточно", "Количество")) else "Введите корректное число!"
@@ -2910,12 +2937,23 @@ def get_day_for_ad(message):
         return
 
     user_id = message.from_user.id
+    data = load_payment_data()
     markup = InlineKeyboardMarkup()
     
-    # Формируем кнопки для каждого канала
-    for chat_id, name in AD_CHANNELS.items():
-        markup.add(InlineKeyboardButton(f"Подписаться на {name}", callback_data=f"subscribe_ad_{chat_id}"))
+    # Формируем кнопки только для активных и существующих каналов
+    active_channels = False
+    for chat_id, channel in data['ad_channels'].items():
+        if channel['active'] and is_channel_available(chat_id):
+            markup.add(InlineKeyboardButton(f"Подписаться на {channel['name']}", callback_data=f"subscribe_ad_{chat_id}"))
+            active_channels = True
     
+    if not active_channels:
+        bot.send_message(user_id, (
+            "❌ На данный момент рекламные каналы недоступны!\n"
+            "⏳ Пожалуйста, попробуйте позже."
+        ), parse_mode="Markdown")
+        return
+
     bot.send_message(user_id, (
         "📢 *Подпишитесь на один из наших рекламных каналов!*\n\n"
         "✨ Получите *+1 день подписки* за подписку на любой канал!\n"
@@ -2926,9 +2964,27 @@ def get_day_for_ad(message):
 def check_ad_subscription(call):
     user_id = call.from_user.id
     selected_channel_id = call.data.replace("subscribe_ad_", "")
-    channel_name = AD_CHANNELS.get(selected_channel_id, "Неизвестный канал")
     data = load_payment_data()
-    user_id_str = str(user_id)
+    
+    # Проверяем, существует ли канал в базе и активен ли он
+    if selected_channel_id not in data['ad_channels'] or not data['ad_channels'][selected_channel_id]['active']:
+        bot.send_message(call.message.chat.id, (
+            "❌ Этот канал больше недоступен!\n"
+            "⏳ Пожалуйста, попробуйте позже или выберите другой канал."
+        ), parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Канал недоступен!")
+        return
+    
+    channel_name = data['ad_channels'][selected_channel_id]['name']
+    
+    # Проверяем физическое существование канала
+    if not is_channel_available(selected_channel_id):
+        bot.send_message(call.message.chat.id, (
+            "❌ Канал временно недоступен!\n"
+            "⏳ Пожалуйста, попробуйте позже."
+        ), parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Канал недоступен!")
+        return
     
     # Проверяем подписку на выбранный канал
     if not is_user_subscribed(user_id, selected_channel_id):
@@ -2943,7 +2999,7 @@ def check_ad_subscription(call):
         return
     
     # Проверяем, получал ли пользователь бонус за этот канал
-    user_data = data['subscriptions']['users'].setdefault(user_id_str, {
+    user_data = data['subscriptions']['users'].setdefault(str(user_id), {
         "plans": [],
         "total_amount": 0,
         "username": "неизвестный",
@@ -13341,44 +13397,47 @@ def process_car_cost_value_step(message):
         bot.register_next_step_handler(msg, process_car_cost_value_step)
 
 def calculate_customs(message):
-    user_id = message.from_user.id
-    data = user_data[user_id]
+    try:
+        user_id = message.from_user.id
+        data = user_data[user_id]
 
-    # Конвертация стоимости автомобиля в рубли с использованием актуальных курсов
-    car_cost_rub = data['car_cost_value'] * EXCHANGE_RATES.get(data['car_cost_currency'], 1)
+        car_cost_rub = data['car_cost_value'] * EXCHANGE_RATES.get(data['car_cost_currency'], 1)
 
-    # Расчет всех сборов
-    customs_fee = calculate_customs_fee(car_cost_rub)
-    customs_duty = calculate_customs_duty(car_cost_rub, data['engine_volume'], data['car_age'], data['engine_type'], data['car_importer'])
-    utilization_fee = calculate_utilization_fee(data['engine_volume'], data['engine_type'], data['car_age'], data['car_importer'])
-    excise = calculate_excise(data['engine_power_value'], data['engine_type'], data['car_importer'])
-    nds = calculate_nds(car_cost_rub, customs_duty, excise, data['car_importer'])
-    total_customs = customs_fee + customs_duty + utilization_fee + excise + nds
-    total_cost = car_cost_rub + total_customs
+        customs_fee = calculate_customs_fee(car_cost_rub)
+        customs_duty = calculate_customs_duty(car_cost_rub, data['engine_volume'], data['car_age'], data['engine_type'], data['car_importer'])
+        utilization_fee = calculate_utilization_fee(data['engine_volume'], data['engine_type'], data['car_age'], data['car_importer'])
+        excise = calculate_excise(data['engine_power_value'], data['engine_type'], data['car_importer'])
+        nds = calculate_nds(car_cost_rub, customs_duty, excise, data['car_importer'])
+        total_customs = customs_fee + customs_duty + utilization_fee + excise + nds
+        total_cost = car_cost_rub + total_customs
 
-    # Форматирование чисел с разделением тысяч
-    result_message = (
-        "*Итоговый расчет по растаможке:*\n\n\n"
-        "*Ваши данные:*\n\n"
-        f"🚗 Импортер: {data['car_importer']}\n"
-        f"📅 Возраст авто: {data['car_age']}\n"
-        f"🔧 Тип двигателя: {data['engine_type']}\n"
-        f"💪 Мощность: {data['engine_power_value']:.1f} ЛС\n"
-        f"📏 Объем двигателя: {data['engine_volume']:.1f} см³\n"
-        f"💰 Стоимость: {data['car_cost_value']:,.2f} {data['car_cost_currency']}\n\n"
-        "*Расчет:*\n\n"
-        f"🛃 Таможенный сбор: {customs_fee:,.2f} ₽\n"
-        f"🏦 Таможенная пошлина: {customs_duty:,.2f} ₽\n"
-        f"♻️ Утилизационный сбор: {utilization_fee:,.2f} ₽\n"
-        f"📈 Акциз: {excise:,.2f} ₽\n"
-        f"🫰 НДС: {nds:,.2f} ₽\n"
-        f"💵 Итого: {total_customs:,.2f} ₽\n"
-        f"💰 Стоимость автомобиля + растаможка: {total_cost:,.2f} ₽"
-    )
+        result_message = (
+            "*Итоговый расчет по растаможке:*\n\n\n"
+            "*Ваши данные:*\n\n"
+            f"🚗 Импортер: {data['car_importer']}\n"
+            f"📅 Возраст авто: {data['car_age']}\n"
+            f"🔧 Тип двигателя: {data['engine_type']}\n"
+            f"💪 Мощность: {data['engine_power_value']:.1f} ЛС\n"
+            f"📏 Объем двигателя: {data['engine_volume']:.1f} см³\n"
+            f"💰 Стоимость: {data['car_cost_value']:,.2f} {data['car_cost_currency']}\n\n"
+            "*Расчет:*\n\n"
+            f"🛃 Таможенный сбор: {customs_fee:,.2f} ₽\n"
+            f"🏦 Таможенная пошлина: {customs_duty:,.2f} ₽\n"
+            f"♻️ Утилизационный сбор: {utilization_fee:,.2f} ₽\n"
+            f"📈 Акциз: {excise:,.2f} ₽\n"
+            f"🫰 НДС: {nds:,.2f} ₽\n"
+            f"💵 Итого: {total_customs:,.2f} ₽\n"
+            f"💰 Стоимость автомобиля + растаможка: {total_cost:,.2f} ₽"
+        )
 
-    bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_osago_calculation_to_history(user_id, total_cost)
-    view_rastamozka_calc(message)
+        bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
+        save_rastamozka_calculation_to_history(user_id, total_cost)
+        view_rastamozka_calc(message)
+
+    except Exception as e:
+        print(f"Ошибка в calculate_customs: {e}")
+        bot.send_message(message.chat.id, "Произошла ошибка при расчете. Пожалуйста, попробуйте снова.")
+        view_rastamozka_calc(message)
 
 def calculate_customs_fee(car_cost_rub):
     if car_cost_rub <= 200000:
@@ -13546,11 +13605,11 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
     if car_age == "До 3 лет":
         age_category = "до 3 лет"
     elif car_age == "От 3 до 5 лет":
-        age_category = "старше 3 лет"
+        age_category = "от 3 до 5 лет"
     elif car_age == "От 5 до 7 лет":
-        age_category = "старше 3 лет"
+        age_category = "от 5 до 7 лет"
     elif car_age == "Более 7 лет":
-        age_category = "старше 3 лет"
+        age_category = "старше 7 лет"
     else:
         raise ValueError("Некорректный формат возраста автомобиля!")
 
@@ -13573,7 +13632,7 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
                 return 107.67
             else:
                 return 137.11
-        else:  # Старше 3 лет
+        elif age_category == "от 3 до 5 лет":
             if engine_volume <= 1000:
                 return 23.0
             elif engine_volume <= 2000:
@@ -13584,6 +13643,28 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
                 return 165.84
             else:
                 return 180.24
+        elif age_category == "от 5 до 7 лет":
+            if engine_volume <= 1000:
+                return 25.0  # Пример значения, уточните
+            elif engine_volume <= 2000:
+                return 60.0  # Пример значения, уточните
+            elif engine_volume <= 3000:
+                return 145.0  # Пример значения, уточните
+            elif engine_volume <= 3500:
+                return 170.0  # Пример значения, уточните
+            else:
+                return 185.0  # Пример значения, уточните
+        else:  # Старше 7 лет
+            if engine_volume <= 1000:
+                return 27.0  # Пример значения, уточните
+            elif engine_volume <= 2000:
+                return 62.0  # Пример значения, уточните
+            elif engine_volume <= 3000:
+                return 150.0  # Пример значения, уточните
+            elif engine_volume <= 3500:
+                return 175.0  # Пример значения, уточните
+            else:
+                return 190.0  # Пример значения, уточните
     else:  # Для физических лиц
         if age_category == "до 3 лет":
             if engine_volume <= 1000:
@@ -13596,7 +13677,7 @@ def get_utilization_coefficient(engine_volume, engine_type, car_age, car_importe
                 return 107.67
             else:
                 return 137.11
-        else:
+        else:  # Старше 3 лет
             if engine_volume <= 1000:
                 return 0.26
             elif engine_volume <= 2000:
@@ -13635,7 +13716,7 @@ def calculate_nds(car_cost_rub, customs_duty, excise, car_importer):
         return 0
     return (car_cost_rub + customs_duty + excise) * 0.2
 
-def save_osago_calculation_to_history(user_id, total_cost):
+def save_rastamozka_calculation_to_history(user_id, total_cost):
     username = user_data[user_id].get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
 
@@ -14088,10 +14169,10 @@ def process_vehicle_type_step(message):
     markup.add("Вернуться в ОСАГО")
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите регион:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_region_step)
+    bot.register_next_step_handler(msg, process_osago_region_step)
 
 # Step 3: Region
-def process_region_step(message):
+def process_osago_region_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в ОСАГО":
@@ -14106,7 +14187,7 @@ def process_region_step(message):
     region = next((r for r in osago_data['regions'] if r['name'] == region_name), None)
     if not region:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
-        bot.register_next_step_handler(msg, process_region_step)
+        bot.register_next_step_handler(msg, process_osago_region_step)
         return
 
     user_data[user_id]['region'] = region_name
@@ -14655,10 +14736,10 @@ def calculate_osago(message):
         )
 
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown')
-    save_calculation_to_history(user_id, min_cost, max_cost)
+    save_osago_calculation_to_history(user_id, min_cost, max_cost)
     view_osago_calc(message)
 
-def save_calculation_to_history(user_id, min_cost, max_cost):
+def save_osago_calculation_to_history(user_id, min_cost, max_cost):
     username = user_data[user_id].get('username', 'unknown')
     timestamp = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
@@ -15642,7 +15723,7 @@ def calculate_loan(message):
     os.makedirs(os.path.dirname(excel_path), exist_ok=True)
     save_to_excel(user_id, principal, total_interest, total_payment, payment_schedule, excel_path, timestamp_display)
     
-    save_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display)
+    save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display)
     
     with open(excel_path, 'rb') as file:
         bot.send_document(message.chat.id, file, caption="📅 Календарь выплат по кредиту")
@@ -15733,7 +15814,7 @@ def save_to_excel(user_id, principal, total_interest, total_payment, payment_sch
     
     workbook.save(excel_path)
 
-def save_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display):
+def save_credit_calculation_to_history(user_id, principal, total_interest, total_payment, payment_schedule, timestamp_display):
     username = user_data[user_id].get('username', 'unknown')
     
     calculation_data = {
@@ -17007,10 +17088,10 @@ def start_tax_calculation(message):
     markup.add("Вернуться в налог")       
     markup.add("В главное меню")
     msg = bot.send_message(message.chat.id, "Выберите ваш регион:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_region_step)
+    bot.register_next_step_handler(msg, process_nalog_region_step)
 
 # Step 1: Region
-def process_region_step(message):
+def process_nalog_region_step(message):
     user_id = message.from_user.id
 
     if message.text == "Вернуться в налог":
@@ -17024,7 +17105,7 @@ def process_region_step(message):
     region_name = message.text.strip()
     if region_name not in tax_rates:
         msg = bot.send_message(message.chat.id, "Некорректный ввод! Выберите верный вариант")
-        bot.register_next_step_handler(msg, process_region_step)
+        bot.register_next_step_handler(msg, process_nalog_region_step)
         return
 
     user_data[user_id]['region'] = region_name
