@@ -957,24 +957,27 @@ def check_subscription(func):
         # Проверяем, является ли отправитель ботом
         if message.from_user.is_bot:
             print(f"Получено сообщение от бота {user_id}, игнорируем.")
-            return  # Прерываем выполнение, если отправитель — бот
+            return
+        
+        # Если функция в FREE_FEATURES, разрешаем доступ без проверок
+        if message.text in FREE_FEATURES:
+            return func(message, *args, **kwargs)
         
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(user_id, {})
         
-        if message.text in FREE_FEATURES:
-            return func(message, *args, **kwargs)
-        
+        # Проверяем наличие любой активной подписки (платной или бесплатной)
         has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
-                              for plan in user_data.get('plans', []))
+                             for plan in user_data.get('plans', []))
         if has_active_plan:
             return func(message, *args, **kwargs)
         
-        trials = data['subscriptions']['users'].get(user_id, {}).get('free_feature_trials', {})
+        # Проверяем пробный режим для функции
+        trials = user_data.get('free_feature_trials', {})
         last_trial = datetime.strptime(trials.get(message.text, "01.01.2000 в 00:00"), "%d.%m.%Y в %H:%M")
         if (datetime.now() - last_trial).days >= 7:
             trials[message.text] = datetime.now().strftime("%d.%m.%Y в %H:%M")
-            data['subscriptions']['users'][user_id]['free_feature_trials'] = trials
+            data['subscriptions']['users'].setdefault(user_id, {})['free_feature_trials'] = trials
             save_payments_data(data)
             bot.send_message(user_id, f"🎁 Бесплатное использование «{message.text}» на один раз!", parse_mode="Markdown")
             return func(message, *args, **kwargs)
@@ -988,16 +991,14 @@ def check_subscription(func):
 def is_premium_user(user_id):
     data = load_payment_data()
     user_id_str = str(user_id)
-    
-    # Получаем данные пользователя
     user_data = data['subscriptions']['users'].get(user_id_str, {})
     plans = user_data.get('plans', [])
     
-    # Проверяем, есть ли активные платные планы
     now = datetime.now()
     for plan in plans:
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-        if end_date > now and plan['plan_name'] in ['weekly', 'monthly', 'yearly']:  # Платные планы
+        # Считаем премиум любые активные планы (включая бесплатные)
+        if end_date > now:
             return True
     
     return False
@@ -1005,19 +1006,26 @@ def is_premium_user(user_id):
 def restrict_free_users(func):
     def wrapper(message, *args, **kwargs):
         user_id = str(message.from_user.id)
+        data = load_payment_data()
+        user_data = data['subscriptions']['users'].get(user_id, {})
+        
+        # Проверяем наличие любой активной подписки
+        has_active_plan = any(datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() 
+                             for plan in user_data.get('plans', []))
+        
+        if has_active_plan:
+            return func(message, *args, **kwargs)
+        
+        # Если нет подписки, проверяем пробные попытки
         users_data = load_users_data()
-        
-        # Безопасно получаем trials, по умолчанию пустой словарь
         trials = users_data.get(user_id, {}).get('free_feature_trials', {})
+        if trials.get(func.__name__, 0) > 0:
+            return func(message, *args, **kwargs)
         
-        # Проверяем премиум-статус и доступ к пробным попыткам
-        if not is_premium_user(user_id) and trials.get(func.__name__, 0) <= 0:
-            bot.send_message(message.chat.id, (
-                "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n\n"
-                "🚀 Оформите подписку или используйте пробный период!"
-            ), parse_mode="Markdown")
-            return
-        return func(message, *args, **kwargs)
+        bot.send_message(message.chat.id, (
+            "⚠️ Эта функция доступна только премиум-пользователям или в пробном режиме!\n\n"
+            "🚀 Оформите подписку или используйте пробный период!"
+        ), parse_mode="Markdown")
     return wrapper
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
@@ -1432,7 +1440,11 @@ def translate_plan_name(plan_name):
         "weekly": "Неделя",
         "monthly": "Месяц",
         "yearly": "Год",
-        "referral": "Бонус за реферальную ссылку"  # Добавляем явное название
+        "points_bonus": "Бонус за баллы",
+        "gift_time": "Подаренное время",
+        "referral": "Бонус за реферала",
+        "monthly_leader_bonus": "Бонус лидера месяца",
+        "leaderboard": "Бонус топ-1"
     }.get(plan_name, plan_name)
 
 @bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
@@ -1575,15 +1587,16 @@ def cancel_subscription(message):
         plans_summary += (
             f"💳 *№{idx + 1}. {translate_plan_name(plan['plan_name']).capitalize()}:*\n"
             f"📅 Осталось: {days_left} дней, {hours_left:02}:{minutes_left:02} часов\n"
-            f"🕒 Начало: {escape_markdown(plan['start_date'])}\n"
-            f"⌛ Конец: {escape_markdown(plan['end_date'])}\n"
+            f"🕒 Начало: {plan['start_date']}\n"  # Убрано экранирование
+            f"⌛ Конец: {plan['end_date']}\n"      # Убрано экранирование
             f"💰 Стоимость: {plan['price']:.2f} руб.\n\n"
         )
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Вернуться в подписку", "В главное меню")
+    markup.add("Вернуться в подписку")
+    markup.add("В главное меню")
     send_long_message(user_id, plans_summary, parse_mode="Markdown")
-    bot.send_message(user_id, "Введите номера подписок для отмены (через запятую):", reply_markup=markup)
+    bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup)
     bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
 
 def confirm_cancellation(message, user_id, paid_plans):
@@ -1595,26 +1608,65 @@ def confirm_cancellation(message, user_id, paid_plans):
         return
 
     try:
-        subscription_numbers = [int(num) for num in message.text.split(',')]
-        if any(num < 1 or num > len(paid_plans) for num in subscription_numbers):
-            raise ValueError("Неверный номер подписки!")
+        subscription_numbers = [int(num.strip()) for num in message.text.split(',')]
+        valid_numbers = []
+        invalid_numbers = []
+
+        # Проверяем номера на корректность
+        for num in subscription_numbers:
+            if 1 <= num <= len(paid_plans):
+                valid_numbers.append(num)
+            else:
+                invalid_numbers.append(num)
+
+        if not valid_numbers:
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add("Вернуться в подписку")
+            markup.add("В главное меню")
+            bot.send_message(user_id, (
+                "⚠️ Все введенные номера некорректны!\n"
+                "Введите номера через запятую:"
+            ), reply_markup=markup, parse_mode="Markdown")
+            bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+            return
+
+        if invalid_numbers:
+            bot.send_message(user_id, (
+                f"⚠️ Некорректные номера `{invalid_numbers}`! Они будут пропущены...\n"
+            ), parse_mode="Markdown")
+
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Подтвердить", "Отменить")
-        bot.send_message(user_id, "Вы уверены, что хотите отменить выбранные подписки?", reply_markup=markup)
-        bot.register_next_step_handler(message, process_subscription_cancellation, user_id, paid_plans, subscription_numbers)
+        markup.add("Вернуться в подписку")
+        markup.add("В главное меню")
+        bot.send_message(user_id, (
+            f"Вы уверены, что хотите отменить подписки с номерами {valid_numbers}?"
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_subscription_cancellation, user_id, paid_plans, valid_numbers)
+
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("Вернуться в подписку", "В главное меню")
-        bot.send_message(user_id, "⚠️ Неверный формат или номер подписки. Введите номера через запятую:", reply_markup=markup)
+        markup.add("Вернуться в подписку")
+        markup.add("В главное меню")
+        bot.send_message(user_id, (
+            "⚠️ Неверный формат или номер подписки. Введите номера через запятую:"
+        ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
 
 def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
-    if message.text == "Отменить":
+    if message.text == "Вернуться в подписку":
+        payments_function(message)
+        return
+    if message.text == "В главное меню":
         return_to_menu(message)
+        return
+
+    if message.text == "Отменить":
+        payments_function(message)  # Возвращаем в меню подписок
         return
     if message.text != "Подтвердить":
         bot.send_message(user_id, "Действие отменено.", parse_mode="Markdown")
-        return_to_menu(message)
+        payments_function(message)  # Возвращаем в меню подписок
         return
 
     data = load_payment_data()
@@ -1669,7 +1721,7 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
         "💸 Средства будут зачислены на ваш счет в течение 3-5 рабочих дней.\n"
         "📩 Если у вас есть вопросы, обратитесь в поддержку!"
     ), parse_mode="Markdown")
-    return_to_menu(message)
+    payments_function(message)  # Возвращаем в меню подписок
 
 def refund_payment(user_id, refund_amount, plan):
     payment_id = plan.get('provider_payment_charge_id', '')
@@ -2358,12 +2410,23 @@ def gift_points_handler(message):
         bot.send_message(message.chat.id, "❌ У вас недостаточно баллов для подарка!", parse_mode="Markdown")
         return
     
+    # Проверяем наличие рефералов
+    referrals = list(set(data['referrals']['stats'].get(user_id, [])))
+    referral_message = ""
+    if referrals:
+        referral_message = "*Ваши рефералы:*\n\n"
+        for idx, referral_id in enumerate(referrals, 1):
+            referral_username = data['subscriptions']['users'].get(referral_id, {}).get('username', 'неизвестный')
+            referral_message += f"{idx}. {referral_username} (ID: {referral_id})\n"
+        referral_message += "\n"
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Вернуться в подарки", "Вернуться в баллы")
-    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
+    markup.add("Вернуться в реферальную систему")
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     bot.send_message(message.chat.id, (
+        f"{referral_message}"
         "🎁 *Подарить баллы*\n\n"
         "Введите *username* (с @) или *ID* пользователя, которому хотите подарить баллы:"
     ), reply_markup=markup, parse_mode="Markdown")
@@ -2641,13 +2704,24 @@ def gift_time_handler(message):
         ), parse_mode="Markdown")
         return
     
+    # Проверяем наличие рефералов
+    referrals = list(set(data['referrals']['stats'].get(user_id, [])))
+    referral_message = ""
+    if referrals:
+        referral_message = "*Ваши рефералы:*\n\n"
+        for idx, referral_id in enumerate(referrals, 1):
+            referral_username = data['subscriptions']['users'].get(referral_id, {}).get('username', 'неизвестный')
+            referral_message += f"{idx}. {referral_username} (ID: {referral_id})\n"
+        referral_message += "\n"
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Вернуться в подарки", "Вернуться в баллы")
-    markup.add("Вернуться в баллы", "Вернуться в реферальную систему")    
+    markup.add("Вернуться в реферальную систему")
     markup.add(types.KeyboardButton("Вернуться в подписку"))
     markup.add(types.KeyboardButton("В главное меню"))
     
     bot.send_message(message.chat.id, (
+        f"{referral_message}"
         f"🎁 *Подарить время*\n\n"
         f"⏳ *Доступное время для подарка:* {total_remaining_minutes} минут\n"
         f"💡 Это примерно {total_remaining_minutes // 1440} дней, "
