@@ -899,11 +899,18 @@ def save_payments_data(data):
         raise Exception(f"Не удалось сохранить payments.json: {e}")
     
 def load_users_data():
-    if not os.path.exists(USERS_DATABASE_PATH):
-        os.makedirs(os.path.dirname(USERS_DATABASE_PATH), exist_ok=True)
-        with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as f:
-            json.dump({}, f)
+    ensure_directory_exists(users_db_path)
+
+    if not os.path.exists(users_db_path):
+        with open(users_db_path, 'w', encoding='utf-8') as file:
+            json.dump({}, file)
         return {}
+
+    with open(users_db_path, 'r', encoding='utf-8') as file:
+        content = file.read().strip()
+        if not content:
+            return {}
+        return json.loads(content)
 
     try:
         with open(USERS_DATABASE_PATH, 'r', encoding='utf-8') as f:
@@ -941,12 +948,14 @@ def save_users_data(data):
 FREE_FEATURES = [
     "Калькуляторы", "Вернуться в калькуляторы",     
     "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя", "Мужской", "Женский", "Убрать последний", "Убрать все", "Готово", 
-    "Налог", "Вернуться в налог", "Вернуться в алкоголь", "Рассчитать налог", "Просмотр налогов", "Удаление налогов","Да", "Нет",
+    "Налог", "Вернуться в налог", "Вернуться в алкоголь", "Рассчитать налог", "Просмотр налогов", "Удаление налогов", "Да", "Нет",
     "Найти транспорт", "Отправить геопозицию", "Продолжить", "Начать заново",
     "Код региона",
     "Коды OBD2",
-    "Напоминания", "Вернуться в меню напоминаний", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминания", "Активные", "Истекшие", "Один раз", "Ежедневно", "Еженедельно", "Ежемесячно",
-    "Прочее",
+    "Напоминания", "Вернуться в меню напоминаний", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминания", 
+    "Активные", "Истекшие", "Один раз", "Ежедневно", "Еженедельно", "Ежемесячно",
+    "Del Активные", "Del Истекшие", "Del Один раз", "Del Ежедневно", "Del Еженедельно", "Del Ежемесячно",
+    "Прочее", "Вернуться в прочее",
     "Новости", "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей", "Еще новости",
     "Курсы валют",
     "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
@@ -7042,7 +7051,9 @@ def calculate_and_show_result(message):
     save_alcohol_calculation_to_history(message, c)
     user_data[user_id] = data
     bot.send_message(chat_id, result, parse_mode='Markdown')
-    view_alc_calc(message, show_description=False)
+    new_message_for_alko = message
+    new_message_for_alko.text = "Алкоголь"  
+    view_alc_calc(new_message_for_alko, show_description=False)
 
 def get_recommendations(promille, gender):
     if promille <= 0:
@@ -7324,7 +7335,7 @@ def view_alcohol_calculations(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов алкоголя для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_view_alcohol_selection)
 
 @text_only_handler
@@ -7340,6 +7351,13 @@ def process_view_alcohol_selection(message):
         return
     if message.text == "Алкоголь в EXCEL":
         send_alcohol_excel_file(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Алкоголь в EXCEL")
+        markup.add('Вернуться в алкоголь')
+        markup.add('Вернуться в калькуляторы')
+        markup.add('В главное меню')
+        msg = bot.send_message(message.chat.id, "Введите номера расчетов алкоголя для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_alcohol_selection)
         return
 
     chat_id = message.chat.id
@@ -7348,7 +7366,9 @@ def process_view_alcohol_selection(message):
     calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)        
         return
 
     try:
@@ -7392,7 +7412,9 @@ def process_view_alcohol_selection(message):
             )
             bot.send_message(chat_id, result, parse_mode='Markdown')
 
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -7424,7 +7446,9 @@ def send_alcohol_excel_file(message):
             bot.send_document(message.chat.id, excel_file)
     else:
         bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты алкоголя")
-    view_alc_calc(message, show_description=False)
+    new_message_for_alko = message
+    new_message_for_alko.text = "Алкоголь"  
+    view_alc_calc(new_message_for_alko, show_description=False)
 
 # ----------------------------------------------- КАЛЬКУЛЯТОРЫ_АЛКОГОЛЬ (удаление алкоголя) --------------------------------------------------
 
@@ -7444,7 +7468,9 @@ def handle_delete_alcohol(message):
     user_id = str(message.from_user.id)  
     if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов алкоголя!")
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)
         return
     delete_alcohol_calculations(message)
 
@@ -7455,7 +7481,9 @@ def delete_alcohol_calculations(message):
 
     if user_id not in user_history_alko or 'alcohol_calculations' not in user_history_alko[user_id] or not user_history_alko[user_id]['alcohol_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)
         return
 
     calculations = user_history_alko[user_id]['alcohol_calculations']
@@ -7492,7 +7520,9 @@ def process_delete_alcohol_selection(message):
     calculations = user_history_alko.get(user_id, {}).get('alcohol_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов алкоголя!")
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)
         return
 
     try:
@@ -7527,7 +7557,9 @@ def process_delete_alcohol_selection(message):
         update_alcohol_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты алкоголя успешно удалены!")
 
-        view_alc_calc(message, show_description=False)
+        new_message_for_alko = message
+        new_message_for_alko.text = "Алкоголь"  
+        view_alc_calc(new_message_for_alko, show_description=False)
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -8555,7 +8587,7 @@ def view_rastamozka_calculations(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов растаможки для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_view_rastamozka_selection)
 
 @text_only_handler
@@ -8571,6 +8603,13 @@ def process_view_rastamozka_selection(message):
         return
     if message.text == "Растаможка в EXCEL":
         send_rastamozka_excel_file(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Растаможка в EXCEL')
+        markup.add('Вернуться в растаможку')
+        markup.add('Вернуться в калькуляторы')
+        markup.add('В главное меню')
+        msg = bot.send_message(message.chat.id, "Введите номера расчетов растаможки для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_rastamozka_selection)
         return
 
     chat_id = message.chat.id
@@ -9824,7 +9863,7 @@ def view_osago_calculations(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов ОСАГО для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_view_osago_selection)
 
 @text_only_handler
@@ -9840,6 +9879,15 @@ def process_view_osago_selection(message):
         return
     if message.text == "ОСАГО в EXCEL":
         send_osago_excel_file(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('ОСАГО в EXCEL')
+        markup.add('Вернуться в ОСАГО')
+        markup.add('Вернуться в калькуляторы')
+        markup.add('В главное меню')
+        msg = bot.send_message(
+            chat_id,
+            "Введите номера расчетов ОСАГО для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_osago_selection)
         return
 
     chat_id = message.chat.id
@@ -11011,7 +11059,7 @@ def view_autokredit_calculations(message):
     markup.add('Вернуться в автокредит')
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов автокредита для просмотра:", reply_markup=markup)
 
 @text_only_handler
 def process_view_autokredit_selection(message):
@@ -11996,7 +12044,7 @@ def view_tire_calculations(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов автокредита для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_view_tire_selection)
 
 @text_only_handler
@@ -12012,6 +12060,13 @@ def process_view_tire_selection(message):
         return
     if message.text == "Шины в EXCEL":
         send_tire_excel_file(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Шины в EXCEL')
+        markup.add('Вернуться в шины')
+        markup.add('Вернуться в калькуляторы')
+        markup.add('В главное меню')
+        msg = bot.send_message(chat_id, "Введите номера расчетов шин для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_tire_selection)
         return
 
     chat_id = message.chat.id
@@ -12519,7 +12574,9 @@ def process_year_step(message):
         load_tax_rates(year)
         if not tax_rates:
             bot.send_message(message.chat.id, f"❌ Данные за `{year}` год отсутствуют!", parse_mode='Markdown')
-            view_nalog_calc(message, show_description=False)
+            new_message_for_nalog = message
+            new_message_for_nalog.text = "Налог"  
+            view_nalog_calc(new_message_for_nalog, show_description=False)
             return
     except ValueError:
         markup = ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True, resize_keyboard=True)
@@ -12977,7 +13034,9 @@ def calculate_tax(message):
     bot.send_message(message.chat.id, result_message, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     
     del user_data[user_id_int]  
-    view_nalog_calc(message, show_description=False)
+    new_message_for_nalog = message
+    new_message_for_nalog.text = "Налог"  
+    view_nalog_calc(new_message_for_nalog, show_description=False)
 
 def save_nalog_to_excel(user_id, calculation):
     file_path = os.path.join(NALOG_EXCEL_DIR, f"{user_id}_nalog.xlsx")
@@ -13172,7 +13231,9 @@ def handle_view_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
     view_nalog_calculations(message)
 
@@ -13183,7 +13244,9 @@ def view_nalog_calculations(message):
 
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
 
     calculations = user_history_nalog[user_id]['nalog_calculations']
@@ -13199,31 +13262,42 @@ def view_nalog_calculations(message):
     markup.add('Вернуться в калькуляторы')
     markup.add('В главное меню')
     msg = bot.send_message(chat_id, message_text, parse_mode='Markdown')
-    bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+    bot.send_message(chat_id, "Введите номера расчетов шин для просмотра:", reply_markup=markup)
     bot.register_next_step_handler(msg, process_view_nalog_selection)
 
 @text_only_handler
 def process_view_nalog_selection(message):
+    chat_id = message.chat.id 
+    user_id = str(message.from_user.id)
+
     if message.text == "В главное меню":
         return_to_menu(message)
         return
     if message.text == "Вернуться в налог":
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
     if message.text == "Вернуться в калькуляторы":
         return_to_calculators(message)
         return
     if message.text == "Налог в EXCEL":
         send_nalog_excel_file(message)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Налог в EXCEL')
+        markup.add('Вернуться в налог')
+        markup.add('Вернуться в калькуляторы')
+        markup.add('В главное меню')
+        msg = bot.send_message(chat_id, "Введите номера расчетов для просмотра:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_view_nalog_selection)
         return
-
-    chat_id = message.chat.id
-    user_id = str(message.from_user.id)
 
     calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
 
     try:
@@ -13285,7 +13359,9 @@ def process_view_nalog_selection(message):
             )
             bot.send_message(chat_id, result_message, parse_mode='Markdown')
 
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"
+        view_nalog_calc(new_message_for_nalog, show_description=False)
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -13317,7 +13393,9 @@ def send_nalog_excel_file(message):
             bot.send_document(message.chat.id, excel_file)
     else:
         bot.send_message(message.chat.id, "❌ Файл Excel не найден!\nУбедитесь, что у вас есть сохраненные расчеты налога")
-    view_nalog_calc(message, show_description=False)
+    new_message_for_nalog = message
+    new_message_for_nalog.text = "Налог"
+    view_nalog_calc(new_message_for_nalog, show_description=False)
 
 # ------------------------------------------- КАЛЬКУЛЯТОРЫ_НАЛОГ (удаление налогов) --------------------------------------------------
 
@@ -13337,7 +13415,9 @@ def handle_delete_nalog(message):
     user_id = str(message.from_user.id)
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(message.chat.id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"  
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
     delete_nalog_calculations(message)
 
@@ -13348,7 +13428,9 @@ def delete_nalog_calculations(message):
 
     if user_id not in user_history_nalog or 'nalog_calculations' not in user_history_nalog[user_id] or not user_history_nalog[user_id]['nalog_calculations']:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"  
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
 
     calculations = user_history_nalog[user_id]['nalog_calculations']
@@ -13385,7 +13467,9 @@ def process_delete_nalog_selection(message):
     calculations = user_history_nalog.get(user_id, {}).get('nalog_calculations', [])
     if not calculations:
         bot.send_message(chat_id, "❌ У вас нет сохраненных расчетов налога!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"  
+        view_nalog_calc(new_message_for_nalog, show_description=False)
         return
 
     try:
@@ -13419,7 +13503,9 @@ def process_delete_nalog_selection(message):
         save_user_history_nalog()
         update_nalog_excel_file(user_id)
         bot.send_message(chat_id, "✅ Выбранные расчеты налога успешно удалены!")
-        view_nalog_calc(message, show_description=False)
+        new_message_for_nalog = message
+        new_message_for_nalog.text = "Налог"  
+        view_nalog_calc(new_message_for_nalog, show_description=False)
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -18392,7 +18478,6 @@ def request_user_location(message):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
-@check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_car_location(message):
@@ -18587,7 +18672,6 @@ def handle_menu_category_buttons(message):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
-@check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_location(message):
@@ -21033,7 +21117,9 @@ def process_time_step(message):
     del data["users"][user_id]["current_reminder"]
     save_data(data)
     bot.send_message(message.chat.id, "✅ Напоминание добавлено!")
-    reminders_menu(message, show_description=False)
+    new_message_3 = message
+    new_message_3.text = "Напоминания"  
+    reminders_menu(new_message_3, show_description=False)
 
 # -------------------------------------------- НАПОМИНАНИЯ (посмотреть напоминания) ----------------------------------------------------
 
@@ -21145,16 +21231,16 @@ def view_reminders_by_type(message, status):
 @rate_limit_with_captcha
 def delete_reminder(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Активные', 'Истекшие')
+    markup.add('Del Активные', 'Del Истекшие')
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите тип напоминаний для удаления:", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text in ['Активные', 'Истекшие'])
-@check_function_state_decorator('Активные')
-@check_function_state_decorator('Истекшие')
-@track_usage('Активные')
-@track_usage('Истекшие')
+@bot.message_handler(func=lambda message: message.text in ['Del Активные', 'Del Истекшие'])
+@check_function_state_decorator('Del Активные')
+@check_function_state_decorator('Del Истекшие')
+@track_usage('Del Активные')
+@track_usage('Del Истекшие')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -21166,20 +21252,37 @@ def delete_reminder(message):
 @rate_limit_with_captcha
 def delete_reminders_by_status(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add('Один раз', 'Ежедневно')
-    markup.add('Еженедельно', 'Ежемесячно')
+    markup.add('Del Один раз', 'Del Ежедневно')
+    markup.add('Del Еженедельно', 'Del Ежемесячно')
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
-    status = message.text.lower()
+    status = message.text.replace('Del ', '').lower()
     bot.send_message(message.chat.id, f"Выберите тип {status} напоминаний для удаления:", reply_markup=markup)
     bot.register_next_step_handler(message, lambda msg: delete_reminders_by_type(msg, status))
 
+@bot.message_handler(func=lambda message: message.text in ['Del Один раз', 'Del Ежедневно', 'Del Еженедельно', 'Del Ежемесячно'])
+@check_function_state_decorator('Del Один раз')
+@check_function_state_decorator('Del Ежедневно')
+@check_function_state_decorator('Del Еженедельно')
+@check_function_state_decorator('Del Ежемесячно')
+@track_usage('Del Один раз')
+@track_usage('Del Ежедневно')
+@track_usage('Del Еженедельно')
+@track_usage('Del Ежемесячно')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
 @text_only_handler
+@rate_limit_with_captcha
 def delete_reminders_by_type(message, status):
     user_id = str(message.from_user.id)
     data = load_data()
     reminders = data["users"].get(user_id, {}).get("reminders", [])
-    reminder_type = message.text.lower()
+    reminder_type = message.text.replace('Del ', '').lower()
 
     if message.text == "Вернуться в меню напоминаний":
         reminders_menu(message, show_description=False)
@@ -21187,19 +21290,19 @@ def delete_reminders_by_type(message, status):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
+
     if reminder_type not in ["один раз", "ежедневно", "еженедельно", "ежемесячно"]:
         bot.send_message(message.chat.id, "Неверный тип\nВыберите из предложенных")
         delete_reminder(message)
         return
-    
+
     filtered_reminders = [r for r in reminders if r["status"] == ("active" if status == "активные" else "expired") and r["type"] == reminder_type]
-    
+
     if not filtered_reminders:
         bot.send_message(message.chat.id, f"*{status.capitalize()} напоминания ({reminder_type}) для удаления:*\n\n❌ Нет {status} напоминаний!", parse_mode="Markdown")
         delete_reminder(message)
         return
-    
+
     response = f"*{status.capitalize()} напоминания ({reminder_type}) для удаления:*\n\n"
     for i, reminder in enumerate(filtered_reminders, 1):
         response += (
@@ -21210,7 +21313,7 @@ def delete_reminders_by_type(message, status):
             f"✅ Статус: {'активное' if status == 'активные' else 'истекло'}\n"
             f"🔖 Тип: {reminder['type']}\n\n"
         )
-    
+
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Вернуться в меню напоминаний')
     markup.add('В главное меню')
@@ -21219,7 +21322,7 @@ def delete_reminders_by_type(message, status):
     data["users"][user_id]["current_reminders"] = filtered_reminders
     data["users"][user_id]["current_status"] = status
     save_data(data)
-    
+
     msg = bot.send_message(message.chat.id, "Введите номера напоминаний для удаления:", reply_markup=markup)
     bot.register_next_step_handler(msg, confirm_delete_step)
 
@@ -21237,7 +21340,7 @@ def confirm_delete_step(message):
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-    
+
     try:
         indices = [int(num.strip()) - 1 for num in message.text.split(',')]
         valid_indices = []
@@ -21268,7 +21371,9 @@ def confirm_delete_step(message):
 
         save_data(data)
         bot.send_message(user_id, "✅ Выбранные напоминания удалены!")
-        reminders_menu(message, show_description=False)
+        new_message_3 = message
+        new_message_3.text = "Напоминания"  
+        reminders_menu(new_message_3, show_description=False)
 
     except ValueError:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -21373,7 +21478,6 @@ def start_antiradar(message):
 @track_user_activity
 @check_chat_state
 @check_user_blocked
-@check_subscription
 @check_subscription_chanal
 @rate_limit_with_captcha
 def handle_antiradar_location(message):
@@ -21553,6 +21657,20 @@ def view_others(message):
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
 
+@bot.message_handler(func=lambda message: message.text == "Вернуться в прочее")
+@check_function_state_decorator('Вернуться в прочее')
+@track_usage('Вернуться в прочее')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def return_to_other(message):
+    view_others(message)
+
 # ----------------------------------------------------- ПРОЧЕЕ (новости) ----------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Новости')
@@ -21571,6 +21689,7 @@ def show_news_menu(message, show_description=True):
     markup = telebot.types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
     markup.add('3 новости', '5 новостей', '7 новостей')
     markup.add('10 новостей', '15 новостей')
+    markup.add('Вернуться в прочее')
     markup.add('В главное меню')
 
     description = (
@@ -21610,6 +21729,10 @@ def handle_news_selection(message):
 
     count = int(message.text.split()[0])
     news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
+
+    if message.text == 'Вернуться в прочее':
+        view_others(message)
+        return
 
     if len(news_list) == 0:
         bot.send_message(message.chat.id, "❌ Новостей нет!")
@@ -21656,6 +21779,7 @@ def handle_news_selection(message):
     if len(news_list) > count:
         markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Еще новости')
+        markup.add('Вернуться в прочее')
         markup.add('В главное меню')
         bot.send_message(message.chat.id, "Хотите посмотреть еще новости?", reply_markup=markup)
         bot.register_next_step_handler(message, handle_more_news, count)
@@ -21665,6 +21789,10 @@ def handle_news_selection(message):
 
 @text_only_handler
 def handle_more_news(message, start_index):
+
+    if message.text == 'Вернуться в прочее':
+        view_others(message)
+        return
 
     if message.text == 'Еще новости':
         news_list = sorted(news.values(), key=lambda x: x['time'], reverse=True)
@@ -21703,6 +21831,7 @@ def handle_more_news(message, start_index):
         if end_index < len(news_list):
             markup = telebot.types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
             markup.add('Еще новости')
+            markup.add('Вернуться в прочее')
             markup.add('В главное меню')
             bot.send_message(message.chat.id, "Хотите посмотреть еще новости?", reply_markup=markup)
             bot.register_next_step_handler(message, handle_more_news, end_index)
@@ -21998,6 +22127,7 @@ def toggle_notifications_handler(message, show_description=True):
     markup.add(types.KeyboardButton(weather_button_text), types.KeyboardButton(fuel_button_text))
     markup.add(types.KeyboardButton(exchange_button_text))
     markup.add(types.KeyboardButton("Выключить все" if any(notification_status.values()) else "Включить все"))
+    markup.add(types.KeyboardButton("Вернуться в прочее"))
     markup.add(types.KeyboardButton("В главное меню"))
 
     info_message = (
@@ -22050,6 +22180,11 @@ def toggle_notifications_handler(message, show_description=True):
 @rate_limit_with_captcha
 def handle_notification_toggle(message):
     chat_id = message.chat.id
+
+    if message.text == 'Вернуться в прочее':
+        view_others(message)
+        return
+
     if not has_active_subscription(chat_id):
         bot.send_message(
             chat_id,
@@ -22532,6 +22667,7 @@ inactivity_thread.start()
 def view_add_menu(message, show_description=True):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Заявка на рекламу', 'Ваши заявки')
+    markup.add('Вернуться в прочее')
     markup.add('В главное меню')
 
     description = (
@@ -22566,6 +22702,7 @@ def view_add_menu(message, show_description=True):
 def handle_advertisement_request(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('Вернуться в меню для рекламы')
+    markup.add('Вернуться в прочее')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Введите тему рекламы и кратко о чем она:", reply_markup=markup)
     bot.register_next_step_handler(message, set_advertisement_theme)
@@ -22576,6 +22713,11 @@ def set_advertisement_theme(message):
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
         view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
         return
 
     if message.text == 'В главное меню':
@@ -22593,6 +22735,11 @@ def set_advertisement_date(message, advertisement_theme):
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
         view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
         return
 
     if message.text == 'В главное меню':
@@ -22622,6 +22769,11 @@ def set_advertisement_time(message, advertisement_theme, expected_date):
         view_add_menu(message, show_description=False)
         return
 
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
+        return
+
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
@@ -22648,7 +22800,13 @@ def set_advertisement_end_date(message, advertisement_theme, expected_date, expe
         return_to_menu(message)
         return
 
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
+        return
+
     if message.text == 'Вернуться в меню для рекламы':
+        temp_advertisement.clear()
         view_add_menu(message, show_description=False)
         return
 
@@ -22680,6 +22838,11 @@ def set_advertisement_end_time(message, advertisement_theme, expected_date, expe
         view_add_menu(message, show_description=False)
         return
 
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
+        return
+
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
@@ -22709,6 +22872,11 @@ def collect_advertisement_text(message, advertisement_theme, expected_date, expe
         view_add_menu(message, show_description=False)
         return
 
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
+        return
+
     if message.text == 'В главное меню':
         return_to_menu(message)
         return
@@ -22718,6 +22886,7 @@ def collect_advertisement_text(message, advertisement_theme, expected_date, expe
 
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('Пропустить медиафайлы')
+    markup.add('Вернуться в прочее')
     markup.add('Вернуться в меню для рекламы')
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Отправьте мультимедийные файлы (если есть):", reply_markup=markup)
@@ -22728,6 +22897,11 @@ def collect_advertisement_media(message, advertisement_theme, expected_date, exp
     if message.text == 'Вернуться в меню для рекламы':
         temp_advertisement.clear()
         view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
         return
 
     if message.text == 'В главное меню':
@@ -22775,6 +22949,7 @@ def collect_advertisement_media(message, advertisement_theme, expected_date, exp
 
         markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
         markup.add('Добавить еще', 'Завершить отправку')
+        markup.add('Вернуться в прочее')
         markup.add('Вернуться в меню для рекламы')
         markup.add('В главное меню')
         bot.send_message(message.chat.id, "Медиафайл добавлен! Хотите добавить еще?", reply_markup=markup)
@@ -22790,6 +22965,11 @@ def handle_advertisement_media_options(message, advertisement_theme, expected_da
         view_add_menu(message, show_description=False)
         return
 
+    if message.text == 'Вернуться в прочее':
+        temp_advertisement.clear()
+        view_others(message)
+        return
+
     if message.text == 'В главное меню':
         temp_advertisement.clear()
         return_to_menu(message)
@@ -22799,6 +22979,7 @@ def handle_advertisement_media_options(message, advertisement_theme, expected_da
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Пропустить медиафайлы')
         markup.add('Вернуться в меню для рекламы')
+        markup.add('Вернуться в прочее')
         markup.add('В главное меню')
         bot.send_message(message.chat.id, "Отправьте следующий мультимедийный файл:", reply_markup=markup)
         bot.register_next_step_handler(message, collect_advertisement_media, advertisement_theme, expected_date, expected_time, end_date, end_time)
@@ -22830,16 +23011,18 @@ def save_advertisement_request(message, advertisement_theme, expected_date, expe
     save_advertisements()
     bot.send_message(message.chat.id, "✅ Ваша заявка на рекламу была успешно сформирована и отправлена администратору!")
 
-    with open('data/admin/admin_user_payments/admin_sessions.json', 'r', encoding='utf-8') as file:
-        admin_data = json.load(file)
-        admin_ids = admin_data['admin_sessions']
+    try:
+        with open('data/admin/admin_user_payments/admin_sessions.json', 'r', encoding='utf-8') as file:
+            admin_data = json.load(file)
+            admin_ids = admin_data.get('admin_sessions', [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        admin_ids = []
 
     for admin_id in admin_ids:
         try:
             bot.send_message(admin_id, f"⚠️ У вас новая заявка на рекламу от пользователя `{user_id}` по теме *{advertisement_theme.lower()}* на {expected_date} в {expected_time} до {end_date} в {end_time}!", parse_mode="Markdown")
         except ApiTelegramException as e:
             if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
                 if admin_id not in blocked_users:
                     blocked_users.append(admin_id)
                     save_blocked_users(blocked_users)
@@ -22932,6 +23115,7 @@ def show_user_advertisement_requests(message):
 
         markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
         markup.add('Вернуться в меню для рекламы')
+        markup.add('Вернуться в прочее')
         markup.add('В главное меню')
         bot.send_message(message.chat.id, "Введите номер заявки для просмотра:", reply_markup=markup)
         bot.register_next_step_handler(message, show_user_advertisement_request_details)
@@ -22942,6 +23126,10 @@ def show_user_advertisement_requests(message):
 def show_user_advertisement_request_details(message):
     if message.text == "Вернуться в меню для рекламы":
         view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'Вернуться в прочее':
+        view_others(message)
         return
 
     if message.text == "В главное меню":
@@ -23014,6 +23202,7 @@ def show_user_advertisement_request_details(message):
             if advertisement['status'] == 'pending':
                 markup.add('Отозвать рекламу')
             markup.add('Вернуться в меню для рекламы')
+            markup.add('Вернуться в прочее')
             markup.add('В главное меню')
             bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
             bot.register_next_step_handler(message, handle_user_advertisement_request_action, index)
@@ -23028,6 +23217,10 @@ def show_user_advertisement_request_details(message):
 def handle_user_advertisement_request_action(message, index):
     if message.text == "Вернуться в меню для рекламы":
         view_add_menu(message, show_description=False)
+        return
+
+    if message.text == 'Вернуться в прочее':
+        view_others(message)
         return
 
     if message.text == "В главное меню":
@@ -23051,7 +23244,7 @@ def handle_user_advertisement_request_action(message, index):
 
         with open('data/admin/admin_user_payments/admin_sessions.json', 'r', encoding='utf-8') as file:
             admin_data = json.load(file)
-            admin_ids = admin_data['admin_sessions']
+            admin_ids = admin_data.get('admin_sessions', [])
 
         for admin_id in admin_ids:
             try:
@@ -23382,6 +23575,7 @@ def request_chat_with_admin(message, show_description=True):
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton('Вернуться в прочее'))
     markup.add(types.KeyboardButton('В главное меню'))
 
     description = (
@@ -28575,9 +28769,13 @@ def load_users_data():
     if not os.path.exists(users_db_path):
         with open(users_db_path, 'w', encoding='utf-8') as file:
             json.dump({}, file)
+        return {}
 
     with open(users_db_path, 'r', encoding='utf-8') as file:
-        return json.load(file)
+        content = file.read().strip()
+        if not content:
+            return {}
+        return json.loads(content)
 
 users_data = load_users_data()
 
@@ -30077,7 +30275,8 @@ new_functions = {
         "Вернуться в подписку", "Вернуться в магазин", "Вернуться в баллы", "Вернуться в подарки", 
         "Вернуться в реферальную систему", "В главное меню", "Вернуться в меню расчета топлива", 
         "Вернуться в меню трат и ремонтов", "Выбрать категорию заново", "Вернуться в меню напоминаний", 
-        "Посмотреть другие ошибки", "Вернуться в ваш транспорт", "еще новости", "Вернуться в калькуляторы"
+        "Посмотреть другие ошибки", "Вернуться в ваш транспорт", "еще новости", "Вернуться в калькуляторы",
+        "Вернуться в прочее"
     ],
     "Подписка на бота": [
         "Купить подписку", "Посмотреть подписку", "История подписок", "Отменить подписку", 
@@ -30134,15 +30333,12 @@ new_functions = {
         "Сегодня", "Завтра", "Неделя", "Месяц", "Другое место"
     ],
     "Меню напоминаний": [
-        "Добавить напоминание", "Посмотреть напоминания", "Активные", "Истекшие", "Один раз (активные)", 
-        "Ежедневно (активные)", "Еженедельно (активные)", "Ежемесячно (активные)", "Один раз (истекшие)", 
-        "Ежедневно (истекшие)", "Еженедельно (истекшие)", "Ежемесячно (истекшие)"
+        "Добавить напоминание", "Посмотреть напоминания", "Активные", "Истекшие", "Один раз", 
+        "Ежедневно", "Еженедельно", "Ежемесячно"
     ],
     "Меню удаления напоминаний": [
-        "Удалить напоминание", "Удалить все напоминания", "Del Активные", "Del Истекшие", 
-        "Del Один раз (активные)", "Del Ежедневно (активные)", "Del Еженедельно (активные)", 
-        "Del Ежемесячно (активные)", "Del Один раз (истекшие)", "Del Ежедневно (истекшие)", 
-        "Del Еженедельно (истекшие)", "Del Ежемесячно (истекшие)"
+        "Удалить напоминания", "Удалить все напоминания", "Del Активные", "Del Истекшие", 
+        "Del Один раз", "Del Ежедневно", "Del Еженедельно", "Del Ежемесячно"
     ],
     "Другие функции": [
         "Выключить анти-радар", "Функция для обработки локации"
