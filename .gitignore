@@ -1,2 +1,4 @@
 .env
 .o
+backups/
+data/
