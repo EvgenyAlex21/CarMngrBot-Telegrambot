@@ -31498,7 +31498,7 @@ def display_directory_contents(message, current_directory):
         show_files_menu(message)
         return
 
-    response = f"<b>Содержимое директории {html.escape(os.path.normpath(current_directory))}:</b>\n\n"
+    response = f"<b>Содержимое директории <code>{html.escape(os.path.normpath(current_directory))}</code>:</b>\n\n"
     response += "↩️ 0. Назад\n\n"
     combined_list = folders_list + files_list
     for i, item_path in enumerate(combined_list):
