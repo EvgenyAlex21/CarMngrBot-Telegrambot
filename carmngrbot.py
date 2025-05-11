@@ -3,7 +3,6 @@
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telebot import TeleBot, types
-from telegram_bot_calendar import DetailedTelegramCalendar
 from telebot.apihelper import ApiTelegramException
 
 import os
@@ -18,7 +17,6 @@ import traceback
 import chardet
 import logging
 import time
-import calendar
 import hashlib
 
 from datetime import datetime, timedelta
@@ -1101,12 +1099,12 @@ def handle_buy_subscription(call):
 @text_only_handler
 def send_special_offer_invoice(call):
     user_id = call.from_user.id
-    bot.send_invoice(user_id, "🌟 Специальное предложение: Неделя", (
+    bot.send_invoice(user_id, "🌟 Специальное предложение: 7 дней", (
         "🎁 *С возвращением!*\n\n"
         "✨ Вернитесь с подпиской по суперцене!\n\n"
         "🚀 Полный доступ ко всем функциям бота!"
     ), PAYMENT_PROVIDER_TOKEN, "sub", "RUB", 
-                     [types.LabeledPrice("🌟 Неделя", 11100)], "weekly_subscription_7")
+                     [types.LabeledPrice("🌟 7 дней", 11100)], "weekly_subscription_7")
     bot.answer_callback_query(call.id, "🎉 С возвращением!")
 
 # --------------------------- ПОДПИСКА НА БОТА (команда /start, инициализация главного меню, проверка подписки на канал) --------------------
@@ -1365,22 +1363,40 @@ def return_to_subscription(message):
 # ------------------------------------------------ ПОДПИСКА НА БОТА (купить подписку) -----------------------------------------
 
 SUBSCRIPTION_PLANS = {
-    "weekly_subscription_7": {
-        "base_price": 149,
+    "trial_subscription_3": {
+        "base_price": 70, 
         "fictitious_discount": 0,
-        "label": "Неделя",
+        "label": "3 дня",
+        "duration": 3
+    },
+    "weekly_subscription_7": {
+        "base_price": 105,
+        "fictitious_discount": 0,
+        "label": "7 дней",
         "duration": 7
     },
-    "monthly_subscription_31": {
-        "base_price": 399,
+    "monthly_subscription_30": {
+        "base_price": 360,  
         "fictitious_discount": 0,
-        "label": "Месяц",
-        "duration": 31
+        "label": "30 дней",
+        "duration": 30
+    },
+    "quarterly_subscription_90": {
+        "base_price": 900,
+        "fictitious_discount": 0,
+        "label": "90 дней",
+        "duration": 90
+    },
+    "semiannual_subscription_180": {
+        "base_price": 1620,  
+        "fictitious_discount": 0,
+        "label": "180 дней",
+        "duration": 180
     },
     "yearly_subscription_365": {
-        "base_price": 2999,
+        "base_price": 2920,  
         "fictitious_discount": 0,
-        "label": "Год",
+        "label": "365 дней",
         "duration": 365
     }
 }
@@ -1445,6 +1461,7 @@ def send_subscription_options(message):
 
     fictitious_discount_text = ""
     has_fictitious_discount = False
+    buttons = []
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
         base_price = plan_info["base_price"]
         fictitious_discount = plan_info.get("fictitious_discount", 0)
@@ -1463,7 +1480,10 @@ def send_subscription_options(message):
             has_fictitious_discount = True
 
         button_text = f"💳 {label} ({final_price:.2f} ₽)"
-        markup.add(InlineKeyboardButton(button_text, callback_data=plan_key))
+        buttons.append(InlineKeyboardButton(button_text, callback_data=plan_key))
+
+    for i in range(0, len(buttons), 2):
+        markup.add(*buttons[i:i+2])
 
     if not has_fictitious_discount:
         fictitious_discount_text = "🎁 *Акционная скидка:* 0.00 ₽\n"
@@ -1474,9 +1494,12 @@ def send_subscription_options(message):
         "Выберите период подписки:\n\n"
         f"{discount_info_text}"
         f"{fictitious_discount_text}"
-        "📌 *Неделя*: идеально для тестирования всех функций бота!\n"
-        "📌 *Месяц*: полный доступ ко всем функциям на продолжительный период!\n"
-        "📌 *Год*: экономия и долгосрочный доступ ко всем функциям бота!\n"
+        "📌 *3 дня*: использование функций бота в короткий срок!\n"
+        "📌 *7 дней*: отличный способ протестировать все функции без долгих обязательств!\n"
+        "📌 *30 дней*: оптимальный выбор для полноценного регулярного использования!\n"
+        "📌 *90 дней*: удобный вариант с экономией и без необходимости частого продления!\n"
+        "📌 *180 дней*: еще больше выгоды и стабильности!\n"
+        "📌 *365 дней*: максимальная экономия — до 50% при длительном использовании!\n"
     ), reply_markup=markup, parse_mode="Markdown")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -1555,7 +1578,7 @@ def send_subscription_invoice(call):
     user_discount_amount = round(base_price * (user_discount / 100), 2)
     discounted_price = base_price - user_discount_amount
 
-    MINIMUM_AMOUNT = 10
+    MINIMUM_AMOUNT = 55
 
     final_price = discounted_price - fictitious_discount
     if final_price < MINIMUM_AMOUNT:
@@ -1771,7 +1794,7 @@ def process_successful_payment(message):
 
         user_discount_amount = round(base_price * (applied_discount / 100), 2)
         discounted_price = base_price - user_discount_amount
-        MINIMUM_AMOUNT = 10
+        MINIMUM_AMOUNT = 55
         price = discounted_price - fictitious_discount
         if price < MINIMUM_AMOUNT:
             total_discount = base_price - MINIMUM_AMOUNT
@@ -2472,22 +2495,34 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
 # ------------------------------------------------ ПОДПИСКА НА БОТА (магазин) -----------------------------------------
 
 STORE_ITEMS = {
-    "points_5": {"base_price": 15, "fictitious_discount": 0, "label": "5 баллов", "points": 5},
-    "points_10": {"base_price": 28, "fictitious_discount": 0, "label": "10 баллов", "points": 10},
-    "points_15": {"base_price": 39, "fictitious_discount": 0, "label": "15 баллов", "points": 15},
-    "points_30": {"base_price": 75, "fictitious_discount": 0, "label": "30 баллов", "points": 30},
-    "points_50": {"base_price": 120, "fictitious_discount": 0, "label": "50 баллов", "points": 50},
-    "points_75": {"base_price": 172, "fictitious_discount": 0, "label": "75 баллов", "points": 75},
-    "points_100": {"base_price": 220, "fictitious_discount": 0, "label": "100 баллов", "points": 100},
-    "points_150": {"base_price": 315, "fictitious_discount": 0, "label": "150 баллов", "points": 150},
-    "points_250": {"base_price": 500, "fictitious_discount": 0, "label": "250 баллов", "points": 250},
-    "points_350": {"base_price": 665, "fictitious_discount": 0, "label": "350 баллов", "points": 350},
-    "points_500": {"base_price": 900, "fictitious_discount": 0, "label": "500 баллов", "points": 500},
-    "points_1000": {"base_price": 1700, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
-    "time_1day": {"base_price": 25, "fictitious_discount": 0, "label": "1 день подписки", "duration": 1},
-    "time_3days": {"base_price": 70, "fictitious_discount": 0, "label": "3 дня подписки", "duration": 3},
-    "time_15days": {"base_price": 299, "fictitious_discount": 0, "label": "15 дней подписки", "duration": 15},
-    "time_182days": {"base_price": 1599, "fictitious_discount": 0, "label": "6 месяцев подписки", "duration": 182}
+    "points_5": {"base_price": 55, "fictitious_discount": 0, "label": "5 баллов", "points": 5},       
+    "points_10": {"base_price": 65, "fictitious_discount": 0, "label": "10 баллов", "points": 10},  
+    "points_15": {"base_price": 75, "fictitious_discount": 0, "label": "15 баллов", "points": 15},   
+    "points_25": {"base_price": 90, "fictitious_discount": 0, "label": "25 баллов", "points": 25},  
+    "points_30": {"base_price": 105, "fictitious_discount": 0, "label": "30 баллов", "points": 30},  
+    "points_50": {"base_price": 140, "fictitious_discount": 0, "label": "50 баллов", "points": 50}, 
+    "points_75": {"base_price": 185, "fictitious_discount": 0, "label": "75 баллов", "points": 75},  
+    "points_100": {"base_price": 230, "fictitious_discount": 0, "label": "100 баллов", "points": 100},
+    "points_150": {"base_price": 330, "fictitious_discount": 0, "label": "150 баллов", "points": 150},
+    "points_200": {"base_price": 430, "fictitious_discount": 0, "label": "200 баллов", "points": 200},
+    "points_250": {"base_price": 520, "fictitious_discount": 0, "label": "250 баллов", "points": 250},
+    "points_350": {"base_price": 690, "fictitious_discount": 0, "label": "350 баллов", "points": 350},
+    "points_500": {"base_price": 940, "fictitious_discount": 0, "label": "500 баллов", "points": 500},
+    "points_750": {"base_price": 1350, "fictitious_discount": 0, "label": "750 баллов", "points": 750},
+    "points_1000": {"base_price": 1770, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
+    "time_1day": {"base_price": 55, "fictitious_discount": 0, "label": "1 день", "duration": 1},          
+    "time_2days": {"base_price": 65, "fictitious_discount": 0, "label": "2 дня", "duration": 2},         
+    "time_4days": {"base_price": 90, "fictitious_discount": 0, "label": "4 дня", "duration": 4},         
+    "time_5days": {"base_price": 105, "fictitious_discount": 0, "label": "5 дней", "duration": 5},      
+    "time_8days": {"base_price": 155, "fictitious_discount": 0, "label": "8 дней", "duration": 8},       
+    "time_10days": {"base_price": 180, "fictitious_discount": 0, "label": "10 дней", "duration": 10},   
+    "time_14days": {"base_price": 240, "fictitious_discount": 0, "label": "14 дней", "duration": 14},    
+    "time_15days": {"base_price": 250, "fictitious_discount": 0, "label": "15 дней", "duration": 15},    
+    "time_21days": {"base_price": 330, "fictitious_discount": 0, "label": "21 день", "duration": 21},    
+    "time_30days": {"base_price": 450, "fictitious_discount": 0, "label": "30 дней", "duration": 30},    
+    "time_45days": {"base_price": 630, "fictitious_discount": 0, "label": "45 дней", "duration": 45},   
+    "time_60days": {"base_price": 780, "fictitious_discount": 0, "label": "60 дней", "duration": 60},    
+    "time_120days": {"base_price": 1350, "fictitious_discount": 0, "label": "120 дней", "duration": 120} 
 }
 
 @bot.message_handler(func=lambda message: message.text == "Магазин")
@@ -2562,8 +2597,8 @@ def send_store_options(message):
     fictitious_discount_text += "\n"
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📍 Пакеты баллов", callback_data="show_points"))
-    markup.add(InlineKeyboardButton("⏳ Пакеты времени", callback_data="show_time"))
+    markup.add(InlineKeyboardButton("📍 Пакеты баллов", callback_data="show_points_0"))
+    markup.add(InlineKeyboardButton("⏳ Пакеты времени", callback_data="show_time_0"))
 
     bot.send_message(user_id, (
         "🏪 *Магазин баллов и времени*\n\n"
@@ -2581,7 +2616,7 @@ def send_store_options(message):
     markup.add('В главное меню')
     bot.send_message(user_id, "Выберите категорию для просмотра:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data == "show_points")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("show_points_"))
 def show_points_packages(call):
     user_id = str(call.from_user.id)
     data = load_payment_data()
@@ -2589,38 +2624,50 @@ def show_points_packages(call):
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
 
-    markup = InlineKeyboardMarkup()
+    page = int(call.data.split("_")[-1]) if call.data != "show_points" else 0
+    items_per_page = 6
     points_items = [k for k in STORE_ITEMS.keys() if k.startswith("points_")]
-    points_left = points_items[:len(points_items)//2]
-    points_right = points_items[len(points_items)//2:]
+    total_pages = (len(points_items) + items_per_page - 1) // items_per_page
 
-    for left_key, right_key in zip(points_left, points_right + [None] * (len(points_left) - len(points_right))):
+    start_idx = page * items_per_page
+    end_idx = min(start_idx + items_per_page, len(points_items))
+    current_items = points_items[start_idx:end_idx]
+
+    markup = InlineKeyboardMarkup()
+    for i in range(0, len(current_items), 2):
         row = []
-        for key in [left_key, right_key]:
-            if key:
-                item = STORE_ITEMS[key]
-                discount_applicable = (
-                    applicable_category == "store" or
-                    (applicable_category is None and not applicable_items) or
-                    key in applicable_items
-                )
-                price = max(1, round(item["base_price"] * (1 - (user_discount / 100 if discount_applicable else 0)), 2))
-                button = InlineKeyboardButton(f"💰 {item['label']} ({price:.2f} ₽)", callback_data=key)
-                row.append(button)
+        for key in current_items[i:i+2]:
+            item = STORE_ITEMS[key]
+            discount_applicable = (
+                applicable_category == "store" or
+                (applicable_category is None and not applicable_items) or
+                key in applicable_items
+            )
+            price = max(1, round(item["base_price"] * (1 - (user_discount / 100 if discount_applicable else 0)), 2))
+            button = InlineKeyboardButton(f"💰 {item['label']} ({price:.2f} ₽)", callback_data=key)
+            row.append(button)
         markup.add(*row)
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"show_points_{page-1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"show_points_{page+1}"))
+    if nav_row:
+        markup.add(*nav_row)
 
     markup.add(InlineKeyboardButton("🔙 Назад в магазин", callback_data="back_to_store"))
 
     bot.edit_message_text(
         chat_id=user_id,
         message_id=call.message.message_id,
-        text="📍 *Пакеты баллов*\n\nВыберите пакет баллов:",
+        text=f"📍 *Пакеты баллов (страница {page+1}/{total_pages})*\n\nВыберите пакет баллов:",
         reply_markup=markup,
         parse_mode="Markdown"
     )
     bot.answer_callback_query(call.id)
 
-@bot.callback_query_handler(func=lambda call: call.data == "show_time")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("show_time_"))
 def show_time_packages(call):
     user_id = str(call.from_user.id)
     data = load_payment_data()
@@ -2628,32 +2675,44 @@ def show_time_packages(call):
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
 
-    markup = InlineKeyboardMarkup()
+    page = int(call.data.split("_")[-1]) if call.data != "show_time" else 0
+    items_per_page = 6
     time_items = [k for k in STORE_ITEMS.keys() if k.startswith("time_")]
-    time_left = time_items[:len(time_items)//2]
-    time_right = time_items[len(time_items)//2:]
+    total_pages = (len(time_items) + items_per_page - 1) // items_per_page
 
-    for left_key, right_key in zip(time_left, time_right + [None] * (len(time_left) - len(time_right))):
+    start_idx = page * items_per_page
+    end_idx = min(start_idx + items_per_page, len(time_items))
+    current_items = time_items[start_idx:end_idx]
+
+    markup = InlineKeyboardMarkup()
+    for i in range(0, len(current_items), 2):
         row = []
-        for key in [left_key, right_key]:
-            if key:
-                item = STORE_ITEMS[key]
-                discount_applicable = (
-                    applicable_category == "store" or
-                    (applicable_category is None and not applicable_items) or
-                    key in applicable_items
-                )
-                price = max(1, round(item["base_price"] * (1 - (user_discount / 100 if discount_applicable else 0)), 2))
-                button = InlineKeyboardButton(f"⏰ {item['label']} ({price:.2f} ₽)", callback_data=key)
-                row.append(button)
+        for key in current_items[i:i+2]:
+            item = STORE_ITEMS[key]
+            discount_applicable = (
+                applicable_category == "store" or
+                (applicable_category is None and not applicable_items) or
+                key in applicable_items
+            )
+            price = max(1, round(item["base_price"] * (1 - (user_discount / 100 if discount_applicable else 0)), 2))
+            button = InlineKeyboardButton(f"⏰ {item['label']} ({price:.2f} ₽)", callback_data=key)
+            row.append(button)
         markup.add(*row)
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"show_time_{page-1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"show_time_{page+1}"))
+    if nav_row:
+        markup.add(*nav_row)
 
     markup.add(InlineKeyboardButton("🔙 Назад в магазин", callback_data="back_to_store"))
 
     bot.edit_message_text(
         chat_id=user_id,
         message_id=call.message.message_id,
-        text="⏳ *Пакеты времени*\n\nВыберите пакет времени:",
+        text=f"⏳ *Пакеты времени (страница {page+1}/{total_pages})*\n\nВыберите пакет времени:",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -2724,7 +2783,7 @@ def send_store_invoice(call):
     user_discount_amount = round(base_price * (user_discount / 100), 2)
     discounted_price = base_price - user_discount_amount
 
-    MINIMUM_AMOUNT = 10
+    MINIMUM_AMOUNT = 55
 
     final_price = discounted_price - fictitious_discount
     if final_price < MINIMUM_AMOUNT:
@@ -4249,24 +4308,39 @@ TRANSLATIONS_YOURPROMOCODES = {
     "points_5": "5 баллов в магазине",
     "points_10": "10 баллов в магазине",
     "points_15": "15 баллов в магазине",
+    "points_25": "25 баллов в магазине",
     "points_30": "30 баллов в магазине",
     "points_50": "50 баллов в магазине",
     "points_75": "75 баллов в магазине",
     "points_100": "100 баллов в магазине",
     "points_150": "150 баллов в магазине",
+    "points_200": "200 баллов в магазине",
     "points_250": "250 баллов в магазине",
     "points_350": "350 баллов в магазине",
     "points_500": "500 баллов в магазине",
+    "points_750": "750 баллов в магазине",
     "points_1000": "1000 баллов в магазине",
-    "time_1day": "1 день подписки в магазине",
-    "time_3days": "3 дня подписки в магазине",
-    "time_15days": "15 дней подписки в магазине",
-    "time_182days": "6 месяцев подписки в магазине",
-    "weekly_subscription_7": "неделя в подписках",
-    "monthly_subscription_31": "месяц в подписках",
-    "yearly_subscription_365": "год в подписках",
+    "time_1day": "1 день в магазине",
+    "time_2days": "2 дня в магазине",
+    "time_4days": "4 дня в магазине",
+    "time_5days": "5 дней в магазине",
+    "time_8days": "8 дней в магазине",
+    "time_10days": "10 дней в магазине",
+    "time_14days": "14 дней в магазине",
+    "time_15days": "15 дней в магазине",
+    "time_21days": "21 день в магазине",
+    "time_30days": "30 дней в магазине",
+    "time_45days": "45 дней в магазине",
+    "time_60days": "60 дней в магазине",
+    "time_120days": "120 дней в магазине",
+    "trial_subscription_3": "3 дня в подписках",
+    "weekly_subscription_7": "7 дней в подписках",
+    "monthly_subscription_30": "30 дней в подписках",
+    "quarterly_subscription_90": "90 дней в подписках",
+    "semiannual_subscription_180": "180 дней в подписках",
+    "yearly_subscription_365": "365 дней в подписках",
     "discount_type_promo": "промокод", 
-    "discount_type_referral": "реферальная" 
+    "discount_type_referral": "реферальная"
 }
 
 def get_applicability_str(applicable_category, applicable_items):
@@ -27319,40 +27393,27 @@ def process_create_promo_code_category(message, discount, uses):
     applicable_items = []
 
     if message.text == "Все товары":
-        applicable_category = None  
+        applicable_category = None
     elif message.text == "Все подписки":
         applicable_category = "subscriptions"
     elif message.text == "Весь магазин":
         applicable_category = "store"
     elif message.text == "Конкретные товары":
-        items_display = (
-            "💎 Список подписок и товаров:\n\n"
-            "💳 №1. Неделя\n"
-            "💳 №2. Месяц\n"
-            "💳 №3. Год\n"
-            "🛒 №4. 5 баллов\n"
-            "🛒 №5. 10 баллов\n"
-            "🛒 №6. 15 баллов\n"
-            "🛒 №7. 30 баллов\n"
-            "🛒 №8. 50 баллов\n"
-            "🛒 №9. 75 баллов\n"
-            "🛒 №10. 100 баллов\n"
-            "🛒 №11. 150 баллов\n"
-            "🛒 №12. 250 баллов\n"
-            "🛒 №13. 350 баллов\n"
-            "🛒 №14. 500 баллов\n"
-            "🛒 №15. 1000 баллов\n"
-            "🛒 №16. 1 день подписки\n"
-            "🛒 №17. 3 дня подписки\n"
-            "🛒 №18. 7 дней подписки\n"
-            "🛒 №19. 15 дней подписки\n"
-            "🛒 №20. 6 месяцев подписки\n\n"
-            "Введите номера товаров и подписок:"
-        )
+        available_items = list(SUBSCRIPTION_PLANS.keys()) + list(STORE_ITEMS.keys())
+        items_display_lines = []
+        
+        for idx, item in enumerate(available_items, 1):
+            label = SUBSCRIPTION_PLANS.get(item, STORE_ITEMS.get(item, {'label': item}))['label']
+            emoji = "💳" if item in SUBSCRIPTION_PLANS else "🛒"
+            items_display_lines.append(f"{emoji} №{idx}. {label}")
+
+        items_display = "💎 Список подписок и товаров:\n\n" + "\n".join(items_display_lines) + "\n\nВведите номера товаров и подписок:"
+        
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Вернуться в управление скидками')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
+        
         bot.send_message(message.chat.id, items_display, reply_markup=markup)
         bot.register_next_step_handler(message, process_create_promo_code_items, discount, uses)
         return
@@ -27401,7 +27462,17 @@ def process_create_promo_code_items(message, discount, uses):
             show_admin_panel(message)
         return
 
-    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_15days", "time_6months"]
+    available_items = [
+        "week", "month", "year",
+        "points_5", "points_10", "points_15", "points_25", "points_30", "points_50",
+        "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
+        "points_500", "points_750", "points_1000",
+        "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
+        "time_14days", "time_15days", "time_21days", "time_30days", "time_45days",
+        "time_60days", "time_120days", 
+        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
+        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
+    ]    
     applicable_items = []
 
     try:
@@ -27668,7 +27739,17 @@ def process_assign_discount_items(message, user_id, discount):
             show_admin_panel(message)
         return
 
-    available_items = ["week", "month", "year", "points_5", "points_10", "points_15", "points_30", "points_50", "points_75", "points_100", "points_150", "points_250", "points_350", "points_500", "points_1000", "time_1day", "time_3days", "time_15days", "time_6months"]
+    available_items = [
+        "week", "month", "year",
+        "points_5", "points_10", "points_15", "points_25", "points_30", "points_50",
+        "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
+        "points_500", "points_750", "points_1000",
+        "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
+        "time_14days", "time_15days", "time_21days", "time_30days", "time_45days",
+        "time_60days", "time_120days", 
+        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
+        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
+    ]
     applicable_items = []
 
     try:
