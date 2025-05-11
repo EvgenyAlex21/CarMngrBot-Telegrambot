@@ -10,6 +10,7 @@ import os
 import json
 import locale
 import re
+import html
 import requests
 import zipfile
 import signal
@@ -29480,7 +29481,7 @@ def get_available_permissions(admin_id):
         "Реклама: Запросы на рекламу", "Реклама: Удалить рекламу",
         "Статистика: Пользователи", "Статистика: Использование функций", "Статистика: Список ошибок", 
         "Статистика: Версия и аптайм",
-        "Файлы: Просмотр файлов", "Файлы: Поиск файлов по ID", "Файлы: Добавить файлы", 
+        "Файлы: Поиск файлов по EXT", "Файлы: Поиск файлов по DIR", "Файлы: Поиск файлов по ID", "Файлы: Добавить файлы", 
         "Файлы: Замена файлов", "Файлы: Удалить файлы",
         "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
         "Редакция: Опубликовать новость", "Редакция: Отредактировать новость", 
@@ -31250,15 +31251,15 @@ def show_files_menu(message):
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    markup.add('Просмотр файлов', 'Поиск файлов по ID')
+    markup.add('Поиск файлов по EXT', 'Поиск файлов по DIR', 'Поиск файлов по ID')
     markup.add('Добавить файлы', 'Замена файлов', 'Удалить файлы')
     markup.add('В меню админ-панели')
 
     bot.send_message(message.chat.id, "Выберите действие с файлами:", reply_markup=markup)
 
-# ------------------------------------------------------- ФАЙЛЫ (просмотр файлов) ----------------------------------------------
+# ------------------------------------------------------- ФАЙЛЫ (поиск файлов по ext) ----------------------------------------------
 
-@bot.message_handler(func=lambda message: message.text == 'Просмотр файлов' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по EXT' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
@@ -31269,7 +31270,7 @@ def show_files_menu(message):
 @rate_limit_with_captcha
 def view_files(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Просмотр файлов'):
+    if not check_permission(admin_id, 'Поиск файлов по EXT'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
@@ -31380,6 +31381,164 @@ def process_file_selection(message, matched_files):
     except ValueError:
         bot.send_message(message.chat.id, "Пожалуйста, введите номера файлов через запятую!")
         bot.register_next_step_handler(message, process_file_selection, matched_files)
+
+# ------------------------------------------------------- ФАЙЛЫ (поиск по dir) ----------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по DIR' and check_admin_access(message))
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def search_files_in_directory(message):
+    admin_id = str(message.chat.id)
+    if not check_permission(admin_id, 'Поиск файлов по DIR'):
+        bot.send_message(message.chat.id, "⛔️ У вас <b>нет прав доступа</b> к этой функции!", parse_mode="HTML")
+        return
+
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
+
+    directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
+    response = "<b>Список директорий:</b>\n\n"
+    response += "\n\n".join([f"📁 {i + 1}. {html.escape(os.path.normpath(dir))}" for i, dir in enumerate(directories)])
+    bot.send_message(message.chat.id, response, parse_mode="HTML")
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите директорию для просмотра содержимого:", reply_markup=markup, parse_mode="HTML")
+    bot.register_next_step_handler(message, process_directory_selection_for_search)
+
+@text_only_handler
+def process_directory_selection_for_search(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
+
+    try:
+        selection = int(message.text.strip())
+        directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
+        if 1 <= selection <= len(directories):
+            selected_directory = directories[selection - 1]
+            bot_data[message.chat.id] = {"directory_history": [selected_directory]}
+            display_directory_contents(message, selected_directory)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер!", parse_mode="HTML")
+            bot.register_next_step_handler(message, process_directory_selection_for_search)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер!", parse_mode="HTML")
+        bot.register_next_step_handler(message, process_directory_selection_for_search)
+
+def display_directory_contents(message, current_directory):
+    files_list = []
+    folders_list = []
+
+    for item in os.listdir(current_directory):
+        item_path = os.path.join(current_directory, item)
+        if not item.startswith('.'):  
+            if os.path.isfile(item_path):
+                files_list.append(item_path)
+            elif os.path.isdir(item_path):
+                folders_list.append(item_path)
+
+    if not files_list and not folders_list:
+        bot.send_message(message.chat.id, "❌ В этой директории нет файлов или папок!", parse_mode="HTML")
+        show_files_menu(message)
+        return
+
+    response = f"<b>Содержимое директории {html.escape(os.path.normpath(current_directory))}:</b>\n\n"
+    response += "↩️ 0. Назад\n\n"
+    combined_list = folders_list + files_list
+    for i, item_path in enumerate(combined_list):
+        item_name = os.path.basename(item_path)
+        if item_path in folders_list:
+            response += f"📁 {i + 1}. {html.escape(item_name)}\n"
+        else:
+            response += f"📄 {i + 1}. {html.escape(item_name)}\n"
+
+    bot_data[message.chat.id]["current_directory"] = current_directory
+    bot_data[message.chat.id]["combined_list"] = combined_list
+    bot_data[message.chat.id]["folders_list"] = folders_list
+    bot_data[message.chat.id]["files_list"] = files_list
+
+    for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+        bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode="HTML")
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('В меню файлы')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Введите номер папки или номера файлов для просмотра:", reply_markup=markup, parse_mode="HTML")
+    bot.register_next_step_handler(message, process_item_selection)
+
+@text_only_handler
+def process_item_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
+
+    try:
+        input_text = message.text.strip()
+        if input_text == '0':
+            directory_history = bot_data[message.chat.id].get("directory_history", [])
+            if len(directory_history) > 1:
+                directory_history.pop()
+                previous_directory = directory_history[-1]
+                bot_data[message.chat.id]["directory_history"] = directory_history
+                display_directory_contents(message, previous_directory)
+            else:
+                search_files_in_directory(message)
+            return
+
+        if ',' in input_text:
+            file_numbers = [int(num.strip()) - 1 for num in input_text.split(',')]
+            combined_list = bot_data[message.chat.id]["combined_list"]
+            files_list = bot_data[message.chat.id]["files_list"]
+            valid_files = [combined_list[num] for num in file_numbers if 0 <= num < len(combined_list) and combined_list[num] in files_list]
+
+            if valid_files:
+                for file_path in valid_files:
+                    with open(file_path, 'rb') as file:
+                        bot.send_document(message.chat.id, file)
+                bot.send_message(message.chat.id, "✅ Файлы отправлены!", parse_mode="HTML")
+                show_files_menu(message) 
+            else:
+                bot.send_message(message.chat.id, "Некорректные номера файлов!", parse_mode="HTML")
+                bot.register_next_step_handler(message, process_item_selection)
+        else:
+            selection = int(input_text) - 1
+            combined_list = bot_data[message.chat.id]["combined_list"]
+            folders_list = bot_data[message.chat.id]["folders_list"]
+
+            if 0 <= selection < len(combined_list):
+                selected_item = combined_list[selection]
+                if selected_item in folders_list:
+                    bot_data[message.chat.id]["directory_history"].append(selected_item)
+                    display_directory_contents(message, selected_item)
+                else:
+                    with open(selected_item, 'rb') as file:
+                        bot.send_document(message.chat.id, file)
+                    bot.send_message(message.chat.id, "✅ Файл отправлен!", parse_mode="HTML")
+                    show_files_menu(message)  
+            else:
+                bot.send_message(message.chat.id, "Некорректный номер!", parse_mode="HTML")
+                bot.register_next_step_handler(message, process_item_selection)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер папки или номера файлов!", parse_mode="HTML")
+        bot.register_next_step_handler(message, process_item_selection)
 
 # ------------------------------------------------------- ФАЙЛЫ (поиск файлов по id) ----------------------------------------------
 
@@ -31649,13 +31808,6 @@ def add_files(message):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
-    if message.text == 'В меню админ-панели':
-        show_admin_panel(message)
-        return
-    if message.text == 'В меню файлы':
-        show_files_menu(message)
-        return
-
     directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
     response = "*Список директорий:*\n\n"
     response += "\n\n".join([f"📁 {i + 1}. {escape_markdown(dir)}" for i, dir in enumerate(directories)])
@@ -31664,7 +31816,7 @@ def add_files(message):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     markup.add('В меню файлы')
     markup.add('В меню админ-панели')
-    bot.send_message(message.chat.id, "Выберите директорию для добавления файла:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Выберите директорию для добавления файлов:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_file_directory_selection)
 
 @text_only_handler
@@ -31678,18 +31830,93 @@ def process_add_file_directory_selection(message):
 
     try:
         selection = int(message.text.strip())
-        if 1 <= selection <= 4:
-            selected_directory = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR][selection - 1]
-            bot_data[message.chat.id] = {"selected_directory": selected_directory}
-            temp_add_files[message.chat.id] = []
-            bot.send_message(message.chat.id, "Отправьте файл для добавления:")
-            bot.register_next_step_handler(message, process_add_file)
+        directories = [BASE_DIR, FILES_PATH, ADDITIONAL_FILES_PATH, BACKUP_DIR]
+        if 1 <= selection <= len(directories):
+            selected_directory = directories[selection - 1]
+            bot_data[message.chat.id] = {
+                "directory_history": [selected_directory]
+            }
+            navigate_and_select_folder(message, selected_directory)
         else:
             bot.send_message(message.chat.id, "Некорректный номер!")
             bot.register_next_step_handler(message, process_add_file_directory_selection)
     except ValueError:
         bot.send_message(message.chat.id, "Пожалуйста, введите номер!")
         bot.register_next_step_handler(message, process_add_file_directory_selection)
+
+def navigate_and_select_folder(message, current_directory):
+    folders_list = []
+    for item in os.listdir(current_directory):
+        item_path = os.path.join(current_directory, item)
+        if not item.startswith('.') and os.path.isdir(item_path):
+            folders_list.append(item_path)
+
+    bot_data[message.chat.id]["current_directory"] = current_directory
+    bot_data[message.chat.id]["folders_list"] = folders_list
+
+    response = f"*Текущая директория:* `{escape_markdown(current_directory)}`\n\n"
+    response += "↩️ 0. Назад\n\n"
+    for i, folder in enumerate(folders_list):
+        response += f"📁 {i + 1}. {escape_markdown(os.path.basename(folder))}\n"
+
+    for start in range(0, len(response), TELEGRAM_MESSAGE_LIMIT):
+        bot.send_message(message.chat.id, response[start:start + TELEGRAM_MESSAGE_LIMIT], parse_mode="Markdown")
+
+    markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+    markup.add('📥 Выбрать эту папку')
+    markup.add('В меню файлы')
+    markup.add('В меню админ-панели')
+    bot.send_message(message.chat.id, "Выберите папку для добавления:", reply_markup=markup)
+    bot.register_next_step_handler(message, process_folder_selection)
+
+@text_only_handler
+def process_folder_selection(message):
+    if message.text == 'В меню админ-панели':
+        show_admin_panel(message)
+        return
+    if message.text == 'В меню файлы':
+        show_files_menu(message)
+        return
+
+    if message.text == '📥 Выбрать эту папку':
+        current_directory = bot_data[message.chat.id]["current_directory"]
+        bot_data[message.chat.id]["selected_directory"] = current_directory
+        temp_add_files[message.chat.id] = []
+
+        hide_markup = types.ReplyKeyboardRemove()
+        bot.send_message(message.chat.id, f"📂 *Вы выбрали директорию:*\n`{escape_markdown(current_directory)}`", parse_mode="Markdown", reply_markup=hide_markup)
+        markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
+        markup.add('В меню файлы')
+        markup.add('В меню админ-панели')
+        bot.send_message(message.chat.id, "Отправьте файл для добавления:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_add_file)
+        return
+
+    try:
+        input_text = message.text.strip()
+        if input_text == '0':
+            history = bot_data[message.chat.id].get("directory_history", [])
+            if len(history) > 1:
+                history.pop()
+                previous_dir = history[-1]
+                bot_data[message.chat.id]["directory_history"] = history
+                navigate_and_select_folder(message, previous_dir)
+            else:
+                add_files(message)
+            return
+
+        selection = int(input_text) - 1
+        folders_list = bot_data[message.chat.id]["folders_list"]
+        if 0 <= selection < len(folders_list):
+            selected_folder = folders_list[selection]
+            bot_data[message.chat.id]["directory_history"].append(selected_folder)
+            navigate_and_select_folder(message, selected_folder)
+        else:
+            bot.send_message(message.chat.id, "Некорректный номер!")
+            bot.register_next_step_handler(message, process_folder_selection)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите номер папки или выберите текущую!")
+        bot.register_next_step_handler(message, process_folder_selection)
 
 def process_add_file(message):
     if message.text == 'В меню админ-панели':
