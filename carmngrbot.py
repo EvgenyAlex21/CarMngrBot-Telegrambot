@@ -3189,7 +3189,7 @@ def process_feature_exchange(message, feature, points):
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_feature_exchange, feature, points)
 
 @text_only_handler
@@ -3274,7 +3274,7 @@ def process_points_exchange(message, exchange_rate):
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_points_exchange, exchange_rate)
 
 @text_only_handler
@@ -3336,7 +3336,7 @@ def process_discount_exchange(message):
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (подарки) -----------------------------------------
@@ -3618,7 +3618,7 @@ def process_gift_amount(message, recipient_id, sender_points):
         markup.add("Вернуться в подарки", "Вернуться в баллы")
         markup.add(types.KeyboardButton("Вернуться в подписку"))
         markup.add(types.KeyboardButton("В главное меню"))
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_amount, recipient_id, sender_points)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (подарить время) -----------------------------------------
@@ -25552,10 +25552,10 @@ def process_add_store_purchase_amount(message, user_id, purchase_type, unit='day
         manage_store(message)
 
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_store_purchase_amount, user_id, purchase_type, unit)
     except Exception as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
 
 # --------------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ_УПРАВЛЕНИЕ МАГАЗИНОМ (просмотр покупок) -------------------------------------
@@ -26045,7 +26045,7 @@ def process_delete_store_purchase_select(message, user_id):
         manage_store(message)
 
     except Exception as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nОбратитесь в поддержку", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nОбратитесь в поддержку", parse_mode="Markdown")
         manage_store(message)
         
 # --------------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ (упраление баллами) -------------------------------------
@@ -26193,7 +26193,7 @@ def process_add_points_amount(message, user_id):
         bot.send_message(user_id, user_message, parse_mode="Markdown")
         manage_points(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_points_amount, user_id)
 
 # --------------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ_УПРАВЛЕНИЕ БАЛЛАМИ (просмотр баллов) -------------------------------------
@@ -26486,7 +26486,7 @@ def process_remove_points_amount(message, user_id):
         bot.send_message(user_id, user_message, parse_mode="Markdown")
         manage_points(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_remove_points_amount, user_id)
 
 # ------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ_УПРАВЛЕНИЕ БАЛЛАМИ (просмотр истории баллов) -------------------------------------
@@ -26867,7 +26867,7 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
 
         manage_exchanges(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_time, user_id, exchange_rate)
 
 @text_only_handler
@@ -26949,7 +26949,7 @@ def process_perform_exchange_discount(message, user_id):
 
         manage_exchanges(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
 
 @text_only_handler
@@ -27085,7 +27085,7 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
 
         manage_exchanges(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_feature_amount, user_id, feature)
 
 # ------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ_УПРАВЛЕНИЕ ОБМЕНАМИ (просмотр обменов) -------------------------------------
@@ -27297,7 +27297,7 @@ def process_create_promo_code_discount(message):
         bot.send_message(message.chat.id, "Введите количество пользователей, которые могут использовать промокод:", reply_markup=markup)
         bot.register_next_step_handler(message, process_create_promo_code_uses, discount)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_create_promo_code_discount)
 
 @text_only_handler
@@ -27331,7 +27331,7 @@ def process_create_promo_code_uses(message, discount):
             reply_markup=markup)
         bot.register_next_step_handler(message, process_create_promo_code_category, discount, uses)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_create_promo_code_uses, discount)
 
 @text_only_handler
@@ -27442,7 +27442,7 @@ def process_create_promo_code_items(message, discount, uses):
             else:
                 raise ValueError(f"Некорректный номер товара: {idx + 1}")
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_create_promo_code_items, discount, uses)
         return
 
@@ -27584,7 +27584,7 @@ def process_assign_discount_amount(message, user_id):
             reply_markup=markup)
         bot.register_next_step_handler(message, process_assign_discount_category, user_id, discount)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_assign_discount_amount, user_id)
 
 @text_only_handler
@@ -27709,7 +27709,7 @@ def process_assign_discount_items(message, user_id, discount):
             else:
                 raise ValueError(f"Некорректный номер товара: {idx + 1}")
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_assign_discount_items, user_id, discount)
         return
 
@@ -28010,7 +28010,7 @@ def process_delete_promo_code(message, promo_list):
 
         manage_discounts(message)
     except Exception as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_delete_promo_code, promo_list)
 
 # ------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ (управление подарками) -------------------------------------
@@ -28390,7 +28390,7 @@ def process_gift_points_amount(message, sender_id, recipient_id):
 
         manage_gifts(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_points_amount, sender_id, recipient_id)
 
 @text_only_handler
@@ -28601,7 +28601,7 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
 
         manage_gifts(message)
     except ValueError as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}!\nПожалуйста, введите корректное число", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"{str(e)}\nПожалуйста, введите корректное число", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_gift_time_amount, sender_id, recipient_id, unit)
 
 # ------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ_УПРАВЛЕНИЕ ПОДАРКАМИ (просмотр подарков) -------------------------------------
