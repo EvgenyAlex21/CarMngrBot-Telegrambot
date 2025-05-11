@@ -395,11 +395,6 @@ def check_user_blocked(func):
 
 # ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания платной и бесплатной подписки на бот) ---------------------------
 
-paid_features = [
-    "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-    "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-]
-
 def check_subscription(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
@@ -424,7 +419,7 @@ def check_subscription(func):
         parent_feature = None
         specific_feature = None
         
-        for feature, subfunctions in new_functions.items():
+        for feature, subfunctions in NEW_FUNCTIONS.items():
             if message.text == feature and feature in paid_features:
                 parent_feature = feature
                 specific_feature = feature
@@ -436,7 +431,7 @@ def check_subscription(func):
                 if feature in paid_features:
                     parent_feature = feature
                     break
-                for parent, parent_subfunctions in new_functions.items():
+                for parent, parent_subfunctions in NEW_FUNCTIONS.items():
                     if feature in parent_subfunctions and parent in paid_features:
                         parent_feature = parent
                         break
@@ -652,7 +647,6 @@ def handle_captcha(message, original_func, *args, **kwargs):
         bot.send_message(message.chat.id, "⚠️ Ошибка капчи!\nПопробуйте снова...")
         return original_func(message, *args, **kwargs)
     
-
 # -------------------------------------------------------- САЙТ CARMNGBOT ------------------------------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == "Сайт")
@@ -664,6 +658,7 @@ def handle_captcha(message, original_func, *args, **kwargs):
 @check_user_blocked
 @log_user_actions
 @check_subscription_chanal
+@text_only_handler
 @rate_limit_with_captcha
 def send_website_file(message):
     bot.send_message(message.chat.id, "[Сайт CAR MANAGER](carmngrbot.com.swtest.ru)", parse_mode="Markdown")
@@ -982,6 +977,11 @@ FREE_FEATURES = [
     "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
     "Для рекламы", "Вернуться в меню для рекламы", "Заявка на рекламу", "Ваши заявки", "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу",
     "Чат с админом", "В главное меню"
+]
+
+paid_features = [
+    "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
+    "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
 ]
 
 def set_free_trial_period(user_id, days, source="default"):
@@ -3038,10 +3038,6 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
     elif message.text == "Обмен на функции":
-        paid_features = [
-            "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-            "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-        ]
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
             if i + 1 < len(paid_features):
@@ -3083,10 +3079,6 @@ def process_feature_selection(message, points):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     feature = message.text
-    paid_features = [
-        "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-        "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-    ]
     if feature not in paid_features:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
@@ -4434,14 +4426,9 @@ def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
         return False
 
 def initialize_ad_channels():
-    default_ad_channels = {
-        "-1002591560088": {"name": "CarMngrBot News", "active": True},
-        "-1001234567890": {"name": "Auto Tips Daily", "active": True},
-        "-1009876543210": {"name": "Drive & Save", "active": True}
-    }
     data = load_payment_data()
     if 'ad_channels' not in data:
-        return {chat_id: channel['name'] for chat_id, channel in default_ad_channels.items() if channel['active']}
+        return {}  
     return {chat_id: channel['name'] for chat_id, channel in data['ad_channels'].items() if channel['active']}
 
 AD_CHANNELS = initialize_ad_channels()
@@ -4512,7 +4499,7 @@ def get_day_for_ad(message):
         bot.send_message(user_id, (
             "🎉 *Рекламных каналов больше нет!*\n\n"
             "✨ Вы уже подписались на все доступные каналы!\n"
-            "⏳ Ожидайте новых через некоторе время...\n"
+            "⏳ Ожидайте новых через некоторое время...\n"
         ), parse_mode="Markdown")
         return
 
@@ -21992,14 +21979,6 @@ def ensure_directory_exists(file_path):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-def load_payment_data():
-    ensure_directory_exists(PAYMENTS_PATH)
-    try:
-        with open(PAYMENTS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"subscriptions": {"users": {}}}
-
 def has_active_subscription(chat_id):
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(chat_id), {})
@@ -26758,10 +26737,6 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
-        paid_features = [
-            "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-            "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-        ]
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
             if i + 1 < len(paid_features):
@@ -26965,11 +26940,6 @@ def process_perform_exchange_feature(message, user_id):
         return
 
     feature = message.text.strip()
-    paid_features = [
-        "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-        "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-    ]
- 
     if feature not in paid_features:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(paid_features), 2):
@@ -29481,7 +29451,7 @@ def process_admin_selection(message):
         bot.register_next_step_handler(message, process_admin_selection)
 
 def get_available_permissions(admin_id):
-    all_permissions = [
+    ALL_PERMISSIONS = [
         "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция", 
         "Экстренная остановка", "Управление системой",
         "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль", 
@@ -29530,7 +29500,7 @@ def get_available_permissions(admin_id):
 
     unique_permissions = set(perm.split(':')[-1].strip() for perm in current_permissions)
 
-    available_permissions = [perm for perm in all_permissions if perm.split(':')[-1].strip() not in unique_permissions]
+    available_permissions = [perm for perm in ALL_PERMISSIONS if perm.split(':')[-1].strip() not in unique_permissions]
     return available_permissions
 
 def format_permissions_with_headers(permissions):
@@ -30287,7 +30257,7 @@ def save_function_states(states):
 
 function_states = load_function_states()
 
-new_functions = {
+NEW_FUNCTIONS = {
     "Общее меню": [
         "Подписка на бота", "Траты и ремонты", "Найти транспорт", "Поиск мест",
         "Погода", "Цены на топливо", "Код региона", "Анти-радар", "Напоминания", "Коды OBD2",
@@ -30416,7 +30386,7 @@ new_functions = {
 def update_function_states():
     global function_states
     updated = False
-    for category, functions in new_functions.items():
+    for category, functions in NEW_FUNCTIONS.items():
         for function_name in functions:
             if function_name not in function_states:
                 function_states[function_name] = {"state": True, "deactivation_time": None}
@@ -30523,7 +30493,7 @@ def enable_function(message):
         response = "*Выключенные функции:*\n\n"
         index = 1
         function_index_map = {}  
-        for category, functions in new_functions.items():
+        for category, functions in NEW_FUNCTIONS.items():
             for function in functions:
                 if function in [name for name, _ in disabled_functions]:
                     deactivation_time = next((data for name, data in disabled_functions if name == function), None)
@@ -30665,7 +30635,7 @@ def disable_function(message):
         response = "*Включенные функции:*\n\n"
         index = 1
         function_index_map = {}  
-        for category, functions in new_functions.items():
+        for category, functions in NEW_FUNCTIONS.items():
             for function in functions:
                 if function in enabled_functions:
                     response += f"✅ {index}. {function}\n"
