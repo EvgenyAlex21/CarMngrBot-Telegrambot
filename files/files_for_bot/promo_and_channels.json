@@ -1,0 +1,24 @@
+{
+    "promo_codes": {
+        "CARMNGRBOT25": {"uses": 5, "discount": 15, "active": true, "used_by": []},
+        "DRIVEFAST": {"uses": 5, "discount": 20, "active": true, "used_by": []},
+        "EVGENYALEX": {"uses": 5, "discount": 10, "active": true, "used_by": []},
+        "TURBOBOOST": {"uses": 10, "discount": 15, "active": true, "used_by": []},
+        "OILCHANGE": {"uses": 7, "discount": 12, "active": true, "used_by": []},
+        "BRAKECHECK": {"uses": 8, "discount": 10, "active": true, "used_by": []},
+        "FULLTHROTTLE": {"uses": 6, "discount": 20, "active": true, "used_by": []},
+        "GEARSHIFT": {"uses": 5, "discount": 18, "active": true, "used_by": []},
+        "RPMPOWER": {"uses": 4, "discount": 15, "active": true, "used_by": []},
+        "WHEELDEAL": {"uses": 10, "discount": 10, "active": true, "used_by": []},
+        "IGNITIONKEY": {"uses": 12, "discount": 8, "active": true, "used_by": []},
+        "HIGHWAYCODE": {"uses": 5, "discount": 14, "active": true, "used_by": []},
+        "TANKFULL": {"uses": 9, "discount": 11, "active": true, "used_by": []},
+        "NITROZONE": {"uses": 6, "discount": 22, "active": true, "used_by": []},
+        "AUTOTRACK": {"uses": 10, "discount": 9, "active": true, "used_by": []}
+    },
+    "ad_channels": {
+        "-1002591560088": {"name": "CarMngrBot News", "active": true},
+        "-1001234567890": {"name": "Auto Tips Daily", "active": true},
+        "-1009876543210": {"name": "Drive & Save", "active": true}
+    }
+}

@@ -418,19 +418,19 @@ def check_subscription(func):
         specific_feature = None
         
         for feature, subfunctions in NEW_FUNCTIONS.items():
-            if message.text == feature and feature in paid_features:
+            if message.text == feature and feature in PAID_FEATURES:
                 parent_feature = feature
                 specific_feature = feature
                 break
             if message.text in subfunctions:
-                if message.text in paid_features:
+                if message.text in PAID_FEATURES:
                     specific_feature = message.text
                     break
-                if feature in paid_features:
+                if feature in PAID_FEATURES:
                     parent_feature = feature
                     break
                 for parent, parent_subfunctions in NEW_FUNCTIONS.items():
-                    if feature in parent_subfunctions and parent in paid_features:
+                    if feature in parent_subfunctions and parent in PAID_FEATURES:
                         parent_feature = parent
                         break
             if specific_feature or parent_feature:
@@ -677,30 +677,57 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/payments.json")
 USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/users.json")
 
-def load_payment_data():
-    default_promo_codes = {
-        "CARMNGRBOT25": {"uses": 5, "discount": 15, "active": True, "used_by": []},
-        "DRIVEFAST": {"uses": 5, "discount": 20, "active": True, "used_by": []},
-        "EVGENYALEX": {"uses": 5, "discount": 10, "active": True, "used_by": []},
-        "TURBOBOOST": {"uses": 10, "discount": 15, "active": True, "used_by": []},
-        "OILCHANGE": {"uses": 7, "discount": 12, "active": True, "used_by": []},
-        "BRAKECHECK": {"uses": 8, "discount": 10, "active": True, "used_by": []},
-        "FULLTHROTTLE": {"uses": 6, "discount": 20, "active": True, "used_by": []},
-        "GEARSHIFT": {"uses": 5, "discount": 18, "active": True, "used_by": []},
-        "RPMPOWER": {"uses": 4, "discount": 15, "active": True, "used_by": []},
-        "WHEELDEAL": {"uses": 10, "discount": 10, "active": True, "used_by": []},
-        "IGNITIONKEY": {"uses": 12, "discount": 8, "active": True, "used_by": []},
-        "HIGHWAYCODE": {"uses": 5, "discount": 14, "active": True, "used_by": []},
-        "TANKFULL": {"uses": 9, "discount": 11, "active": True, "used_by": []},
-        "NITROZONE": {"uses": 6, "discount": 22, "active": True, "used_by": []},
-        "AUTOTRACK": {"uses": 10, "discount": 9, "active": True, "used_by": []}
-    }
+PROMO_CODES = {}
+AD_CHANNELS = {}
+PROMO_FILE_MTIME = 0
 
-    default_ad_channels = {
-        "-1002591560088": {"name": "CarMngrBot News", "active": True},
-        "-1001234567890": {"name": "Auto Tips Daily", "active": True},
-        "-1009876543210": {"name": "Drive & Save", "active": True}
-    }
+def load_promo_and_channels():
+    global PROMO_CODES, AD_CHANNELS, PROMO_FILE_MTIME
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_path = os.path.join(json_dir, 'promo_and_channels.json')
+    
+    os.makedirs(json_dir, exist_ok=True)
+    
+    if not os.path.exists(json_path):
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump({"promo_codes": {}, "ad_channels": {}}, f, ensure_ascii=False, indent=4)
+        PROMO_FILE_MTIME = os.path.getmtime(json_path)
+        PROMO_CODES = {}
+        AD_CHANNELS = {}
+        return PROMO_CODES, AD_CHANNELS
+    
+    try:
+        current_mtime = os.path.getmtime(json_path)
+        if current_mtime != PROMO_FILE_MTIME:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                PROMO_FILE_MTIME = current_mtime
+                PROMO_CODES = data.get('promo_codes', {})
+                AD_CHANNELS = data.get('ad_channels', {})
+        return PROMO_CODES, AD_CHANNELS
+    except json.JSONDecodeError:
+        PROMO_CODES = {}
+        AD_CHANNELS = {}
+        return PROMO_CODES, AD_CHANNELS
+
+def initialize_ad_channels():
+    promo_codes, ad_channels = load_promo_and_channels()
+    return {chat_id: channel['name'] for chat_id, channel in ad_channels.items() if channel['active']}
+
+AD_CHANNELS = initialize_ad_channels()
+
+def monitor_promo_file_changes():
+    while True:
+        load_promo_and_channels()  
+        time.sleep(5)  
+
+promo_monitor_thread = threading.Thread(target=monitor_promo_file_changes, daemon=True)
+promo_monitor_thread.start()
+
+def load_payment_data():
+    global PROMO_CODES, AD_CHANNELS
+    promo_codes, ad_channels = PROMO_CODES, AD_CHANNELS
 
     default_data = {
         'subscriptions': {'users': {}},
@@ -717,8 +744,8 @@ def load_payment_data():
             'last_top10_bonus': None
         },
         'all_users_total_amount': 0,
-        'promo_codes': default_promo_codes,
-        'ad_channels': default_ad_channels,
+        'promo_codes': promo_codes,
+        'ad_channels': ad_channels,
         'refunds': []
     }
 
@@ -755,15 +782,11 @@ def load_payment_data():
         if key not in data:
             data[key] = value
         elif key == 'promo_codes':
-            for promo_code, promo_data in default_promo_codes.items():
-                if promo_code not in data['promo_codes']:
-                    data['promo_codes'][promo_code] = promo_data
+            data['promo_codes'] = promo_codes  
         elif key == 'ad_channels':
-            for chat_id, channel_data in default_ad_channels.items():
-                if chat_id not in data['ad_channels']:
-                    data['ad_channels'][chat_id] = channel_data
+            data['ad_channels'] = ad_channels  
             for chat_id in list(data['ad_channels'].keys()):
-                if chat_id not in default_ad_channels:
+                if chat_id not in ad_channels:
                     data['ad_channels'][chat_id]['active'] = False
         elif key == 'referrals' and 'leaderboard_history' not in data['referrals']:
             data['referrals']['leaderboard_history'] = {
@@ -911,20 +934,14 @@ def save_payments_data(data):
         error_msg = f"Ошибка при записи в {PAYMENTS_DATABASE_PATH}: {e}"
         print(error_msg)
         raise Exception(f"Не удалось сохранить payments.json: {e}")
-    
-def load_users_data():
-    ensure_directory_exists(users_db_path)
 
-    if not os.path.exists(users_db_path):
-        with open(users_db_path, 'w', encoding='utf-8') as file:
+def load_users_data():
+    ensure_directory_exists(USERS_DATABASE_PATH)
+
+    if not os.path.exists(USERS_DATABASE_PATH):
+        with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as file:
             json.dump({}, file)
         return {}
-
-    with open(users_db_path, 'r', encoding='utf-8') as file:
-        content = file.read().strip()
-        if not content:
-            return {}
-        return json.loads(content)
 
     try:
         with open(USERS_DATABASE_PATH, 'r', encoding='utf-8') as f:
@@ -957,30 +974,27 @@ def save_users_data(data):
     with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-# ------------------------------------ ПОДПИСКА НА БОТА (бесплатные функции, прбный период, фоновые функции) -------------------------------
+# ------------------------------ ПОДПИСКА НА БОТА (бесплатные и платные функции, прбный период, фоновые функции) -----------------------------
 
-FREE_FEATURES = [
-    "Калькуляторы", "Вернуться в калькуляторы",     
-    "Алкоголь", "Рассчитать алкоголь", "Просмотр алкоголя", "Удаление алкоголя", "Мужской", "Женский", "Убрать последний", "Убрать все", "Готово", 
-    "Налог", "Вернуться в налог", "Вернуться в алкоголь", "Рассчитать налог", "Просмотр налогов", "Удаление налогов", "Да", "Нет",
-    "Найти транспорт", "Отправить геопозицию", "Продолжить", "Начать заново",
-    "Код региона",
-    "Коды OBD2",
-    "Напоминания", "Вернуться в меню напоминаний", "Добавить напоминание", "Посмотреть напоминания", "Удалить напоминания", 
-    "Активные", "Истекшие", "Один раз", "Ежедневно", "Еженедельно", "Ежемесячно",
-    "Del Активные", "Del Истекшие", "Del Один раз", "Del Ежедневно", "Del Еженедельно", "Del Ежемесячно",
-    "Прочее", "Вернуться в прочее", "Сайт",
-    "Новости", "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей", "Еще новости",
-    "Курсы валют",
-    "Уведомления", "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены", "Включить все", "Выключить все",
-    "Для рекламы", "Вернуться в меню для рекламы", "Заявка на рекламу", "Ваши заявки", "Пропустить медиафайлы", "Добавить еще", "Завершить отправку", "Отозвать рекламу",
-    "Чат с админом", "В главное меню"
-]
+def load_features():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_path = os.path.join(json_dir, 'free_and_paid_features.json')
+    
+    os.makedirs(json_dir, exist_ok=True)
+    
+    if not os.path.exists(json_path):
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump({"free_features": [], "paid_features": []}, f, ensure_ascii=False, indent=4)
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('free_features', []), data.get('paid_features', [])
+    except json.JSONDecodeError:
+        return [], []
 
-paid_features = [
-    "Калькуляторы", "Расход топлива", "Автокредит", "Растаможка", "ОСАГО", "Шины",
-    "Траты и ремонты", "Поиск мест", "Погода", "Цены на топливо", "Анти-радар" 
-]
+FREE_FEATURES, PAID_FEATURES = load_features()
 
 def set_free_trial_period(user_id, days, source="default"):
     data = load_payment_data()
@@ -1362,44 +1376,49 @@ def return_to_subscription(message):
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (купить подписку) -----------------------------------------
 
-SUBSCRIPTION_PLANS = {
-    "trial_subscription_3": {
-        "base_price": 70, 
-        "fictitious_discount": 0,
-        "label": "3 дня",
-        "duration": 3
-    },
-    "weekly_subscription_7": {
-        "base_price": 105,
-        "fictitious_discount": 0,
-        "label": "7 дней",
-        "duration": 7
-    },
-    "monthly_subscription_30": {
-        "base_price": 360,  
-        "fictitious_discount": 0,
-        "label": "30 дней",
-        "duration": 30
-    },
-    "quarterly_subscription_90": {
-        "base_price": 900,
-        "fictitious_discount": 0,
-        "label": "90 дней",
-        "duration": 90
-    },
-    "semiannual_subscription_180": {
-        "base_price": 1620,  
-        "fictitious_discount": 0,
-        "label": "180 дней",
-        "duration": 180
-    },
-    "yearly_subscription_365": {
-        "base_price": 2920,  
-        "fictitious_discount": 0,
-        "label": "365 дней",
-        "duration": 365
-    }
-}
+SUBSCRIPTION_PLANS = {}
+STORE_ITEMS = {}
+SUBS_FILE_MTIME = 0
+
+def load_subscriptions_and_store():
+    global SUBSCRIPTION_PLANS, STORE_ITEMS, SUBS_FILE_MTIME
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_path = os.path.join(json_dir, 'subscription_and_store.json')
+    
+    os.makedirs(json_dir, exist_ok=True)
+    
+    if not os.path.exists(json_path):
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump({"subscription_plans": {}, "store_items": {}}, f, ensure_ascii=False, indent=4)
+        SUBS_FILE_MTIME = os.path.getmtime(json_path)
+        SUBSCRIPTION_PLANS = {}
+        STORE_ITEMS = {}
+        return SUBSCRIPTION_PLANS, STORE_ITEMS
+    
+    try:
+        current_mtime = os.path.getmtime(json_path)
+        if current_mtime != SUBS_FILE_MTIME:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                SUBS_FILE_MTIME = current_mtime
+                SUBSCRIPTION_PLANS = data.get('subscription_plans', {})
+                STORE_ITEMS = data.get('store_items', {})
+        return SUBSCRIPTION_PLANS, STORE_ITEMS
+    except json.JSONDecodeError:
+        SUBSCRIPTION_PLANS = {}
+        STORE_ITEMS = {}
+        return SUBSCRIPTION_PLANS, STORE_ITEMS
+
+SUBSCRIPTION_PLANS, STORE_ITEMS = load_subscriptions_and_store()
+
+def monitor_subscriptions_file_changes():
+    while True:
+        load_subscriptions_and_store() 
+        time.sleep(5) 
+
+subs_monitor_thread = threading.Thread(target=monitor_subscriptions_file_changes, daemon=True)
+subs_monitor_thread.start()
 
 @bot.message_handler(func=lambda message: message.text == "Купить подписку")
 @check_function_state_decorator('Купить подписку')
@@ -1924,21 +1943,11 @@ def process_successful_payment(message):
 
 def translate_plan_name(plan_name):
     return {
-        "free": "пробный период",           
-        "referral_bonus": "реферальный бонус",  
-        "ad_bonus": "рекламный бонус",     
-        "activity": "активность",       
-        "weekly": "неделя",               
-        "monthly": "месяц",                 
-        "yearly": "год",                   
-        "points_bonus": "бонус за баллы",   
-        "gift_time": "подаренное время",   
-        "referral": "бонус за реферала",    
-        "monthly_leader_bonus": "бонус лидера месяца",  
-        "leaderboard": "бонус топ-1",       
-        "store_time": "время из магазина",  
-        "custom": "индивидуальный",        
-        "exchange_time": "обменное время"    
+        "free": "пробный период", "referral_bonus": "реферальный бонус", "ad_bonus": "рекламный бонус",     
+        "activity": "активность", "weekly": "неделя", "monthly": "месяц", "yearly": "год",                   
+        "points_bonus": "бонус за баллы", "gift_time": "подаренное время", "referral": "бонус за реферала",    
+        "monthly_leader_bonus": "бонус лидера месяца", "leaderboard": "бонус топ-1", "store_time": "время из магазина",  
+        "custom": "индивидуальный", "exchange_time": "обменное время"    
     }.get(plan_name, plan_name)
 
 def send_long_message(chat_id, message_text, parse_mode='Markdown'):
@@ -2493,37 +2502,6 @@ def process_subscription_cancellation(message, user_id, paid_plans, subscription
     payments_function(message, show_description=False)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (магазин) -----------------------------------------
-
-STORE_ITEMS = {
-    "points_5": {"base_price": 55, "fictitious_discount": 0, "label": "5 баллов", "points": 5},       
-    "points_10": {"base_price": 65, "fictitious_discount": 0, "label": "10 баллов", "points": 10},  
-    "points_15": {"base_price": 75, "fictitious_discount": 0, "label": "15 баллов", "points": 15},   
-    "points_25": {"base_price": 90, "fictitious_discount": 0, "label": "25 баллов", "points": 25},  
-    "points_30": {"base_price": 105, "fictitious_discount": 0, "label": "30 баллов", "points": 30},  
-    "points_50": {"base_price": 140, "fictitious_discount": 0, "label": "50 баллов", "points": 50}, 
-    "points_75": {"base_price": 185, "fictitious_discount": 0, "label": "75 баллов", "points": 75},  
-    "points_100": {"base_price": 230, "fictitious_discount": 0, "label": "100 баллов", "points": 100},
-    "points_150": {"base_price": 330, "fictitious_discount": 0, "label": "150 баллов", "points": 150},
-    "points_200": {"base_price": 430, "fictitious_discount": 0, "label": "200 баллов", "points": 200},
-    "points_250": {"base_price": 520, "fictitious_discount": 0, "label": "250 баллов", "points": 250},
-    "points_350": {"base_price": 690, "fictitious_discount": 0, "label": "350 баллов", "points": 350},
-    "points_500": {"base_price": 940, "fictitious_discount": 0, "label": "500 баллов", "points": 500},
-    "points_750": {"base_price": 1350, "fictitious_discount": 0, "label": "750 баллов", "points": 750},
-    "points_1000": {"base_price": 1770, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
-    "time_1day": {"base_price": 55, "fictitious_discount": 0, "label": "1 день", "duration": 1},          
-    "time_2days": {"base_price": 65, "fictitious_discount": 0, "label": "2 дня", "duration": 2},         
-    "time_4days": {"base_price": 90, "fictitious_discount": 0, "label": "4 дня", "duration": 4},         
-    "time_5days": {"base_price": 105, "fictitious_discount": 0, "label": "5 дней", "duration": 5},      
-    "time_8days": {"base_price": 155, "fictitious_discount": 0, "label": "8 дней", "duration": 8},       
-    "time_10days": {"base_price": 180, "fictitious_discount": 0, "label": "10 дней", "duration": 10},   
-    "time_14days": {"base_price": 240, "fictitious_discount": 0, "label": "14 дней", "duration": 14},    
-    "time_15days": {"base_price": 250, "fictitious_discount": 0, "label": "15 дней", "duration": 15},    
-    "time_21days": {"base_price": 330, "fictitious_discount": 0, "label": "21 день", "duration": 21},    
-    "time_30days": {"base_price": 450, "fictitious_discount": 0, "label": "30 дней", "duration": 30},    
-    "time_45days": {"base_price": 630, "fictitious_discount": 0, "label": "45 дней", "duration": 45},   
-    "time_60days": {"base_price": 780, "fictitious_discount": 0, "label": "60 дней", "duration": 60},    
-    "time_120days": {"base_price": 1350, "fictitious_discount": 0, "label": "120 дней", "duration": 120} 
-}
 
 @bot.message_handler(func=lambda message: message.text == "Магазин")
 @check_function_state_decorator('Магазин')
@@ -3098,11 +3076,11 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.register_next_step_handler(message, process_discount_exchange)
     elif message.text == "Обмен на функции":
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for i in range(0, len(paid_features), 2):
-            if i + 1 < len(paid_features):
-                markup.add(paid_features[i], paid_features[i + 1])
+        for i in range(0, len(PAID_FEATURES), 2):
+            if i + 1 < len(PAID_FEATURES):
+                markup.add(PAID_FEATURES[i], PAID_FEATURES[i + 1])
             else:
-                markup.add(paid_features[i])
+                markup.add(PAID_FEATURES[i])
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -3138,13 +3116,13 @@ def process_feature_selection(message, points):
     user_id = str(message.from_user.id)
     data = load_payment_data()
     feature = message.text
-    if feature not in paid_features:
+    if feature not in PAID_FEATURES:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for i in range(0, len(paid_features), 2):
-            if i + 1 < len(paid_features):
-                markup.add(paid_features[i], paid_features[i + 1])
+        for i in range(0, len(PAID_FEATURES), 2):
+            if i + 1 < len(PAID_FEATURES):
+                markup.add(PAID_FEATURES[i], PAID_FEATURES[i + 1])
             else:
-                markup.add(paid_features[i])
+                markup.add(PAID_FEATURES[i])
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -4305,42 +4283,20 @@ TRANSLATIONS_YOURPROMOCODES = {
     "all_items": "все товары",  
     "subscriptions": "все подписки",
     "store": "весь магазин",
-    "points_5": "5 баллов в магазине",
-    "points_10": "10 баллов в магазине",
-    "points_15": "15 баллов в магазине",
-    "points_25": "25 баллов в магазине",
-    "points_30": "30 баллов в магазине",
-    "points_50": "50 баллов в магазине",
-    "points_75": "75 баллов в магазине",
-    "points_100": "100 баллов в магазине",
-    "points_150": "150 баллов в магазине",
-    "points_200": "200 баллов в магазине",
-    "points_250": "250 баллов в магазине",
-    "points_350": "350 баллов в магазине",
-    "points_500": "500 баллов в магазине",
-    "points_750": "750 баллов в магазине",
-    "points_1000": "1000 баллов в магазине",
-    "time_1day": "1 день в магазине",
-    "time_2days": "2 дня в магазине",
-    "time_4days": "4 дня в магазине",
-    "time_5days": "5 дней в магазине",
-    "time_8days": "8 дней в магазине",
-    "time_10days": "10 дней в магазине",
-    "time_14days": "14 дней в магазине",
-    "time_15days": "15 дней в магазине",
-    "time_21days": "21 день в магазине",
-    "time_30days": "30 дней в магазине",
-    "time_45days": "45 дней в магазине",
-    "time_60days": "60 дней в магазине",
+    "points_5": "5 баллов в магазине", "points_10": "10 баллов в магазине", "points_15": "15 баллов в магазине", 
+    "points_25": "25 баллов в магазине", "points_30": "30 баллов в магазине", "points_50": "50 баллов в магазине",
+    "points_75": "75 баллов в магазине", "points_100": "100 баллов в магазине", "points_150": "150 баллов в магазине", 
+    "points_200": "200 баллов в магазине", "points_250": "250 баллов в магазине", "points_350": "350 баллов в магазине",
+    "points_500": "500 баллов в магазине", "points_750": "750 баллов в магазине", "points_1000": "1000 баллов в магазине",
+    "time_1day": "1 день в магазине", "time_2days": "2 дня в магазине", "time_4days": "4 дня в магазине",
+    "time_5days": "5 дней в магазине", "time_8days": "8 дней в магазине", "time_10days": "10 дней в магазине",
+    "time_14days": "14 дней в магазине", "time_15days": "15 дней в магазине", "time_21days": "21 день в магазине", 
+    "time_30days": "30 дней в магазине", "time_45days": "45 дней в магазине", "time_60days": "60 дней в магазине",
     "time_120days": "120 дней в магазине",
-    "trial_subscription_3": "3 дня в подписках",
-    "weekly_subscription_7": "7 дней в подписках",
-    "monthly_subscription_30": "30 дней в подписках",
-    "quarterly_subscription_90": "90 дней в подписках",
-    "semiannual_subscription_180": "180 дней в подписках",
-    "yearly_subscription_365": "365 дней в подписках",
-    "discount_type_promo": "промокод", 
-    "discount_type_referral": "реферальная"
+    "trial_subscription_3": "3 дня в подписках", "weekly_subscription_7": "7 дней в подписках",
+    "monthly_subscription_30": "30 дней в подписках", "quarterly_subscription_90": "90 дней в подписках",
+    "semiannual_subscription_180": "180 дней в подписках", "yearly_subscription_365": "365 дней в подписках",
+    "discount_type_promo": "промокод", "discount_type_referral": "реферальная"
 }
 
 def get_applicability_str(applicable_category, applicable_items):
@@ -4498,14 +4454,6 @@ def is_user_subscribed(user_id, chat_id=CHANNEL_CHAT_ID):
         return False
     except Exception as e:
         return False
-
-def initialize_ad_channels():
-    data = load_payment_data()
-    if 'ad_channels' not in data:
-        return {}  
-    return {chat_id: channel['name'] for chat_id, channel in data['ad_channels'].items() if channel['active']}
-
-AD_CHANNELS = initialize_ad_channels()
 
 def is_channel_available(chat_id):
     try:
@@ -26812,11 +26760,11 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for i in range(0, len(paid_features), 2):
-            if i + 1 < len(paid_features):
-                markup.add(paid_features[i], paid_features[i + 1])
+        for i in range(0, len(PAID_FEATURES), 2):
+            if i + 1 < len(PAID_FEATURES):
+                markup.add(PAID_FEATURES[i], PAID_FEATURES[i + 1])
             else:
-                markup.add(paid_features[i])
+                markup.add(PAID_FEATURES[i])
         markup.add('Вернуться в управление обменами')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
@@ -27014,13 +26962,13 @@ def process_perform_exchange_feature(message, user_id):
         return
 
     feature = message.text.strip()
-    if feature not in paid_features:
+    if feature not in PAID_FEATURES:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for i in range(0, len(paid_features), 2):
-            if i + 1 < len(paid_features):
-                markup.add(paid_features[i], paid_features[i + 1])
+        for i in range(0, len(PAID_FEATURES), 2):
+            if i + 1 < len(PAID_FEATURES):
+                markup.add(PAID_FEATURES[i], PAID_FEATURES[i + 1])
             else:
-                markup.add(paid_features[i])
+                markup.add(PAID_FEATURES[i])
         markup.add('Вернуться в управление обменами')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
@@ -29532,74 +29480,23 @@ def process_admin_selection(message):
         bot.register_next_step_handler(message, process_admin_selection)
 
 def get_available_permissions(admin_id):
-    ALL_PERMISSIONS = [
-        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция", 
-        "Экстренная остановка", "Управление системой",
-        "Админ: Смена данных входа", "Админ: Сменить пароль", "Админ: Сменить логин и пароль", 
-        "Админ: Добавить админа", "Админ: Удалить админа", "Админ: Права доступа", 
-        "Админ: Добавить права", "Админ: Удалить права",
-        "Бан: Заблокировать", "Бан: Разблокировать", "Бан: Удалить данные",
-        "Функции: Включение", "Функции: Выключение",
-        "Общение: Чат", "Общение: Запросы", "Общение: Оповещения", "Общение: Диалоги",
-        "Общение: По времени", "Общение: Отправить по времени", "Общение: Просмотр (по времени)", 
-        "Общение: Удалить (по времени)",
-        "Общение: Всем", "Общение: Отправить сообщение", "Общение: Отправленные", 
-        "Общение: Удалить отправленные",
-        "Общение: Отдельно", "Общение: Отправить отдельно", "Общение: Посмотреть отдельно", 
-        "Общение: Удалить отдельно",
-        "Общение: Просмотр диалогов", "Общение: Удалить диалоги", "Общение: Удалить диалог", 
-        "Общение: Удалить все диалоги",
-        "Реклама: Запросы на рекламу", "Реклама: Удалить рекламу",
-        "Статистика: Пользователи", "Статистика: Использование функций", "Статистика: Список ошибок", 
-        "Статистика: Версия и аптайм",
-        "Файлы: Поиск файлов по EXT", "Файлы: Поиск файлов по DIR", "Файлы: Поиск файлов по ID", "Файлы: Добавить файлы", 
-        "Файлы: Замена файлов", "Файлы: Удалить файлы",
-        "Резервная копия: Создать копию", "Резервная копия: Восстановить данные",
-        "Редакция: Опубликовать новость", "Редакция: Отредактировать новость", 
-        "Редакция: Посмотреть новость", "Редакция: Удалить новость",
-        "Экстренная остановка: Подтвердить остановку", "Экстренная остановка: Подтвердить остановку", 
-        "Экстренная остановка: Отмена остановки",
-        "Управление системой: Добавление подписки", "Управление системой: Просмотр подписок", 
-        "Управление системой: Удаление подписок", "Управление системой: Статистика системы",
-        "Управление системой: Управление подписками", "Управление системой: Управление магазином", 
-        "Управление системой: Управление баллами", "Управление системой: Управление обменами", 
-        "Управление системой: Управление скидками", "Управление системой: Управление подарками",
-        "Управление подписками: Добавление подписки", "Управление подписками: Просмотр подписок", 
-        "Управление подписками: Удаление подписок",
-        "Управление магазином: Начисление покупки", "Управление магазином: Просмотр покупок", 
-        "Управление магазином: Удаление покупок",
-        "Управление баллами: Начисление баллов", "Управление баллами: Просмотр баллов", 
-        "Управление баллами: Списание баллов", "Управление баллами: Просмотр истории баллов",
-        "Управление обменами: Выполнить обмен", "Управление обменами: Просмотр обменов",
-        "Управление скидками: Создать промокод", "Управление скидками: Назначить скидку", 
-        "Управление скидками: Просмотр промокодов", "Управление скидками: Удаление промокодов",
-        "Управление подарками: Назначить подарок", "Управление подарками: Просмотр подарков", 
-        "Управление подарками: Удаление подарков"
-    ]
-
     current_permissions = admins_data.get(admin_id, {}).get("permissions", [])
-
     unique_permissions = set(perm.split(':')[-1].strip() for perm in current_permissions)
-
     available_permissions = [perm for perm in ALL_PERMISSIONS if perm.split(':')[-1].strip() not in unique_permissions]
     return available_permissions
 
 def format_permissions_with_headers(permissions):
-    main_functions = [
-        "Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы",
-        "Резервная копия", "Редакция", "Экстренная остановка", "Управление системой"
-    ]
     formatted_permissions = []
     counter = 1
 
     formatted_permissions.append("*Основные права:*")
-    for main_func in main_functions:
+    for main_func in MAIN_FUNCTIONS:
         if any(perm.split(':')[-1].strip() == main_func for perm in permissions):
             formatted_permissions.append(f"⚙️ №{counter}. {main_func}")
             counter += 1
     formatted_permissions.append("")
 
-    for main_func in main_functions:
+    for main_func in MAIN_FUNCTIONS:
         sub_permissions = [perm.split(':')[-1].strip() for perm in permissions if perm.startswith(main_func) and perm.split(':')[-1].strip() != main_func]
         if sub_permissions:
             formatted_permissions.append(f"*Права в \"{main_func}\":*")
@@ -29608,7 +29505,7 @@ def format_permissions_with_headers(permissions):
                 counter += 1
             formatted_permissions.append("")
 
-    other_permissions = [perm.split(':')[-1].strip() for perm in permissions if not any(perm.startswith(main_func) for main_func in main_functions)]
+    other_permissions = [perm.split(':')[-1].strip() for perm in permissions if not any(perm.startswith(main_func) for main_func in MAIN_FUNCTIONS)]
     if other_permissions:
         formatted_permissions.append("*Другие права:*")
         for perm in other_permissions:
@@ -29667,17 +29564,16 @@ def process_permission_action(message, admin_id):
         bot.register_next_step_handler(message, process_remove_permissions, admin_id, current_permissions)
 
 def format_permissions_with_main_functions(permissions):
-    main_functions = ["Админ", "Бан", "Функции", "Общение", "Реклама", "Статистика", "Файлы", "Резервная копия", "Редакция"]
     formatted_permissions = []
     counter = 1
 
     formatted_permissions.append("*Основные функции:*")
-    for main_func in main_functions:
+    for main_func in MAIN_FUNCTIONS:
         formatted_permissions.append(f"⚙️ №{counter}. {main_func}")
         counter += 1
     formatted_permissions.append("")
 
-    for main_func in main_functions:
+    for main_func in MAIN_FUNCTIONS:
         sub_permissions = [perm for perm in permissions if perm.startswith(main_func) and perm != main_func]
         if sub_permissions:
             formatted_permissions.append(f"*{main_func}:*")
@@ -30338,131 +30234,25 @@ def save_function_states(states):
 
 function_states = load_function_states()
 
-NEW_FUNCTIONS = {
-    "Общее меню": [
-        "Подписка на бота", "Траты и ремонты", "Найти транспорт", "Поиск мест",
-        "Погода", "Цены на топливо", "Код региона", "Анти-радар", "Напоминания", "Коды OBD2",
-        "Прочее", "Сайт", "Калькуляторы", "В главное меню"
-    ],
-    "Подписка на бота": [
-        "Купить подписку", "Посмотреть подписку", "История подписок", "Отменить подписку",
-        "Магазин", "Баллы", "Промокоды", "Реферальная система", "Рекламные каналы", "Вернуться в подписку"
-    ],
-    "Магазин": [
-        "Пакеты баллов", "Пакеты времени", "Вернуться в магазин"
-    ],
-    "Баллы": [
-        "Ваши баллы", "Обменять баллы", "Подарки", "Вернуться в баллы"
-    ],
-    "Обменять баллы": [
-        "Обмен на время", "Обмен на скидку", "Обмен на функции"
-    ],
-    "Подарки": [
-        "Подарить баллы", "Подарить время", "История подарков", "Вернуться в подарки"
-    ],
-    "Промокоды": [
-        "Ввести промокод", "Ваши промокоды"
-    ],
-    "Реферальная система": [
-        "Ваша ссылка", "Ваши рефералы", "Топ рефералов", "Рекламные каналы", "Вернуться в реферальную систему"
-    ],
-    "Траты и ремонты": [
-        "Ваш транспорт", "Записать трату", "Посмотреть траты", "Удалить траты",
-        "Записать ремонт", "Посмотреть ремонты", "Удалить ремонты"
-    ],
-    "Ваш транспорт": [
-        "Добавить транспорт", "Посмотреть транспорт", "Изменить транспорт",
-        "Удалить транспорт", "Удалить весь транспорт", "Вернуться в меню трат и ремонтов"
-    ],
-    "Записать трату": [
-        "Добавить категорию", "Удалить категорию", "Вернуться в меню трат и ремонтов"
-    ],
-    "Посмотреть траты": [
-        "Траты (по категориям)", "Траты (месяц)", "Траты (год)", "Траты (все время)",
-        "Посмотреть траты в EXCEL", "Вернуться в меню трат и ремонтов"
-    ],
-    "Удалить траты": [
-        "Del траты (категория)", "Del траты (месяц)", "Del траты (год)", "Del траты (все время)",
-        "Вернуться в меню трат и ремонтов"
-    ],
-    "Записать ремонт": [
-        "Добавить категорию", "Удалить категорию", "Вернуться в меню трат и ремонтов"
-    ],
-    "Посмотреть ремонты": [
-        "Ремонты (по категориям)", "Ремонты (месяц)", "Ремонты (год)", "Ремонты (все время)",
-        "Посмотреть ремонты в EXCEL", "Вернуться в меню трат и ремонтов"
-    ],
-    "Удалить ремонты": [
-        "Del ремонты (категория)", "Del ремонты (месяц)", "Del ремонты (год)", "Del ремонты (все время)",
-        "Вернуться в меню трат и ремонтов"
-    ],
-    "Напоминания": ["Добавить напоминание", "Посмотреть напоминания", "Удалить напоминания", "Вернуться в меню напоминаний"
-    ],
-    "Посмотреть напоминания": [
-        "Активные", "Истекшие", "Один раз",
-        "Ежедневно", "Еженедельно", "Ежемесячно", "Вернуться в меню напоминаний"
-    ],
-    "Удалить напоминания": [
-        "Del Активные", "Del Истекшие", "Del Один раз",
-        "Del Ежедневно", "Del Еженедельно", "Del Ежемесячно", "Вернуться в меню напоминаний"
-    ],
-    "Добавить напоминание": [
-        "Вернуться в меню напоминаний"
-    ],
-    "Поиск мест": [
-        "АЗС", "Автомойки", "Автосервисы", "Парковки", "Эвакуация", "ГИБДД", "Комиссары", "Штрафстоянка"
-    ],
-    "Погода": [
-        "Сегодня", "Завтра", "Неделя", "Месяц", "Другое место"
-    ],
-    "Анти-радар": [
-        "Выключить анти-радар"
-    ],
-    "Коды OBD2": [
-        "Посмотреть другие ошибки"
-    ],
-    "Калькуляторы": [
-        "Расход топлива", "Алкоголь", "Растаможка", "ОСАГО", "Автокредит", "Шины", "Налог"
-    ],
-    "Расход топлива": [
-        "Рассчитать расход", "Посмотреть поездки", "Поездки в EXCEL", "Посмотреть другие поездки", "Удалить поездки",
-        "Вернуться в меню расчета топлива", "Вернуться в калькуляторы"
-    ],
-    "Алкоголь": [
-        "Рассчитать алкоголь", "Просмотр алкоголя", "Алкоголь в EXCEL", "Удаление алкоголя", "Вернуться в калькуляторы"
-    ],
-    "Растаможка": [
-        "Рассчитать растаможку", "Просмотр растаможек", "Растаможка в EXCEL", "Удаление растаможек", "Вернуться в калькуляторы"
-    ],
-    "ОСАГО": [
-        "Рассчитать ОСАГО", "Просмотр ОСАГО", "ОСАГО в EXCEL", "Удаление ОСАГО", "Вернуться в калькуляторы"
-    ],
-    "Автокредит": [
-        "Рассчитать автокредит", "Просмотр автокредитов", "Удаление автокредитов", "Вернуться в калькуляторы"
-    ],
-    "Шины": [
-        "Рассчитать шины", "Просмотр шин", "Шины в EXCEL", "Удаление шин", "Вернуться в калькуляторы"
-    ],
-    "Налог": [
-        "Рассчитать налог", "Просмотр налогов", "Налог в EXCEL", "Удаление налогов", "Вернуться в калькуляторы"
-    ],
-    "Прочее": [
-        "Чат с админом", "Для рекламы", "Новости", "Уведомления", "Курсы валют", "Вернуться в прочее"
-    ],
-    "Новости": [
-        "3 новости", "5 новостей", "7 новостей", "10 новостей", "15 новостей", "еще новости"
-    ],
-    "Для рекламы": [
-        "Заявка на рекламу", "Ваши заявки"
-    ],
-    "Уведомления": [
-        "Включить погоду", "Выключить погоду", "Включить цены", "Выключить цены",
-        "Включить курсы", "Выключить курсы", "Включить все", "Выключить все"
-    ],
-    "Другие функции": [
-        "Функция для обработки локации"
-    ]
-}
+def load_functions_and_permissions():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_path = os.path.join(json_dir, 'functions_and_permissions.json')
+    
+    os.makedirs(json_dir, exist_ok=True)
+    
+    if not os.path.exists(json_path):
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump({"new_functions": {}, "all_permissions": [], "main_functions": []}, f, ensure_ascii=False, indent=4)
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('new_functions', {}), data.get('all_permissions', []), data.get('main_functions', [])
+    except json.JSONDecodeError:
+        return {}, [], []
+    
+NEW_FUNCTIONS, ALL_PERMISSIONS, MAIN_FUNCTIONS = load_functions_and_permissions()
 
 def update_function_states():
     global function_states

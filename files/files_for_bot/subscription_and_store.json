@@ -1,0 +1,70 @@
+{
+    "subscription_plans": {
+        "trial_subscription_3": {
+            "base_price": 70,
+            "fictitious_discount": 0,
+            "label": "3 дня",
+            "duration": 3
+        },
+        "weekly_subscription_7": {
+            "base_price": 105,
+            "fictitious_discount": 0,
+            "label": "7 дней",
+            "duration": 7
+        },
+        "monthly_subscription_30": {
+            "base_price": 360,
+            "fictitious_discount": 0,
+            "label": "30 дней",
+            "duration": 30
+        },
+        "quarterly_subscription_90": {
+            "base_price": 900,
+            "fictitious_discount": 0,
+            "label": "90 дней",
+            "duration": 90
+        },
+        "semiannual_subscription_180": {
+            "base_price": 1620,
+            "fictitious_discount": 0,
+            "label": "180 дней",
+            "duration": 180
+        },
+        "yearly_subscription_365": {
+            "base_price": 2920,
+            "fictitious_discount": 0,
+            "label": "365 дней",
+            "duration": 365
+        }
+    },
+    "store_items": {
+        "points_5": {"base_price": 55, "fictitious_discount": 0, "label": "5 баллов", "points": 5},
+        "points_10": {"base_price": 65, "fictitious_discount": 0, "label": "10 баллов", "points": 10},
+        "points_15": {"base_price": 75, "fictitious_discount": 0, "label": "15 баллов", "points": 15},
+        "points_25": {"base_price": 90, "fictitious_discount": 0, "label": "25 баллов", "points": 25},
+        "points_30": {"base_price": 105, "fictitious_discount": 0, "label": "30 баллов", "points": 30},
+        "points_50": {"base_price": 140, "fictitious_discount": 0, "label": "50 баллов", "points": 50},
+        "points_75": {"base_price": 185, "fictitious_discount": 0, "label": "75 баллов", "points": 75},
+        "points_100": {"base_price": 230, "fictitious_discount": 0, "label": "100 баллов", "points": 100},
+        "points_150": {"base_price": 330, "fictitious_discount": 0, "label": "150 баллов", "points": 150},
+        "points_200": {"base_price": 430, "fictitious_discount": 0, "label": "200 баллов", "points": 200},
+        "points_250": {"base_price": 520, "fictitious_discount": 0, "label": "250 баллов", "points": 250},
+        "points_350": {"base_price": 690, "fictitious_discount": 0, "label": "350 баллов", "points": 350},
+        "points_500": {"base_price": 940, "fictitious_discount": 0, "label": "500 баллов", "points": 500},
+        "points_750": {"base_price": 1350, "fictitious_discount": 0, "label": "750 баллов", "points": 750},
+        "points_1000": {"base_price": 1770, "fictitious_discount": 0, "label": "1000 баллов", "points": 1000},
+        "time_1day": {"base_price": 55, "fictitious_discount": 0, "label": "1 день", "duration": 1},
+        "time_2days": {"base_price": 65, "fictitious_discount": 0, "label": "2 дня", "duration": 2},
+        "time_4days": {"base_price": 90, "fictitious_discount": 0, "label": "4 дня", "duration": 4},
+        "time_5days": {"base_price": 105, "fictitious_discount": 0, "label": "5 дней", "duration": 5},
+        "time_8days": {"base_price": 155, "fictitious_discount": 0, "label": "8 дней", "duration": 8},
+        "time_10days": {"base_price": 180, "fictitious_discount": 0, "label": "10 дней", "duration": 10},
+        "time_14days": {"base_price": 240, "fictitious_discount": 0, "label": "14 дней", "duration": 14},
+        "time_15days": {"base_price": 250, "fictitious_discount": 0, "label": "15 дней", "duration": 15},
+        "time_21days": {"base_price": 330, "fictitious_discount": 0, "label": "21 день", "duration": 21},
+        "time_30days": {"base_price": 450, "fictitious_discount": 0, "label": "30 дней", "duration": 30},
+        "time_45days": {"base_price": 630, "fictitious_discount": 0, "label": "45 дней", "duration": 45},
+        "time_60days": {"base_price": 780, "fictitious_discount": 0, "label": "60 дней", "duration": 60},
+        "time_120days": {"base_price": 1350, "fictitious_discount": 0, "label": "120 дней", "duration": 120}
+    }
+}
