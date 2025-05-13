@@ -1135,7 +1135,7 @@ def create_main_menu():
     item7 = types.KeyboardButton("Код региона")
     item8 = types.KeyboardButton("Коды OBD2")
     item9 = types.KeyboardButton("Напоминания")
-    item10 = types.KeyboardButton("Анти-радар")
+    item10 = types.KeyboardButton("Антирадар")
     item11 = types.KeyboardButton("Прочее")
 
     markup.add(itembuysub)
@@ -1531,6 +1531,7 @@ def send_subscription_options(message):
 @bot.callback_query_handler(func=lambda call: call.data in SUBSCRIPTION_PLANS)
 def send_subscription_invoice(call):
     user_id = str(call.from_user.id)
+    username = call.from_user.username or "неизвестный"  
     plan_key = call.data
     plan_info = SUBSCRIPTION_PLANS[plan_key]
     base_price = plan_info["base_price"]
@@ -1591,7 +1592,7 @@ def send_subscription_invoice(call):
         bot.answer_callback_query(call.id, "Подписка активирована!")
 
         markup = create_main_menu()
-        bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
+        bot.send_message(user_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
         return
 
     user_discount_amount = round(base_price * (user_discount / 100), 2)
@@ -1615,7 +1616,7 @@ def send_subscription_invoice(call):
 
     bot_functions = (
         "🚀 Ваш идеальный спутник в дороге: от расчета топлива и учета трат "
-        "до прогноза погоды и анти-радара — все для удобства и экономии!"
+        "до прогноза погоды и Антирадара — все для удобства и экономии!"
     )
 
     title = f"🌟 Подписка на {label}"
@@ -1670,6 +1671,7 @@ def send_subscription_invoice(call):
 @bot.message_handler(content_types=['successful_payment'])
 def process_successful_payment(message):
     user_id = str(message.from_user.id)
+    username = message.from_user.username or "неизвестный"  
     payment_info = message.successful_payment
     data = load_payment_data()
     user_data = data['subscriptions']['users'].setdefault(user_id, {"plans": [], "total_amount": 0, "referral_points": 0, "store_purchases": []})
@@ -1937,7 +1939,7 @@ def process_successful_payment(message):
     save_payments_data(data)
 
     markup = create_main_menu()
-    bot.send_message(user_id, "Выберите действие из меню:", reply_markup=markup)
+    bot.send_message(user_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (посмотреть подписку) -----------------------------------------
 
@@ -21412,7 +21414,7 @@ def confirm_delete_step(message):
         msg = bot.send_message(user_id, "Некорректный ввод!\nВведите номера", reply_markup=markup)
         bot.register_next_step_handler(msg, confirm_delete_step)
 
-# ----------------------------------------------------- АНТИ-РАДАР ----------------------------------------------------
+# ----------------------------------------------------- АНТИРАДАР ----------------------------------------------------
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 files_dir = os.path.join(script_dir, 'files')
@@ -21463,9 +21465,9 @@ if coordinates and all(len(coord) == 2 for coord in coordinates):
 
 user_tracking = {}
 
-@bot.message_handler(func=lambda message: message.text == "Анти-радар")
-@check_function_state_decorator('Анти-радар')
-@track_usage('Анти-радар')
+@bot.message_handler(func=lambda message: message.text == "Антирадар")
+@check_function_state_decorator('Антирадар')
+@track_usage('Антирадар')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -21484,13 +21486,13 @@ def start_antiradar(message):
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     button_geo = telebot.types.KeyboardButton(text="Отправить геопозицию", request_location=True)
-    button_off_geo = telebot.types.KeyboardButton(text="Выключить анти-радар")
+    button_off_geo = telebot.types.KeyboardButton(text="Выключить Антирадар")
     keyboard.add(button_geo)
     keyboard.add(button_off_geo)
     bot.send_message(
         user_id,
-        "⚠️ Пожалуйста, разрешите *доступ к геопозиции* для запуска анти-радара!\n\nНажмите кнопку, чтобы отправить геопозицию...\n\n"
-        "_P.S. Функция анти-радар находится в бета-версии! Данные камер не обновляются автоматически из-за ограничений telegram! Обновляйте свою геопозицию вручную!_",
+        "⚠️ Пожалуйста, разрешите *доступ к геопозиции* для запуска антирадара!\n\nНажмите кнопку, чтобы отправить геопозицию...\n\n"
+        "_P.S. Функция антирадар находится в бета-версии! Данные камер не обновляются автоматически из-за ограничений telegram! Обновляйте свою геопозицию вручную!_",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
@@ -21533,9 +21535,9 @@ def handle_antiradar_location(message):
     else:
         bot.send_message(user_id, "Пожалуйста, выберите категорию из меню")
 
-@bot.message_handler(func=lambda message: message.text == "Выключить анти-радар")
-@check_function_state_decorator('Выключить анти-радар')
-@track_usage('Выключить анти-радар')
+@bot.message_handler(func=lambda message: message.text == "Выключить антирадар")
+@check_function_state_decorator('Выключить антирадар')
+@track_usage('Выключить антирадар')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -21548,7 +21550,7 @@ def stop_antiradar(message):
     user_id = message.chat.id
     if user_id in user_tracking:
         user_tracking[user_id]['tracking'] = False
-        bot.send_message(user_id, "❌ Анти-радар остановлен!")
+        bot.send_message(user_id, "❌ Антирадар остановлен!")
 
         if user_tracking[user_id].get('last_camera_message'):
             bot.unpin_chat_message(user_id, user_tracking[user_id]['last_camera_message'])
@@ -21556,7 +21558,7 @@ def stop_antiradar(message):
 
         return_to_menu(message)
     else:
-        bot.send_message(user_id, "❌ Анти-радар не был запущен!")
+        bot.send_message(user_id, "❌ Антирадар не был запущен!")
 
 def delete_messages(user_id, message_id):
     time.sleep(6)
@@ -23550,7 +23552,7 @@ def start_menu(user_id):
     item7 = types.KeyboardButton("Код региона")
     item8 = types.KeyboardButton("Коды OBD2")
     item9 = types.KeyboardButton("Напоминания")
-    item10 = types.KeyboardButton("Анти-радар")
+    item10 = types.KeyboardButton("Антирадар")
     item11 = types.KeyboardButton("Прочее")
 
     markup.add(itembuysub)
