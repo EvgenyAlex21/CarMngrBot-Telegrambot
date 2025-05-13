@@ -1616,7 +1616,7 @@ def send_subscription_invoice(call):
 
     bot_functions = (
         "🚀 Ваш идеальный спутник в дороге: от расчета топлива и учета трат "
-        "до прогноза погоды и Антирадара — все для удобства и экономии!"
+        "до прогноза погоды и антирадара — все для удобства и экономии!"
     )
 
     title = f"🌟 Подписка на {label}"
@@ -21486,7 +21486,7 @@ def start_antiradar(message):
 
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     button_geo = telebot.types.KeyboardButton(text="Отправить геопозицию", request_location=True)
-    button_off_geo = telebot.types.KeyboardButton(text="Выключить Антирадар")
+    button_off_geo = telebot.types.KeyboardButton(text="Выключить антирадар")
     keyboard.add(button_geo)
     keyboard.add(button_off_geo)
     bot.send_message(
