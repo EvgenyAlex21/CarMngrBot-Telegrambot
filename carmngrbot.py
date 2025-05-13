@@ -3017,8 +3017,7 @@ def exchange_points_handler(message):
             break
     
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"))
-    markup.add(telebot.types.KeyboardButton("Обмен на функции"))
+    markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"), telebot.types.KeyboardButton("Обмен на функцию"))
     markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
     markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
     markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -3076,7 +3075,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
             "Введите количество баллов для обмена:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
-    elif message.text == "Обмен на функции":
+    elif message.text == "Обмен на функцию":
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         for i in range(0, len(PAID_FEATURES), 2):
             if i + 1 < len(PAID_FEATURES):
@@ -3095,8 +3094,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.register_next_step_handler(message, process_feature_selection, points)
     else:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"))
-        markup.add(telebot.types.KeyboardButton("Обмен на функции"))
+        markup.add(telebot.types.KeyboardButton("Обмен на время"), telebot.types.KeyboardButton("Обмен на скидку"), telebot.types.KeyboardButton("Обмен на функцию"))
         markup.add(telebot.types.KeyboardButton("Вернуться в баллы"))
         markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
         markup.add(telebot.types.KeyboardButton("В главное меню"))
@@ -26710,7 +26708,7 @@ def process_perform_exchange(message):
         username = f"@{username}"
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Обмен на время', 'Обмен на скидку', 'Обмен на функции')
+    markup.add('Обмен на время', 'Обмен на скидку', 'Обмен на функцию')
     markup.add('Вернуться в управление обменами')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
@@ -26737,7 +26735,7 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         return
 
     exchange_type = message.text.strip()
-    if exchange_type not in ['Обмен на время', 'Обмен на скидку', 'Обмен на функции']:
+    if exchange_type not in ['Обмен на время', 'Обмен на скидку', 'Обмен на функцию']:
         bot.send_message(message.chat.id, "Неверный тип обмена!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_type, user_id, exchange_rate)
         return
