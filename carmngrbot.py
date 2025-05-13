@@ -1984,7 +1984,7 @@ def view_subscription(message):
         bot.send_message(user_id, (
             "⚠️ *У вас нет подписок!*\n\n"
             "🚀 Попробуй оформить первую подписку прямо сейчас!\n"
-            "👉 Перейди в раздел *«Купить подписку»*!"
+            "👉 Перейди в раздел *«купить подписку»*!"
         ), parse_mode="Markdown")
         return
 
@@ -1994,7 +1994,7 @@ def view_subscription(message):
         bot.send_message(user_id, (
             "⚠️ *У вас нет активных подписок!*\n\n"
             "🚀 Подключи подписку, чтобы воспользоваться функциями бота!\n"
-            "👉 Перейди в раздел *«Купить подписку»*!"
+            "👉 Перейди в раздел *«купить подписку»*!"
         ), parse_mode="Markdown")
         return
 
@@ -2115,10 +2115,13 @@ def view_subscription_history(message):
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now()
+    now = datetime.now() 
     expired_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < now]
     if not expired_plans:
-        bot.send_messagelul(message)
+        bot.send_message(user_id, (
+            "❌ *У вас нет истекших подписок!*\n"
+            "🚀 История подписок появится, когда истечет из срока какая-либо подписка!"
+        ), parse_mode="Markdown")
         return
 
     plans_summary = "📜 *История подписок:*\n\n"
@@ -2306,7 +2309,7 @@ def cancel_subscription(message):
         bot.send_message(user_id, (
             "⚠️ *У вас нет подписок!*\n\n"
             "🚀 Попробуй оформить первую подписку прямо сейчас!\n"
-            "👉 Перейди в раздел *«Купить подписку»*!"
+            "👉 Перейди в раздел *«купить подписку»*!"
         ), parse_mode="Markdown")
         payments_function(message, show_description=False)
         return
@@ -2322,7 +2325,7 @@ def cancel_subscription(message):
         bot.send_message(user_id, (
             "⚠️ *У вас нет активных подписок!*\n\n"
             "🚀 Подключи подписку, чтобы воспользоваться функциями бота!\n"
-            "👉 Перейди в раздел *«Купить подписку»*!"
+            "👉 Перейди в раздел *«купить подписку»*!"
         ), parse_mode="Markdown")
         payments_function(message, show_description=False)
         return
@@ -3563,6 +3566,21 @@ def user_process_gift_recipient(message, sender_points):
         bot.register_next_step_handler(message, user_process_gift_recipient, sender_points)
         return
     
+    users_data = load_users_data()
+    join_date_str = users_data.get(recipient_id, {}).get('join_date', "01.01.2025 в 00:00")
+    join_date = datetime.strptime(join_date_str, "%d.%m.%Y в %H:%M")
+    if (datetime.now() - join_date).total_seconds() < 24 * 3600:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Вернуться в подарки", "Вернуться в баллы")
+        markup.add(types.KeyboardButton("Вернуться в подписку"))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(message.chat.id, (
+            "❌ Нельзя дарить баллы пользователям, зарегистрированным менее 24 часов назад!\n"
+            "👉 Пожалуйста, выберите другого пользователя"
+        ), reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, user_process_gift_recipient, sender_points)
+        return
+    
     recipient_username = escape_markdown(data['subscriptions']['users'][recipient_id].get('username', 'неизвестный'))
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -3983,12 +4001,12 @@ def user_process_gift_time_amount(message, recipient_id, total_available_minutes
         end_date = min([datetime.strptime(p['end_date'], '%d.%m.%Y в %H:%M') for p in active_plans] or [datetime.now()]).strftime('%d.%m.%Y в %H:%M')
         
         bot.send_message(user_id, (
-            f"🎉 *Вы подарили* {escape_markdown(recipient_username)} *{gift_description}!*\n\n"
+            f"🎉 *Вы подарили* {escape_markdown(recipient_username)} *{gift_description}!*\n"
             f"⏳ Ваша подписка теперь активна до: {end_date}"
         ), parse_mode="Markdown")
         
         bot.send_message(recipient_id, (
-            f"🎁 *{escape_markdown(sender_username)} подарил вам {gift_description}!*\n\n"
+            f"🎁 *{escape_markdown(sender_username)} подарил вам {gift_description}!*\n"
             f"⏳ Ваша подписка теперь активна до: {new_end.strftime('%d.%m.%Y в %H:%M')}"
         ), parse_mode="Markdown")
         
@@ -4021,7 +4039,7 @@ def view_gifts_history(message):
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(user_id, {})
     history = user_data.get('points_history', [])
-    gift_entries = [entry for entry in history if "Подарок" in entry['reason']]
+    gift_entries = [entry for entry in history if "подарок" in entry['reason'].lower()]
 
     if not gift_entries:
         bot.send_message(message.chat.id, "❌ У вас нет истории подарков!", parse_mode="Markdown")
@@ -4036,7 +4054,7 @@ def view_gifts_history(message):
         gift_type = []
         if entry['points'] > 0:
             gift_type.append(f"{format_number(entry['points'])} {pluralize_points(entry['points'])}")
-        if "времени" in entry['reason']:
+        if "времени" in entry['reason'].lower():
             reason_parts = clean_escaped_text(entry['reason']).split(': ')
             if len(reason_parts) > 1:
                 time_part = reason_parts[-1].split(' (от админа)')[0]
@@ -4291,8 +4309,7 @@ TRANSLATIONS_YOURPROMOCODES = {
     "time_1day": "1 день в магазине", "time_2days": "2 дня в магазине", "time_4days": "4 дня в магазине",
     "time_5days": "5 дней в магазине", "time_8days": "8 дней в магазине", "time_10days": "10 дней в магазине",
     "time_14days": "14 дней в магазине", "time_15days": "15 дней в магазине", "time_21days": "21 день в магазине", 
-    "time_30days": "30 дней в магазине", "time_45days": "45 дней в магазине", "time_60days": "60 дней в магазине",
-    "time_120days": "120 дней в магазине",
+    "time_45days": "45 дней в магазине", "time_60days": "60 дней в магазине", "time_120days": "120 дней в магазине",
     "trial_subscription_3": "3 дня в подписках", "weekly_subscription_7": "7 дней в подписках",
     "monthly_subscription_30": "30 дней в подписках", "quarterly_subscription_90": "90 дней в подписках",
     "semiannual_subscription_180": "180 дней в подписках", "yearly_subscription_365": "365 дней в подписках",
@@ -22026,33 +22043,28 @@ def initialize_user_notifications(chat_id):
     str_chat_id = str(chat_id)
     active_subscription = has_active_subscription(chat_id)
     
+    default_notifications = {
+        "weather": True if active_subscription else False,
+        "fuel_prices": True if active_subscription else False,
+        "exchange_rates": True if active_subscription else False
+    }
+
     if str_chat_id not in notifications:
         notifications[str_chat_id] = {
             "latitude": None,
             "longitude": None,
             "city_code": None,
-            "notifications": {
-                "weather": False,
-                "fuel_prices": False,
-                "exchange_rates": False
-            }
+            "notifications": default_notifications
         }
     else:
         if "notifications" not in notifications[str_chat_id]:
-            notifications[str_chat_id]["notifications"] = {
-                "weather": False,
-                "fuel_prices": False,
-                "exchange_rates": False
-            }
+            notifications[str_chat_id]["notifications"] = default_notifications
         else:
-            if not active_subscription:
-                notifications[str_chat_id]["notifications"] = {
-                    "weather": False,
-                    "fuel_prices": False,
-                    "exchange_rates": False
-                }
-            if "exchange_rates" not in notifications[str_chat_id]["notifications"]:
-                notifications[str_chat_id]["notifications"]["exchange_rates"] = False
+            for key in default_notifications:
+                if key not in notifications[str_chat_id]["notifications"]:
+                    notifications[str_chat_id]["notifications"][key] = default_notifications[key]
+            if active_subscription and not any(notifications[str_chat_id]["notifications"].values()):
+                notifications[str_chat_id]["notifications"] = default_notifications
 
     with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
         json.dump(notifications, f, ensure_ascii=False, indent=4)
@@ -27416,8 +27428,7 @@ def process_create_promo_code_items(message, discount, uses):
         "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
         "points_500", "points_750", "points_1000",
         "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
-        "time_14days", "time_15days", "time_21days", "time_30days", "time_45days",
-        "time_60days", "time_120days", 
+        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days", 
         "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
         "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
     ]    
@@ -27693,8 +27704,7 @@ def process_assign_discount_items(message, user_id, discount):
         "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
         "points_500", "points_750", "points_1000",
         "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
-        "time_14days", "time_15days", "time_21days", "time_30days", "time_45days",
-        "time_60days", "time_120days", 
+        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days", 
         "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
         "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
     ]

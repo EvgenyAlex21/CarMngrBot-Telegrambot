@@ -62,7 +62,6 @@
         "time_14days": {"base_price": 240, "fictitious_discount": 0, "label": "14 дней", "duration": 14},
         "time_15days": {"base_price": 250, "fictitious_discount": 0, "label": "15 дней", "duration": 15},
         "time_21days": {"base_price": 330, "fictitious_discount": 0, "label": "21 день", "duration": 21},
-        "time_30days": {"base_price": 450, "fictitious_discount": 0, "label": "30 дней", "duration": 30},
         "time_45days": {"base_price": 630, "fictitious_discount": 0, "label": "45 дней", "duration": 45},
         "time_60days": {"base_price": 780, "fictitious_discount": 0, "label": "60 дней", "duration": 60},
         "time_120days": {"base_price": 1350, "fictitious_discount": 0, "label": "120 дней", "duration": 120}
