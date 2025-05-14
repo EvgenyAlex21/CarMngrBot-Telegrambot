@@ -1522,7 +1522,7 @@ def send_subscription_options(message):
     buttons = []
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
         base_price = plan_info["base_price"]
-        fictitious_discount = plan_info.get("fictinous_discount", 0)
+        fictitious_discount = plan_info.get("fictitious_discount", 0)
         label = plan_info["label"]
 
         discount_applicable = (
@@ -1574,7 +1574,7 @@ def send_subscription_invoice(call):
     plan_key = call.data
     plan_info = SUBSCRIPTION_PLANS[plan_key]
     base_price = plan_info["base_price"]
-    fictitious_discount = plan_info["fictinous_discount"]
+    fictitious_discount = plan_info["fictitious_discount"]
     label = plan_info["label"]
     duration = plan_info["duration"]
 
@@ -1615,7 +1615,7 @@ def send_subscription_invoice(call):
             "provider_payment_charge_id": None,
             "source": "promo_100_percent",
             "user_discount": user_discount,
-            "fictinous_discount": fictitious_discount
+            "fictitious_discount": fictitious_discount
         })
 
         if discount_type == "promo":
@@ -1781,7 +1781,7 @@ def process_successful_payment(message):
             "provider_payment_charge_id": payment_info.provider_payment_charge_id,
             "source": "user",
             "user_discount": applied_discount,
-            "fictinous_discount": fictitious_discount
+            "fictitious_discount": fictitious_discount
         })
         user_data['total_amount'] = user_data.get('total_amount', 0) + price
         data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
@@ -24483,6 +24483,7 @@ def list_users_for_payments_pay(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для добавления подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_subscription)
 
+@text_only_handler
 def process_add_subscription(message):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
