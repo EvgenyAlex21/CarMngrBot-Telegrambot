@@ -1047,16 +1047,22 @@ def set_free_trial_period(user_id, days, source="default"):
         }
 
     user_data = data['subscriptions']['users'][user_id_str]
+    now = datetime.now()
 
     if 'plans' not in user_data:
         user_data['plans'] = []
 
-    latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-    new_end = latest_end + timedelta(days=days)
+    if user_data['plans']:
+        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+        start_date = max(latest_end, now)  
+    else:
+        start_date = now
+
+    new_end = start_date + timedelta(days=days)
 
     user_data['plans'].append({
         "plan_name": "free",
-        "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+        "start_date": start_date.strftime("%d.%m.%Y в %H:%M"),
         "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
         "price": 0,
         "source": source
@@ -1585,17 +1591,24 @@ def send_subscription_invoice(call):
     )
     user_discount = user_discount if discount_applicable else 0
 
+    now = datetime.now()
+
     if user_discount >= 100:
         user_data = data['subscriptions']['users'].setdefault(user_id, {
             "plans": [], "total_amount": 0, "referral_points": 0, "store_purchases": []
         })
 
-        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-        new_end = latest_end + timedelta(days=duration)
+        if user_data['plans']:
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+            start_date = max(latest_end, now) 
+        else:
+            start_date = now
+
+        new_end = start_date + timedelta(days=duration)
 
         user_data['plans'].append({
             "plan_name": plan_key.split('_')[0],
-            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "start_date": start_date.strftime("%d.%m.%Y в %H:%M"),
             "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
             "price": 0,
             "telegram_payment_charge_id": None,
@@ -1619,7 +1632,7 @@ def send_subscription_invoice(call):
 
         bot.send_message(user_id, (
             "🎉 *Подписка активирована бесплатно!*\n\n"
-            f"📅 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"📅 *Начало:* {start_date.strftime('%d.%m.%Y в %H:%M')}\n"
             f"⏳ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
         ), parse_mode="Markdown")
         bot.answer_callback_query(call.id, "Подписка активирована!")
@@ -1716,6 +1729,8 @@ def process_successful_payment(message):
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
     discount_type = data['subscriptions']['users'].get(user_id, {}).get('discount_type', 'promo')
 
+    now = datetime.now()
+
     if payload in SUBSCRIPTION_PLANS:
         plan_key = payload
         plan_info = SUBSCRIPTION_PLANS[plan_key]
@@ -1734,8 +1749,13 @@ def process_successful_payment(message):
         discounted_price = base_price - user_discount_amount
         price = max(1, round(discounted_price - fictitious_discount, 2))
 
-        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-        new_end = latest_end + timedelta(days=plan_duration)
+        if user_data['plans']:
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+            start_date = max(latest_end, now)  
+        else:
+            start_date = now
+
+        new_end = start_date + timedelta(days=plan_duration)
 
         total_purchases = sum(1 for p in user_data['plans'] if p.get('source') == "user") + 1  
 
@@ -1754,14 +1774,14 @@ def process_successful_payment(message):
 
         user_data['plans'].append({
             "plan_name": plan_key.split('_')[0],
-            "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+            "start_date": start_date.strftime("%d.%m.%Y в %H:%M"),
             "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
             "price": price,
             "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
             "provider_payment_charge_id": payment_info.provider_payment_charge_id,
             "source": "user",
             "user_discount": applied_discount,
-            "fictitious_discount": fictitious_discount
+            "fictinous_discount": fictitious_discount
         })
         user_data['total_amount'] = user_data.get('total_amount', 0) + price
         data['all_users_total_amount'] = data.get('all_users_total_amount', 0) + price
@@ -1829,7 +1849,7 @@ def process_successful_payment(message):
         bot.send_message(user_id, (
             "🎉 *Спасибо за оплату*!\n\n"
             f"💰 *Оплачено:* {price:.2f} ₽\n\n"
-            f"📅 *Ваша подписка начнётся:*\n{latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"📅 *Ваша подписка начнётся:*\n{start_date.strftime('%d.%m.%Y в %H:%M')}\n"
             f"⏳ *Подписка будет активна до:*\n{new_end.strftime('%d.%m.%Y в %H:%M')}\n\n"
         ), parse_mode="Markdown")
 
@@ -1915,12 +1935,17 @@ def process_successful_payment(message):
                 ), parse_mode="Markdown")
                 return
 
-            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']] or [datetime.now()])
-            new_end = latest_end + timedelta(days=duration)
+            if user_data['plans']:
+                latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+                start_date = max(latest_end, now)  
+            else:
+                start_date = now
+
+            new_end = start_date + timedelta(days=duration)
 
             user_data['plans'].append({
                 "plan_name": "store_time",
-                "start_date": latest_end.strftime("%d.%m.%Y в %H:%M"),
+                "start_date": start_date.strftime("%d.%m.%Y в %H:%M"),
                 "end_date": new_end.strftime("%d.%m.%Y в %H:%M"),
                 "price": price,
                 "telegram_payment_charge_id": payment_info.telegram_payment_charge_id,
@@ -1948,7 +1973,7 @@ def process_successful_payment(message):
                 f"🎉 *Спасибо за покупку!*\n\n"
                 f"💰 *Оплачено:* {price:.2f} ₽\n"
                 f"📅 *Получено:* {duration} дней\n\n"
-                f"🕒 *Начало:* {latest_end.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"🕒 *Начало:* {start_date.strftime('%d.%m.%Y в %H:%M')}\n"
                 f"⌛ *Конец:* {new_end.strftime('%d.%m.%Y в %H:%M')}\n"
             ), parse_mode="Markdown")
 
@@ -2784,6 +2809,7 @@ def send_store_invoice(call):
     label = item_info["label"]
 
     data = load_payment_data()
+    user_data = data['subscriptions']['users'].get(user_id, {"plans": [], "store_purchases": []})
     user_discount = data['subscriptions']['users'].get(user_id, {}).get('discount', 0)
     applicable_category = data['subscriptions']['users'].get(user_id, {}).get('applicable_category')
     applicable_items = data['subscriptions']['users'].get(user_id, {}).get('applicable_items', [])
@@ -2793,8 +2819,22 @@ def send_store_invoice(call):
         item_key in applicable_items or
         (applicable_category is None and not applicable_items)
     )
-    
     user_discount = user_discount if discount_applicable else 0
+
+    if item_key.startswith("time_"):
+        duration = item_info["duration"]
+        monthly_key = datetime.now().strftime("%m.%Y")
+        monthly_days = sum(
+            p['duration'] for p in user_data.get('store_purchases', [])
+            if p['purchase_date'].startswith(monthly_key) and p['item_key'].startswith("time_")
+        )
+        if monthly_days + duration > 365:
+            bot.send_message(user_id, (
+                "⚠️ Вы превысили месячный лимит покупки времени в размере 365 дней!\n"
+                "Попробуйте снова в следующем месяце..."
+            ), parse_mode="Markdown")
+            bot.answer_callback_query(call.id)
+            return
 
     user_discount_amount = round(base_price * (user_discount / 100), 2)
     discounted_price = base_price - user_discount_amount
@@ -2836,6 +2876,15 @@ def send_store_invoice(call):
         description += f"🎁 Акционная скидка: -{fictitious_discount:.2f} ₽\n"
         fictitious_discount_kopecks = int(round(fictitious_discount * 100))
         prices.append(types.LabeledPrice("Акционная скидка", -fictitious_discount_kopecks))
+
+    if item_key.startswith("time_"):
+        now = datetime.now()
+        if user_data['plans']:
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+            start_date = max(latest_end, now)  
+        else:
+            start_date = now
+        description += f"🕒 Начало подписки: {start_date.strftime('%d.%m.%Y в %H:%M')}\n"
 
     description += f"💸 Итог: {final_price:.2f} ₽\n\n{bot_functions}"
 
@@ -22663,14 +22712,26 @@ def check_and_create_file():
             json.dump({}, file, ensure_ascii=False, indent=4)
 
 def load_users():
-    check_and_create_file()  
-    with open(DB_PATH, 'r', encoding='utf-8') as file:
-        return json.load(file)
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def save_users(users):
-    check_and_create_file()  
-    with open(DB_PATH, 'w', encoding='utf-8') as file:
-        json.dump(users, file, ensure_ascii=False, indent=4)
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'w', encoding='utf-8') as file:
+            json.dump(users, file, ensure_ascii=False, indent=4)
+    except Exception as e:
+        pass
 
 def delete_user_data_from_all_files(user_id, users):
     username = users.get(str(user_id), {}).get('username', 'неизвестный')
@@ -23410,10 +23471,18 @@ def save_active_chats():
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 def load_users():
-    if os.path.exists(USER_DB_PATH):
-        with open(USER_DB_PATH, 'r', encoding='utf-8') as file:
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {}
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
@@ -24382,7 +24451,6 @@ def add_subscription(message):
 
 @text_only_handler
 def list_users_for_payments_pay(message):
-
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
         return
@@ -24415,17 +24483,13 @@ def list_users_for_payments_pay(message):
     bot.send_message(message.chat.id, "Введите номер, id или username пользователя для добавления подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_subscription)
 
-@text_only_handler
 def process_add_subscription(message):
-
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
         return
-		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
-
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
@@ -24454,11 +24518,24 @@ def process_add_subscription(message):
         bot.register_next_step_handler(message, process_add_subscription)
         return
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Неделя', 'Месяц', 'Год', 'Свой план')
-    markup.add('Вернуться в управление подписками')
-    markup.add('Вернуться в управление системой')
-    markup.add('В меню админ-панели')
+    subscription_plans = load_subscriptions_and_store()[0]
+    if not subscription_plans:
+        bot.send_message(message.chat.id, "❌ Планы подписки не загружены!")
+        manage_system(message)
+        return
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    plan_labels = [plan['label'] for plan in subscription_plans.values()]
+
+    for i in range(0, len(plan_labels), 3):
+        row = plan_labels[i:i+3]
+        markup.row(*row)
+    
+    markup.row('Свой план')
+    markup.row('Вернуться в управление подписками')
+    markup.row('Вернуться в управление системой')
+    markup.row('В меню админ-панели')
+
     bot.send_message(message.chat.id, "Выберите план подписки:", reply_markup=markup)
     bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
 
@@ -24467,17 +24544,19 @@ def process_add_subscription_plan(message, user_id):
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
         return
-		
     if message.text == "Вернуться в управление системой":
         manage_system(message)
         return
-
     if message.text == "В меню админ-панели":
         show_admin_panel(message)
         return
 
     plan_name = message.text.strip().lower()
-    if plan_name not in ['неделя', 'месяц', 'год', 'свой план']:
+    subscription_plans = load_subscriptions_and_store()[0]  
+    valid_plans = {v['label'].lower(): k for k, v in subscription_plans.items()}
+    valid_plans['свой план'] = 'custom'
+
+    if plan_name not in valid_plans:
         bot.send_message(message.chat.id, "Неверный план подписки!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
         bot.register_next_step_handler(message, process_add_subscription_plan, user_id)
         return
@@ -24501,18 +24580,12 @@ def process_add_subscription_plan(message, user_id):
         if plan_end_date > latest_end_date:
             latest_end_date = plan_end_date
 
-    if plan_name == 'неделя':
-        new_end_date = latest_end_date + timedelta(days=7)
-        plan_name_eng = 'weekly'
-        plan_name_rus = 'неделя'
-    elif plan_name == 'месяц':
-        new_end_date = latest_end_date + timedelta(days=31)
-        plan_name_eng = 'monthly'
-        plan_name_rus = 'месяц'
-    elif plan_name == 'год':
-        new_end_date = latest_end_date + timedelta(days=365)
-        plan_name_eng = 'yearly'
-        plan_name_rus = 'год'
+    plan_key = valid_plans[plan_name]
+    plan_details = subscription_plans[plan_key]
+    duration = plan_details['duration']
+    plan_name_rus = plan_details['label']
+    new_end_date = latest_end_date + timedelta(days=duration)
+    plan_name_eng = plan_key.replace('_subscription_', '_')
 
     new_plan = {
         "plan_name": plan_name_eng,
@@ -24548,7 +24621,6 @@ def process_add_subscription_plan(message, user_id):
 
 @text_only_handler
 def process_custom_plan_unit(message, user_id):
-
     if message.text == "Вернуться в управление подписками":
         manage_subscriptions(message)
         return
@@ -32405,10 +32477,18 @@ def save_active_chats():
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 def load_users():
-    if os.path.exists(USER_DB_PATH):
-        with open(USER_DB_PATH, 'r', encoding='utf-8') as file:
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {}
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def load_admins():
     if os.path.exists(ADMIN_DB_PATH):
@@ -32710,10 +32790,18 @@ def check_admin_access(message):
         return False
 
 def load_users():
-    if os.path.exists(USER_DATA_PATH):
-        with open(USER_DATA_PATH, 'r', encoding='utf-8') as file:
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {}
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def save_database():
     for key, value in alerts['notifications'].items():
@@ -34693,10 +34781,18 @@ def load_admin_sessions():
     return data['admin_sessions']
 
 def load_users():
-    if os.path.exists(USER_DB_PATH):
-        with open(USER_DB_PATH, 'r', encoding='utf-8') as file:
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {}
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
@@ -36008,10 +36104,18 @@ admin_sessions = []
 temp_news = {}
 
 def load_users():
-    if os.path.exists(USER_DATA_PATH):
-        with open(USER_DATA_PATH, 'r') as file:
+    check_and_create_file()
+    try:
+        with open(DB_PATH, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {}
+    except UnicodeDecodeError as e:
+        with open(DB_PATH, 'r', encoding='cp1251') as file:
+            content = file.read()
+            with open(DB_PATH, 'w', encoding='utf-8') as outfile:
+                json.dump(json.loads(content), outfile, ensure_ascii=False, indent=4)
+            return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {}
 
 def save_news_database():
     for key, value in news.items():
