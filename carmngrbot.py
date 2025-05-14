@@ -3005,7 +3005,7 @@ def exchange_points_handler(message):
     data = load_payment_data()
     points = data['subscriptions']['users'].get(user_id, {}).get('referral_points', 0)
     
-    if points < 0.5:
+    if points < 2: 
         bot.send_message(message.chat.id, "❌ Недостаточно баллов!", parse_mode="Markdown")
         return_to_scores_menu(message)
         return
@@ -3025,16 +3025,15 @@ def exchange_points_handler(message):
     markup.add(telebot.types.KeyboardButton("Вернуться в подписку"))
     markup.add(telebot.types.KeyboardButton("В главное меню"))
     
-    total_exchanged = sum(h['points'] for h in data['subscriptions']['users'].get(user_id, {}).get('points_history', []) if h['action'] == "spent")
-    exchange_rate = 2.0 
+    exchange_rate = 1.0 / 5.0  
     
     bot.send_message(message.chat.id, (
         f"*Обмен баллов:*\n\n"
         f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
         f"🔄 *Возможные обмены:*\n"
-        f"⏳ - *Время подписки:* _1 балл = {format_number(exchange_rate)} часа_\n"
-        f"🏷️ - *Скидка:* _15 баллов = 5% (макс. 35%)_\n"
-        f"🔓 - *Доступ к функциям:* _5 баллов = 15 минут_\n\n"
+        f"⏳ - *Время подписки:* _5 баллов = 1 час_\n"
+        f"🏷️ - *Скидка:* _8 баллов = 5% (макс. 35%)_\n"
+        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_\n\n"
         "Выберите опцию:"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
@@ -3062,7 +3061,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, (
             f"*Обмен баллов:*\n\n"
             f"🎁 *Текущие баллы:* {format_number(points)}\n"
-            f"⏳ *Обмен на время:* _1 балл = {format_number(exchange_rate)} часа_\n\n"
+            f"⏳ *Обмен на время:* _5 баллов = 1 час_\n\n"
             "Введите количество баллов для обмена:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_points_exchange, exchange_rate)
@@ -3074,7 +3073,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, (
             f"*Обмен баллов:*\n\n"
             f"🎁 *Текущие баллы:* {format_number(points)}\n"
-            f"🏷️ *Обмен на скидку:* _15 баллов = 5% (макс. 35%)_\n\n"
+            f"🏷️ *Обмен на скидку:* _8 баллов = 5% (макс. 35%)_\n\n"
             "Введите количество баллов для обмена:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
@@ -3091,7 +3090,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, (
             f"*Обмен баллов на функции:*\n\n"
             f"🎁 *Текущие баллы:* {format_number(points)}\n"
-            f"🔓 *Обмен на доступ к функциям:* _5 баллов = 15 минут_\n\n"  
+            f"🔓 *Обмен на доступ к функциям:* _2 балла = 15 минут_\n\n"  
             "Выберите функцию:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_feature_selection, points)
@@ -3104,6 +3103,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, "Выберите одну из предложенных опций!", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
 
+# Обработка выбора функции
 @text_only_handler
 def process_feature_selection(message, points):
     if message.text == "Вернуться в баллы":
@@ -3140,11 +3140,12 @@ def process_feature_selection(message, points):
     bot.send_message(message.chat.id, (
         f"*Обмен баллов на функцию: {feature.lower()}*\n\n"
         f"🎁 *Текущие баллы:* {format_number(points)}\n"
-        f"🔓 *Обмен на доступ к функции:* _5 баллов = 15 минут_\n\n"  
+        f"🔓 *Обмен на доступ к функции:* _2 балла = 15 минут_\n\n"  
         "Введите количество баллов для обмена:"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_feature_exchange, feature, points)
 
+# Обработка обмена на функцию
 @text_only_handler
 def process_feature_exchange(message, feature, points):
     if message.text == "Вернуться в баллы":
@@ -3162,14 +3163,14 @@ def process_feature_exchange(message, feature, points):
     
     try:
         exchange_points = float(message.text.replace(',', '.'))
-        if exchange_points < 5:
-            raise ValueError("Минимальное количество баллов — 5!")
+        if exchange_points < 2:
+            raise ValueError("Минимальное количество баллов — 2!")
         if exchange_points > points:
             raise ValueError("Недостаточно баллов!")
-        if exchange_points % 5 != 0:
-            raise ValueError("Баллы должны быть кратны 5!")
+        if exchange_points % 2 != 0:
+            raise ValueError("Баллы должны быть кратны 2!")
         
-        total_minutes = exchange_points * 3
+        total_minutes = exchange_points * (15.0 / 2.0) 
         days = int(total_minutes // (24 * 60))
         remaining_minutes = total_minutes % (24 * 60)
         remaining_hours = remaining_minutes // 60
@@ -3195,7 +3196,9 @@ def process_feature_exchange(message, feature, points):
         data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
             "action": "spent",
             "points": exchange_points,
+            "exchange_type": "feature",
             "reason": f"Обмен на функцию '{feature}' ({duration_str})",
+            "feature_name": feature,
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
         
@@ -3242,16 +3245,16 @@ def process_points_exchange(message, exchange_rate):
     
     try:
         exchange_points = float(message.text.replace(',', '.'))
-        if exchange_points < 0.5:
-            raise ValueError("Минимальное количество баллов — 0.5!")
+        if exchange_points < 5:
+            raise ValueError("Минимальное количество баллов — 5!")
         if exchange_points > points:
             raise ValueError("Недостаточно баллов!")
-        if exchange_points % 0.5 != 0:
-            raise ValueError("Баллы должны быть кратны 0.5!")
-        if exchange_points > 4380:
-            raise ValueError("Максимальный обмен — 4380 баллов (365 дней)!")
+        if exchange_points % 5 != 0:
+            raise ValueError("Баллы должны быть кратны 5!")
+        if exchange_points > 6000:  
+            raise ValueError("Максимальный обмен — 6000 баллов (50 дней)!")
         
-        total_hours = exchange_points * exchange_rate
+        total_hours = exchange_points * exchange_rate  
         days = int(total_hours // 24)
         remaining_hours = total_hours % 24
         
@@ -3275,6 +3278,7 @@ def process_points_exchange(message, exchange_rate):
         data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
             "action": "spent",
             "points": exchange_points,
+            "exchange_type": "subscription",
             "reason": f"Обмен на {duration_str}",
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
@@ -3328,14 +3332,14 @@ def process_discount_exchange(message):
     
     try:
         exchange_points = float(message.text.replace(',', '.'))
-        if exchange_points < 15:
-            raise ValueError("Минимальное количество баллов — 15!")
+        if exchange_points < 8:
+            raise ValueError("Минимальное количество баллов — 8!")
         if exchange_points > points:
             raise ValueError("Недостаточно баллов!")
-        if exchange_points % 15 != 0:
-            raise ValueError("Баллы должны быть кратны 15!")
+        if exchange_points % 8 != 0:
+            raise ValueError("Баллы должны быть кратны 8!")
         
-        discount = (exchange_points // 15) * 5
+        discount = (exchange_points // 8) * 5
         current_discount = users_data.get(user_id, {}).get('discount', 0)
         if current_discount + discount > 35:
             raise ValueError("Максимальная скидка — 35%!")
@@ -3344,6 +3348,7 @@ def process_discount_exchange(message):
         data['subscriptions']['users'][user_id].setdefault('points_history', []).append({
             "action": "spent",
             "points": exchange_points,
+            "exchange_type": "discount",
             "reason": f"Обмен на {discount}% скидки",
             "date": datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
@@ -3353,6 +3358,7 @@ def process_discount_exchange(message):
         users_data[user_id]['discount_type'] = "points"
         
         save_payments_data(data)
+        save_users_data(users_data)
         
         bot.send_message(message.chat.id, (
             f"✅ *Обмен выполнен!*\n\n"
@@ -20136,28 +20142,32 @@ def show_fuel_price_menu(chat_id, city_code, site_type):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]]
     row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]]
-    row3 = [types.KeyboardButton("В главное меню")]
-    markup.add(*row1, *row2, *row3)
+    row3 = [types.KeyboardButton("Выбрать другой город")]
+    row4 = [types.KeyboardButton("В главное меню")]
+    markup.add(*row1, *row2)
+    markup.add(*row3)
+    markup.add(*row4)
     sent = bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
     bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
 
 progress = 0
 progress_lock = threading.Lock()
+processing_complete = False  
 
 def update_progress(chat_id, message_id, bot, start_time):
-    global progress
+    global progress, processing_complete
     while True:
         time.sleep(1)
         elapsed_time = time.time() - start_time
         with progress_lock:
-            if progress >= 100:
+            if processing_complete:
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=f"✅ Обработка завершена!\n\nВыполнено: 100%\nПрошло времени: {elapsed_time:.2f} секунд"
                 )
                 break
-            current_progress = progress
+            current_progress = min(progress, 99)  
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
@@ -20166,7 +20176,7 @@ def update_progress(chat_id, message_id, bot, start_time):
 
 @text_only_handler
 def process_fuel_price_selection(message, city_code, site_type):
-    global progress
+    global progress, processing_complete
     chat_id = message.chat.id
 
     if chat_id not in user_data:
@@ -20176,13 +20186,29 @@ def process_fuel_price_selection(message, city_code, site_type):
         return_to_menu(message)
         return
 
+    if message.text and message.text == "Выбрать другой город":
+        user_state[chat_id] = "choosing_city"
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        recent_cities = user_data.get(str(chat_id), {}).get('recent_cities', [])
+        city_buttons = [types.KeyboardButton(city.capitalize()) for city in recent_cities]
+        if city_buttons:
+            markup.row(*city_buttons)
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+        markup.add(types.KeyboardButton("В главное меню"))
+        bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_city_selection)
+        return
+
     if not message.text:
         sent = bot.send_message(chat_id, "Пожалуйста, выберите тип топлива из предложенных вариантов!")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]]
         row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]]
-        row3 = [types.KeyboardButton("В главное меню")]
-        markup.add(*row1, *row2, *row3)
+        row3 = [types.KeyboardButton("Выбрать другой город")]
+        row4 = [types.KeyboardButton("В главное меню")]
+        markup.add(*row1, *row2)
+        markup.add(*row3)
+        markup.add(*row4)
         bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
         bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
         return
@@ -20203,8 +20229,11 @@ def process_fuel_price_selection(message, city_code, site_type):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         row1 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]]
         row2 = [types.KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]]
-        row3 = [types.KeyboardButton("В главное меню")]
-        markup.add(*row1, *row2, *row3)
+        row3 = [types.KeyboardButton("Выбрать другой город")]
+        row4 = [types.KeyboardButton("В главное меню")]
+        markup.add(*row1, *row2)
+        markup.add(*row3)
+        markup.add(*row4)
         bot.send_message(chat_id, "Выберите тип топлива для отображения актуальных цен:", reply_markup=markup)
         bot.register_next_step_handler(sent, lambda msg: process_fuel_price_selection(msg, city_code, site_type))
         return
@@ -20215,6 +20244,8 @@ def process_fuel_price_selection(message, city_code, site_type):
     message_id = progress_message.message_id
 
     start_time = time.time()
+    progress = 0
+    processing_complete = False  
     progress_thread = threading.Thread(target=update_progress, args=(chat_id, message_id, bot, start_time))
     progress_thread.start()
 
@@ -20235,7 +20266,7 @@ def process_fuel_price_selection(message, city_code, site_type):
                     if item[1].lower() in [ft.lower() for ft in actual_fuel_types]
                 ]
                 with progress_lock:
-                    progress = 100
+                    progress = 90  
             else:
                 for fuel_type in actual_fuel_types:
                     try:
@@ -20252,7 +20283,7 @@ def process_fuel_price_selection(message, city_code, site_type):
                             current_step += 1
 
                     with progress_lock:
-                        progress = (current_step / total_steps) * 100
+                        progress = (current_step / total_steps) * 90  
 
                 save_fuel_data(city_code, fuel_prices)
         else:
@@ -20271,7 +20302,7 @@ def process_fuel_price_selection(message, city_code, site_type):
                         current_step += 1
 
                 with progress_lock:
-                    progress = (current_step / total_steps) * 100
+                    progress = (current_step / total_steps) * 90  
 
             save_fuel_data(city_code, fuel_prices)
 
@@ -20314,6 +20345,7 @@ def process_fuel_price_selection(message, city_code, site_type):
 
         with progress_lock:
             progress = 100
+            processing_complete = True 
 
         if normal_parts:
             for i, part in enumerate(normal_parts):
@@ -20344,8 +20376,9 @@ def process_fuel_price_selection(message, city_code, site_type):
     except Exception as e:
         with progress_lock:
             progress = 100
+            processing_complete = True 
 
-        bot.send_message(chat_id, "❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
+        bot.send_message(chat_id, "❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива!")
         show_fuel_price_menu(chat_id, city_code, site_type)
         return
     
@@ -20402,7 +20435,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
                                 item for item in saved_data
                                 if item[1].lower() in [ft.lower() for ft in actual_fuel_types]
                             ]
-                        raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
+                        raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива!")
 
                 fuel_prices = remove_duplicate_prices(fuel_prices)
                 all_fuel_prices.extend(fuel_prices)
@@ -20422,7 +20455,7 @@ def process_city_fuel_data(city_code, selected_fuel_type, site_type, actual_fuel
                     fuel_prices = get_fuel_prices_from_site(fuel_type, city_code, "petrolplus")
                 except ValueError:
                     print(f"Оба сайта недоступны для города {city_code} и типа топлива {fuel_type}")
-                    raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
+                    raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива!")
 
             fuel_prices = remove_duplicate_prices(fuel_prices)
             all_fuel_prices.extend(fuel_prices)
@@ -20591,7 +20624,7 @@ def get_fuel_prices_from_site(city_code, site_type, proxies=None, retry_count=1)
                 time.sleep(5)
                 return get_fuel_prices_from_site(city_code, site_type, proxies, retry_count - 1)
             else:
-                raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива:")
+                raise ValueError("❌ Ошибка получения цен!\n\nНе найдена таблица с ценами...\n\nПопробуйте выбрать другой город или тип топлива!")
             
 def clean_price(price):
     cleaned_price = ''.join([ch for ch in price if ch.isdigit() or ch == '.'])
@@ -26693,10 +26726,10 @@ def process_perform_exchange(message):
             if 1 <= idx <= len(users_data):
                 user_id = list(users_data.keys())[idx - 1]
     elif user_input.startswith('@'):
-        username = user_input[1:] 
+        username = user_input[1:]
         for uid, data in users_data.items():
-            db_username = data['username'].lstrip('@')  
-            if db_username.lower() == username.lower():  
+            db_username = data['username'].lstrip('@')
+            if db_username.lower() == username.lower():
                 user_id = uid
                 break
 
@@ -26708,12 +26741,12 @@ def process_perform_exchange(message):
     data = load_payment_data()
     user_data = data['subscriptions']['users'].get(str(user_id), {})
     points = user_data.get('referral_points', 0)
-    if points < 0.5:
+    if points < 2:
         bot.send_message(message.chat.id, "❌ У пользователя недостаточно баллов для обмена!", parse_mode="Markdown")
         manage_exchanges(message)
         return
 
-    exchange_rate = 2  
+    exchange_rate = 1.0 / 5.0
 
     username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
     if not username.startswith('@'):
@@ -26728,9 +26761,9 @@ def process_perform_exchange(message):
         f"Выберите тип обмена для пользователя {escape_markdown(username)} - `{user_id}`:\n\n"
         f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
         f"🔄 *Возможные обмены:*\n"
-        f"⏳ - *Время подписки:* _1 балл = {exchange_rate} часа_\n"
-        f"🏷️ - *Скидка:* _15 баллов = 5% (макс. 35%)_\n"
-        f"🔓 - *Доступ к функциям:* _5 баллов = 15 минут_"
+        f"⏳ - *Время подписки:* _5 баллов = 1 час_\n"
+        f"🏷️ - *Скидка:* _8 баллов = 5% (макс. 35%)_\n"
+        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_perform_exchange_type, user_id, exchange_rate)
 
@@ -26762,12 +26795,12 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
     markup.add('В меню админ-панели')
     if exchange_type == 'Обмен на время':
         bot.send_message(message.chat.id, (
-            f"Введите количество баллов для обмена на время:\n_P.S. 1 балл = {exchange_rate} часа_"
+            f"Введите количество баллов для обмена на время:\n_P.S. 5 баллов = 1 час_"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_time, user_id, exchange_rate)
     elif exchange_type == 'Обмен на скидку':
         bot.send_message(message.chat.id, (
-            f"Введите количество баллов для обмена на скидку:\n_P.S. 15 баллов = 5%, макс. 35%_"
+            f"Введите количество баллов для обмена на скидку:\n_P.S. 8 баллов = 5%, макс. 35%_"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
@@ -26781,7 +26814,7 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
         bot.send_message(message.chat.id, (
-            f"Выберите функцию для обмена:\n_P.S. 5 баллов = 15 минут_"
+            f"Выберите функцию для обмена:\n_P.S. 2 балла = 15 минут_"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_feature, user_id)
 
@@ -26799,12 +26832,12 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
 
     try:
         points_needed = float(message.text.replace(',', '.'))
-        if points_needed < 0.5:
-            raise ValueError("Минимальное количество баллов — 0.5!")
-        if points_needed % 0.5 != 0:
-            raise ValueError("Баллы должны быть кратны 0.5!")
-        if points_needed > 4380:
-            raise ValueError("Максимальный обмен — 4380 баллов (365 дней)!")
+        if points_needed < 5:
+            raise ValueError("Минимальное количество баллов — 5!")
+        if points_needed % 5 != 0:
+            raise ValueError("Баллы должны быть кратны 5!")
+        if points_needed > 6000:
+            raise ValueError("Максимальный обмен — 6000 баллов (50 дней)!")
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -26820,14 +26853,14 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
         total_hours = points_needed * exchange_rate
         days = int(total_hours // 24)
         remaining_hours = total_hours % 24
-        
-        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") 
+
+        latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M")
                          for p in user_data.get('plans', [])] or [datetime.now()])
         new_end = latest_end + timedelta(days=days, hours=remaining_hours)
-        
+
         start_date = latest_end.strftime("%d.%m.%Y в %H:%M")
         end_date_str = new_end.strftime("%d.%m.%Y в %H:%M")
-        
+
         duration_str = ""
         if days > 0 and remaining_hours > 0:
             duration_str = f"{days} дн. {format_number(remaining_hours)} ч."
@@ -26835,15 +26868,16 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
             duration_str = f"{days} дн."
         else:
             duration_str = f"{format_number(remaining_hours)} ч."
-        
+
         user_data['referral_points'] -= points_needed
         user_data.setdefault('points_history', []).append({
             'action': 'spent',
             'points': points_needed,
+            'exchange_type': 'subscription',
             'reason': f"обмен на {duration_str}",
             'date': datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
-        
+
         user_data.setdefault('plans', []).append({
             'plan_name': 'exchange_time',
             'start_date': start_date,
@@ -26853,7 +26887,7 @@ def process_perform_exchange_time(message, user_id, exchange_rate):
         })
 
         save_payments_data(data)
-        
+
         admin_message = (
             f"✅ Для пользователя {username} - `{user_id}` выполнен обмен:\n\n"
             f"💰 *Баллы:* {format_number(points_needed)} баллов\n"
@@ -26893,10 +26927,10 @@ def process_perform_exchange_discount(message, user_id):
 
     try:
         points_needed = float(message.text.replace(',', '.'))
-        if points_needed < 15:
-            raise ValueError("Минимальное количество баллов — 15!")
-        if points_needed % 15 != 0:
-            raise ValueError("Баллы должны быть кратны 15!")
+        if points_needed < 8:
+            raise ValueError("Минимальное количество баллов — 8!")
+        if points_needed % 8 != 0:
+            raise ValueError("Баллы должны быть кратны 8!")
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -26909,7 +26943,7 @@ def process_perform_exchange_discount(message, user_id):
         if not username.startswith('@'):
             username = f"@{username}"
 
-        discount = (points_needed // 15) * 5
+        discount = (points_needed // 8) * 5
         current_discount = users_data.get(str(user_id), {}).get('discount', 0)
         if current_discount + discount > 35:
             raise ValueError("Максимальная скидка — 35%!")
@@ -26918,6 +26952,7 @@ def process_perform_exchange_discount(message, user_id):
         user_data.setdefault('points_history', []).append({
             'action': 'spent',
             'points': points_needed,
+            'exchange_type': 'discount',
             'reason': f"Обмен на {discount}% скидки",
             'date': datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
@@ -26925,7 +26960,6 @@ def process_perform_exchange_discount(message, user_id):
         users_data.setdefault(str(user_id), {})
         users_data[str(user_id)]['discount'] = current_discount + discount
         users_data[str(user_id)]['discount_type'] = "points"
-        save_payments_data(data)
 
         promo_code = f"DISC{uuid.uuid4().hex[:8].upper()}"
         data.setdefault('promo_codes', {})[promo_code] = {
@@ -26937,7 +26971,8 @@ def process_perform_exchange_discount(message, user_id):
         }
 
         save_payments_data(data)
-        
+        save_users_data(users_data)
+
         admin_message = (
             f"✅ Для пользователя {username} - `{user_id}` выполнен обмен:\n\n"
             f"💰 *Баллы:* {format_number(points_needed)} баллов\n"
@@ -26998,7 +27033,7 @@ def process_perform_exchange_feature(message, user_id):
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, (
         f"Введите количество баллов для обмена на функцию *{feature.lower()}:*\n"
-        f"_P.S. 5 баллов = 15 минут_"
+        f"_P.S. 2 балла = 15 минут_"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_perform_exchange_feature_amount, user_id, feature)
 
@@ -27016,10 +27051,10 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
 
     try:
         points_needed = float(message.text.replace(',', '.'))
-        if points_needed < 5:
-            raise ValueError("Минимальное количество баллов — 5!")
-        if points_needed % 5 != 0:
-            raise ValueError("Баллы должны быть кратны 5!")
+        if points_needed < 2:
+            raise ValueError("Минимальное количество баллов — 2!")
+        if points_needed % 2 != 0:
+            raise ValueError("Баллы должны быть кратны 2!")
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -27032,20 +27067,20 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
         if not username.startswith('@'):
             username = f"@{username}"
 
-        total_minutes = points_needed * 3  
+        total_minutes = points_needed * (15.0 / 2.0)
         days = int(total_minutes // (24 * 60))
         remaining_minutes = total_minutes % (24 * 60)
         remaining_hours = remaining_minutes // 60
         remaining_minutes = remaining_minutes % 60
-        
+
         feature_access = user_data.get('feature_access', {})
         current_end = datetime.strptime(feature_access.get(feature, "01.01.2025 в 00:00"), "%d.%m.%Y в %H:%M")
         latest_end = max(current_end, datetime.now())
         new_end = latest_end + timedelta(days=days, hours=remaining_hours, minutes=remaining_minutes)
-        
+
         start_date = latest_end.strftime("%d.%m.%Y в %H:%M")
         end_date_str = new_end.strftime("%d.%m.%Y в %H:%M")
-        
+
         duration_str = ""
         if days > 0:
             duration_str = f"{days} дн. {remaining_hours} ч. {format_number(remaining_minutes)} мин."
@@ -27053,18 +27088,20 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
             duration_str = f"{remaining_hours} ч. {format_number(remaining_minutes)} мин."
         else:
             duration_str = f"{format_number(remaining_minutes)} мин."
-        
+
         user_data['referral_points'] -= points_needed
         user_data.setdefault('points_history', []).append({
             'action': 'spent',
             'points': points_needed,
+            'exchange_type': 'feature',
             'reason': f"обмен на функцию '{feature}' ({duration_str})",
+            'feature_name': feature,
             'date': datetime.now().strftime("%d.%m.%Y в %H:%M")
         })
-        
+
         user_data.setdefault('feature_access', {})
         user_data['feature_access'][feature] = end_date_str
-        
+
         save_payments_data(data)
 
         admin_message = (
