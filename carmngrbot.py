@@ -673,7 +673,7 @@ def send_website_file(message):
 
 # ------------------------------------ ПОДПИСКА НА БОТА (инициализация бд, платежки, активности пользователей) ------------------------------------------
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.getcwd()
 PAYMENTS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/payments.json")
 USERS_DATABASE_PATH = os.path.join(BASE_DIR, "data/admin/admin_user_payments/users.json")
 
@@ -683,8 +683,7 @@ PROMO_FILE_MTIME = 0
 
 def load_promo_and_channels():
     global PROMO_CODES, AD_CHANNELS, PROMO_FILE_MTIME
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_dir = os.path.join(BASE_DIR, 'files', 'files_for_bot')
     json_path = os.path.join(json_dir, 'promo_and_channels.json')
     
     os.makedirs(json_dir, exist_ok=True)
@@ -713,7 +712,7 @@ def load_promo_and_channels():
 
 def initialize_ad_channels():
     promo_codes, ad_channels = load_promo_and_channels()
-    return {chat_id: channel['name'] for chat_id, channel in ad_channels.items() if channel['active']}
+    return {chat_id: channel for chat_id, channel in ad_channels.items() if channel['active']}
 
 AD_CHANNELS = initialize_ad_channels()
 
@@ -727,7 +726,7 @@ promo_monitor_thread.start()
 
 def load_payment_data():
     global PROMO_CODES, AD_CHANNELS
-    promo_codes, ad_channels = PROMO_CODES, AD_CHANNELS
+    promo_codes, ad_channels = load_promo_and_channels()  
 
     default_data = {
         'subscriptions': {'users': {}},
@@ -782,12 +781,17 @@ def load_payment_data():
         if key not in data:
             data[key] = value
         elif key == 'promo_codes':
-            data['promo_codes'] = promo_codes  
+            data['promo_codes'] = promo_codes
         elif key == 'ad_channels':
-            data['ad_channels'] = ad_channels  
+            data['ad_channels'] = ad_channels
             for chat_id in list(data['ad_channels'].keys()):
                 if chat_id not in ad_channels:
                     data['ad_channels'][chat_id]['active'] = False
+                if not isinstance(data['ad_channels'][chat_id], dict):
+                    data['ad_channels'][chat_id] = {
+                        'name': data['ad_channels'][chat_id],
+                        'active': False
+                    }
         elif key == 'referrals' and 'leaderboard_history' not in data['referrals']:
             data['referrals']['leaderboard_history'] = {
                 'current_leader': None,
@@ -796,7 +800,26 @@ def load_payment_data():
             }
 
     if 'subscriptions' in data and 'users' in data['subscriptions']:
-        for user_id in data['subscriptions']['users']:
+        for user_id in list(data['subscriptions']['users']):
+            if not isinstance(data['subscriptions']['users'][user_id], dict):
+                data['subscriptions']['users'][user_id] = {
+                    "username": "неизвестный",
+                    "plans": [],
+                    "total_amount": 0,
+                    "referral_points": 0,
+                    "free_feature_trials": {},
+                    "promo_usage_history": [],
+                    "referral_milestones": {},
+                    "points_history": [],
+                    "last_promo_used": None,
+                    "daily_bonus_date": None,
+                    "last_bonus_timestamp": None,
+                    "streak_days": 0,
+                    "discount": 0,
+                    "applicable_category": None,
+                    "applicable_items": [],
+                    "discount_type": None
+                }
             data['subscriptions']['users'][user_id].setdefault('referral_points', 0)
             data['subscriptions']['users'][user_id].setdefault('promo_usage_history', [])
             data['subscriptions']['users'][user_id].setdefault('referral_milestones', {})
@@ -806,6 +829,10 @@ def load_payment_data():
             data['subscriptions']['users'][user_id].setdefault('daily_bonus_date', None)
             data['subscriptions']['users'][user_id].setdefault('last_bonus_timestamp', None)
             data['subscriptions']['users'][user_id].setdefault('streak_days', 0)
+            data['subscriptions']['users'][user_id].setdefault('discount', 0)
+            data['subscriptions']['users'][user_id].setdefault('applicable_category', None)
+            data['subscriptions']['users'][user_id].setdefault('applicable_items', [])
+            data['subscriptions']['users'][user_id].setdefault('discount_type', None)
 
     with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
@@ -839,7 +866,11 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
             "last_promo_used": None,
             "daily_bonus_date": None,
             "last_bonus_timestamp": None,
-            "streak_days": 0
+            "streak_days": 0,
+            "discount": 0,
+            "applicable_category": None,
+            "applicable_items": [],
+            "discount_type": None
         }
 
     user_subscription = data['subscriptions']['users'][user_id_str]
@@ -905,7 +936,7 @@ def update_user_activity(user_id, username=None, first_name="", last_name="", ph
 
     today_stats = datetime.now().strftime('%d.%m.%Y')
     if today_stats not in statistics:
-        statistics[today_stats] = {'users': set(), 'functions': {}}
+        statistics[today_stats] = { 'users': set(), 'functions': {} }
     statistics[today_stats]['users'].add(user_id)
     if function_name:
         if function_name not in statistics[today_stats]['functions']:
@@ -973,6 +1004,9 @@ def load_users_data():
 def save_users_data(data):
     with open(USERS_DATABASE_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+def ensure_directory_exists(file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
 # ------------------------------ ПОДПИСКА НА БОТА (бесплатные и платные функции, прбный период, фоновые функции) -----------------------------
 
@@ -1382,8 +1416,7 @@ SUBS_FILE_MTIME = 0
 
 def load_subscriptions_and_store():
     global SUBSCRIPTION_PLANS, STORE_ITEMS, SUBS_FILE_MTIME
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    json_dir = os.path.join(script_dir, 'files', 'files_for_bot')
+    json_dir = os.path.join(BASE_DIR, 'files', 'files_for_bot')
     json_path = os.path.join(json_dir, 'subscription_and_store.json')
     
     os.makedirs(json_dir, exist_ok=True)
@@ -1483,7 +1516,7 @@ def send_subscription_options(message):
     buttons = []
     for plan_key, plan_info in SUBSCRIPTION_PLANS.items():
         base_price = plan_info["base_price"]
-        fictitious_discount = plan_info.get("fictitious_discount", 0)
+        fictitious_discount = plan_info.get("fictinous_discount", 0)
         label = plan_info["label"]
 
         discount_applicable = (
@@ -1535,7 +1568,7 @@ def send_subscription_invoice(call):
     plan_key = call.data
     plan_info = SUBSCRIPTION_PLANS[plan_key]
     base_price = plan_info["base_price"]
-    fictitious_discount = plan_info["fictitious_discount"]
+    fictitious_discount = plan_info["fictinous_discount"]
     label = plan_info["label"]
     duration = plan_info["duration"]
 
@@ -1569,7 +1602,7 @@ def send_subscription_invoice(call):
             "provider_payment_charge_id": None,
             "source": "promo_100_percent",
             "user_discount": user_discount,
-            "fictitious_discount": fictitious_discount
+            "fictinous_discount": fictitious_discount
         })
 
         if discount_type == "promo":
@@ -3103,7 +3136,6 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, "Выберите одну из предложенных опций!", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
 
-# Обработка выбора функции
 @text_only_handler
 def process_feature_selection(message, points):
     if message.text == "Вернуться в баллы":
@@ -3145,7 +3177,6 @@ def process_feature_selection(message, points):
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_feature_exchange, feature, points)
 
-# Обработка обмена на функцию
 @text_only_handler
 def process_feature_exchange(message, feature, points):
     if message.text == "Вернуться в баллы":
@@ -4525,6 +4556,11 @@ def get_day_for_ad(message):
     available_channels = False
 
     for chat_id, channel in data['ad_channels'].items():
+        if not isinstance(channel, dict):
+            channel = {'name': channel, 'active': False}
+            data['ad_channels'][chat_id] = channel
+            save_payments_data(data)  
+
         if channel.get('active', False) and is_channel_available(chat_id):
             active_channels = True
             if chat_id not in subscribed_channels:
@@ -4595,7 +4631,11 @@ def check_ad_subscription(call):
         "promo_usage_history": [],
         "referral_milestones": {},
         "points_history": [],
-        "ad_channels_subscribed": []
+        "ad_channels_subscribed": [],
+        "discount": 0,
+        "applicable_category": None,
+        "applicable_items": [],
+        "discount_type": None
     })
     
     if selected_channel_id in user_data['ad_channels_subscribed']:
@@ -4607,8 +4647,11 @@ def check_ad_subscription(call):
     
     new_end = set_free_trial_period(user_id, 1, f"ad_bonus_{selected_channel_id}")
     user_plans = user_data.get('plans', [])
-    latest_plan = max(user_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
-    start_date = latest_plan['start_date']
+    if user_plans:
+        latest_plan = max(user_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
+        start_date = latest_plan['start_date']
+    else:
+        start_date = datetime.now().strftime("%d.%m.%Y в %H:%M")
     
     user_data['ad_channels_subscribed'].append(selected_channel_id)
     save_payments_data(data)
