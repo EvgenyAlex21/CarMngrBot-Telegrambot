@@ -30526,31 +30526,45 @@ def enable_function(message):
     if disabled_functions:
         response = "*Выключенные функции:*\n\n"
         index = 1
-        function_index_map = {}  
+        function_index_map = {}
+        messages_to_send = []
+        current_message = response
+
         for category, functions in NEW_FUNCTIONS.items():
             for function in functions:
                 if function in [name for name, _ in disabled_functions]:
                     deactivation_time = next((data for name, data in disabled_functions if name == function), None)
                     if deactivation_time:
                         date_part, time_part = deactivation_time.split('; ')
-                        response += f"❌ {index}. {function} (до {date_part} в {time_part})\n"
+                        line = f"❌ {index}. {function} (до {date_part} в {time_part})\n"
                     else:
-                        response += f"❌ {index}. {function}\n"
-                    function_index_map[index] = function  
+                        line = f"❌ {index}. {function}\n"
+                    if len(current_message) + len(line) > 4000:
+                        messages_to_send.append(current_message)
+                        current_message = ""
+                    current_message += line
+                    function_index_map[index] = function
                     index += 1
+
+        if current_message:
+            messages_to_send.append(current_message)
+
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton('Вернуться в функции'))
         markup.add(types.KeyboardButton('В меню админ-панели'))
-        try:
-            bot.send_message(message.chat.id, response, parse_mode="Markdown", reply_markup=markup)
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if admin_id not in blocked_users:
-                    blocked_users.append(admin_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
+
+        for msg in messages_to_send:
+            try:
+                bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=markup if msg == messages_to_send[-1] else None)
+            except ApiTelegramException as e:
+                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                    pass
+                    if admin_id not in blocked_users:
+                        blocked_users.append(admin_id)
+                        save_blocked_users(blocked_users)
+                else:
+                    raise e
+
         bot.send_message(message.chat.id, "Введите номера функций для включения:")
         bot.register_next_step_handler(message, process_enable_function_step, function_index_map)
     else:
@@ -30668,26 +30682,41 @@ def disable_function(message):
     if enabled_functions:
         response = "*Включенные функции:*\n\n"
         index = 1
-        function_index_map = {}  
+        function_index_map = {}
+        messages_to_send = []
+        current_message = response
+
+        # Формируем список функций
         for category, functions in NEW_FUNCTIONS.items():
             for function in functions:
                 if function in enabled_functions:
-                    response += f"✅ {index}. {function}\n"
-                    function_index_map[index] = function 
+                    line = f"✅ {index}. {function}\n"
+                    if len(current_message) + len(line) > 4000: 
+                        messages_to_send.append(current_message)
+                        current_message = ""  
+                    current_message += line
+                    function_index_map[index] = function
                     index += 1
+
+        if current_message:
+            messages_to_send.append(current_message)
+
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton('Вернуться в функции'))
         markup.add(types.KeyboardButton('В меню админ-панели'))
-        try:
-            bot.send_message(message.chat.id, response, parse_mode="Markdown", reply_markup=markup)
-        except ApiTelegramException as e:
-            if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
-                pass
-                if admin_id not in blocked_users:
-                    blocked_users.append(admin_id)
-                    save_blocked_users(blocked_users)
-            else:
-                raise e
+
+        for msg in messages_to_send:
+            try:
+                bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=markup if msg == messages_to_send[-1] else None)
+            except ApiTelegramException as e:
+                if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+                    pass
+                    if admin_id not in blocked_users:
+                        blocked_users.append(admin_id)
+                        save_blocked_users(blocked_users)
+                else:
+                    raise e
+
         bot.send_message(message.chat.id, "Введите номера функций для выключения:")
         bot.register_next_step_handler(message, process_disable_function_step, function_index_map)
     else:
