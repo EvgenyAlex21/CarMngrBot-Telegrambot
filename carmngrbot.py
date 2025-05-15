@@ -31296,15 +31296,15 @@ def show_files_menu(message):
         return
 
     markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-    markup.add('Поиск файлов по EXT', 'Поиск файлов по DIR', 'Поиск файлов по ID')
+    markup.add('Поиск по EXT', 'Поиск по DIR', 'Поиск по ID')
     markup.add('Добавить файлы', 'Замена файлов', 'Удалить файлы')
     markup.add('В меню админ-панели')
 
     bot.send_message(message.chat.id, "Выберите действие с файлами:", reply_markup=markup)
 
-# ------------------------------------------------------- ФАЙЛЫ (поиск файлов по ext) ----------------------------------------------
+# ------------------------------------------------------- ФАЙЛЫ (поиск по ext) ----------------------------------------------
 
-@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по EXT' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Поиск по EXT' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
@@ -31315,7 +31315,7 @@ def show_files_menu(message):
 @rate_limit_with_captcha
 def view_files(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Поиск файлов по EXT'):
+    if not check_permission(admin_id, 'Поиск по EXT'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
@@ -31429,7 +31429,7 @@ def process_file_selection(message, matched_files):
 
 # ------------------------------------------------------- ФАЙЛЫ (поиск по dir) ----------------------------------------------
 
-@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по DIR' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Поиск по DIR' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
@@ -31440,7 +31440,7 @@ def process_file_selection(message, matched_files):
 @rate_limit_with_captcha
 def search_files_in_directory(message):
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Поиск файлов по DIR'):
+    if not check_permission(admin_id, 'Поиск по DIR'):
         bot.send_message(message.chat.id, "⛔️ У вас <b>нет прав доступа</b> к этой функции!", parse_mode="HTML")
         return
 
@@ -31585,9 +31585,9 @@ def process_item_selection(message):
         bot.send_message(message.chat.id, "Пожалуйста, введите номер папки или номера файлов!", parse_mode="HTML")
         bot.register_next_step_handler(message, process_item_selection)
 
-# ------------------------------------------------------- ФАЙЛЫ (поиск файлов по id) ----------------------------------------------
+# ------------------------------------------------------- ФАЙЛЫ (поиск по id) ----------------------------------------------
 
-@bot.message_handler(func=lambda message: message.text == 'Поиск файлов по ID' and check_admin_access(message))
+@bot.message_handler(func=lambda message: message.text == 'Поиск по ID' and check_admin_access(message))
 @restricted
 @track_user_activity
 @check_chat_state
@@ -31599,7 +31599,7 @@ def process_item_selection(message):
 def search_files_by_id(message):
 
     admin_id = str(message.chat.id)
-    if not check_permission(admin_id, 'Поиск файлов по ID'):
+    if not check_permission(admin_id, 'Поиск по ID'):
         bot.send_message(message.chat.id, "⛔️ У вас *нет прав доступа* к этой функции!", parse_mode="Markdown")
         return
 
