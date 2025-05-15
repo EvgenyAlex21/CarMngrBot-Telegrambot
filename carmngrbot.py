@@ -1359,7 +1359,7 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243' # API
 def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _ калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют, уведомления)_\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _ калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *Неделя:* 149 ₽ — идеально для тестирования всех функций бота!\n"
         "👉 *Месяц:* 399 ₽ — полный доступ ко всем функциям на продолжительный период!\n"
@@ -1372,9 +1372,9 @@ def payments_function(message, show_description=True):
         "- *1 балл* для топ-10 рефералов каждые 30 дней\n"
         "- *Топ-1:* +3 дня, *Топ-2:* +2 дня, *Топ-3:* +1 день подписки каждые 30 дней\n\n"
         "🎉 Обменивайте баллы:\n"
-        "- *15 баллов = 5% скидки* (до 35%)\n"
-        "- *1 балл = 2 часа* подписки\n"
-        "- *5 баллов = 15 минут* доступ к функциям\n\n"
+        "- *5 баллов = 1 час* подписки\n"
+        "- *2 балла = 15 минут* доступ к функциям\n\n"
+        "- *10 баллов = 5% скидки* (до 35%)\n"
         "🤝 *Реферальная система:*\n"
         "Приглашайте друзей и получайте:\n"
         "- *1 реферал = +1 день подписки + 1 балл*\n"
@@ -3114,8 +3114,8 @@ def exchange_points_handler(message):
         f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
         f"🔄 *Возможные обмены:*\n"
         f"⏳ - *Время подписки:* _5 баллов = 1 час_\n"
-        f"🏷️ - *Скидка:* _8 баллов = 5% (макс. 35%)_\n"
-        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_\n\n"
+        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_\n"
+        f"🏷️ - *Скидка:* _10 баллов = 5% (макс. 35%)_\n\n"
         "Выберите опцию:"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_exchange_option, points, exchange_rate, has_subscription)
@@ -3155,7 +3155,7 @@ def process_exchange_option(message, points, exchange_rate, has_subscription):
         bot.send_message(message.chat.id, (
             f"*Обмен баллов:*\n\n"
             f"🎁 *Текущие баллы:* {format_number(points)}\n"
-            f"🏷️ *Обмен на скидку:* _8 баллов = 5% (макс. 35%)_\n\n"
+            f"🏷️ *Обмен на скидку:* _10 баллов = 5% (макс. 35%)_\n\n"
             "Введите количество баллов для обмена:"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_discount_exchange)
@@ -3412,14 +3412,14 @@ def process_discount_exchange(message):
     
     try:
         exchange_points = float(message.text.replace(',', '.'))
-        if exchange_points < 8:
-            raise ValueError("Минимальное количество баллов — 8!")
+        if exchange_points < 10:
+            raise ValueError("Минимальное количество баллов — 10!")
         if exchange_points > points:
             raise ValueError("Недостаточно баллов!")
-        if exchange_points % 8 != 0:
-            raise ValueError("Баллы должны быть кратны 8!")
+        if exchange_points % 10 != 0:
+            raise ValueError("Баллы должны быть кратны 10!")
         
-        discount = (exchange_points // 8) * 5
+        discount = (exchange_points // 10) * 5
         current_discount = users_data.get(user_id, {}).get('discount', 0)
         if current_discount + discount > 35:
             raise ValueError("Максимальная скидка — 35%!")
@@ -26878,8 +26878,8 @@ def process_perform_exchange(message):
         f"🎁 *Текущие баллы:* {format_number(points)}\n\n"
         f"🔄 *Возможные обмены:*\n"
         f"⏳ - *Время подписки:* _5 баллов = 1 час_\n"
-        f"🏷️ - *Скидка:* _8 баллов = 5% (макс. 35%)_\n"
-        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_"
+        f"🔓 - *Доступ к функциям:* _2 балла = 15 минут_\n"
+        f"🏷️ - *Скидка:* _10 баллов = 5% (макс. 35%)_\n"
     ), reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(message, process_perform_exchange_type, user_id, exchange_rate)
 
@@ -26916,7 +26916,7 @@ def process_perform_exchange_type(message, user_id, exchange_rate):
         bot.register_next_step_handler(message, process_perform_exchange_time, user_id, exchange_rate)
     elif exchange_type == 'Обмен на скидку':
         bot.send_message(message.chat.id, (
-            f"Введите количество баллов для обмена на скидку:\n_P.S. 8 баллов = 5%, макс. 35%_"
+            f"Введите количество баллов для обмена на скидку:\n_P.S. 10 баллов = 5%, макс. 35%_"
         ), reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_discount, user_id)
     else:
@@ -27043,10 +27043,10 @@ def process_perform_exchange_discount(message, user_id):
 
     try:
         points_needed = float(message.text.replace(',', '.'))
-        if points_needed < 8:
-            raise ValueError("Минимальное количество баллов — 8!")
-        if points_needed % 8 != 0:
-            raise ValueError("Баллы должны быть кратны 8!")
+        if points_needed < 10:
+            raise ValueError("Минимальное количество баллов — 10!")
+        if points_needed % 10 != 0:
+            raise ValueError("Баллы должны быть кратны 10!")
 
         data = load_payment_data()
         user_data = data['subscriptions']['users'].get(str(user_id), {})
@@ -27059,7 +27059,7 @@ def process_perform_exchange_discount(message, user_id):
         if not username.startswith('@'):
             username = f"@{username}"
 
-        discount = (points_needed // 8) * 5
+        discount = (points_needed // 10) * 5
         current_discount = users_data.get(str(user_id), {}).get('discount', 0)
         if current_discount + discount > 35:
             raise ValueError("Максимальная скидка — 35%!")
@@ -27135,7 +27135,7 @@ def process_perform_exchange_feature(message, user_id):
         markup.add('Вернуться в управление обменами')
         markup.add('Вернуться в управление системой')
         markup.add('В меню админ-панели')
-        bot.send_message(message.chat.id, "Выберите функцию из списка!", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "Выберите функцию из списка:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, process_perform_exchange_feature, user_id)
         return
 
@@ -27176,7 +27176,7 @@ def process_perform_exchange_feature_amount(message, user_id, feature):
         user_data = data['subscriptions']['users'].get(str(user_id), {})
         points = user_data.get('referral_points', 0)
         if points < points_needed:
-            raise ValueError("❌ Недостаточно баллов для обмена!")
+            raise ValueError("Недостаточно баллов для обмена!")
 
         users_data = load_users()
         username = users_data.get(str(user_id), {}).get('username', f"@{user_id}")
