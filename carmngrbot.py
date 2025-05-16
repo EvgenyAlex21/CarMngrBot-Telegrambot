@@ -1008,7 +1008,7 @@ def save_users_data(data):
 def ensure_directory_exists(file_path):
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-# ------------------------------ ПОДПИСКА НА БОТА (бесплатные и платные функции, прбный период, фоновые функции) -----------------------------
+# ------------------------------ ПОДПИСКА НА БОТА (бесплатные и платные функции, пробный период, фоновые функции) -----------------------------
 
 def load_features():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1089,6 +1089,18 @@ def is_premium_user(user_id):
 def process_pre_checkout_query(pre_checkout_query):
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
+def safe_send_message(user_id, text, **kwargs):
+    try:
+        bot.send_message(user_id, text, **kwargs)
+    except ApiTelegramException as e:
+        if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+            blocked_users = load_blocked_users()
+            if user_id not in blocked_users:
+                blocked_users.append(user_id)
+                save_blocked_users(blocked_users)
+        else:
+            raise e
+
 def background_subscription_expiration_check():
     time.sleep(86400)
     while True:
@@ -1100,12 +1112,12 @@ def background_subscription_expiration_check():
             active = any(datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > datetime.now() for p in user_data.get('plans', []))
             if not active and not user_data.get('offer_sent', False):
                 last_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']]) if user_data.get('plans') else datetime.now()
-                if (datetime.now() - last_end).days >= 7:
+                if (datetime.now() - last_end).days >= 15:
                     markup = InlineKeyboardMarkup()
-                    markup.add(InlineKeyboardButton("Вернуться за 111 ₽", callback_data="special_offer_weekly"))
-                    bot.send_message(user_id, (
+                    markup.add(InlineKeyboardButton("Вернуться за 99 ₽", callback_data="special_offer_weekly"))
+                    safe_send_message(user_id, (
                         "🎁 *Соскучились?*\n\n"
-                        "✨ Вернитесь с подпиской на неделю всего за *111 ₽* (25% скидка)!\n"
+                        "✨ Вернитесь с подпиской на 7 дней всего за *99 ₽*!\n"
                     ), reply_markup=markup, parse_mode="Markdown")
                     user_data['offer_sent'] = True
                     save_payments_data(data)
@@ -1119,19 +1131,19 @@ def background_subscription_expiration_check():
                 if remaining_days == 1:
                     markup = InlineKeyboardMarkup()
                     markup.add(InlineKeyboardButton("Продлить", callback_data="buy_subscription"))
-                    bot.send_message(user_id, (
+                    safe_send_message(user_id, (
                         f"⏳ <b>Ваша подписка истекает через:</b> {remaining_days} дней {remaining_hours:02}:{remaining_minutes:02} часов!\n\n"
                         f"📅 <b>Срок действия:</b> {plan['end_date']}\n\n"
                         "🚀 Продлите подписку прямо сейчас!"
                     ), parse_mode="HTML")
                 elif remaining_days < 2 and remaining_days >= 0:
-                    bot.send_message(user_id, (
+                    safe_send_message(user_id, (
                         f"⏳ *Ваша подписка истекает через:* {remaining_days} дн. {remaining_hours:02}:{remaining_minutes:02} ч.!\n\n"
                         f"📅 *Срок действия:* {plan['end_date']}\n\n"
                         "🚀 Продлите подписку прямо сейчас!"
                     ), parse_mode="Markdown")
                 elif now > end_date and not user_data.get('trial_ended_notified', False):
-                    bot.send_message(user_id, (
+                    safe_send_message(user_id, (
                         "⏳ *Ваш пробный период завершился!*\n\n"
                         "💳 Пожалуйста, оплатите подписку для продолжения использования бота и доступа ко всем функциям!\n\n"
                         "🎉 Не упустите возможность продлить доступ и наслаждаться полным функционалом!"
@@ -1153,13 +1165,22 @@ def handle_buy_subscription(call):
 @text_only_handler
 def send_special_offer_invoice(call):
     user_id = call.from_user.id
-    bot.send_invoice(user_id, "🌟 Специальное предложение: 7 дней", (
-        "🎁 *С возвращением!*\n\n"
-        "✨ Вернитесь с подпиской по суперцене!\n\n"
-        "🚀 Полный доступ ко всем функциям бота!"
-    ), PAYMENT_PROVIDER_TOKEN, "sub", "RUB", 
-                     [types.LabeledPrice("🌟 7 дней", 11100)], "weekly_subscription_7")
-    bot.answer_callback_query(call.id, "🎉 С возвращением!")
+    try:
+        bot.send_invoice(user_id, "🌟 Специальное предложение: 7 дней", (
+            "🎁 *С возвращением!*\n\n"
+            "✨ Вернитесь с подпиской по суперцене!\n\n"
+            "🚀 Полный доступ ко всем функциям бота!"
+        ), PAYMENT_PROVIDER_TOKEN, "sub", "RUB", 
+                        [types.LabeledPrice("🌟 7 дней", 9900)], "weekly_subscription_7")
+        bot.answer_callback_query(call.id, "🎉 С возвращением!")
+    except ApiTelegramException as e:
+        if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+            blocked_users = load_blocked_users()
+            if user_id not in blocked_users:
+                blocked_users.append(user_id)
+                save_blocked_users(blocked_users)
+        else:
+            raise e
 
 # --------------------------- ПОДПИСКА НА БОТА (команда /start, инициализация главного меню, проверка подписки на канал) --------------------
 
@@ -1389,8 +1410,11 @@ def payments_function(message, show_description=True):
         "  - 30 дней: *+3 дня* подписки\n"
         "  - 90 дней: *+2 дня* подписки\n"
         "  - 180 дней: *+5 дней* подписки\n"
-        "  - 365 дней: *+7 дней* подписки\n"
-        "🎁 *Лояльность:* 3 покупки подписки = *10% скидка* на следующую покупку (сбрасывается после использования)\n"
+        "  - 365 дней: *+7 дней* подписки\n\n"
+        "🔥 *Подарки:*\n"
+        "  - *Баллы:* возможность дарить баллы другому пользователю с ограничением 1 раз в 24 часа\n"
+        "  - *Время:* возможность дарить время подписки другому пользователю с ограничением 1 раз в 24 часа\n\n"        
+        "💥 *Лояльность:* 3 покупки подписки = *10% скидка* на следующую покупку (сбрасывается после использования)\n\n"
         "📺 *Рекламные каналы:* +1 день подписки за подписку на канал\n\n"
     )
 
@@ -5107,6 +5131,30 @@ def view_referral_leaderboard(message):
     
     send_long_message(message.chat.id, message_text)
 
+BLOCKED_USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'admin', 'bloked_bot', 'blocked_bot_users.json')
+
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_FILE):
+        with open(BLOCKED_USERS_FILE, 'r') as file:
+            return json.load(file)
+    return []
+
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_FILE, 'w') as file:
+        json.dump(blocked_users, file, indent=4)
+
+def safe_send_message(user_id, text, parse_mode=None):
+    try:
+        bot.send_message(user_id, text, parse_mode=parse_mode)
+    except ApiTelegramException as e:
+        if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+            blocked_users = load_blocked_users()
+            if user_id not in blocked_users:
+                blocked_users.append(user_id)
+                save_blocked_users(blocked_users)
+        else:
+            raise e
+
 def check_monthly_leader_bonus():
     while True:
         try:
@@ -5186,7 +5234,7 @@ def check_monthly_leader_bonus():
                                 user_plans = data['subscriptions']['users'].get(uid, {}).get('plans', [])
                                 latest_plan = max(user_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
                                 start_date = latest_plan['start_date']
-                                bot.send_message(uid, (
+                                safe_send_message(uid, (
                                     f"🎉 *Поздравляем!*\n\n"
                                     f"✨ Вы на {idx}-м месте в топе рефералов!\n\n"
                                     f"🎁 Вы получили *+{bonus_days} дней* к использованию!\n"
@@ -5195,7 +5243,7 @@ def check_monthly_leader_bonus():
                                     "🚀 Продолжайте приглашать друзей!"
                                 ), parse_mode="Markdown")
                             
-                            bot.send_message(uid, (
+                            safe_send_message(uid, (
                                 "🎉 *Вы в ТОП-10 рефералов месяца!*\n"
                                 "✨ Получено *+1 балл*! Продолжайте приглашать!"
                             ), parse_mode="Markdown")
@@ -5226,7 +5274,7 @@ def check_monthly_leader_bonus():
                                 user_plans = data['subscriptions']['users'].get(uid, {}).get('plans', [])
                                 latest_plan = max(user_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
                                 start_date = latest_plan['start_date']
-                                bot.send_message(uid, (
+                                safe_send_message(uid, (
                                     f"🎉 *Поздравляем!*\n\n"
                                     f"✨ Вы на {idx}-м месте в топе рефералов!\n\n"
                                     f"🎁 Вы получили *+{bonus_days} дней* к использованию!\n"
@@ -5235,7 +5283,7 @@ def check_monthly_leader_bonus():
                                     "🚀 Продолжайте приглашать друзей!"
                                 ), parse_mode="Markdown")
                             
-                            bot.send_message(uid, (
+                            safe_send_message(uid, (
                                 "🎉 *Вы в ТОП-10 рефералов месяца!*\n"
                                 "✨ Получено *+1 балл*! Продолжайте приглашать!"
                             ), parse_mode="Markdown")
@@ -22709,6 +22757,18 @@ INACTIVITY_THRESHOLD = 3 * 24 * 60 * 60
 CHECK_INTERVAL = 12 * 60 * 60
 DELETE_THRESHOLD = 30 * 24 * 60 * 60
 
+BLOCKED_USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'admin', 'bloked_bot', 'blocked_bot_users.json')
+
+def load_blocked_users():
+    if os.path.exists(BLOCKED_USERS_FILE):
+        with open(BLOCKED_USERS_FILE, 'r') as file:
+            return json.load(file)
+    return []
+
+def save_blocked_users(blocked_users):
+    with open(BLOCKED_USERS_FILE, 'w') as file:
+        json.dump(blocked_users, file, indent=4)
+
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\\|{}.!-])', r'\\\1', text)
 
@@ -22796,8 +22856,26 @@ def delete_user_data_from_all_files(user_id, users):
             "Если вы хотите снова пользоваться ботом, зарегистрируйтесь заново с помощью команды /start",
             parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except ApiTelegramException as e:
+        if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+            blocked_users = load_blocked_users()
+            if user_id not in blocked_users:
+                blocked_users.append(user_id)
+                save_blocked_users(blocked_users)
+        else:
+            raise e
+
+def safe_send_message(user_id, text, parse_mode=None):
+    try:
+        bot.send_message(user_id, text, parse_mode=parse_mode)
+    except ApiTelegramException as e:
+        if e.result_json['error_code'] == 403 and 'bot was blocked by the user' in e.result_json['description']:
+            blocked_users = load_blocked_users()
+            if user_id not in blocked_users:
+                blocked_users.append(user_id)
+                save_blocked_users(blocked_users)
+        else:
+            raise e
 
 def check_inactivity():
     while True:
@@ -22817,7 +22895,7 @@ def check_inactivity():
                         save_users(users)
                         username = user_data.get('username', 'неизвестный')
                         message = f"⚠️ Уважаемый пользователь, {escape_markdown(username)}, от вас давно не было активности!\nИспользуйте бота или ваши данные будут удалены через 1 месяц!"
-                        bot.send_message(user_id, message, parse_mode="Markdown")
+                        safe_send_message(user_id, message, parse_mode="Markdown")
                     else:
                         first_notification = datetime.strptime(first_notification_str, '%d.%m.%Y в %H:%M:%S')
                         if current_time - first_notification > timedelta(seconds=DELETE_THRESHOLD):
