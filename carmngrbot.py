@@ -3471,7 +3471,6 @@ def process_discount_exchange(message):
         users_data[user_id]['discount_type'] = "points"
         
         save_payments_data(data)
-        save_users_data(users_data)
         
         bot.send_message(message.chat.id, (
             f"✅ *Обмен выполнен!*\n\n"
