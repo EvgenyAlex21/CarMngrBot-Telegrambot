@@ -726,10 +726,11 @@ promo_monitor_thread.start()
 
 def load_payment_data():
     global PROMO_CODES, AD_CHANNELS
-    promo_codes, ad_channels = load_promo_and_channels()  
+    promo_codes, ad_channels = load_promo_and_channels()
 
     default_data = {
         'subscriptions': {'users': {}},
+        'subscription_history': {}, 
         'referrals': {
             'links': {},
             'stats': {},
@@ -780,24 +781,10 @@ def load_payment_data():
     for key, value in default_data.items():
         if key not in data:
             data[key] = value
-        elif key == 'promo_codes':
-            data['promo_codes'] = promo_codes
-        elif key == 'ad_channels':
-            data['ad_channels'] = ad_channels
-            for chat_id in list(data['ad_channels'].keys()):
-                if chat_id not in ad_channels:
-                    data['ad_channels'][chat_id]['active'] = False
-                if not isinstance(data['ad_channels'][chat_id], dict):
-                    data['ad_channels'][chat_id] = {
-                        'name': data['ad_channels'][chat_id],
-                        'active': False
-                    }
-        elif key == 'referrals' and 'leaderboard_history' not in data['referrals']:
-            data['referrals']['leaderboard_history'] = {
-                'current_leader': None,
-                'leader_start_date': None,
-                'days_at_top': 0
-            }
+        elif isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                if sub_key not in data[key]:
+                    data[key][sub_key] = sub_value
 
     if 'subscriptions' in data and 'users' in data['subscriptions']:
         for user_id in list(data['subscriptions']['users']):
@@ -1145,7 +1132,7 @@ def background_subscription_expiration_check():
                 elif now > end_date and not user_data.get('trial_ended_notified', False):
                     safe_send_message(user_id, (
                         "⏳ *Ваш пробный период завершился!*\n\n"
-                        "💳 Пожалуйста, оплатите подписку для продолжения использования бота и доступа ко всем функциям!\n\n"
+                        "💳 Пожалуйста, оплатите подписку для продолжения использования бота и доступа ко всем функциям, если вы ее еще не купили!\n\n"
                         "🎉 Не упустите возможность продлить доступ и наслаждаться полным функционалом!"
                     ), parse_mode="Markdown")
                     user_data['trial_ended_notified'] = True
@@ -1380,7 +1367,7 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243' # API
 def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют)_\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, антирадар, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *3 дня:* 70 ₽ — быстрый доступ для знакомства с ботом!\n"
         "👉 *7 дней:* 105 ₽ — идеально для тестирования всех функций!\n"
@@ -1420,7 +1407,7 @@ def payments_function(message, show_description=True):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Купить подписку')
-    markup.add('Посмотреть подписку', 'История подписок', 'Отменить подписку')
+    markup.add('Ваши подписки', 'Возврат')
     markup.add('Магазин', 'Баллы', 'Промокоды')
     markup.add('Реферальная система', 'Рекламные каналы')
     markup.add('В главное меню')
@@ -2032,12 +2019,32 @@ def process_successful_payment(message):
     markup = create_main_menu()
     bot.send_message(user_id, f"Добро пожаловать, @{username}!\nВыберите действие из меню:", reply_markup=markup)
 
-# ------------------------------------------------ ПОДПИСКА НА БОТА (посмотреть подписку) -----------------------------------------
+# ------------------------------------------------ ПОДПИСКА НА БОТА (ваши подписки) -----------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "Ваши подписки")
+@check_function_state_decorator('Ваши подписки')
+@track_usage('Ваши подписки')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def refund_payment_menu(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Посмотреть подписки', 'История подписок')
+    markup.add('Вернуться в подписку')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие из ваших подписок:", reply_markup=markup, parse_mode="Markdown")
+
+# ------------------------------------------------ ПОДПИСКА НА БОТА (посмотреть подписки) -----------------------------------------
 
 def translate_plan_name(plan_name):
     return {
         "free": "пробный период", "referral_bonus": "реферальный бонус", "ad_bonus": "рекламный бонус",     
-        "activity": "активность", "weekly": "неделя", "monthly": "месяц", "yearly": "год",                   
+        "trial": "3 дня", "weekly": "7 дней", "monthly": "30 дней", "quarterly": "90 дней", "semiannual": "180 дней", "yearly": "365 дней",                   
         "points_bonus": "бонус за баллы", "gift_time": "подаренное время", "referral": "бонус за реферала",    
         "monthly_leader_bonus": "бонус лидера месяца", "leaderboard": "бонус топ-1", "store_time": "время из магазина",  
         "custom": "индивидуальный", "exchange_time": "обменное время"    
@@ -2048,9 +2055,9 @@ def send_long_message(chat_id, message_text, parse_mode='Markdown'):
     for i in range(0, len(message_text), max_length):
         bot.send_message(chat_id, message_text[i:i + max_length], parse_mode=parse_mode)
 
-@bot.message_handler(func=lambda message: message.text == "Посмотреть подписку")
-@check_function_state_decorator('Посмотреть подписку')
-@track_usage('Посмотреть подписку')
+@bot.message_handler(func=lambda message: message.text == "Посмотреть подписки")
+@check_function_state_decorator('Посмотреть подписки')
+@track_usage('Посмотреть подписки')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -2195,26 +2202,18 @@ def view_subscription_history(message):
         return_to_menu(message)
         return
 
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     data = load_payment_data()
-    user_data = data['subscriptions']['users'].get(str(user_id), {})
+    history_plans = data['subscription_history'].get(user_id, [])
 
-    if 'plans' not in user_data or not user_data['plans']:
-        bot.send_message(user_id, (
+    if not history_plans:
+        bot.send_message(message.chat.id, (
             "❌ *У вас нет истории подписок!*\n"
-            "🚀 Попробуй оформить подписку и начни использовать все возможности бота!"
+            "🚀 Попробуйте оформить подписку и начните использовать все возможности бота!"
         ), parse_mode="Markdown")
         return
 
-    now = datetime.now() 
-    expired_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") < now]
-    if not expired_plans:
-        bot.send_message(user_id, (
-            "❌ *У вас нет истекших подписок!*\n"
-            "🚀 История подписок появится, когда истечет из срока какая-либо подписка!"
-        ), parse_mode="Markdown")
-        return
-
+    now = datetime.now(pytz.UTC)
     plans_summary = "📜 *История подписок:*\n\n"
 
     unit_display = {
@@ -2223,12 +2222,13 @@ def view_subscription_history(message):
         'дни': 'дн.'
     }
 
-    for idx, plan in enumerate(expired_plans):
-        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
-        elapsed_time = now - end_date
-        days_elapsed = elapsed_time.days
-        hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600)
-        minutes_elapsed = remainder // 60
+    for idx, plan in enumerate(history_plans):
+        plan_status = plan.get('status', 'expired')
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+        elapsed_time = now - end_date if plan_status != 'active' else None
+        days_elapsed = elapsed_time.days if elapsed_time else 0
+        hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600) if elapsed_time else (0, 0)
+        minutes_elapsed = remainder // 60 if elapsed_time else 0
 
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
@@ -2258,36 +2258,57 @@ def view_subscription_history(message):
         plans_summary += (
             f"{period_type}\n\n"
             f"💼 *Тип подписки:* {subscription_type}\n"
-            f"📅 *Дней прошло:* {days_elapsed} дней и {hours_elapsed:02d}:{minutes_elapsed:02d} часов\n"
-            f"🕒 *Начало:* {start_date}\n"
+            f"📅 *Начало:* {start_date}\n"
             f"⌛ *Конец:* {end_date_str}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
         )
+        if plan_status == 'cancelled':
+            plans_summary += f"🚫 *Статус:* Отменена\n"
+            if plan.get('refunded', False):
+                plans_summary += (
+                    f"💸 *Возвращено:* {plan.get('refund_amount', 0):.2f} руб.\n"
+                    f"🆔 *ID возврата:* {plan.get('refund_id', 'Не присвоен')}\n"
+                    f"📅 *Дата отмены:* {plan.get('cancelled_date', 'Не указана')}\n"
+                )
+        else:
+            plans_summary += f"📈 *Статус:* {'Активна' if plan_status == 'active' else 'Истекла'}\n"
+            if plan_status != 'active':
+                plans_summary += f"⏳ *Дней прошло:* {days_elapsed} дней и {hours_elapsed:02d}:{minutes_elapsed:02d} часов\n"
+        plans_summary += f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
 
-    send_long_message(message.chat.id, plans_summary)  
+    send_long_message(message.chat.id, plans_summary)
 
-# ------------------------------------------------ ПОДПИСКА НА БОТА (отмена подписок) -----------------------------------------
+# ------------------------------------------------ ПОДПИСКА НА БОТА (возврат) -----------------------------------------
 
-PAYMASTER_MERCHANT_ID = "1744374395" # API
-PAYMASTER_SECRET_KEY = "93aa42be8420f58d5243" # API
+@bot.message_handler(func=lambda message: message.text == "Возврат")
+@check_function_state_decorator('Возврат')
+@track_usage('Возврат')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def refund_payment_menu(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Отменить подписки', 'История возвратов')
+    markup.add('Вернуться в подписку')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие из возврата:", reply_markup=markup, parse_mode="Markdown")
+
+# ------------------------------------------------ ПОДПИСКА НА БОТА (отменить подписки) -----------------------------------------
+
+PAYMASTER_MERCHANT_ID = "1744374395"
+PAYMASTER_SECRET_KEY = "93aa42be8420f58d5243"
 PAYMASTER_API_URL = "https://paymaster.ru/api/v2/"
-PAYMASTER_TOKEN = "1744374395:TEST:93aa42be8420f58d5243" # API
-REFUND_COMMISSION = 0.10
+PAYMASTER_TOKEN = "1744374395:TEST:93aa42be8420f58d5243"
+REFUND_COMMISSION = 0.25
 MIN_REFUND_AMOUNT = 1.0
-
+MAX_REFUNDS_PER_MONTH = 3
+MAX_REFUNDS_PER_YEAR = 12
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYMENTS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "payments.json")
-ADMIN_SESSIONS_FILE = os.path.join(BASE_DIR, "data", "admin", "admin_user_payments", "admin_sessions.json")
-
-def load_admin_chat_id():
-    try:
-        os.makedirs(os.path.dirname(ADMIN_SESSIONS_FILE), exist_ok=True)
-        with open(ADMIN_SESSIONS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        admin_sessions = data.get('admin_sessions', [])
-        return int(admin_sessions[0]) if admin_sessions else None
-    except Exception as e:
-        return None
 
 def calculate_refunded_amount(plan):
     try:
@@ -2295,20 +2316,25 @@ def calculate_refunded_amount(plan):
         start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         now = datetime.now(pytz.UTC)
 
+        if plan['price'] <= 100:
+            return 0.0, "Подписка стоимостью 100 рублей и менее не подлежит возврату!"
+
+        if plan['price'] <= 0:
+            return 0.0, "Подписка бесплатная и не подлежит возврату!"
+
         if now >= end_date:
-            return 0.0, "Подписка уже истекла"
+            return 0.0, "Подписка уже истекла!"
+
+        total_days = (end_date - start_date).days
+        if total_days <= 0:
+            return 0.0, "Некорректная длительность подписки!"
 
         if now < start_date:
             refund_amount = plan['price']
             commission = refund_amount * REFUND_COMMISSION
             if refund_amount <= commission:
-                return 0.0, "Сумма возврата меньше комиссии"
-            final_refunded = refund_amount - commission
-            return round(final_refunded, 2), None
-
-        total_days = (end_date - start_date).days
-        if total_days <= 0:
-            return 0.0, "Ошибка: некорректная длительность подписки"
+                return 0.0, "Сумма возврата меньше комиссии!"
+            return round(refund_amount - commission, 2), None
 
         remaining_time = end_date - now
         remaining_days = max(0, min(total_days, remaining_time.total_seconds() / (24 * 3600)))
@@ -2317,18 +2343,68 @@ def calculate_refunded_amount(plan):
         refund_amount = min(refund_amount, plan['price'])
         commission = refund_amount * REFUND_COMMISSION
         if refund_amount <= commission:
-            return 0.0, "Сумма возврата меньше комиссии"
+            return 0.0, "Сумма возврата меньше комиссии!"
         final_refunded = refund_amount - commission
         final_refunded = round(final_refunded, 2)
 
         if final_refunded < MIN_REFUND_AMOUNT:
-            return 0.0, "Сумма возврата слишком мала"
+            return 0.0, "Сумма возврата слишком мала!"
 
         return final_refunded, None
     except Exception as e:
         return 0.0, f"Ошибка расчета возврата: {str(e)}"
 
+def check_refund_limits(user_id):
+    data = load_payment_data()
+    now = datetime.now(pytz.UTC)
+    current_month = now.strftime("%m.%Y")
+    current_year = now.strftime("%Y")
+    user_refunds = data.get("refunds", [])
+    
+    monthly_refunds = [r for r in user_refunds if r["user_id"] == str(user_id) and r["refund_date"].startswith(current_month)]
+    yearly_refunds = [r for r in user_refunds if r["user_id"] == str(user_id) and r["refund_date"].split(" в ")[0][-4:] == current_year]
+    
+    if len(monthly_refunds) >= MAX_REFUNDS_PER_MONTH:
+        return False, f"Превышен месячный лимит возвратов ({MAX_REFUNDS_PER_MONTH})!"
+    if len(yearly_refunds) >= MAX_REFUNDS_PER_YEAR:
+        return False, f"Превышен годовой лимит возвратов ({MAX_REFUNDS_PER_YEAR})!"
+    return True, None
+
+def check_daily_payment_limit(refund_amount):
+    try:
+        headers = {"Authorization": f"Bearer {PAYMASTER_TOKEN}"}
+        today = datetime.now(pytz.UTC).strftime("%Y-%m-%d")
+        response = requests.get(f"{PAYMASTER_API_URL}payments?dateFrom={today}&dateTo={today}", headers=headers)
+        response.raise_for_status()
+        payments = response.json().get("payments", [])
+        total_successful = sum(float(p["amount"]["value"]) for p in payments if p["status"] == "success")
+        if total_successful < refund_amount:
+            return False, f"Сумма возврата ({refund_amount:.2f} руб.) превышает сумму успешных платежей за день ({total_successful:.2f} руб.)!"
+        return True, None
+    except Exception as e:
+        return False, f"Ошибка проверки дневного лимита платежей: {str(e)}"
+
 def refund_payment(user_id, refund_amount, payment_id, plan):
+    can_refund, limit_error = check_daily_payment_limit(refund_amount)
+    if not can_refund:
+        data = load_payment_data()
+        if "refunds" not in data:
+            data["refunds"] = []
+        refund_record = {
+            "user_id": str(user_id),
+            "plan_name": plan["plan_name"],
+            "refund_amount": refund_amount,
+            "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
+            "telegram_payment_charge_id": plan.get("telegram_payment_charge_id", ""),
+            "provider_payment_charge_id": payment_id,
+            "refund_id": None,
+            "status": "failed",
+            "error": limit_error
+        }
+        data["refunds"].append(refund_record)
+        save_payments_data(data)
+        return None, "failed"
+
     refund_data = {
         "paymentId": payment_id,
         "amount": {
@@ -2336,53 +2412,79 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
             "currency": "RUB"
         }
     }
-
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {PAYMASTER_TOKEN}",
         "Idempotency-Key": f"{user_id}_{int(datetime.now(pytz.UTC).timestamp())}"
     }
-
     try:
         response = requests.post(f"{PAYMASTER_API_URL}refunds", json=refund_data, headers=headers)
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("status") == "Pending" or result.get("id"):
-                return True
-            raise Exception(f"Paymaster: {result.get('message', 'Неизвестная ошибка')}")
-        raise Exception(f"Paymaster HTTP {response.status_code}: {response.text}")
-
-    except Exception as e:
+        response.raise_for_status()
+        result = response.json()
+        refund_id = result.get("id")
+        status = result.get("status", "pending").lower()
         data = load_payment_data()
         if "refunds" not in data:
             data["refunds"] = []
-        refund_data = {
-            "user_id": user_id,
+        refund_record = {
+            "user_id": str(user_id),
             "plan_name": plan["plan_name"],
             "refund_amount": refund_amount,
             "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
             "telegram_payment_charge_id": plan.get("telegram_payment_charge_id", ""),
             "provider_payment_charge_id": payment_id,
-            "status": "failed"
+            "refund_id": refund_id,
+            "status": status,
+            "error": None
         }
-        data["refunds"].append(refund_data)
+        data["refunds"].append(refund_record)
         save_payments_data(data)
+        return refund_id, status
+    except requests.exceptions.HTTPError as e:
+        error_message = f"Ошибка API PayMaster: {str(e)}"
+        if e.response.status_code == 400:
+            error_message = "Некорректные данные для возврата! Проверьте ID платежа и сумму"
+        elif e.response.status_code == 403:
+            error_message = "Доступ запрещен! Проверьте токен авторизации..."
+        data = load_payment_data()
+        if "refunds" not in data:
+            data["refunds"] = []
+        refund_record = {
+            "user_id": str(user_id),
+            "plan_name": plan["plan_name"],
+            "refund_amount": refund_amount,
+            "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
+            "telegram_payment_charge_id": plan.get("telegram_payment_charge_id", ""),
+            "provider_payment_charge_id": payment_id,
+            "refund_id": None,
+            "status": "failed",
+            "error": error_message
+        }
+        data["refunds"].append(refund_record)
+        save_payments_data(data)
+        return None, "failed"
+    except Exception as e:
+        data = load_payment_data()
+        if "refunds" not in data:
+            data["refunds"] = []
+        refund_record = {
+            "user_id": str(user_id),
+            "plan_name": plan["plan_name"],
+            "refund_amount": refund_amount,
+            "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
+            "telegram_payment_charge_id": plan.get("telegram_payment_charge_id", ""),
+            "provider_payment_charge_id": payment_id,
+            "refund_id": None,
+            "status": "failed",
+            "error": str(e)
+        }
+        data["refunds"].append(refund_record)
+        save_payments_data(data)
+        return None, "failed"
 
-        admin_chat_id = load_admin_chat_id()
-        if admin_chat_id:
-            bot.send_message(
-                admin_chat_id,
-                f"Ошибка возврата для user_id={user_id}: {str(e)}\n"
-                f"Payment ID: {payment_id}\n"
-                f"Request: {json.dumps(refund_data, ensure_ascii=False)}\n"
-                f"Response: {response.text if 'response' in locals() else 'No response'}"
-            )
-        return False
-
-@bot.message_handler(func=lambda message: message.text == "Отменить подписку")
-@check_function_state_decorator('Отменить подписку')
-@track_usage('Отменить подписку')
+@bot.message_handler(func=lambda message: message.text == "Отменить подписки")
+@check_function_state_decorator('Отменить подписки')
+@track_usage('Отменить подписки')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -2406,60 +2508,67 @@ def cancel_subscription(message):
         return
 
     now = datetime.now(pytz.UTC)
-    paid_plans = [
+    refundable_plans = [
         p for p in user_data['plans']
-        if p['plan_name'] in ['weekly', 'monthly', 'yearly', 'store_time']
-        and p['source'] in ['user', 'store']
+        if p['plan_name'] in ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'store_time']
+        and p['source'] in ['user', 'store', 'promo_100_percent']
         and datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now
+        and p.get('provider_payment_charge_id')
+        and p['price'] > 100 
     ]
-    if not paid_plans:
+
+    if not refundable_plans:
         bot.send_message(user_id, (
-            "⚠️ *У вас нет активных подписок!*\n\n"
+            "⚠️ *У вас нет активных подписок стоимостью более 100 рублей, доступных для возврата!*\n\n"
             "🚀 Подключи подписку, чтобы воспользоваться функциями бота!\n"
             "👉 Перейди в раздел *«купить подписку»*!"
         ), parse_mode="Markdown")
         payments_function(message, show_description=False)
         return
 
-    plans_summary = "💎 *Список активных подписок:*\n\n"
+    can_refund, limit_error = check_refund_limits(user_id)
+    if not can_refund:
+        bot.send_message(user_id, f"⚠️ *{limit_error}!*\nПопробуйте снова позже", parse_mode="Markdown")
+        payments_function(message, show_description=False)
+        return
 
-    for idx, plan in enumerate(paid_plans):
+    plans_summary = "💎 *Список активных подписок, доступных для возврата:*\n\n"
+    for idx, plan in enumerate(refundable_plans):
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-        remaining_time = end_date - now
+        
+        if start_date > now:
+            remaining_time = end_date - start_date
+        else:
+            remaining_time = end_date - now
+        
         days_left = remaining_time.days
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
-
-        plan_name_lower = plan['plan_name'].lower()
-        source = plan.get('source', '')
-        if source in {"user", "store"}:
-            period_type = f"💳 *№{idx + 1}. Платный период:*"
-        else:
-            period_type = f"📦 *№{idx + 1}. Назначенный период:*"
-        subscription_type = translate_plan_name(plan_name_lower)
-
+        
+        subscription_type = translate_plan_name(plan['plan_name'])
         price_formatted = f"{plan['price']:.2f}"
-
+        refund_amount, error = calculate_refunded_amount(plan)
+        refund_status = f"💸 Возможный возврат: {refund_amount:.2f} руб." if not error else f"⚠️ {error}"
         plans_summary += (
-            f"{period_type}\n\n"
+            f"💳 *№{idx + 1}. Платный период:*\n\n"
             f"💼 *Тип подписки:* {subscription_type}\n"
             f"📅 *Дней осталось:* {days_left} дней и {hours_left:02d}:{minutes_left:02d} часов\n"
             f"🕒 *Начало:* {plan['start_date']}\n"
             f"⌛ *Конец:* {plan['end_date']}\n"
-            f"💰 *Стоимость подписки:* {price_formatted} руб.\n\n"
+            f"💰 *Стоимость подписки:* {price_formatted} руб.\n"
+            f"{refund_status}\n\n"
         )
 
-    send_long_message(user_id, plans_summary)  
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    send_long_message(user_id, plans_summary)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Вернуться в подписку")
     markup.add("В главное меню")
-    bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup, parse_mode="Markdown")
-    bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+    bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup)
+    bot.register_next_step_handler(message, confirm_cancellation_step, refundable_plans=refundable_plans)
 
-@text_only_handler
-def confirm_cancellation(message, user_id, paid_plans):
+def confirm_cancellation_step(message, refundable_plans):
+    user_id = message.from_user.id
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
@@ -2469,15 +2578,15 @@ def confirm_cancellation(message, user_id, paid_plans):
 
     try:
         subscription_numbers = [int(num.strip()) for num in message.text.split(',')]
-        valid_numbers = [num for num in subscription_numbers if 1 <= num <= len(paid_plans)]
+        valid_numbers = [num for num in subscription_numbers if 1 <= num <= len(refundable_plans)]
         invalid_numbers = [num for num in subscription_numbers if num not in valid_numbers]
 
         if not valid_numbers:
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup = ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add("Вернуться в подписку")
             markup.add("В главное меню")
-            bot.send_message(user_id, "⚠️ Все номера некорректны!\nВведите номера через запятую:", reply_markup=markup, parse_mode="Markdown")
-            bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+            bot.send_message(user_id, "⚠️ Все номера некорректны!\nВведите номера:", reply_markup=markup, parse_mode="Markdown")
+            bot.register_next_step_handler(message, confirm_cancellation_step, refundable_plans=refundable_plans)
             return
 
         if invalid_numbers:
@@ -2485,8 +2594,9 @@ def confirm_cancellation(message, user_id, paid_plans):
 
         refund_summary = "*Подтверждение отмены:*\n\n"
         total_refunded = 0.0
+        selected_plans = []
         for num in valid_numbers:
-            plan = paid_plans[num - 1]
+            plan = refundable_plans[num - 1]
             refund_amount, error = calculate_refunded_amount(plan)
             if error:
                 refund_summary += f"❌ Подписка №{num}: {error}\n"
@@ -2499,12 +2609,14 @@ def confirm_cancellation(message, user_id, paid_plans):
             remaining_days = max(0, min(total_days, remaining_time.total_seconds() / (24 * 3600)))
             commission = refund_amount / (1 - REFUND_COMMISSION) * REFUND_COMMISSION
             refund_summary += (
-                f"💳 Подписка №{num} ({translate_plan_name(plan['plan_name'])}):\n"
-                f"📅 Осталось дней: {remaining_days:.2f}\n"
-                f"💸 Возврат: {refund_amount:.2f} руб.\n"
-                f"💸 Комиссия: {commission:.2f} руб.\n\n"
+                f"💳 *Подписка №{num}*\n\n"
+                f"💼 *Тип подписки:* {translate_plan_name(plan['plan_name'])}\n"
+                f"📅 *Осталось дней:* {remaining_days:.2f}\n"
+                f"💸 *Возврат:* {refund_amount:.2f} руб.\n"
+                f"💸 *Комиссия:* {commission:.2f} руб.\n\n"
             )
             total_refunded += refund_amount
+            selected_plans.append((num, plan))
 
         if total_refunded == 0:
             bot.send_message(user_id, "❌ Нет подписок для возврата!", parse_mode="Markdown")
@@ -2512,90 +2624,210 @@ def confirm_cancellation(message, user_id, paid_plans):
             return
 
         refund_summary += f"📥 Итого: *{total_refunded:.2f} руб.*"
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Подтвердить", "Отменить")
         markup.add("Вернуться в подписку")
         markup.add("В главное меню")
         bot.send_message(user_id, refund_summary, parse_mode="Markdown")
         bot.send_message(user_id, "Подтвердите действие:", reply_markup=markup)
-        bot.register_next_step_handler(message, process_subscription_cancellation, user_id, paid_plans, valid_numbers)
-
+        bot.register_next_step_handler(message, process_cancellation_step, selected_plans=selected_plans, total_refunded=total_refunded)
     except ValueError:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Вернуться в подписку")
         markup.add("В главное меню")
-        bot.send_message(user_id, "Неверный формат!\nВведите номера", reply_markup=markup, parse_mode="Markdown")
-        bot.register_next_step_handler(message, confirm_cancellation, user_id, paid_plans)
+        bot.send_message(user_id, "⚠️ Неверный формат!\nВведите номера:", reply_markup=markup, parse_mode="Markdown")
+        bot.register_next_step_handler(message, confirm_cancellation_step, refundable_plans=refundable_plans)
 
-@text_only_handler
-def process_subscription_cancellation(message, user_id, paid_plans, subscription_numbers):
+def process_cancellation_step(message, selected_plans, total_refunded):
+    user_id = message.from_user.id
+    user_id_str = str(user_id)
+
     if message.text == "Вернуться в подписку":
         payments_function(message, show_description=False)
         return
     if message.text == "В главное меню":
         return_to_menu(message)
         return
-
-    if message.text != "Подтвердить":
-        bot.send_message(user_id, "❌ Действие отменено!", parse_mode="Markdown")
+    if message.text == "Отменить":
+        bot.send_message(user_id, "❌ Возврат отменен!", parse_mode="Markdown")
         payments_function(message, show_description=False)
+        return
+    if message.text != "Подтвердить":
+        bot.send_message(user_id, "⚠️ Пожалуйста, выберите действие из предложенных!", parse_mode="Markdown")
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Подтвердить", "Отменить")
+        markup.add("Вернуться в подписку")
+        markup.add("В главное меню")
+        bot.send_message(user_id, "Подтвердите действие:", reply_markup=markup)
+        bot.register_next_step_handler(message, process_cancellation_step, selected_plans=selected_plans, total_refunded=total_refunded)
         return
 
     data = load_payment_data()
-    user_data = data['subscriptions']['users'].get(str(user_id), {})
-    total_refunded = 0.0
+    user_data = data['subscriptions']['users'].get(user_id_str, {'plans': [], 'total_amount': 0})
+    if user_id_str not in data['subscription_history']:
+        data['subscription_history'][user_id_str] = []
 
-    for num in subscription_numbers:
-        plan = paid_plans[num - 1]
+    successful_refunds = []
+    failed_refunds = []
+
+    for num, plan in selected_plans:
         refund_amount, error = calculate_refunded_amount(plan)
         if error:
-            bot.send_message(user_id, f"❌ Подписка №{num}: {error}", parse_mode="Markdown")
+            failed_refunds.append((num, error))
             continue
 
         payment_id = plan.get('provider_payment_charge_id', '')
         if not payment_id:
-            bot.send_message(user_id, f"❌ Подписка №{num}: отсутствует ID платежа!", parse_mode="Markdown")
-            admin_chat_id = load_admin_chat_id()
-            if admin_chat_id:
-                bot.send_message(admin_chat_id, f"Ошибка возврата для user_id={user_id}: отсутствует provider_payment_charge_id")
+            failed_refunds.append((num, "Отсутствует ID платежа!"))
             continue
 
-        success = refund_payment(user_id, refund_amount, payment_id, plan)
-        if not success:
-            bot.send_message(user_id, f"❌ Ошибка возврата для подписки №{num}! Обратитесь в поддержку...", parse_mode="Markdown")
+        refund_id, status = refund_payment(user_id, refund_amount, payment_id, plan)
+        if status == "failed":
+            failed_refunds.append((num, "Ошибка обработки возврата!"))
             continue
 
+        original_start_date = plan['start_date']
+        plan['status'] = 'cancelled'
+        plan['refunded'] = refund_amount > 0
+        plan['refund_id'] = refund_id
+        plan['refund_status'] = status
+        plan['cancelled_date'] = datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M")
+
+        data['subscription_history'][user_id_str].append(plan)
         user_data['plans'].remove(plan)
         user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - refund_amount)
         data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - refund_amount)
 
-        refund_data = {
-            "user_id": user_id,
+        successful_refunds.append({
+            "number": num,
             "plan_name": plan['plan_name'],
             "refund_amount": refund_amount,
-            "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
-            "telegram_payment_charge_id": plan.get('telegram_payment_charge_id', ''),
-            "provider_payment_charge_id": payment_id,
-            "status": "success"
-        }
-        if "refunds" not in data:
-            data["refunds"] = []
-        data["refunds"].append(refund_data)
-        total_refunded += refund_amount
+            "refund_id": refund_id,
+            "status": status,
+            "original_start_date": original_start_date
+        })
 
-    data['subscriptions']['users'][str(user_id)] = user_data
     save_payments_data(data)
 
-    if total_refunded > 0:
-        bot.send_message(user_id, (
-            f"✅ Подписки отменены!\n\n"
-            f"Возвращено: *{total_refunded:.2f} руб.*\n\n"
-            f"💸 *Срок возврата:* денежные средства будут возвращены на ваш счет в течение *1–7 рабочих дней*!"
-        ), parse_mode="Markdown")
-    else:
-        bot.send_message(user_id, "❌ Не удалось отменить подписки!", parse_mode="Markdown")
+    result_message = "📋 *Результат отмены подписок:*\n\n"
+    for refund in successful_refunds:
+        result_message += ( 
+            f"✅ *Подписка №{refund['number']}*\n\n"
+            f"💼 *Тип подписки:* {translate_plan_name(refund['plan_name'])}\n"
+            f"💸 *Возвращено:* {refund['refund_amount']:.2f} руб.\n"
+            f"📅 *Дата покупки:* {refund['original_start_date']}\n"
+            f"🆔 *ID возврата:* {refund['refund_id'] or 'не присвоен'}\n"
+            f"📈 *Статус:* {refund['status'].capitalize()}\n"
+            f"💳 Ожидайте возврат на ваш счет в течение *1–7 рабочих дней*...\n\n"
+        )
+    for num, error in failed_refunds:
+        plan = next((p for n, p in selected_plans if n == num), None)
+        plan_name = plan['plan_name'] if plan else "Неизвестная подписка"
+        result_message += (
+            f"❌ *Подписка №{num}*\n\n"
+            f"💼 *Тип подписки:* {translate_plan_name(plan_name)}\n"
+            f"⚠️ *Ошибка:* {error}\n"
+            f"📞 Обратитесь в поддержку для решения проблемы!\n\n"
+        )
 
+    if successful_refunds:
+        result_message += f"📥 *Итого возвращено:* {total_refunded:.2f} руб.\n"
+    if not successful_refunds and not failed_refunds:
+        result_message = "❌ Не удалось отменить подписки!"
+
+    send_long_message(user_id, result_message)
     payments_function(message, show_description=False)
+
+def background_refund_status_check():
+    while True:
+        data = load_payment_data()
+        pending_refunds = [r for r in data.get("refunds", []) if r["status"] in ["pending", "processing"]]
+        for refund in pending_refunds:
+            refund_id = refund.get("refund_id")
+            if not refund_id:
+                continue
+            try:
+                headers = {"Authorization": f"Bearer {PAYMASTER_TOKEN}"}
+                response = requests.get(f"{PAYMASTER_API_URL}refunds/{refund_id}", headers=headers)
+                response.raise_for_status()
+                result = response.json()
+                new_status = result.get("status", "pending").lower()
+                if new_status != refund["status"]:
+                    refund["status"] = new_status
+                    refund["last_updated"] = datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M")
+                    user_id = refund["user_id"]
+                    status_message = (
+                        f"📋 *Обновление статуса возврата:*\n\n"
+                        f"💳 Подписка: {translate_plan_name(refund['plan_name'])}\n"
+                        f"💸 Сумма: {refund['refund_amount']:.2f} руб.\n"
+                        f"🆔 ID возврата: {refund_id}\n"
+                        f"📈 Новый статус: {new_status.capitalize()}\n"
+                        f"📅 Дата обновления: {refund['last_updated']}\n"
+                    )
+                    if new_status == "success":
+                        status_message += "✅ Средства будут зачислены на ваш счет в течение 1–7 рабочих дней!"
+                    elif new_status == "failed":
+                        status_message += "⚠️ Возврат не удался! Обратитесь в поддержку..."
+                    safe_send_message(user_id, status_message, parse_mode="Markdown")
+                    save_payments_data(data)
+            except Exception as e:
+                refund["status"] = "failed"
+                refund["error"] = str(e)
+                refund["last_updated"] = datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M")
+                safe_send_message(refund["user_id"], (
+                    f"❌ *Ошибка проверки статуса возврата:*\n\n"
+                    f"💳 Подписка: {translate_plan_name(refund['plan_name'])}\n"
+                    f"💸 Сумма: {refund['refund_amount']:.2f} руб.\n"
+                    f"🆔 ID возврата: {refund_id}\n"
+                    f"⚠️ Ошибка: {str(e)}\n"
+                    f"📞 Обратитесь в поддержку!"
+                ), parse_mode="Markdown")
+                save_payments_data(data)
+        time.sleep(3600)
+
+refund_status_thread = threading.Thread(target=background_refund_status_check, daemon=True)
+refund_status_thread.start()
+
+# ------------------------------------------------ ПОДПИСКА НА БОТА (история возвратов) -----------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "История возвратов")
+@check_function_state_decorator('История возвратов')
+@track_usage('История возвратов')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def view_refund_history(message):
+    user_id = str(message.from_user.id)
+    data = load_payment_data()
+    user_refunds = [r for r in data.get('refunds', []) if r['user_id'] == user_id]
+
+    if not user_refunds:
+        bot.send_message(user_id, (
+            "❌ *У вас нет истории возвратов!*\n"
+            "🚀 Начните с оформления подписки, чтобы использовать все возможности!"
+        ), parse_mode="Markdown")
+        return
+
+    refunds_summary = "📜 *История возвратов:*\n\n"
+    for idx, refund in enumerate(user_refunds):
+        refunds_summary += (
+            f"💳 *Возврат №{idx + 1}:*\n"
+            f"💼 Подписка: {translate_plan_name(refund['plan_name'])}\n"
+            f"💸 Сумма: {refund['refund_amount']:.2f} руб.\n"
+            f"📅 Дата: {refund['refund_date']}\n"
+            f"🆔 ID возврата: {refund.get('refund_id', 'Не присвоен')}\n"
+            f"📈 Статус: {refund['status'].capitalize()}\n"
+        )
+        if refund.get('error'):
+            refunds_summary += f"⚠️ Ошибка: {refund['error']}\n"
+        refunds_summary += "\n"
+
+    send_long_message(message.chat.id, refunds_summary)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (магазин) -----------------------------------------
 
@@ -3826,7 +4058,7 @@ def gift_time_handler(message):
         if (
             plan['plan_name'] in ['points_bonus', 'gift_time', 'exchange_time']
             or (
-                plan['plan_name'] in ['weekly', 'monthly', 'yearly', 'store_time', 'custom']
+                plan['plan_name'] in ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'store_time', 'custom']
                 and plan['source'] in ['user', 'store']
             )
         )
@@ -4057,7 +4289,7 @@ def user_process_gift_time_amount(message, recipient_id, total_available_minutes
         
         user_plans = data['subscriptions']['users'][user_id]['plans']
         for plan in sorted(
-            [p for p in user_plans if p['plan_name'] in ['weekly', 'monthly', 'yearly'] and p['source'] == 'user'],
+            [p for p in user_plans if p['plan_name'] in ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly'] and p['source'] == 'user'],
             key=lambda x: datetime.strptime(x['end_date'], "%d.%m.%Y в %H:%M")
         ):
             if remaining_minutes <= 0:
@@ -5470,12 +5702,12 @@ def reset_and_start_over(chat_id):
     item1 = types.KeyboardButton("Рассчитать расход")
     item2 = types.KeyboardButton("Посмотреть поездки")
     item3 = types.KeyboardButton("Удалить поездки")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item4 = types.KeyboardButton("В главное меню")
+    item4 = types.KeyboardButton("Вернуться в калькуляторы")
+    item5 = types.KeyboardButton("В главное меню")
 
     markup.add(item1, item2, item3)
-    markup.add(item6)
     markup.add(item4)
+    markup.add(item5)
 
     bot.send_message(chat_id, "Выберите действия из расхода топлива:", reply_markup=markup)
 
@@ -5510,12 +5742,12 @@ def calculate_fuel_cost_handler(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
     item2 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item3 = types.KeyboardButton("В главное меню")
+    item3 = types.KeyboardButton("Вернуться в калькуляторы")
+    item4 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
-    markup.add(item6)
     markup.add(item3)
+    markup.add(item4)
     sent = bot.send_message(chat_id, "Введите 1 местоположение или отправьте геолокацию:", reply_markup=markup)
     reset_user_data(chat_id)
 
@@ -5527,12 +5759,12 @@ def process_location_step(message, location_number):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
     item2 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item3 = types.KeyboardButton("В главное меню")
+    item3 = types.KeyboardButton("Вернуться в калькуляторы")
+    item4 = types.KeyboardButton("В главное меню")
     markup.add(item1)
     markup.add(item2)
-    markup.add(item6)
     markup.add(item3)
+    markup.add(item4)
 
     if message.text == "Вернуться в расход топлива":
         handle_fuel_expense(message, show_description=False)
@@ -5587,12 +5819,12 @@ def process_location_step(message, location_number):
         item1 = types.KeyboardButton("Да")
         item2 = types.KeyboardButton("Нет")
         item3 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item4 = types.KeyboardButton("В главное меню")
+        item4 = types.KeyboardButton("Вернуться в калькуляторы")
+        item5 = types.KeyboardButton("В главное меню")
         markup.add(item1, item2)
         markup.add(item3)
-        markup.add(item6)
         markup.add(item4)
+        markup.add(item5)
         sent = bot.send_message(chat_id, "Хотите добавить еще местоположение для расчета?", reply_markup=markup)
         bot.register_next_step_handler(sent, process_add_more_locations, location_number + 1)
 
@@ -5603,12 +5835,12 @@ def process_add_more_locations(message, next_location_number):
     item1 = types.KeyboardButton("Да")
     item2 = types.KeyboardButton("Нет")
     item3 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item4 = types.KeyboardButton("В главное меню")
+    item4 = types.KeyboardButton("Вернуться в калькуляторы")
+    item5 = types.KeyboardButton("В главное меню")
     markup.add(item1, item2)
     markup.add(item3)
-    markup.add(item6)
     markup.add(item4)
+    markup.add(item5)
 
     if message.text == "Вернуться в расход топлива":
         handle_fuel_expense(message, show_description=False)
@@ -5624,12 +5856,12 @@ def process_add_more_locations(message, next_location_number):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Отправить геолокацию", request_location=True)
         item2 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item3 = types.KeyboardButton("В главное меню")
+        item3 = types.KeyboardButton("Вернуться в калькуляторы")
+        item4 = types.KeyboardButton("В главное меню")
         markup.add(item1)
         markup.add(item2)
-        markup.add(item6)
         markup.add(item3)
+        markup.add(item4)
         sent = bot.send_message(chat_id, f"Введите {next_location_number} местоположение или отправьте геолокацию:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_location_step, next_location_number)
     elif message.text == "Нет":
@@ -5652,13 +5884,13 @@ def calculate_total_distance(chat_id):
     item_auto = types.KeyboardButton("Автоматическое")
     item_input = types.KeyboardButton("Ввод вручную")
     item1 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item2 = types.KeyboardButton("В главное меню")
+    item2 = types.KeyboardButton("Вернуться в калькуляторы")
+    item3 = types.KeyboardButton("В главное меню")
 
     markup.add(item_auto, item_input)
     markup.add(item1)
-    markup.add(item6)
     markup.add(item2)
+    markup.add(item3)
 
     sent = bot.send_message(chat_id, f"Выберите вариант ввода расстояния:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_distance_choice_step, total_distance)
@@ -5668,11 +5900,11 @@ def process_custom_distance_step(message):
     chat_id = message.chat.id
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item2 = types.KeyboardButton("В главное меню")
+    item2 = types.KeyboardButton("Вернуться в калькуляторы")
+    item3 = types.KeyboardButton("В главное меню")
     markup.add(item1)
-    markup.add(item6)
     markup.add(item2)
+    markup.add(item3)
 
     if message.text == "Вернуться в расход топлива":
         handle_fuel_expense(message, show_description=False)
@@ -5724,13 +5956,13 @@ def process_distance_choice_step(message, distance_km):
     item_auto = types.KeyboardButton("Автоматическое")
     item_input = types.KeyboardButton("Ввод вручную")
     item1 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item2 = types.KeyboardButton("В главное меню")
+    item2 = types.KeyboardButton("Вернуться в калькуляторы")
+    item3 = types.KeyboardButton("В главное меню")
 
     markup.add(item_auto, item_input)
     markup.add(item1)
-    markup.add(item6)
     markup.add(item2)
+    markup.add(item3)
 
     if message.text == "Автоматическое":
         bot.send_message(chat_id, f"Расстояние между точками: {distance_km:.2f} км.")
@@ -5738,11 +5970,11 @@ def process_distance_choice_step(message, distance_km):
     elif message.text == "Ввод вручную":
         custom_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
         custom_markup.add(item1)
-        custom_markup.add(item6)
         custom_markup.add(item2)
+        custom_markup.add(item3)
 
         sent = bot.send_message(chat_id, "Введите ваше расстояние (км.):", reply_markup=custom_markup)
         bot.register_next_step_handler(sent, process_custom_distance_step)
@@ -5772,24 +6004,24 @@ def process_date_step(message, distance):
     if message.text == "Ввести дату вручную":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        markup.add(item6)
         markup.add(item2)
+        markup.add(item3)
         sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_manual_date_step, distance)
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item_manual = types.KeyboardButton("Ввести дату вручную")
         item_skip = types.KeyboardButton("Пропустить ввод даты")
-        markup.add(item_manual, item_skip)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
+        markup.add(item_manual, item_skip)
         markup.add(item1)
-        markup.add(item6)
         markup.add(item2)
+        markup.add(item3)
 
         sent = bot.send_message(chat_id, "Выберите способ ввода даты:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_date_step, distance)
@@ -5829,11 +6061,11 @@ def handle_date_selection(message, distance):
     if message.text == "Ввести дату вручную":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        markup.add(item6)
         markup.add(item2)
+        markup.add(item3)
 
         sent = bot.send_message(chat_id, "Введите дату поездки в формате ДД.ММ.ГГГГ:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_manual_date_step, distance)
@@ -5869,11 +6101,11 @@ def process_manual_date_step(message, distance):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item2 = types.KeyboardButton("В главное меню")
+    item2 = types.KeyboardButton("Вернуться в калькуляторы")
+    item3 = types.KeyboardButton("В главное меню")
     markup.add(item1)
-    markup.add(item6)
     markup.add(item2)
+    markup.add(item3)
 
     if re.match(date_pattern, message.text):
         day, month, year = map(int, message.text.split('.'))
@@ -5898,11 +6130,12 @@ def show_fuel_types(chat_id, date, distance):
     row1 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[:3]]
     row2 = [KeyboardButton(fuel_type) for fuel_type in fuel_types[3:]]
     row3 = [KeyboardButton("Вернуться в расход топлива")]
-    row6 = [KeyboardButton("Вернуться в калькуляторы")]
-    row4 = [KeyboardButton("В главное меню")]
+    row4 = [KeyboardButton("Вернуться в калькуляторы")]
+    row5 = [KeyboardButton("В главное меню")]
 
     markup.add(*row1, *row2, *row3)
     markup.add(*row4)
+    markup.add(*row5)
 
     sent = bot.send_message(chat_id, "Выберите тип топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, process_fuel_type, date, distance)
@@ -6038,12 +6271,12 @@ def process_fuel_type(message, date, distance):
     item1 = types.KeyboardButton("Актуальная цена")
     item2 = types.KeyboardButton("Ввести свою")
     item3 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item4 = types.KeyboardButton("В главное меню")
+    item4 = types.KeyboardButton("Вернуться в калькуляторы")
+    item5 = types.KeyboardButton("В главное меню")
     markup.add(item1, item2)
     markup.add(item3)
-    markup.add(item6)
     markup.add(item4)
+    markup.add(item5)
 
     sent = bot.send_message(chat_id, "Выберите вариант ввода цены топлива:", reply_markup=markup)
     bot.register_next_step_handler(sent, handle_price_input_choice, date, distance, actual_fuel_type)
@@ -6055,11 +6288,11 @@ def handle_price_input_choice(message, date, distance, fuel_type):
     if message.text == "Ввести свою":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        markup.add(item6)
         markup.add(item2)
+        markup.add(item3)
 
         sent = bot.send_message(chat_id, "Введите цену за литр топлива:", reply_markup=markup)
         bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
@@ -6068,22 +6301,22 @@ def handle_price_input_choice(message, date, distance, fuel_type):
         if price_from_files:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в расход топлива")
-            item6 = types.KeyboardButton("Вернуться в калькуляторы")
-            item2 = types.KeyboardButton("В главное меню")
+            item2 = types.KeyboardButton("Вернуться в калькуляторы")
+            item3 = types.KeyboardButton("В главное меню")
             markup.add(item1)
-            markup.add(item6)
             markup.add(item2)
+            markup.add(item3)
             bot.send_message(chat_id, f"Актуальная средняя цена на {fuel_type.upper()} по РФ: {price_from_files:.2f} руб./л.", reply_markup=markup)
             sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
             bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_from_files)
         else:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             item1 = types.KeyboardButton("Вернуться в расход топлива")
-            item6 = types.KeyboardButton("Вернуться в калькуляторы")
-            item2 = types.KeyboardButton("В главное меню")
+            item2 = types.KeyboardButton("Вернуться в калькуляторы")
+            item3 = types.KeyboardButton("В главное меню")
             markup.add(item1)
-            markup.add(item6)
             markup.add(item2)
+            markup.add(item3)
             sent = bot.send_message(chat_id, f"Для выбранного топлива '{fuel_type}' данных нет!\nПожалуйста, введите цену", reply_markup=markup)
             bot.register_next_step_handler(sent, process_price_per_liter_step, date, distance, fuel_type)
     elif message.text == "Вернуться в расход топлива":
@@ -6115,11 +6348,11 @@ def process_price_per_liter_step(message, date, distance, fuel_type):
             raise ValueError
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         item1 = types.KeyboardButton("Вернуться в расход топлива")
-        item6 = types.KeyboardButton("Вернуться в калькуляторы")
-        item2 = types.KeyboardButton("В главное меню")
+        item2 = types.KeyboardButton("Вернуться в калькуляторы")
+        item3 = types.KeyboardButton("В главное меню")
         markup.add(item1)
-        markup.add(item6)
         markup.add(item2)
+        markup.add(item3)
         sent = bot.send_message(chat_id, "Введите расход топлива на 100 км:", reply_markup=markup)
         bot.clear_step_handler_by_chat_id(chat_id)
         bot.register_next_step_handler(sent, process_fuel_consumption_step, date, distance, fuel_type, price_per_liter)
@@ -6230,11 +6463,11 @@ def display_summary(chat_id, fuel_cost, fuel_cost_per_person, fuel_type, date, d
     bot.clear_step_handler_by_chat_id(chat_id)
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     item1 = types.KeyboardButton("Вернуться в расход топлива")
-    item6 = types.KeyboardButton("Вернуться в калькуляторы")
-    item2 = types.KeyboardButton("В главное меню")
+    item2 = types.KeyboardButton("Вернуться в калькуляторы")
+    item3 = types.KeyboardButton("В главное меню")
     markup.add(item1)
-    markup.add(item6)
     markup.add(item2)
+    markup.add(item3)
     bot.send_message(chat_id, summary_message, reply_markup=markup, parse_mode="Markdown")
     if chat_id in temporary_trip_data and temporary_trip_data[chat_id]:
         if chat_id not in user_trip_data:
@@ -22244,8 +22477,6 @@ def initialize_user_notifications(chat_id):
             for key in default_notifications:
                 if key not in notifications[str_chat_id]["notifications"]:
                     notifications[str_chat_id]["notifications"][key] = default_notifications[key]
-            if active_subscription and not any(notifications[str_chat_id]["notifications"].values()):
-                notifications[str_chat_id]["notifications"] = default_notifications
 
     with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
         json.dump(notifications, f, ensure_ascii=False, indent=4)
@@ -22427,18 +22658,32 @@ def handle_notification_toggle(message):
         new_status = toggle_notification(chat_id, "exchange_rates")
         notification_messages.append(f"💱 Уведомления о курсах валют {'включены' if new_status else 'выключены'}!")
     elif message.text == "Включить все":
-        weather_status = toggle_notification(chat_id, "weather")
-        fuel_status = toggle_notification(chat_id, "fuel_prices")
-        exchange_status = toggle_notification(chat_id, "exchange_rates")
-        if weather_status or fuel_status or exchange_status:
+        notifications = initialize_user_notifications(chat_id)
+        user_notifications = notifications[str(chat_id)]["notifications"]
+        any_changed = False
+        for key in user_notifications:
+            if not user_notifications[key]:
+                user_notifications[key] = True
+                any_changed = True
+        if any_changed:
+            notifications[str(chat_id)]["notifications"] = user_notifications
+            with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+                json.dump(notifications, f, ensure_ascii=False, indent=4)
             notification_messages.append("📬 Все уведомления включены!")
         else:
             notification_messages.append("📬 Все уведомления уже включены!")
     elif message.text == "Выключить все":
-        weather_status = toggle_notification(chat_id, "weather")
-        fuel_status = toggle_notification(chat_id, "fuel_prices")
-        exchange_status = toggle_notification(chat_id, "exchange_rates")
-        if not weather_status and not fuel_status and not exchange_status:
+        notifications = initialize_user_notifications(chat_id)
+        user_notifications = notifications[str(chat_id)]["notifications"]
+        any_changed = False
+        for key in user_notifications:
+            if user_notifications[key]:
+                user_notifications[key] = False
+                any_changed = True
+        if any_changed:
+            notifications[str(chat_id)]["notifications"] = user_notifications
+            with open(NOTIFICATIONS_PATH, 'w', encoding='utf-8') as f:
+                json.dump(notifications, f, ensure_ascii=False, indent=4)
             notification_messages.append("📬 Все уведомления выключены!")
         else:
             notification_messages.append("📬 Все уведомления уже выключены!")
@@ -22475,7 +22720,7 @@ def get_city_name(latitude, longitude):
     try:
         time.sleep(1)
         url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
-        headers = {'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'} # API
+        headers = {'User-Agent': 'FuelWeatherBot/1.0 (0543398@gmail.com)'}
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
         data = response.json()
@@ -22752,7 +22997,7 @@ threading.Thread(target=schedule_tasks_together, daemon=True).start()
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'admin', 'admin_user_payments', 'users.json')
 
-INACTIVITY_THRESHOLD = 3 * 24 * 60 * 60
+INACTIVITY_THRESHOLD = 7 * 24 * 60 * 60
 CHECK_INTERVAL = 12 * 60 * 60
 DELETE_THRESHOLD = 30 * 24 * 60 * 60
 
@@ -24498,8 +24743,7 @@ def manage_subscriptions(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Добавление подписки', 'Просмотр подписок', 'Удаление подписок')
     markup.add('Вернуться в управление системой')
-    item_back = types.KeyboardButton("В меню админ-панели")
-    markup.add(item_back)
+    markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления подписками:", reply_markup=markup)
 
 def split_message(message, max_length=4096):
@@ -26314,7 +26558,8 @@ def manage_points(message):
         return
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Начисление баллов', 'Просмотр баллов', 'Списание баллов', 'Просмотр истории баллов')
+    markup.add('Начисление баллов', 'Списание баллов')
+    markup.add('Просмотр баллов', 'Просмотр истории баллов')
     markup.add('Вернуться в управление системой')
     markup.add('В меню админ-панели')
     bot.send_message(message.chat.id, "Выберите действие для управления баллами:", reply_markup=markup)
@@ -27662,14 +27907,13 @@ def process_create_promo_code_items(message, discount, uses):
         return
 
     available_items = [
-        "week", "month", "year",
+        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
+        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365",
         "points_5", "points_10", "points_15", "points_25", "points_30", "points_50",
         "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
         "points_500", "points_750", "points_1000",
         "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
-        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days", 
-        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
-        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
+        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days"
     ]    
     applicable_items = []
 
@@ -27938,15 +28182,14 @@ def process_assign_discount_items(message, user_id, discount):
         return
 
     available_items = [
-        "week", "month", "year",
+        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
+        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365",
         "points_5", "points_10", "points_15", "points_25", "points_30", "points_50",
         "points_75", "points_100", "points_150", "points_200", "points_250", "points_350",
         "points_500", "points_750", "points_1000",
         "time_1day", "time_2days", "time_4days", "time_5days", "time_8days", "time_10days",
-        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days", 
-        "trial_subscription_3", "weekly_subscription_7", "monthly_subscription_30",
-        "quarterly_subscription_90", "semiannual_subscription_180", "yearly_subscription_365"
-    ]
+        "time_14days", "time_15days", "time_21days", "time_45days", "time_60days", "time_120days"
+    ]  
     applicable_items = []
 
     try:
@@ -28443,7 +28686,7 @@ def process_gift_recipient(message, sender_id):
 
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
-        if plan['plan_name'] in ['weekly', 'monthly', 'yearly']
+        if plan['plan_name'] in ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly']
         and plan['source'] == 'user'
         and datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M") > datetime.now()
     ]
@@ -28500,7 +28743,7 @@ def process_gift_type(message, sender_id, recipient_id):
 
     sender_points = sender_data.get('referral_points', 0)
 
-    allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
+    allowed_plan_names = ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
         if plan['plan_name'] in allowed_plan_names
@@ -28665,7 +28908,7 @@ def process_gift_time_unit(message, sender_id, recipient_id):
     sender_username = escape_markdown(users_data.get(sender_id, {}).get('username', f"@{sender_id}"))
     recipient_username = escape_markdown(users_data.get(recipient_id, {}).get('username', f"@{recipient_id}"))
 
-    allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
+    allowed_plan_names = ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
     paid_plans = [
         plan for plan in sender_data.get('plans', [])
         if plan['plan_name'] in allowed_plan_names
@@ -28731,7 +28974,7 @@ def process_gift_time_amount(message, sender_id, recipient_id, unit):
             "plans": [], "total_amount": 0, "username": raw_sender_username, "referral_points": 0,
             "free_feature_trials": {}, "promo_usage_history": [], "referral_milestones": {}, "points_history": []
         })
-        allowed_plan_names = ['weekly', 'monthly', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
+        allowed_plan_names = ['trial', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'points_bonus', 'gift_time', 'store_time', 'custom']
         paid_plans = [
             plan for plan in sender_data.get('plans', [])
             if plan['plan_name'] in allowed_plan_names
@@ -30844,7 +31087,8 @@ def process_disable_function_step(message, function_index_map):
 
         if function_names:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add(types.KeyboardButton('Вернуться в функции'), types.KeyboardButton('В меню админ-панели'))
+            markup.add(types.KeyboardButton('Вернуться в функции'))
+            markup.add(types.KeyboardButton('В меню админ-панели'))
             bot.send_message(message.chat.id, "Введите дату в формате ДД.ММ.ГГГГ для выключения:", reply_markup=markup)
             bot.register_next_step_handler(message, process_disable_function_date_step, function_names)
         else:
@@ -30873,7 +31117,8 @@ def process_disable_function_date_step(message, function_names):
     date_str = message.text
     if is_valid_date_time(date_str, "00:00"):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton('Вернуться в функции'), types.KeyboardButton('В меню админ-панели'))
+        markup.add(types.KeyboardButton('Вернуться в функции'))
+        markup.add(types.KeyboardButton('В меню админ-панели'))
         try:
             bot.send_message(message.chat.id, "Введите время в формате ЧЧ:ММ для выключения:", reply_markup=markup)
         except ApiTelegramException as e:
