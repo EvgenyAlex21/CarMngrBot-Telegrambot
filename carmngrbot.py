@@ -2164,7 +2164,7 @@ def view_subscription(message):
         )
         total_cost_active += plan['price']
 
-    send_long_message(message.chat.id, plans_summary) 
+    send_long_message(message.chat.id, plans_summary)
 
     subtypes = []
     for p in active_plans:
@@ -2196,7 +2196,7 @@ def view_subscription(message):
         f"💰 *Общая стоимость активных подписок:* {total_cost_active_formatted} руб.\n"
         f"💰 *Общая стоимость всех подписок:* {total_amount_formatted} руб.\n"
     )
-    send_long_message(message.chat.id, summary_message) 
+    send_long_message(message.chat.id, summary_message)
 
 # ------------------------------------------------ ПОДПИСКА НА БОТА (история подписок) -----------------------------------------
 
@@ -2242,10 +2242,14 @@ def view_subscription_history(message):
     for idx, plan in enumerate(history_plans):
         plan_status = plan.get('status', 'expired')
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-        elapsed_time = now - end_date if plan_status != 'active' else None
-        days_elapsed = elapsed_time.days if elapsed_time else 0
-        hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600) if elapsed_time else (0, 0)
-        minutes_elapsed = remainder // 60 if elapsed_time else 0
+        
+        if plan_status != 'active':
+            elapsed_time = now - end_date
+            days_elapsed = elapsed_time.days
+            hours_elapsed, remainder = divmod(elapsed_time.seconds, 3600)
+            minutes_elapsed = remainder // 60
+        else:
+            days_elapsed = hours_elapsed = minutes_elapsed = 0
 
         plan_name_lower = plan['plan_name'].lower()
         source = plan.get('source', '')
@@ -2342,8 +2346,8 @@ def calculate_refunded_amount(plan):
         if now >= end_date:
             return 0.0, "Подписка уже истекла!"
 
-        total_days = (end_date - start_date).days
-        if total_days <= 0:
+        total_minutes = (end_date - start_date).total_seconds() / 60
+        if total_minutes <= 0:
             return 0.0, "Некорректная длительность подписки!"
 
         if now < start_date:
@@ -2354,9 +2358,9 @@ def calculate_refunded_amount(plan):
             return round(refund_amount - commission, 2), None
 
         remaining_time = end_date - now
-        remaining_days = max(0, min(total_days, remaining_time.total_seconds() / (24 * 3600)))
-        daily_cost = plan['price'] / total_days
-        refund_amount = daily_cost * remaining_days
+        remaining_minutes = max(0, min(total_minutes, remaining_time.total_seconds() / 60))
+        minute_cost = plan['price'] / total_minutes
+        refund_amount = minute_cost * remaining_minutes
         refund_amount = min(refund_amount, plan['price'])
         commission = refund_amount * REFUND_COMMISSION
         if refund_amount <= commission:
@@ -2550,6 +2554,11 @@ def cancel_subscription(message):
         return
 
     plans_summary = "💎 *Список активных подписок, доступных для возврата:*\n\n"
+    unit_display = {
+        'минуты': 'мин.',
+        'часы': 'ч.',
+        'дни': 'дн.'
+    }
     for idx, plan in enumerate(refundable_plans):
         end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
@@ -2563,7 +2572,13 @@ def cancel_subscription(message):
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
         minutes_left = remainder // 60
         
-        subscription_type = translate_plan_name(plan['plan_name'])
+        plan_name_lower = plan['plan_name'].lower()
+        subscription_type = translate_plan_name(plan_name_lower)
+        if plan_name_lower == 'custom':
+            duration_value = int(plan.get('duration_value', 1))
+            duration_unit = plan.get('duration_unit', 'дни')
+            subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
+        
         price_formatted = f"{plan['price']:.2f}"
         refund_amount, error = calculate_refunded_amount(plan)
         refund_status = f"💸 Возможный возврат: {refund_amount:.2f} руб." if not error else f"⚠️ {error}"
@@ -2584,6 +2599,7 @@ def cancel_subscription(message):
     bot.send_message(user_id, "Введите номера подписок для отмены:", reply_markup=markup)
     bot.register_next_step_handler(message, confirm_cancellation_step, refundable_plans=refundable_plans)
 
+@text_only_handler
 def confirm_cancellation_step(message, refundable_plans):
     user_id = message.from_user.id
     if message.text == "Вернуться в подписку":
@@ -2594,7 +2610,7 @@ def confirm_cancellation_step(message, refundable_plans):
         return
 
     try:
-        subscription_numbers = [int(num.strip()) for num in message.text.split(',')]
+        subscription_numbers = [int(num.strip()) for num in message.text.split(',') if num.strip()]
         valid_numbers = [num for num in subscription_numbers if 1 <= num <= len(refundable_plans)]
         invalid_numbers = [num for num in subscription_numbers if num not in valid_numbers]
 
@@ -2612,6 +2628,11 @@ def confirm_cancellation_step(message, refundable_plans):
         refund_summary = "*Подтверждение отмены:*\n\n"
         total_refunded = 0.0
         selected_plans = []
+        unit_display = {
+            'минуты': 'мин.',
+            'часы': 'ч.',
+            'дни': 'дн.'
+        }
         for num in valid_numbers:
             plan = refundable_plans[num - 1]
             refund_amount, error = calculate_refunded_amount(plan)
@@ -2621,14 +2642,32 @@ def confirm_cancellation_step(message, refundable_plans):
             now = datetime.now(pytz.UTC)
             end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
             start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-            total_days = (end_date - start_date).days
+            total_minutes = (end_date - start_date).total_seconds() / 60
             remaining_time = end_date - now
-            remaining_days = max(0, min(total_days, remaining_time.total_seconds() / (24 * 3600)))
-            commission = refund_amount / (1 - REFUND_COMMISSION) * REFUND_COMMISSION
+            remaining_minutes = max(0, min(total_minutes, remaining_time.total_seconds() / 60))
+            days_left = remaining_minutes // (24 * 60)
+            remaining_minutes_after_days = remaining_minutes % (24 * 60)
+            hours_left = remaining_minutes_after_days // 60
+            minutes_left = remaining_minutes_after_days % 60
+            commission = refund_amount * REFUND_COMMISSION
+            
+            plan_name_lower = plan['plan_name'].lower()
+            subscription_type = translate_plan_name(plan_name_lower)
+            if plan_name_lower == 'custom':
+                duration_value = int(plan.get('duration_value', 1))
+                duration_unit = plan.get('duration_unit', 'дни')
+                subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
+            
+            remaining_time_str = f"{int(days_left)} дн. {int(hours_left):02d}:{int(minutes_left):02d} ч."
+            if days_left == 0:
+                remaining_time_str = f"{int(hours_left):02d}:{int(minutes_left):02d} ч."
+            if hours_left == 0 and days_left == 0:
+                remaining_time_str = f"{int(minutes_left)} мин."
+            
             refund_summary += (
                 f"💳 *Подписка №{num}*\n\n"
-                f"💼 *Тип подписки:* {translate_plan_name(plan['plan_name'])}\n"
-                f"📅 *Осталось дней:* {remaining_days:.2f}\n"
+                f"💼 *Тип подписки:* {subscription_type}\n"
+                f"📅 *Осталось времени:* {remaining_time_str}\n"
                 f"💸 *Возврат:* {refund_amount:.2f} руб.\n"
                 f"💸 *Комиссия:* {commission:.2f} руб.\n\n"
             )
@@ -2655,6 +2694,7 @@ def confirm_cancellation_step(message, refundable_plans):
         bot.send_message(user_id, "⚠️ Неверный формат!\nВведите номера:", reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(message, confirm_cancellation_step, refundable_plans=refundable_plans)
 
+@text_only_handler
 def process_cancellation_step(message, selected_plans, total_refunded):
     user_id = message.from_user.id
     user_id_str = str(user_id)
@@ -2686,8 +2726,18 @@ def process_cancellation_step(message, selected_plans, total_refunded):
 
     successful_refunds = []
     failed_refunds = []
+    unit_display = {
+        'минуты': 'мин.',
+        'часы': 'ч.',
+        'дни': 'дн.'
+    }
 
     for num, plan in selected_plans:
+        can_refund, limit_error = check_refund_limits(user_id)
+        if not can_refund:
+            failed_refunds.append((num, limit_error))
+            continue
+
         refund_amount, error = calculate_refunded_amount(plan)
         if error:
             failed_refunds.append((num, error))
@@ -2711,9 +2761,22 @@ def process_cancellation_step(message, selected_plans, total_refunded):
         plan['cancelled_date'] = datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M")
 
         data['subscription_history'][user_id_str].append(plan)
-        user_data['plans'].remove(plan)
-        user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - refund_amount)
-        data['all_users_total_amount'] = max(0, data.get('all_users_total_amount', 0) - refund_amount)
+
+        target_plan = None
+        for p in user_data['plans']:
+            if (p.get('telegram_payment_charge_id') == plan.get('telegram_payment_charge_id') and
+                p.get('start_date') == plan.get('start_date') and
+                p.get('end_date') == plan.get('end_date') and
+                p.get('plan_name') == plan.get('plan_name')):
+                target_plan = p
+                break
+
+        if not target_plan:
+            failed_refunds.append((num, "Подписка не найдена в активных подписках!"))
+            continue
+
+        user_data['plans'].remove(target_plan)
+        user_data['total_amount'] = max(0, user_data.get('total_amount', 0) - plan.get('price', 0))
 
         successful_refunds.append({
             "number": num,
@@ -2723,6 +2786,37 @@ def process_cancellation_step(message, selected_plans, total_refunded):
             "status": status,
             "original_start_date": original_start_date
         })
+
+    now = datetime.now(pytz.UTC)
+    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now]
+    if active_plans:
+        active_plans.sort(key=lambda x: datetime.strptime(x['start_date'], "%d.%m.%Y в %H:%M"))
+        previous_end_date = now
+        for plan in active_plans:
+            start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            duration = (end_date - start_date).total_seconds() / (24 * 3600) 
+            plan['start_date'] = previous_end_date.strftime("%d.%m.%Y в %H:%M")
+            plan['end_date'] = (previous_end_date + timedelta(days=duration)).strftime("%d.%m.%Y в %H:%M")
+            previous_end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+
+            plan_name_lower = plan['plan_name'].lower()
+            subscription_type = translate_plan_name(plan_name_lower)
+            if plan_name_lower == 'custom':
+                duration_value = int(plan.get('duration_value', 1))
+                duration_unit = plan.get('duration_unit', 'дни')
+                subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
+            user_message = (
+                f"🔄 Изменены даты вашей подписки:\n\n"
+                f"💼 *План подписки:* {subscription_type}\n"
+                f"🕒 *Новое начало:* {plan['start_date']}\n"
+                f"⌛ *Новый конец:* {plan['end_date']}"
+            )
+            bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+    data['all_users_total_amount'] = sum(
+        u.get('total_amount', 0) for u in data['subscriptions']['users'].values()
+    )
 
     save_payments_data(data)
 
@@ -24889,18 +24983,17 @@ def process_add_subscription(message):
 
 @text_only_handler
 def process_add_subscription_plan(message, user_id):
-    if message.text == "Вернуться в управление подписками":
-        manage_subscriptions(message)
-        return
-    if message.text == "Вернуться в управление системой":
-        manage_system(message)
-        return
-    if message.text == "В меню админ-панели":
-        show_admin_panel(message)
+    if message.text in ["Вернуться в управление подписками", "Вернуться в управление системой", "В меню админ-панели"]:
+        if message.text == "Вернуться в управление подписками":
+            manage_subscriptions(message)
+        elif message.text == "Вернуться в управление системой":
+            manage_system(message)
+        else:
+            show_admin_panel(message)
         return
 
     plan_name = message.text.strip().lower()
-    subscription_plans = load_subscriptions_and_store()[0]  
+    subscription_plans = load_subscriptions_and_store()[0]
     valid_plans = {v['label'].lower(): k for k, v in subscription_plans.items()}
     valid_plans['свой план'] = 'custom'
 
@@ -24934,6 +25027,14 @@ def process_add_subscription_plan(message, user_id):
     plan_name_rus = plan_details['label']
     new_end_date = latest_end_date + timedelta(days=duration)
     plan_name_eng = plan_key.replace('_subscription_', '_')
+
+    for plan in user_data['plans']:
+        if (plan['plan_name'] == plan_name_eng and
+            plan['start_date'] == latest_end_date.strftime("%d.%m.%Y в %H:%M") and
+            plan['end_date'] == new_end_date.strftime("%d.%m.%Y в %H:%M")):
+            bot.send_message(message.chat.id, f"❌ Подписка '{plan_name_rus}' уже существует для пользователя!", parse_mode="Markdown")
+            manage_system(message)
+            return
 
     new_plan = {
         "plan_name": plan_name_eng,
@@ -25380,8 +25481,8 @@ def process_delete_subscription(message):
         manage_system(message)
         return
 
-    now = datetime.now()
-    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") > now and p['plan_name'].lower() != 'free']
+    now = datetime.now(pytz.UTC)
+    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now and p['plan_name'].lower() != 'free']
     if not active_plans:
         bot.send_message(message.chat.id, "❌ У пользователя нет активных подписок для удаления!", parse_mode="Markdown")
         manage_system(message)
@@ -25396,7 +25497,7 @@ def process_delete_subscription(message):
     }
 
     for idx, plan in enumerate(active_plans, start=1):
-        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+        end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
         remaining_time = end_date - now
         days_left = remaining_time.days
         hours_left, remainder = divmod(remaining_time.seconds, 3600)
@@ -25408,7 +25509,6 @@ def process_delete_subscription(message):
         if plan_name_lower in {"referral_bonus", "ad_bonus", "activity", "points_bonus", "referral", "monthly_leader_bonus", "leaderboard"}:
             period_type = f"🎁 *№{idx}. Бонусный период:*"
             subscription_type = translate_plan_name(plan_name_lower)
-
         elif plan_name_lower in {"gift_time", "custom", "exchangetime"}:
             period_type = f"✨ *№{idx}. Подаренный период:*"
             if plan_name_lower == "custom":
@@ -25417,7 +25517,6 @@ def process_delete_subscription(message):
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             else:
                 subscription_type = translate_plan_name(plan_name_lower)
-
         else:
             if source in {"user", "promo_100_percent", "store"}:
                 period_type = f"💳 *№{idx}. Платный период:*"
@@ -25454,40 +25553,96 @@ def process_delete_subscription_plan(message, user_id, plans):
         show_admin_panel(message)
         return
 
-    try:
-        plan_numbers_input = [num.strip() for num in message.text.strip().split(',')]
-        plan_numbers = []
-        invalid_numbers = []
+    user_input = message.text.strip()
+    plan_numbers = []
+    invalid_numbers = []
 
-        for num in plan_numbers_input:
-            try:
-                num_int = int(num)
-                if 1 <= num_int <= len(plans):
-                    plan_numbers.append(num_int)
-                else:
-                    invalid_numbers.append(num)
-            except ValueError:
+    input_numbers = [num.strip() for num in user_input.split(',') if num.strip()]
+    
+    for num in input_numbers:
+        try:
+            num_int = int(num)
+            if 1 <= num_int <= len(plans):
+                plan_numbers.append(num_int)
+            else:
                 invalid_numbers.append(num)
+        except ValueError:
+            invalid_numbers.append(num)
 
-        if not plan_numbers:
-            bot.send_message(message.chat.id, "Ни один из введенных номеров не является корректным!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
-            bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
-            return
+    if not plan_numbers:
+        bot.send_message(message.chat.id, "Ни один из введенных номеров не является корректным!\nПожалуйста, попробуйте снова", parse_mode="Markdown")
+        bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
+        return
 
-        data = load_payment_data()
-        user_data = data['subscriptions']['users'][str(user_id)]
+    data = load_payment_data()
+    user_data = data['subscriptions']['users'][str(user_id)]
+    data['subscription_history'].setdefault(str(user_id), [])
 
-        users_data = load_users()
-        username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
+    users_data = load_users()
+    username = escape_markdown(users_data.get(str(user_id), {}).get('username', f"@{user_id}"))
 
-        unit_display = {
-            'минуты': 'мин.',
-            'часы': 'ч.',
-            'дни': 'дн.'
-        }
+    unit_display = {
+        'минуты': 'мин.',
+        'часы': 'ч.',
+        'дни': 'дн.'
+    }
 
-        for plan_number in sorted(set(plan_numbers), reverse=True): 
-            plan = plans[plan_number - 1]
+    for plan_number in sorted(set(plan_numbers), reverse=True):
+        plan = plans[plan_number - 1]
+
+        plan_name_lower = plan['plan_name'].lower()
+        subscription_type = translate_plan_name(plan_name_lower)
+        if plan_name_lower == 'custom':
+            duration_value = int(plan.get('duration_value', 1))
+            duration_unit = plan.get('duration_unit', 'дни')
+            subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
+
+        target_plan = None
+        for p in user_data['plans']:
+            if (p.get('telegram_payment_charge_id') == plan.get('telegram_payment_charge_id') and
+                p.get('start_date') == plan.get('start_date') and
+                p.get('end_date') == plan.get('end_date') and
+                p.get('plan_name') == plan.get('plan_name')):
+                target_plan = p
+                break
+
+        if not target_plan:
+            bot.send_message(message.chat.id, f"⚠️ Подписка №{plan_number} ({subscription_type}) не найдена в активных подписках пользователя!", parse_mode="Markdown")
+            continue
+
+        target_plan['status'] = 'cancelled'
+        target_plan['cancelled_date'] = datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M")
+        data['subscription_history'][str(user_id)].append(target_plan)
+
+        admin_message = (
+            f"🚫 Пользователю {username} - `{user_id}` отменён:\n\n"
+            f"💼 *План подписки:* {subscription_type}\n"
+            f"🕒 *Начало:* {target_plan['start_date']}\n"
+            f"⌛ *Конец:* {target_plan['end_date']}"
+        )
+        user_message = (
+            f"🚫 Администратор отменил вам:\n\n"
+            f"💼 *План подписки:* {subscription_type}\n"
+            f"🕒 *Начало:* {target_plan['start_date']}\n"
+            f"⌛ *Конец:* {target_plan['end_date']}"
+        )
+
+        user_data['plans'].remove(target_plan)
+        bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
+        bot.send_message(user_id, user_message, parse_mode="Markdown")
+
+    now = datetime.now(pytz.UTC)
+    active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now]
+    if active_plans:
+        active_plans.sort(key=lambda x: datetime.strptime(x['start_date'], "%d.%m.%Y в %H:%M"))
+        previous_end_date = now
+        for plan in active_plans:
+            start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            duration = (end_date - start_date).total_seconds() / (24 * 3600) 
+            plan['start_date'] = previous_end_date.strftime("%d.%m.%Y в %H:%M")
+            plan['end_date'] = (previous_end_date + timedelta(days=duration)).strftime("%d.%m.%Y в %H:%M")
+            previous_end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
 
             plan_name_lower = plan['plan_name'].lower()
             subscription_type = translate_plan_name(plan_name_lower)
@@ -25495,36 +25650,33 @@ def process_delete_subscription_plan(message, user_id, plans):
                 duration_value = int(plan.get('duration_value', 1))
                 duration_unit = plan.get('duration_unit', 'дни')
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
-
             admin_message = (
-                f"🚫 Пользователю {username} - `{user_id}` отменён:\n\n"
+                f"🔄 Пользователю {username} - `{user_id}` изменены даты подписки:\n\n"
                 f"💼 *План подписки:* {subscription_type}\n"
-                f"🕒 *Начало:* {plan['start_date']}\n"
-                f"⌛ *Конец:* {plan['end_date']}"
+                f"🕒 *Новое начало:* {plan['start_date']}\n"
+                f"⌛ *Новый конец:* {plan['end_date']}"
             )
             user_message = (
-                f"🚫 Администратор отменил вам:\n\n"
+                f"🔄 Администратор изменил даты вашей подписки:\n\n"
                 f"💼 *План подписки:* {subscription_type}\n"
-                f"🕒 *Начало:* {plan['start_date']}\n"
-                f"⌛ *Конец:* {plan['end_date']}"
+                f"🕒 *Новое начало:* {plan['start_date']}\n"
+                f"⌛ *Новый конец:* {plan['end_date']}"
             )
-
-            user_data['plans'].remove(plan)
             bot.send_message(message.chat.id, admin_message, parse_mode="Markdown")
             bot.send_message(user_id, user_message, parse_mode="Markdown")
 
-        user_data['total_amount'] = sum(p['price'] for p in user_data.get('plans', []))
+    user_data['total_amount'] = sum(p['price'] for p in user_data.get('plans', []))
+    data['all_users_total_amount'] = sum(
+        u.get('total_amount', 0) for u in data['subscriptions']['users'].values()
+    )
 
-        save_payments_data(data)
+    save_payments_data(data)
 
-        if invalid_numbers:
-            invalid_numbers_str = ", ".join(invalid_numbers)
-            bot.send_message(message.chat.id, f"⚠️ Номера `{invalid_numbers_str}` некорректны и пропущены!", parse_mode="Markdown")
+    if invalid_numbers:
+        invalid_numbers_str = ", ".join(invalid_numbers)
+        bot.send_message(message.chat.id, f"⚠️ Номера `{invalid_numbers_str}` некорректны и пропущены!", parse_mode="Markdown")
 
-        manage_system(message)
-    except ValueError:
-        bot.send_message(message.chat.id, "Неверный формат номеров!\nВведите номера через запятую", parse_mode="Markdown")
-        bot.register_next_step_handler(message, process_delete_subscription_plan, user_id, plans)
+    manage_system(message)
 
 # --------------------------------------- УПРАВЛЕНИЕ СИСТЕМОЙ (статистика системы) -------------------------------------
 
