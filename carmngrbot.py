@@ -724,6 +724,8 @@ def monitor_promo_file_changes():
 promo_monitor_thread = threading.Thread(target=monitor_promo_file_changes, daemon=True)
 promo_monitor_thread.start()
 
+PAYMENTS_LOCK = threading.Lock()
+
 def load_payment_data():
     global PROMO_CODES, AD_CHANNELS
     promo_codes, ad_channels = load_promo_and_channels()
@@ -749,90 +751,91 @@ def load_payment_data():
         'refunds': []
     }
 
-    if not os.path.exists(PAYMENTS_DATABASE_PATH) or os.path.getsize(PAYMENTS_DATABASE_PATH) == 0:
-        os.makedirs(os.path.dirname(PAYMENTS_DATABASE_PATH), exist_ok=True)
-        with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(default_data, f, indent=4, ensure_ascii=False)
-        return default_data
+    with PAYMENTS_LOCK:
+        if not os.path.exists(PAYMENTS_DATABASE_PATH) or os.path.getsize(PAYMENTS_DATABASE_PATH) == 0:
+            os.makedirs(os.path.dirname(PAYMENTS_DATABASE_PATH), exist_ok=True)
+            with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_data, f, indent=4, ensure_ascii=False)
+            return default_data
 
-    try:
-        with open(PAYMENTS_DATABASE_PATH, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-            if not content:
-                raise json.JSONDecodeError("Файл пуст", content, 0)
-            data = json.loads(content)
+        try:
+            with open(PAYMENTS_DATABASE_PATH, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if not content:
+                    raise json.JSONDecodeError("Файл пуст", content, 0)
+                data = json.loads(content)
 
-        if not isinstance(data, dict) or 'subscriptions' not in data:
-            raise ValueError("Некорректная структура данных в payments.json")
+            if not isinstance(data, dict) or 'subscriptions' not in data:
+                raise ValueError("Некорректная структура данных в payments.json")
 
-        for key, value in default_data.items():
-            if key not in data:
-                data[key] = value
-            elif isinstance(value, dict):
-                for sub_key, sub_value in value.items():
-                    if sub_key not in data[key]:
-                        data[key][sub_key] = sub_value
+            for key, value in default_data.items():
+                if key not in data:
+                    data[key] = value
+                elif isinstance(value, dict):
+                    for sub_key, sub_value in value.items():
+                        if sub_key not in data[key]:
+                            data[key][sub_key] = sub_value
 
-        if 'subscriptions' in data and 'users' in data['subscriptions']:
-            for user_id in list(data['subscriptions']['users']):
-                if not isinstance(data['subscriptions']['users'][user_id], dict):
-                    data['subscriptions']['users'][user_id] = {
-                        "username": "неизвестный",
-                        "plans": [],
-                        "total_amount": 0,
-                        "referral_points": 0,
-                        "free_feature_trials": {},
-                        "promo_usage_history": [],
-                        "referral_milestones": {},
-                        "points_history": [],
-                        "last_promo_used": None,
-                        "daily_bonus_date": None,
-                        "last_bonus_timestamp": None,
-                        "streak_days": 0,
-                        "discount": 0,
-                        "applicable_category": None,
-                        "applicable_items": [],
-                        "discount_type": None,
-                        "ad_channels_subscribed": []
-                    }
-                user_data = data['subscriptions']['users'][user_id]
-                for field, default in {
-                    'referral_points': 0,
-                    'promo_usage_history': [],
-                    'referral_milestones': {},
-                    'points_history': [],
-                    'ad_channels_subscribed': [],
-                    'last_promo_used': None,
-                    'daily_bonus_date': None,
-                    'last_bonus_timestamp': None,
-                    'streak_days': 0,
-                    'discount': 0,
-                    'applicable_category': None,
-                    'applicable_items': [],
-                    'discount_type': None
-                }.items():
-                    user_data.setdefault(field, default)
+            if 'subscriptions' in data and 'users' in data['subscriptions']:
+                for user_id in list(data['subscriptions']['users']):
+                    if not isinstance(data['subscriptions']['users'][user_id], dict):
+                        data['subscriptions']['users'][user_id] = {
+                            "username": "неизвестный",
+                            "plans": [],
+                            "total_amount": 0,
+                            "referral_points": 0,
+                            "free_feature_trials": {},
+                            "promo_usage_history": [],
+                            "referral_milestones": {},
+                            "points_history": [],
+                            "last_promo_used": None,
+                            "daily_bonus_date": None,
+                            "last_bonus_timestamp": None,
+                            "streak_days": 0,
+                            "discount": 0,
+                            "applicable_category": None,
+                            "applicable_items": [],
+                            "discount_type": None,
+                            "ad_channels_subscribed": []
+                        }
+                    user_data = data['subscriptions']['users'][user_id]
+                    for field, default in {
+                        'referral_points': 0,
+                        'promo_usage_history': [],
+                        'referral_milestones': {},
+                        'points_history': [],
+                        'ad_channels_subscribed': [],
+                        'last_promo_used': None,
+                        'daily_bonus_date': None,
+                        'last_bonus_timestamp': None,
+                        'streak_days': 0,
+                        'discount': 0,
+                        'applicable_category': None,
+                        'applicable_items': [],
+                        'discount_type': None
+                    }.items():
+                        user_data.setdefault(field, default)
 
-        return data
+            return data
 
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"Ошибка при загрузке payments.json: {e}")
-        backup_path = PAYMENTS_DATABASE_PATH + ".backup"
-        if os.path.exists(backup_path) and os.path.getsize(backup_path) > 0:
-            try:
-                with open(backup_path, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-                    if content:
-                        data = json.loads(content)
-                        if isinstance(data, dict) and 'subscriptions' in data:
-                            shutil.copy(backup_path, PAYMENTS_DATABASE_PATH)
-                            print("Восстановлены данные из бэкапа")
-                            return data
-            except json.JSONDecodeError:
-                print("Бэкап повреждён, создаётся новый файл")
-        with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(default_data, f, indent=4, ensure_ascii=False)
-        return default_data
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Ошибка при загрузке payments.json: {e}")
+            backup_path = PAYMENTS_DATABASE_PATH + ".backup"
+            if os.path.exists(backup_path) and os.path.getsize(backup_path) > 0:
+                try:
+                    with open(backup_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        if content:
+                            data = json.loads(content)
+                            if isinstance(data, dict) and 'subscriptions' in data:
+                                shutil.copy(backup_path, PAYMENTS_DATABASE_PATH)
+                                print("Восстановлены данные из бэкапа")
+                                return data
+                except json.JSONDecodeError:
+                    print("Бэкап повреждён, создаётся новый файл")
+            with open(PAYMENTS_DATABASE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_data, f, indent=4, ensure_ascii=False)
+            return default_data
 
 def update_user_activity(user_id, username=None, first_name="", last_name="", phone="", function_name=None):
     active_users[user_id] = datetime.now()
@@ -951,15 +954,16 @@ def save_payments_data(data):
 
         json.dumps(data, ensure_ascii=False)
 
-        temp_file = PAYMENTS_DATABASE_PATH + ".temp"
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        with PAYMENTS_LOCK:
+            temp_file = PAYMENTS_DATABASE_PATH + ".temp"
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
 
-        if os.path.exists(PAYMENTS_DATABASE_PATH):
-            backup_path = PAYMENTS_DATABASE_PATH + ".backup"
-            shutil.copy(PAYMENTS_DATABASE_PATH, backup_path)
+            if os.path.exists(PAYMENTS_DATABASE_PATH):
+                backup_path = PAYMENTS_DATABASE_PATH + ".backup"
+                shutil.copy(PAYMENTS_DATABASE_PATH, backup_path)
 
-        shutil.move(temp_file, PAYMENTS_DATABASE_PATH)
+            shutil.move(temp_file, PAYMENTS_DATABASE_PATH)
 
     except json.JSONEncodeError as e:
         error_msg = f"Ошибка при сериализации данных в JSON: {e}"
