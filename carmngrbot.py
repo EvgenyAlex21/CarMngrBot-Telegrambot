@@ -1388,7 +1388,7 @@ PAYMENT_PROVIDER_TOKEN = '1744374395:TEST:93aa42be8420f58d5243' # API
 def payments_function(message, show_description=True):
     description = (
         "ℹ️ *Подписка на бота*\n\n"
-        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, антирадар, напоминания, прочее (новости, для рекламы, чат с админом, курсы валют)_\n\n"
+        "📌 Подписка открывает доступ ко *всем функциям бота*.\n*Бесплатно доступны:* _калькуляторы (алкоголь, налог), найти транспорт, код региона, коды obd2, антирадар, напоминания, прочее (новости, курсы валют, бланки, для рекламы, чат с админом)_\n\n"
         "📅 *Варианты подписки:*\n"
         "👉 *3 дня:* 70 ₽ — быстрый доступ для знакомства с ботом!\n"
         "👉 *7 дней:* 105 ₽ — идеально для тестирования всех функций!\n"
@@ -22229,7 +22229,7 @@ def track_user_location(user_id, initial_location):
 def view_others(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('Новости', 'Курсы валют', 'Уведомления') 
-    markup.add('Для рекламы', 'Чат с админом') 
+    markup.add('Бланки', 'Для рекламы', 'Чат с админом') 
     markup.add('В главное меню')
     bot.send_message(message.chat.id, "Выберите действие из прочего:", reply_markup=markup)
 
@@ -24422,6 +24422,100 @@ def handle_chat_topic(message):
             return_to_menu(message)
     else:
         bot.send_message(user_id, "⚠️ У вас уже есть запрос на чат к администратору! Ожидайте...")
+
+# -------------------------------------------------- ПРОЧЕЕ (бланки) ---------------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "Бланки")
+@check_function_state_decorator('Бланки')
+@track_usage('Бланки')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def blank_forms(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('ДКП', 'Европротокол', 'Доверенность') 
+    markup.add('Вернуться в прочее')
+    markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Выберите действие из бланков:", reply_markup=markup)
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BLANK_FORMS_DIR = os.path.join(SCRIPT_DIR, 'files', 'files_for_blank_forms')
+os.makedirs(BLANK_FORMS_DIR, exist_ok=True)
+
+# -------------------------------------------------- ПРОЧЕЕ (ДКП) ---------------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "ДКП")
+@check_function_state_decorator('ДКП')
+@track_usage('ДКП')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_dkp_form(message):
+    file_path = os.path.join(BLANK_FORMS_DIR, 'dkp.pdf')
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as file:
+            bot.send_document(message.chat.id, file, caption="📄 Пустой бланк договора купли-продажи")
+    else:
+        bot.send_message(message.chat.id, "❌ Бланк ДКП временно не доступен!")
+
+# -------------------------------------------------- ПРОЧЕЕ (Европротокол) ---------------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "Европротокол")
+@check_function_state_decorator('Европротокол')
+@track_usage('Европротокол')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_evroprotokol_form(message):
+    file_path = os.path.join(BLANK_FORMS_DIR, 'evroprotokol.pdf')
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as file:
+            bot.send_document(message.chat.id, file, caption="📄 Пустой бланк для заполнения европротокола")
+    else:
+        bot.send_message(message.chat.id, "❌ Бланк Европротокола временно не доступен!")
+
+# -------------------------------------------------- ПРОЧЕЕ (Доверенность) ---------------------------------------------------
+
+@bot.message_handler(func=lambda message: message.text == "Доверенность")
+@check_function_state_decorator('Доверенность')
+@track_usage('Доверенность')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def send_doverennost_form(message):
+    file_path = os.path.join(BLANK_FORMS_DIR, 'doverennosti.pdf')
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as file:
+            bot.send_document(message.chat.id, file, caption="📄 Пустой бланк для заполнения доверенности")
+    else:
+        bot.send_message(message.chat.id, "❌ Бланк Доверенности временно не доступен!")
 
 
 
