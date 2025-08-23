@@ -1,4 +1,5 @@
 from core.imports import wraps, telebot, types, os, json, re, time, requests, threading, datetime, schedule, BeautifulSoup, Controller, Signal
+from core.config import LOCATIONIQ_API_KEY
 from core.imports import Signal as BlinkerSignal
 from core.bot_instance import bot, BASE_DIR
 from handlers.user.user_main_menu import return_to_menu
@@ -225,6 +226,37 @@ def get_city_from_coordinates(latitude, longitude):
     except Exception as e:
         return None
 
+def geocode_city_to_coords(city_name: str):
+    if not city_name:
+        return None, None
+    if LOCATIONIQ_API_KEY:
+        try:
+            params = {
+                'key': LOCATIONIQ_API_KEY,
+                'q': city_name,
+                'format': 'json',
+                'limit': 1,
+                'accept-language': 'ru'
+            }
+            r = requests.get('https://eu1.locationiq.com/v1/search.php', params=params, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    return float(data[0]['lat']), float(data[0]['lon'])
+        except Exception:
+            pass
+    try:
+        params = {'q': city_name, 'format': 'json', 'limit': 1}
+        headers = {'User-Agent': 'CarMngrBot/1.0'}
+        r = requests.get('https://nominatim.openstreetmap.org/search', params=params, headers=headers, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list) and data:
+                return float(data[0]['lat']), float(data[0]['lon'])
+    except Exception:
+        pass
+    return None, None
+
 @text_only_handler
 def process_city_selection(message):
     chat_id = message.chat.id
@@ -241,11 +273,15 @@ def process_city_selection(message):
     city_name = None
     city_code = None
 
+    incoming_text = (message.text or "").strip().lower() if hasattr(message, 'text') else ""
+
+    latitude = None
+    longitude = None
     if message.location:
         latitude = message.location.latitude
         longitude = message.location.longitude
-        city_name = get_city_from_coordinates(latitude, longitude)
-        if not city_name:
+        city_name_detected = get_city_from_coordinates(latitude, longitude)
+        if not city_name_detected:
             bot.send_message(chat_id, "Не удалось определить город по вашей геопозиции!\nПожалуйста, введите город вручную")
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
             recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
@@ -256,10 +292,10 @@ def process_city_selection(message):
             bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
             bot.register_next_step_handler(message, process_city_selection)
             return
-        city_name = city_name.lower()
+        city_name = city_name_detected.lower()
         city_code = get_city_code(city_name)
     else:
-        if not message.text:
+        if not incoming_text:
             bot.send_message(chat_id, "⛔️ Извините, но отправка мультимедийных файлов не разрешена! Пожалуйста, введите текстовое сообщение...")
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
             recent_cities = user_data.get(str_chat_id, {}).get('recent_cities', [])
@@ -270,9 +306,9 @@ def process_city_selection(message):
             bot.send_message(chat_id, "Введите город, выберите из последних или отправьте геопозицию:", reply_markup=markup)
             bot.register_next_step_handler(message, process_city_selection)
             return
-
-        city_name = message.text.strip().lower()
+        city_name = incoming_text
         city_code = get_city_code(city_name)
+    latitude, longitude = geocode_city_to_coords(city_name)
 
     if not city_code:
         bot.send_message(chat_id, f"Город {city_name.capitalize()} не найден!\nПожалуйста, проверьте правильность написания и попробуйте еще раз")
@@ -300,8 +336,10 @@ def process_city_selection(message):
     update_recent_cities(str_chat_id, city_name)
     save_citys_users_data()
 
-    latitude = message.location.latitude if message.location else None
-    longitude = message.location.longitude if message.location else None
+    if latitude is None or longitude is None:
+        lat_tmp, lon_tmp = geocode_city_to_coords(city_name)
+        if lat_tmp is not None and lon_tmp is not None:
+            latitude, longitude = lat_tmp, lon_tmp
     save_user_location(chat_id, latitude, longitude, city_code)
 
     site_type = user_data[str_chat_id]['site_type']

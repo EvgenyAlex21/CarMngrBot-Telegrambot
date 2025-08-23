@@ -1,6 +1,6 @@
 from core.imports import wraps, telebot, types, os, json, re, requests, datetime, timedelta, pd, defaultdict
 from core.bot_instance import bot, BASE_DIR
-from core.config import OPENWEATHERMAP_API_KEY, WEATHERAPI_API_KEY
+from core.config import OPENWEATHERMAP_API_KEY, WEATHERAPI_API_KEY, LOCATIONIQ_API_KEY
 from handlers.user.user_main_menu import return_to_menu
 from ..utils import (
     restricted, track_user_activity, check_chat_state, check_user_blocked,
@@ -49,6 +49,25 @@ def load_cities_from_file(file_path=os.path.join(BASE_DIR, 'files', 'files_for_p
         pass
     return cities
 
+def load_cities_mapping(file_path=os.path.join(BASE_DIR, 'files', 'files_for_price_weather', 'combined_cities.txt')):
+    eng_to_rus = {}
+    rus_to_eng = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                if ' - ' not in line:
+                    continue
+                city_rus, city_eng = line.strip().split(' - ')
+                eng_to_rus[city_eng.lower()] = city_rus
+                rus_to_eng[city_rus.lower()] = city_eng.lower()
+    except Exception:
+        pass
+    return eng_to_rus, rus_to_eng
+
+def resolve_city_code_by_name(city_name_rus: str):
+    _, rus_to_eng = load_cities_mapping()
+    return rus_to_eng.get(city_name_rus.lower())
+
 def translate_weather_description(english_description):
     translation_dict = {
         'clear sky': 'ясное небо',
@@ -78,7 +97,23 @@ def translate_weather_description(english_description):
     }
     return translation_dict.get(english_description.lower(), english_description)
 
-def get_city_coordinates(city):
+def get_city_coordinates(city: str):
+    if LOCATIONIQ_API_KEY:
+        try:
+            liq_params = {
+                'key': LOCATIONIQ_API_KEY,
+                'q': city,
+                'format': 'json',
+                'limit': 1,
+                'accept-language': 'ru'
+            }
+            r = requests.get('https://eu1.locationiq.com/v1/search.php', params=liq_params, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    return {'latitude': float(data[0]['lat']), 'longitude': float(data[0]['lon'])}
+        except Exception:
+            pass
     try:
         params = {'q': city, 'format': 'json', 'limit': 1}
         headers = {'User-Agent': 'CarMngrBot/1.0'}
@@ -86,9 +121,9 @@ def get_city_coordinates(city):
         data = response.json()
         if data and len(data) > 0:
             return {'latitude': float(data[0]['lat']), 'longitude': float(data[0]['lon'])}
-        return None
     except Exception:
-        return None
+        pass
+    return None
 
 def get_city_name(latitude, longitude):
     try:
@@ -315,8 +350,9 @@ def handle_input_5(message):
         if message.location:
             latitude = message.location.latitude
             longitude = message.location.longitude
-
-            save_user_location(message.chat.id, latitude, longitude, None)
+            detected_city = get_city_name(latitude, longitude)
+            city_code = resolve_city_code_by_name(detected_city) if detected_city and detected_city != 'Неизвестный город' else None
+            save_user_location(message.chat.id, latitude, longitude, city_code)
 
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
             markup.row('Сегодня', 'Завтра')
@@ -326,20 +362,20 @@ def handle_input_5(message):
 
             bot.send_message(message.chat.id, "Выберите период:", reply_markup=markup)
             return
-
         cities = load_cities_from_file()
+        reverse_map = {rus.lower(): eng for eng, rus in cities.items()}
         city_input = message.text.strip().lower()
-        city_eng = None
-        city_rus = None
-
-        for eng, rus in cities.items():
-            if rus.lower() == city_input:
-                city_eng = eng
-                city_rus = rus
-                break
+        city_eng = reverse_map.get(city_input)
+        city_rus = cities.get(city_eng) if city_eng else None
 
         if city_eng:
             user_data[message.chat.id] = {'city': city_eng, 'city_rus': city_rus}
+            coords = get_city_coordinates(city_rus)
+            if coords:
+                save_user_location(message.chat.id, coords['latitude'], coords['longitude'], city_eng)
+            else:
+                save_user_location(message.chat.id, None, None, city_eng)
+
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
             markup.row('Сегодня', 'Завтра')
             markup.row('Неделя', 'Месяц')
@@ -396,8 +432,6 @@ def handle_period_5(message):
         return_to_menu(message)
         return
 
-    # Если пользователь ввёл город в текущей сессии, используем его В ПРИОРИТЕТЕ,
-    # иначе используем сохранённые координаты
     if city_data:
         city = city_data.get('city')
         city_rus = city_data.get('city_rus')
