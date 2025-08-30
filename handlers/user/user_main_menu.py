@@ -420,11 +420,19 @@ def set_free_trial_period(user_id, days, source="default"):
     if 'plans' not in user_data:
         user_data['plans'] = []
 
-    if user_data['plans']:
+    start_date = now
+    
+    if source == "referral" and user_data['plans']:
+        trial_plans = [p for p in user_data['plans'] if p.get('plan_name') == "free" and p.get('source') != "referral"]
+        if trial_plans:
+            latest_trial = max(trial_plans, key=lambda p: datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M"))
+            start_date = datetime.strptime(latest_trial['end_date'], "%d.%m.%Y в %H:%M")
+        else:
+            latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
+            start_date = max(latest_end, now)
+    elif user_data['plans']:
         latest_end = max([datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M") for p in user_data['plans']])
-        start_date = max(latest_end, now)  
-    else:
-        start_date = now
+        start_date = max(latest_end, now)
 
     new_end = start_date + timedelta(days=days)
 
@@ -636,12 +644,24 @@ def start(message):
         referrer_id = track_referral_activity(referral_code, user_id)
         if referrer_id:
             apply_referral_bonus(referrer_id)
+            data = load_payment_data()
+            user_plans = data['subscriptions']['users'].get(str(user_id), {}).get('plans', [])
+            
+            trial_end_date = None
+            for plan in user_plans:
+                if plan.get('plan_name') == "free" and plan.get('source') != "referral":
+                    trial_end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M")
+            
+            if not trial_end_date:
+                trial_end_date = datetime.now()
+                
             new_end = set_free_trial_period(user_id, 1, "referral")
+            
             referral_bonus_applied = True
             referral_message = (
                 "✨ <b>Вам начислен +1 день подписки</b> за переход по реферальной ссылке!\n\n"
-                f"🕒 <b>Начало:</b> {datetime.now().strftime('%d.%m.%Y в %H:%M')}\n"
-                f"⌛ <b>Конец:</b> {new_end.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"🕒 <b>Начало:</b> {trial_end_date.strftime('%d.%m.%Y в %H:%M')}\n"
+                f"⌛ <b>Конец:</b> {(trial_end_date + timedelta(days=1)).strftime('%d.%m.%Y в %H:%M')}\n"
             )
 
     if not user_plans or not has_trial:
