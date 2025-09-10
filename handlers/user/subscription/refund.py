@@ -58,8 +58,8 @@ def calculate_refunded_amount(plan):
         if now >= end_date:
             return 0.0, "Подписка уже истекла!"
 
-        total_minutes = (end_date - start_date).total_seconds() / 60
-        if total_minutes <= 0:
+        total_seconds = (end_date - start_date).total_seconds()
+        if total_seconds <= 0:
             return 0.0, "Некорректная длительность подписки!"
 
         if now < start_date:
@@ -70,9 +70,9 @@ def calculate_refunded_amount(plan):
             return round(refund_amount - commission, 2), None
 
         remaining_time = end_date - now
-        remaining_minutes = max(0, min(total_minutes, remaining_time.total_seconds() / 60))
-        minute_cost = plan['price'] / total_minutes
-        refund_amount = minute_cost * remaining_minutes
+        remaining_seconds = max(0, min(total_seconds, remaining_time.total_seconds()))
+        second_cost = plan['price'] / total_seconds
+        refund_amount = second_cost * remaining_seconds
         refund_amount = min(refund_amount, plan['price'])
         commission = refund_amount * REFUND_COMMISSION
         if refund_amount <= commission:
@@ -145,17 +145,48 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
             "currency": "RUB"
         }
     }
+    
+    if not PAYMASTER_TOKEN or PAYMASTER_TOKEN.lower() == "test" or PAYMASTER_TOKEN.lower() == "none":
+        data = load_payment_data()
+        if "refunds" not in data:
+            data["refunds"] = []
+        refund_record = {
+            "user_id": str(user_id),
+            "plan_name": plan["plan_name"],
+            "refund_amount": refund_amount,
+            "refund_date": datetime.now(pytz.UTC).strftime("%d.%m.%Y в %H:%M"),
+            "telegram_payment_charge_id": plan.get("telegram_payment_charge_id", ""),
+            "provider_payment_charge_id": payment_id,
+            "refund_id": f"test_{int(time.time())}",
+            "status": "success",
+            "error": None,
+            "test_mode": True
+        }
+        data["refunds"].append(refund_record)
+        save_payments_data(data)
+        return refund_record["refund_id"], "success"
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {PAYMASTER_TOKEN}",
         "Idempotency-Key": f"{user_id}_{int(datetime.now(pytz.UTC).timestamp())}"
     }
+    
     try:
+        log_data = {
+            "endpoint": f"{PAYMASTER_API_URL}refunds",
+            "refund_amount": refund_amount,
+            "payment_id": payment_id,
+            "user_id": user_id
+        }
+        
         response = requests.post(f"{PAYMASTER_API_URL}refunds", json=refund_data, headers=headers)
         response.raise_for_status()
         result = response.json()
+                
         refund_id = result.get("id")
         status = result.get("status", "pending").lower()
+        
         data = load_payment_data()
         if "refunds" not in data:
             data["refunds"] = []
@@ -173,12 +204,27 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
         data["refunds"].append(refund_record)
         save_payments_data(data)
         return refund_id, status
+        
     except requests.exceptions.HTTPError as e:
+        error_response = {}
+        try:
+            if hasattr(e, 'response') and e.response is not None:
+                error_response = e.response.json()
+        except:
+            error_response = {"text": str(e)}
+            
         error_message = f"Ошибка API PayMaster: {str(e)}"
-        if e.response.status_code == 400:
-            error_message = "Некорректные данные для возврата! Проверьте ID платежа и сумму"
-        elif e.response.status_code == 403:
-            error_message = "Доступ запрещен! Проверьте токен авторизации..."
+        
+        if hasattr(e, 'response') and e.response is not None:
+            if e.response.status_code == 400:
+                error_message = "Некорректные данные для возврата! Проверьте ID платежа и сумму"
+            elif e.response.status_code == 403:
+                error_message = "Доступ запрещен! Проверьте токен авторизации..."
+            elif e.response.status_code == 404:
+                error_message = "Платеж не найден в системе PayMaster"
+            elif e.response.status_code == 422:
+                error_message = "Ошибка валидации данных в запросе на возврат"
+        
         data = load_payment_data()
         if "refunds" not in data:
             data["refunds"] = []
@@ -191,11 +237,13 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
             "provider_payment_charge_id": payment_id,
             "refund_id": None,
             "status": "failed",
-            "error": error_message
+            "error": error_message,
+            "error_details": str(error_response)
         }
         data["refunds"].append(refund_record)
         save_payments_data(data)
         return None, "failed"
+        
     except Exception as e:
         data = load_payment_data()
         if "refunds" not in data:
@@ -209,7 +257,7 @@ def refund_payment(user_id, refund_amount, payment_id, plan):
             "provider_payment_charge_id": payment_id,
             "refund_id": None,
             "status": "failed",
-            "error": str(e)
+            "error": f"Ошибка обработки запроса: {str(e)}"
         }
         data["refunds"].append(refund_record)
         save_payments_data(data)
@@ -354,13 +402,17 @@ def confirm_cancellation_step(message, refundable_plans):
             now = datetime.now(pytz.UTC)
             end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
             start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-            total_minutes = (end_date - start_date).total_seconds() / 60
+            total_seconds = (end_date - start_date).total_seconds()
             remaining_time = end_date - now
-            remaining_minutes = max(0, min(total_minutes, remaining_time.total_seconds() / 60))
-            days_left = remaining_minutes // (24 * 60)
-            remaining_minutes_after_days = remaining_minutes % (24 * 60)
-            hours_left = remaining_minutes_after_days // 60
-            minutes_left = remaining_minutes_after_days % 60
+            remaining_seconds = max(0, min(total_seconds, remaining_time.total_seconds()))
+            
+            days_left = int(remaining_seconds // (24 * 3600))
+            seconds_after_days = remaining_seconds % (24 * 3600)
+            hours_left = int(seconds_after_days // 3600)
+            seconds_after_hours = seconds_after_days % 3600
+            minutes_left = int(seconds_after_hours // 60)
+            seconds_left = int(seconds_after_hours % 60)
+            
             commission = refund_amount * REFUND_COMMISSION
             
             plan_name_lower = plan['plan_name'].lower()
@@ -370,11 +422,11 @@ def confirm_cancellation_step(message, refundable_plans):
                 duration_unit = plan.get('duration_unit', 'дни')
                 subscription_type = f"индивидуальный ({duration_value} {unit_display.get(duration_unit, 'дн.')})"
             
-            remaining_time_str = f"{int(days_left)} дн. {int(hours_left):02d}:{int(minutes_left):02d} ч."
+            remaining_time_str = f"{days_left} дн. {hours_left:02d}:{minutes_left:02d} ч."
             if days_left == 0:
-                remaining_time_str = f"{int(hours_left):02d}:{int(minutes_left):02d} ч."
+                remaining_time_str = f"{hours_left:02d}:{minutes_left:02d} ч."
             if hours_left == 0 and days_left == 0:
-                remaining_time_str = f"{int(minutes_left)} мин."
+                remaining_time_str = f"{minutes_left}:{seconds_left:02d} мин."
             
             refund_summary += (
                 f"💳 *Подписка №{num}*\n\n"
@@ -503,14 +555,40 @@ def process_cancellation_step(message, selected_plans, total_refunded):
     active_plans = [p for p in user_data['plans'] if datetime.strptime(p['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC) > now]
     if active_plans:
         active_plans.sort(key=lambda x: datetime.strptime(x['start_date'], "%d.%m.%Y в %H:%M"))
-        previous_end_date = now
+        
+        first_plan = active_plans[0]
+        first_start_datetime = datetime.strptime(first_plan['start_date'], "%d.%m.%Y в %H:%M")
+        reference_hour = first_start_datetime.hour
+        reference_minute = first_start_datetime.minute
+        
+        current_date = now.date()
+        previous_end_date = datetime(
+            current_date.year, 
+            current_date.month, 
+            current_date.day, 
+            reference_hour, 
+            reference_minute, 
+            tzinfo=pytz.UTC
+        )
+        
         for plan in active_plans:
             start_date = datetime.strptime(plan['start_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
             end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
-            duration = (end_date - start_date).total_seconds() / (24 * 3600) 
-            plan['start_date'] = previous_end_date.strftime("%d.%m.%Y в %H:%M")
-            plan['end_date'] = (previous_end_date + timedelta(days=duration)).strftime("%d.%m.%Y в %H:%M")
-            previous_end_date = datetime.strptime(plan['end_date'], "%d.%m.%Y в %H:%M").replace(tzinfo=pytz.UTC)
+            
+            duration_days = (end_date - start_date).total_seconds() / (24 * 3600)
+            
+            new_start_date = previous_end_date
+            
+            days_to_add = int(duration_days)
+            hours_to_add = int((duration_days - days_to_add) * 24)
+            new_end_date = (new_start_date + 
+                          timedelta(days=days_to_add, 
+                                   hours=hours_to_add))
+            
+            plan['start_date'] = new_start_date.strftime("%d.%m.%Y в %H:%M")
+            plan['end_date'] = new_end_date.strftime("%d.%m.%Y в %H:%M")
+            
+            previous_end_date = new_end_date
 
             plan_name_lower = plan['plan_name'].lower()
             subscription_type = translate_plan_name(plan_name_lower)

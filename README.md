@@ -215,7 +215,7 @@
 │   │   └── codes_obd2.txt       # Коды ошибок OBD2
 │   │
 │   ├── files_for_price_weather/ # Файлы для цен и погоды
-│   │   ├── combined_cities*.txt # Список городов
+│   │   ├── combined_cities.txt # Список городов
 │   │   ├── proxy.txt            # Список прокси
 │   │   └── tor_most.txt         # Tor мосты
 │   │

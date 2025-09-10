@@ -1,11 +1,14 @@
 from core.imports import wraps
 from core.bot_instance import bot
+from telebot.types import CallbackQuery
 
 # ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания текстовых сообщений) ---------------------------
 
 def text_only_handler(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
+        if isinstance(message, CallbackQuery):
+            return func(message, *args, **kwargs)   
         if (message.photo or message.video or message.document or 
             message.animation or message.sticker or message.audio or 
             message.contact or message.voice or message.video_note):

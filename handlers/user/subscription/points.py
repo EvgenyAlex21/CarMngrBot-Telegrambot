@@ -123,7 +123,7 @@ def view_points(message):
     total_earned = sum(entry['points'] for entry in history if entry['action'] == 'earned')
     earned_daily = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'] == 'Ежедневный вход')
     earned_admin = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Начисление от администратора'))
-    earned_gifts = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Подарок от'))
+    earned_gifts = sum(entry['points'] for entry in history if entry['action'] == 'earned' and ('подарок от' in entry['reason'].lower() or 'Подарок от' in entry['reason']))
     earned_first_purchase = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Первая покупка подписки'))
     earned_points_purchase = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Покупка') and 'баллов' in entry['reason'])
     earned_referrals = sum(entry['points'] for entry in history if entry['action'] == 'earned' and 'Реферал' in entry['reason'])
@@ -131,7 +131,7 @@ def view_points(message):
     earned_purchases = sum(entry['points'] for entry in history if entry['action'] == 'earned' and entry['reason'].startswith('Покупка подписки'))
 
     total_spent = sum(entry['points'] for entry in history if entry['action'] == 'spent')
-    spent_gifts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].lower().startswith('подарок'))
+    spent_gifts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and 'подарок' in entry['reason'].lower())
     spent_time = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.']))
     spent_discounts = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на') and '%' in entry['reason'])
     spent_features = sum(entry['points'] for entry in history if entry['action'] == 'spent' and entry['reason'].startswith('Обмен на функцию'))
@@ -144,8 +144,10 @@ def view_points(message):
         time_str = None
         if entry['reason'].startswith('Обмен на') and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.']):
             time_str = entry['reason'].split('Обмен на ')[1]
-        elif entry['reason'].lower().startswith('подарок времени') and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.', 'минут']):
-            time_str = entry['reason'].split(': ')[1]
+        elif 'подарок времени' in entry['reason'].lower() and any(unit in entry['reason'] for unit in ['дн.', 'ч.', 'мин.', 'минут']):
+            time_parts = entry['reason'].split(': ')
+            if len(time_parts) > 1:
+                time_str = time_parts[1]
         
         if time_str:
             days = hours = minutes = 0

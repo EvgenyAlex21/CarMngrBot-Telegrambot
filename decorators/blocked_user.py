@@ -3,7 +3,8 @@ from core.bot_instance import bot, BASE_DIR
 
 # ------------------------------------ ДЕКОРАТОРЫ (декоратор для отслеживания бокировки бота пользователем) ---------------------------
 
-BLOCKED_USERS_FILE = os.path.join(BASE_DIR, 'data', 'admin', 'bloked_bot', 'blocked_bot_users.json')
+BLOCKED_USERS_DIR = os.path.join(BASE_DIR, 'data', 'admin', 'blocked_bot')
+BLOCKED_USERS_FILE = os.path.join(BLOCKED_USERS_DIR, 'blocked_bot_users.json')
 
 def load_blocked_users():
     if os.path.exists(BLOCKED_USERS_FILE):
@@ -12,6 +13,7 @@ def load_blocked_users():
     return []
 
 def save_blocked_users(blocked_users):
+    os.makedirs(os.path.dirname(BLOCKED_USERS_FILE), exist_ok=True)
     with open(BLOCKED_USERS_FILE, 'w') as file:
         json.dump(blocked_users, file, indent=4)
 

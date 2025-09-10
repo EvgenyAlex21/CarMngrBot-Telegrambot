@@ -9,7 +9,7 @@ from ..utils import (
 
 # ----------------------------------------------------- ПРОЧЕЕ (новости) ----------------------------------------------------
 
-NEWS_DATABASE_PATH = os.path.join(BASE_DIR, 'files', 'news_database.json')
+NEWS_DATABASE_PATH = os.path.join(BASE_DIR, 'data', 'admin', 'chats', 'news.json')
 
 def load_news_database():
     if os.path.exists(NEWS_DATABASE_PATH):
