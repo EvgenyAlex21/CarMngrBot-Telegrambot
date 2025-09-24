@@ -8,10 +8,14 @@ scipy
 matplotlib
 geopy
 schedule
+threading
+datetime
 pytz
 beautifulsoup4
 chardet
 uuid
+re
+zipfile
 stem
 colorama
 python-dotenv

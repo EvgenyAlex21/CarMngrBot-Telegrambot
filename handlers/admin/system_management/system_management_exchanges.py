@@ -1,7 +1,7 @@
 from core.imports import wraps, telebot, types, os, json, re, time, threading, datetime, timedelta, uuid
 from core.bot_instance import bot
 from handlers.admin.admin_main_menu import check_permission, show_admin_panel
-from handlers.admin.system_management.system_management import manage_system
+from handlers.admin.system_management.system_management_main import manage_system
 from handlers.admin.statistics.statistics import check_admin_access, escape_markdown
 from handlers.user.user_main_menu import load_payment_data, save_payments_data, load_users_data as load_users, save_users_data
 from handlers.user.subscription.gifts import split_message, format_number
