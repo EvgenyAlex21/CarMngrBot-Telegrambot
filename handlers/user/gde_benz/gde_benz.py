@@ -1,5 +1,8 @@
 from core.imports import wraps, telebot, requests, types, ReadTimeoutError
 from core.bot_instance import bot, BASE_DIR
+from datetime import datetime, timezone
+from math import cos, radians
+from typing import Optional
 from handlers.user.user_main_menu import return_to_menu
 from handlers.user.utils import (
     restricted, track_user_activity, check_chat_state, check_user_blocked,
@@ -9,25 +12,31 @@ from handlers.user.utils import (
 
 # ------------------------------------------------- НАЙТИ БЕНЗ --------------------------------------------------
 
-RADIUS_KM = 20         
-MAX_STATIONS = 25       
+RADIUS_KM = 18        
+PER_PAGE = 5       
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json",
 }
 
-STATUS_MAP = {
-    "yes":   "🟢 Есть — шансы найти бензин есть",
-    "low":   "🟡 Ограничено — мало / лимиты / выборочно",
-    "queue": "🟡 Очередь — бензин есть, но ждать",
-    "no":    "🚫 Пусто — топлива нет / не работает",
-    None:    "❔ Нет свежих отметок",
+USER_DATA = {}
+
+FUEL_ORDER = ["92", "95", "98", "100", "ДТ", "Газ", "СУГ", "Метан"]
+FUEL_LABEL = {
+    "92": "АИ-92",
+    "95": "АИ-95",
+    "98": "АИ-98",
+    "100": "АИ-100",
+    "ДТ": "ДТ",
+    "Газ": "Газ",
+    "СУГ": "СУГ",
+    "Метан": "Метан",
 }
 
 user_states = {}
 
-def search_city(query: str):
+def search_city(query: str) -> list:
     try:
         r = requests.get(
             "https://gdebenz.ru/api/cities",
@@ -36,13 +45,12 @@ def search_city(query: str):
             timeout=10,
         )
         r.raise_for_status()
-        data = r.json()
-        return data.get("results") or []
+        return r.json().get("results") or []
     except Exception as e:
-        print("city search error:", e)
+        print("city error:", e)
         return []
 
-def get_stations(lat: float, lon: float, radius_km: float = 20):
+def get_nearby(lat: float, lon: float, radius_km: float) -> list:
     try:
         r = requests.get(
             "https://gdebenz.ru/api/nearby",
@@ -57,8 +65,30 @@ def get_stations(lat: float, lon: float, radius_km: float = 20):
             allow_redirects=True,
         )
         r.raise_for_status()
+        return r.json().get("stations") or []
+    except Exception as e:
+        print("nearby error:", e)
+        return []
+
+def get_stations_bbox(lat: float, lon: float, radius_km: float) -> list:
+    dlat = radius_km / 111.0
+    dlon = radius_km / (111.0 * max(0.2, cos(radians(lat))))
+    try:
+        r = requests.get(
+            "https://gdebenz.ru/api/stations",
+            params={
+                "lat1": round(lat - dlat, 4),
+                "lon1": round(lon - dlon, 4),
+                "lat2": round(lat + dlat, 4),
+                "lon2": round(lon + dlon, 4),
+            },
+            headers=HEADERS,
+            timeout=12,
+            allow_redirects=True,
+        )
+        r.raise_for_status()
         data = r.json()
-        return data.get("stations") or []
+        return data if isinstance(data, list) else (data.get("stations") or [])
     except Exception as e:
         print("stations error:", e)
         return []
@@ -69,45 +99,246 @@ def is_target_brand(brand: str) -> bool:
     b = brand.lower().replace("ё", "е")
     return "лукойл" in b or "татнефть" in b
 
-def format_station(s: dict) -> str:
-    brand = s.get("brand") or ""
-    name = s.get("name") or brand or "АЗС"
-    if brand and brand not in name:
-        title = f"{brand} — {name}"
-    else:
-        title = name
+def parse_dt(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
 
+def rel_time(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
+    if not dt:
+        return "нет данных"
+    now = now or datetime.now()
+    sec = int((now - dt).total_seconds())
+    if sec < 0:
+        sec = 0
+    if sec < 60:
+        return "только что"
+    if sec < 3600:
+        m = sec // 60
+        return f"{m} мин назад"
+    if sec < 86400:
+        h = sec // 3600
+        return f"{h} ч назад"
+    days = sec // 86400
+    hours = (sec % 86400) // 3600
+    if days == 1:
+        d_str = "1 день"
+    elif 2 <= days <= 4:
+        d_str = f"{days} дня"
+    else:
+        d_str = f"{days} дней"
+    if hours and days < 7:
+        return f"{d_str} {hours} ч"
+    return d_str
+
+def age_phrase(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
+    if not dt:
+        return ""
+    now = now or datetime.now()
+    sec = max(0, int((now - dt).total_seconds()))
+    if sec < 3600:
+        return f"{max(1, sec // 60)} мин"
+    if sec < 86400:
+        return f"{sec // 3600} ч"
+    days = sec // 86400
+    hours = (sec % 86400) // 3600
+    if days == 1:
+        d_str = "1 день"
+    elif 2 <= days <= 4:
+        d_str = f"{days} дня"
+    else:
+        d_str = f"{days} дней"
+    if hours:
+        return f"{d_str} {hours} час" if hours == 1 else f"{d_str} {hours} часов"
+    return d_str
+
+def status_emoji(status: Optional[str], fuels_now: str) -> str:
+    if status == "no":
+        return "🚫"
+    if status == "low" or status == "queue":
+        return "🟡"
+    if status == "yes":
+        return "🟢"
+    if fuels_now:
+        return "🟢"
+    return "❔"
+
+def merge_stations(nearby: list, priced: list) -> list:
+    by_id = {str(s.get("osm_id")): s for s in priced if s.get("osm_id")}
+    result = []
+    seen = set()
+
+    for n in nearby:
+        oid = str(n.get("osm_id") or "")
+        if not is_target_brand(n.get("brand", "")):
+            continue
+        p = by_id.get(oid, {})
+        merged = {**p, **n}  
+        if p.get("prices_now") and not merged.get("prices_now"):
+            merged["prices_now"] = p["prices_now"]
+        if not merged.get("addr") and p.get("addr"):
+            merged["addr"] = p["addr"]
+        result.append(merged)
+        seen.add(oid)
+
+    for p in priced:
+        oid = str(p.get("osm_id") or "")
+        if oid in seen:
+            continue
+        if not is_target_brand(p.get("brand", "")):
+            continue
+        result.append(p)
+
+    def sort_key(s):
+        st = s.get("status")
+        order = {"yes": 0, "low": 1, "queue": 2, "no": 3}.get(st, 4)
+        conf = -(s.get("confidence_base") or 0)
+        dist = s.get("distance_km") if s.get("distance_km") is not None else 999
+        return (order, dist, conf)
+
+    result.sort(key=sort_key)
+    return result
+
+def format_fuels(s: dict, now: datetime) -> list[str]:
+    lines = []
+    prices = s.get("prices_now") or {}
+    fuels_now_raw = (s.get("fuels_now") or "").replace(" ", "")
+    available = set()
+    if fuels_now_raw:
+        for part in fuels_now_raw.replace(";", ",").split(","):
+            part = part.strip()
+            if part:
+                available.add(part)
+
+    status = s.get("status")
+    detail = (s.get("detail") or "").lower()
+
+    keys = list(prices.keys())
+    for k in available:
+        if k not in keys:
+            keys.append(k)
+    def key_ord(k):
+        try:
+            return FUEL_ORDER.index(k)
+        except ValueError:
+            return 99
+
+    keys = sorted(set(keys), key=key_ord)
+
+    for k in keys:
+        label = FUEL_LABEL.get(k, k)
+        info = prices.get(k) or {}
+        price = info.get("p")
+        t_price = parse_dt(info.get("t"))
+        in_stock = k in available or (
+            status == "yes" and not available and k in prices  
+        )
+
+        if status == "no" or "не работает" in detail:
+            if price is not None:
+                age = age_phrase(t_price, now) if t_price else ""
+                age_s = f" {age}" if age else ""
+                lines.append(f"🚫 {label}: нет в наличии{age_s}")
+            else:
+                lines.append(f"🚫 {label}: нет в наличии")
+            continue
+
+        if in_stock and price is not None:
+            lines.append(f"✅ {label}: {price:.2f}₽")
+        elif in_stock:
+            lines.append(f"✅ {label}: в наличии")
+        elif status in ("low", "queue") and price is not None:
+            lines.append(f"⚠️ {label}: Мало ({price:.2f}₽)")
+        elif price is not None:
+            age = age_phrase(t_price, now) if t_price else ""
+            if t_price and (now - t_price).total_seconds() > 3 * 86400:
+                lines.append(f"❔ {label}: {price:.2f}₽ (цена от {age})")
+            else:
+                lines.append(f"❔ {label}: {price:.2f}₽")
+
+    if not lines and fuels_now_raw:
+        lines.append(f"✅ Сейчас отмечено: {fuels_now_raw}")
+
+    return lines
+
+def format_station(s: dict, now: datetime) -> str:
+    brand = s.get("brand") or "АЗС"
     addr = s.get("addr") or "адрес не указан"
     status = s.get("status")
-    status_text = STATUS_MAP.get(status, f"❔ {status}")
+    fuels_now = s.get("fuels_now") or ""
+    emoji = status_emoji(status, fuels_now)
+    last = parse_dt(s.get("last_at"))
+    time_s = rel_time(last, now)
+
+    conf = s.get("confidence_base")
+    conf_pct = None
+    if conf is not None and conf > 0:
+        conf_pct = int(round(min(0.99, max(0.05, conf)) * 100))
+
+    shield = ""
+    if (s.get("confirmations") or 0) >= 3 or (conf and conf >= 0.55):
+        shield = " 🛡️"
+
+    head = f"{emoji} <b>{brand}</b>{shield} | ⏱ {time_s}"
+    loc = f"📍 {addr}🗺"
+
+    fuel_lines = format_fuels(s, now)
+    body = "\n".join(fuel_lines) if fuel_lines else "⛽ нет детальных данных по маркам"
+
+    parts = [head, loc, body]
+
+    if conf_pct is not None:
+        parts.append(f"💬 Шансы {conf_pct}% (на основе активности на АЗС)")
+
     detail = (s.get("detail") or "").strip()
-    fuels = (s.get("fuels_now") or "").strip()
-    conf = s.get("confirmations") or 0
-    last = s.get("last_at") or ""
-    dist = s.get("distance_km")
+    if detail and detail.lower() not in body.lower():
+        parts.append(f"ℹ️ {detail}")
 
-    lines = [
-        f"<b>{title}</b>",
-        f"📍 {addr}",
-    ]
+    return "\n".join(parts)
 
-    if dist is not None:
-        lines.append(f"📏 ~{dist} км")
+def build_page_text(city: str, stations: list, page: int, updated: str) -> str:
+    total = len(stations)
+    pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    start = page * PER_PAGE
+    chunk = stations[start : start + PER_PAGE]
+    now = datetime.now()
 
-    if fuels:
-        lines.append(f"⛽ Топливо сейчас: <b>{fuels}</b>")
-    else:
-        lines.append("⛽ Топливо: нет данных")
+    header = f"📍 <b>{city}</b> · Лукойл + Татнефть\n"
+    header += f"Стр. {page + 1}/{pages} · всего {total}\n"
+    header += "────────────────────"
 
-    lines.append(status_text)
+    blocks = [format_station(s, now) for s in chunk]
+    text = header + "\n\n" + "\n\n".join(blocks)
+    text += f"\n\nОбновлено {updated}"
 
-    if detail:
-        lines.append(f"ℹ️ {detail}")
+    if page == pages - 1:
+        text += (
+            "\n\n"
+            "🟢 Есть — шансы найти бенз всё же есть.\n"
+            "🟡 Ограничено — заправляют выборочно или по «талонам».\n"
+            "🚫 Пусто — оплат и топлива нет.\n"
+            "🛡️ Проверено — больше подтверждений / выше уверенность."
+        )
+    return text
 
-    if last:
-        lines.append(f"🕐 {last} · подтверждений: {conf}")
-
-    return "\n".join(lines)
+def build_keyboard(page: int, total: int) -> types.InlineKeyboardMarkup:
+    pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    kb = types.InlineKeyboardMarkup()
+    row = []
+    if page > 0:
+        row.append(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"p:{page - 1}"))
+    row.append(types.InlineKeyboardButton(f"{page + 1}/{pages}", callback_data="noop"))
+    if page < pages - 1:
+        row.append(types.InlineKeyboardButton("Вперёд ➡️", callback_data=f"p:{page + 1}"))
+    kb.row(*row)
+    kb.row(types.InlineKeyboardButton("🔄 Обновить", callback_data="refresh"))
+    return kb
 
 @bot.message_handler(func=lambda message: message.text == "Найти бенз")
 @check_function_state_decorator('Найти бенз')
@@ -144,99 +375,156 @@ def handle_city_input(message):
     
     if message.text == "В главное меню":
         user_states.pop(chat_id, None)
+        USER_DATA.pop(chat_id, None)
         return_to_menu(message)
         return
     
-    city_query = message.text.strip()
-    if len(city_query) < 2:
+    q = (message.text or "").strip()
+    if len(q) < 2:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('В главное меню')
-        msg = bot.send_message(chat_id, "❌ Напиши название города более 2 символов.", reply_markup=markup)
+        msg = bot.send_message(chat_id, "❌ Напиши название города (минимум 2 символа).", reply_markup=markup)
         bot.register_next_step_handler(msg, handle_city_input)
         return
 
-    msg = bot.send_message(chat_id, f"🔍 Ищу «{city_query}»...")
+    wait = bot.send_message(chat_id, f"🔍 Ищу «{q}»...")
 
-    cities = search_city(city_query)
+    cities = search_city(q)
     if not cities:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('В главное меню')
         bot.edit_message_text(
-            "❌ Город не найден!",
-            chat_id=chat_id,
-            message_id=msg.message_id,
+            "Город не найден! Попробуй другое написание.",
+            chat_id=message.chat.id,
+            message_id=wait.message_id,
         )
-        msg = bot.send_message(chat_id, "Попробуй снова:", reply_markup=markup)
-        bot.register_next_step_handler(msg, handle_city_input)
         return
 
     city = cities[0]
-    city_name = city.get("name", city_query)
-    lat = city["lat"]
-    lon = city["lon"]
+    city_name = city.get("name") or q
+    lat, lon = city["lat"], city["lon"]
 
     bot.edit_message_text(
-        f"📍 {city_name}\n⏳ Загружаю АЗС Лукойл и Татнефть...",
-        chat_id=chat_id,
-        message_id=msg.message_id,
+        f"📍 {city_name}\nСобираю Лукойл и Татнефть...",
+        chat_id=message.chat.id,
+        message_id=wait.message_id,
     )
 
-    stations = get_stations(lat, lon, RADIUS_KM)
-    filtered = [s for s in stations if is_target_brand(s.get("brand", ""))]
+    nearby = get_nearby(lat, lon, RADIUS_KM)
+    priced = get_stations_bbox(lat, lon, RADIUS_KM + 5)
+    stations = merge_stations(nearby, priced)
 
-    if not filtered:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('В главное меню')
+    if not stations:
         bot.edit_message_text(
-            f"❌ В радиусе {RADIUS_KM} км от <b>{city_name}</b> не найдены АЗС Лукойл / Татнефть с актуальными отметками",
-            chat_id=chat_id,
-            message_id=msg.message_id,
-            parse_mode="HTML"
+            f"В радиусе {RADIUS_KM} км от {city_name} не нашлось Лукойл / Татнефть.",
+            chat_id=message.chat.id,
+            message_id=wait.message_id,
         )
-        msg = bot.send_message(chat_id, "Попробуй другой город:", reply_markup=markup)
-        bot.register_next_step_handler(msg, handle_city_input)
         return
 
-    def sort_key(s):
-        st = s.get("status")
-        order = {"yes": 0, "low": 1, "queue": 2, "no": 3}.get(st, 4)
-        return (order, s.get("distance_km") or 999)
+    updated = datetime.now().strftime("%d.%m.%Y %H:%M")
+    USER_DATA[message.chat.id] = {
+        "city": city_name,
+        "lat": lat,
+        "lon": lon,
+        "stations": stations,
+        "page": 0,
+        "updated": updated,
+    }
 
-    filtered.sort(key=sort_key)
-    filtered = filtered[:MAX_STATIONS]
-
-    header = (
-        f"<b>{city_name}</b> • Лукойл + Татнефть\n"
-        f"✅ Найдено: {len(filtered)} АЗС (радиус {RADIUS_KM} км)\n"
-        f"{'─' * 35}"
-    )
-
-    chunks = [header]
-    current = header
-
-    for s in filtered:
-        block = "\n\n" + format_station(s)
-        if len(current) + len(block) > 3800:
-            chunks.append(current)
-            current = format_station(s)
-        else:
-            current += block
-
-    chunks.append(current)
+    text = build_page_text(city_name, stations, 0, updated)
+    kb = build_keyboard(0, len(stations))
 
     try:
-        bot.delete_message(chat_id, msg.message_id)
+        bot.delete_message(message.chat.id, wait.message_id)
     except Exception:
         pass
 
+    bot.send_message(
+        message.chat.id,
+        text,
+        parse_mode="HTML",
+        reply_markup=kb,
+        disable_web_page_preview=True,
+    )
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('В главное меню')
+    bot.send_message(message.chat.id, "Используй кнопки выше для навигации или вернись в главное меню:", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: message.text == "В главное меню" and user_states.get(message.chat.id, {}).get('in_search'))
+@check_function_state_decorator('В главное меню')
+@track_usage('В главное меню (gde_benz)')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def exit_fuel_search(message):
+    chat_id = message.chat.id
+    user_states.pop(chat_id, None)
+    USER_DATA.pop(chat_id, None)
+    return_to_menu(message)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("p:") or c.data in ("refresh", "noop"))
+@text_only_handler
+def on_callback(call):
+    chat_id = call.message.chat.id
     
-    for i, chunk in enumerate(chunks):
-        if i == len(chunks) - 1:
-            bot.send_message(chat_id, chunk, parse_mode="HTML", reply_markup=markup)
-        else:
-            bot.send_message(chat_id, chunk, parse_mode="HTML")
+    if not user_states.get(chat_id, {}).get('in_search'):
+        bot.answer_callback_query(call.id, "Сеанс завершен", show_alert=False)
+        return
     
-    msg = bot.send_message(chat_id, "Ищешь бензин в другом городе?", reply_markup=markup)
-    bot.register_next_step_handler(msg, handle_city_input)
+    data = call.data or ""
+    state = USER_DATA.get(chat_id)
+
+    if data == "noop":
+        bot.answer_callback_query(call.id)
+        return
+
+    if not state:
+        bot.answer_callback_query(call.id, "Данные устарели — напиши город снова...", show_alert=True)
+        return
+
+    if data == "refresh":
+        bot.answer_callback_query(call.id, "Обновляю...")
+        nearby = get_nearby(state["lat"], state["lon"], RADIUS_KM)
+        priced = get_stations_bbox(state["lat"], state["lon"], RADIUS_KM + 5)
+        stations = merge_stations(nearby, priced)
+        if not stations:
+            bot.answer_callback_query(call.id, "Сейчас пусто", show_alert=True)
+            return
+        state["stations"] = stations
+        state["updated"] = datetime.now().strftime("%d.%m.%Y %H:%M")
+        state["page"] = 0
+        page = 0
+    elif data.startswith("p:"):
+        try:
+            page = int(data.split(":")[1])
+        except ValueError:
+            bot.answer_callback_query(call.id)
+            return
+        state["page"] = page
+        bot.answer_callback_query(call.id)
+    else:
+        bot.answer_callback_query(call.id)
+        return
+
+    stations = state["stations"]
+    page = state["page"]
+    text = build_page_text(state["city"], stations, page, state["updated"])
+    kb = build_keyboard(page, len(stations))
+
+    try:
+        bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=kb,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        if "not modified" not in str(e).lower():
+            print("edit error:", e)
