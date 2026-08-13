@@ -15,7 +15,8 @@ from handlers.user.utils import (
 # ------------------------------------------------- НАЙТИ БЕНЗ --------------------------------------------------
 
 RADIUS_KM = 18        
-PER_PAGE = 5       
+PER_PAGE = 5
+MAX_BRAND_BUTTONS = 8       
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -24,7 +25,7 @@ HEADERS = {
 
 USER_DATA = {}
 
-FUEL_ORDER = ["92", "95", "98", "100", "ДТ", "Газ", "СУГ", "Метан"]
+FUEL_ORDER = ["92", "95", "98", "100", "ДТ", "Газ", "Метан"]
 FUEL_LABEL = {
     "92": "АИ-92",
     "95": "АИ-95",
@@ -32,7 +33,6 @@ FUEL_LABEL = {
     "100": "АИ-100",
     "ДТ": "ДТ",
     "Газ": "Газ",
-    "СУГ": "СУГ",
     "Метан": "Метан",
 }
 
@@ -56,6 +56,34 @@ def search_city(query: str) -> list:
     except Exception as e:
         print("city error:", e)
         return []
+
+def reverse_city(lat: float, lon: float) -> Optional[dict]:
+    name = "Рядом с вами"
+    try:
+        r = requests.get(
+            "https://gdebenz.ru/api/reverse-city",
+            params={"lat": round(lat, 5), "lon": round(lon, 5)},
+            headers=HEADERS,
+            timeout=10,
+            allow_redirects=True,
+        )
+        if r.ok:
+            data = r.json()
+            if isinstance(data, dict):
+                name = (
+                    data.get("city")
+                    or data.get("name")
+                    or data.get("title")
+                    or name
+                )
+                results = data.get("results") or data.get("cities")
+                if results and isinstance(results, list):
+                    c = results[0]
+                    name = c.get("name") or c.get("city") or name
+    except Exception as e:
+        print("reverse-city error:", e)
+
+    return {"name": name, "lat": lat, "lon": lon}
 
 def get_nearby(lat: float, lon: float, radius_km: float) -> list:
     try:
@@ -100,11 +128,12 @@ def get_stations_bbox(lat: float, lon: float, radius_km: float) -> list:
         print("stations error:", e)
         return []
 
-def is_target_brand(brand: str) -> bool:
-    if not brand:
-        return False
-    b = brand.lower().replace("ё", "е")
-    return "лукойл" in b or "татнефть" in b
+def station_brand(s: dict) -> str:
+    b = (s.get("brand") or "").strip()
+    if b:
+        return b
+    name = (s.get("name") or "").strip()
+    return name if name else "Другая"
 
 def parse_dt(s: Optional[str]) -> Optional[datetime]:
     if not s:
@@ -126,9 +155,9 @@ def rel_time(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
     if sec < 60:
         return "только что"
     if sec < 3600:
-        return f"{sec // 60} мин назад"
+        return f"{sec // 60} мин. назад"
     if sec < 86400:
-        return f"{sec // 3600} ч назад"
+        return f"{sec // 3600} ч. назад"
     days = sec // 86400
     hours = (sec % 86400) // 3600
     if days == 1:
@@ -138,7 +167,7 @@ def rel_time(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
     else:
         d_str = f"{days} дней"
     if hours and days < 7:
-        return f"{d_str} {hours} ч"
+        return f"{d_str} {hours} ч."
     return d_str
 
 def age_phrase(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
@@ -147,9 +176,9 @@ def age_phrase(dt: Optional[datetime], now: Optional[datetime] = None) -> str:
     now = now or datetime.now()
     sec = max(0, int((now - dt).total_seconds()))
     if sec < 3600:
-        return f"{max(1, sec // 60)} мин"
+        return f"{max(1, sec // 60)} мин."
     if sec < 86400:
-        return f"{sec // 3600} ч"
+        return f"{sec // 3600} ч."
     days = sec // 86400
     hours = (sec % 86400) // 3600
     if days == 1:
@@ -171,6 +200,45 @@ def status_emoji(status: Optional[str], fuels_now: str) -> str:
         return "🟢"
     return "❔"
 
+def count_available_fuels(s: dict) -> int:
+    status = s.get("status")
+    detail_l = (s.get("detail") or "").lower()
+    if status == "no" or "не работает" in detail_l:
+        return 0
+
+    fuels_now_raw = (s.get("fuels_now") or "").replace(" ", "")
+    available = set()
+    if fuels_now_raw:
+        for part in fuels_now_raw.replace(";", ",").split(","):
+            part = part.strip()
+            if part:
+                available.add(normalize_fuel_key(part))
+    available |= collect_fuel_keys_from_detail(s.get("detail") or "")
+
+    prices_raw = s.get("prices_now") or {}
+    price_keys = {normalize_fuel_key(k) for k in prices_raw.keys()}
+
+    if status == "yes" and not available and price_keys:
+        return len(price_keys)
+    if status in ("low", "queue"):
+        return max(len(available), 1) if (available or price_keys) else 0
+    return len(available)
+
+def last_at_age_sec(s: dict) -> float:
+    dt = parse_dt(s.get("last_at"))
+    if not dt:
+        return 10**12 
+    return max(0.0, (datetime.now() - dt).total_seconds())
+
+def station_rank(s: dict) -> tuple:
+    st = s.get("status")
+    status_order = {"yes": 0, "low": 1, "queue": 2, "no": 3}.get(st, 4)
+    fuels_cnt = count_available_fuels(s)
+    age = last_at_age_sec(s)
+    dist = s.get("distance_km") if s.get("distance_km") is not None else 999
+    conf = -(s.get("confidence_base") or 0)
+    return (status_order, -fuels_cnt, age, dist, conf)
+
 def merge_stations(nearby: list, priced: list) -> list:
     by_id = {str(s.get("osm_id")): s for s in priced if s.get("osm_id")}
     result = []
@@ -178,7 +246,7 @@ def merge_stations(nearby: list, priced: list) -> list:
 
     for n in nearby:
         oid = str(n.get("osm_id") or "")
-        if not is_target_brand(n.get("brand", "")):
+        if not oid:
             continue
         p = by_id.get(oid, {})
         merged = {**p, **n}
@@ -186,45 +254,89 @@ def merge_stations(nearby: list, priced: list) -> list:
             merged["prices_now"] = p["prices_now"]
         if not merged.get("addr") and p.get("addr"):
             merged["addr"] = p["addr"]
+        if not merged.get("brand") and p.get("brand"):
+            merged["brand"] = p["brand"]
         result.append(merged)
         seen.add(oid)
 
     for p in priced:
         oid = str(p.get("osm_id") or "")
-        if oid in seen:
-            continue
-        if not is_target_brand(p.get("brand", "")):
+        if not oid or oid in seen:
             continue
         result.append(p)
 
     def sort_key(s):
-        st = s.get("status")
-        order = {"yes": 0, "low": 1, "queue": 2, "no": 3}.get(st, 4)
-        conf = -(s.get("confidence_base") or 0)
-        dist = s.get("distance_km") if s.get("distance_km") is not None else 999
-        return (order, dist, conf)
+        return station_rank(s)
 
     result.sort(key=sort_key)
     return result
 
+def normalize_fuel_key(k: str) -> str:
+    if not k:
+        return k
+    t = str(k).strip()
+    low = t.lower().replace("ё", "е")
+    low_compact = low.replace(" ", "").replace("-", "").replace("_", "").replace(".", "")
+    if low_compact in ("92", "аи92", "a92", "ai92", "бензин92"):
+        return "92"
+    if low_compact in ("95", "аи95", "a95", "ai95", "бензин95"):
+        return "95"
+    if low_compact in ("98", "аи98", "a98", "ai98", "бензин98"):
+        return "98"
+    if low_compact in ("100", "аи100", "a100", "ai100", "бензин100"):
+        return "100"
+    if low_compact in ("дт", "дизель", "diesel", "dt", "дтт", "диз"):
+        return "ДТ"
+    if any(x in low for x in ("газ", "суг", "lpg", "пропан", "propane", "autogas", "газомотор")):
+        return "Газ"
+    if any(x in low for x in ("метан", "cng", "спг", "methane")):
+        return "Метан"
+    return t
+
+def collect_fuel_keys_from_detail(detail: str) -> set:
+    found = set()
+    if not detail:
+        return found
+    low = detail.lower()
+    for key, words in (
+        ("Газ", ("газ", "суг", "lpg", "пропан")),
+        ("Метан", ("метан", "cng")),
+        ("92", ("92",)),
+        ("95", ("95",)),
+        ("98", ("98",)),
+        ("100", ("100",)),
+        ("ДТ", ("дт", "дизел")),
+    ):
+        if any(w in low for w in words):
+            found.add(key)
+    return found
+
 def format_fuels(s: dict, now: datetime) -> list:
     lines = []
-    prices = s.get("prices_now") or {}
+    prices_raw = s.get("prices_now") or {}
+    prices = {}
+    for k, v in prices_raw.items():
+        prices[normalize_fuel_key(k)] = v
+
     fuels_now_raw = (s.get("fuels_now") or "").replace(" ", "")
     available = set()
     if fuels_now_raw:
         for part in fuels_now_raw.replace(";", ",").split(","):
             part = part.strip()
             if part:
-                available.add(part)
+                available.add(normalize_fuel_key(part))
+
+    detail = (s.get("detail") or "")
+    available |= collect_fuel_keys_from_detail(detail)
 
     status = s.get("status")
-    detail = (s.get("detail") or "").lower()
+    detail_l = detail.lower()
+    station_down = status == "no" or "не работает" in detail_l
 
-    keys = list(prices.keys())
-    for k in available:
-        if k not in keys:
-            keys.append(k)
+    keys = set(prices.keys()) | set(available)
+
+    if status == "yes" and not available and prices:
+        available = set(prices.keys())
 
     def key_ord(k):
         try:
@@ -232,36 +344,47 @@ def format_fuels(s: dict, now: datetime) -> list:
         except ValueError:
             return 99
 
-    keys = sorted(set(keys), key=key_ord)
+    keys = sorted(keys, key=key_ord)
 
     for k in keys:
         label = FUEL_LABEL.get(k, k)
         info = prices.get(k) or {}
         price = info.get("p")
         t_price = parse_dt(info.get("t"))
-        in_stock = k in available
+        in_stock = k in available and not station_down
+        price_s = f"{price:.2f}₽" if price is not None else ""
 
-        if status == "no" or "не работает" in detail:
-            if price is not None:
-                age = age_phrase(t_price, now) if t_price else ""
-                age_s = f" {age}" if age else ""
-                lines.append(f"🚫 {label}: нет в наличии{age_s}")
+        if station_down:
+            age = age_phrase(t_price, now) if t_price else ""
+            if price_s and age:
+                lines.append(f"🚫 {label}: нет в наличии {age}")
+            elif price_s:
+                lines.append(f"🚫 {label}: нет в наличии · {price_s}")
             else:
                 lines.append(f"🚫 {label}: нет в наличии")
             continue
 
-        if in_stock and price is not None:
-            lines.append(f"✅ {label}: {price:.2f}₽")
-        elif in_stock:
-            lines.append(f"✅ {label}: в наличии")
-        elif status in ("low", "queue") and price is not None:
-            lines.append(f"⚠️ {label}: Мало ({price:.2f}₽)")
-        elif price is not None:
-            age = age_phrase(t_price, now) if t_price else ""
-            if t_price and (now - t_price).total_seconds() > 3 * 86400:
-                lines.append(f"❔ {label}: {price:.2f}₽ (цена от {age})")
+        if status in ("low", "queue") and in_stock:
+            if price_s:
+                lines.append(f"⚠️ {label}: Мало ({price_s})")
             else:
-                lines.append(f"❔ {label}: {price:.2f}₽")
+                lines.append(f"⚠️ {label}: Мало")
+            continue
+
+        if in_stock:
+            prefix = "🔥" if k == "Газ" else "✅"
+            if price_s:
+                lines.append(f"{prefix} {label}: {price_s}")
+            else:
+                lines.append(f"{prefix} {label}: в наличии")
+        else:
+            age = age_phrase(t_price, now) if t_price else ""
+            if price_s and age:
+                lines.append(f"🚫 {label}: нет · {price_s} (от {age})")
+            elif price_s:
+                lines.append(f"🚫 {label}: нет · {price_s}")
+            else:
+                lines.append(f"🚫 {label}: нет в наличии")
 
     if not lines and fuels_now_raw:
         lines.append(f"✅ Сейчас отмечено: {esc(fuels_now_raw)}")
@@ -269,7 +392,7 @@ def format_fuels(s: dict, now: datetime) -> list:
     return lines
 
 def format_station(s: dict, now: datetime) -> str:
-    brand = esc(s.get("brand") or "АЗС")
+    brand = esc(station_brand(s))
     addr = esc(s.get("addr") or "адрес не указан")
     status = s.get("status")
     fuels_now = s.get("fuels_now") or ""
@@ -287,7 +410,7 @@ def format_station(s: dict, now: datetime) -> str:
         shield = " 🛡️"
 
     head = f"{emoji} <b>{brand}</b>{shield} | ⏱ {time_s}"
-    loc = f"📍 {addr}🗺"
+    loc = f"📍 {addr} 🗺"
     fuel_lines = format_fuels(s, now)
     body = "\n".join(fuel_lines) if fuel_lines else "⛽ нет детальных данных по маркам"
     parts = [head, loc, body]
@@ -301,7 +424,24 @@ def format_station(s: dict, now: datetime) -> str:
 
     return "\n".join(parts)
 
-def build_page_text(city: str, stations: list, page: int, updated: str) -> str:
+def filtered_stations(state: dict) -> list:
+    all_st = state.get("stations") or []
+    brand = state.get("brand_filter")
+    if brand:
+        brand_l = brand.lower()
+        all_st = [s for s in all_st if station_brand(s).lower() == brand_l]
+    return sorted(all_st, key=station_rank)
+
+def brand_counts(stations: list) -> list:
+    counts = {}
+    for s in stations:
+        b = station_brand(s)
+        counts[b] = counts.get(b, 0) + 1
+    return sorted(counts.items(), key=lambda x: (-x[1], x[0].lower()))
+
+def build_page_text(state: dict, page: int) -> str:
+    city = state["city"]
+    stations = filtered_stations(state)
     total = len(stations)
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     page = max(0, min(page, pages - 1))
@@ -309,48 +449,130 @@ def build_page_text(city: str, stations: list, page: int, updated: str) -> str:
     chunk = stations[start : start + PER_PAGE]
     now = datetime.now()
 
+    brand_f = state.get("brand_filter")
+    title_extra = f" · {esc(brand_f)}" if brand_f else " · все АЗС"
+
     header = (
-        f"📍 <b>{esc(city)}</b> · Лукойл + Татнефть\n"
+        f"📍 <b>{esc(city)}</b>{title_extra}\n"
         f"Стр. {page + 1}/{pages} · всего {total}\n"
         f"{'─' * 20}"
     )
-    blocks = [format_station(s, now) for s in chunk]
-    text = header + "\n\n" + "\n\n".join(blocks)
-    text += f"\n\nОбновлено {esc(updated)}"
+    if not chunk:
+        text = header + "\n\nНет станций по этому фильтру."
+    else:
+        blocks = [format_station(s, now) for s in chunk]
+        text = header + "\n\n" + "\n\n".join(blocks)
 
-    if page == pages - 1:
-        text += (
-            "\n\n"
-            "🟢 Есть — шансы найти бенз всё же есть.\n"
-            "🟡 Ограничено — заправляют выборочно или по «талонам».\n"
-            "🚫 Пусто — оплат и топлива нет.\n"
-            "🛡️ Проверено — больше подтверждений / выше уверенность."
-        )
+    text += f"\n\nОбновлено {esc(state['updated'])}"
+    text += (
+        "\n\n"
+        "🟢 Есть — шансы найти бенз всё же есть\n"
+        "🟡 Ограничено — заправляют выборочно или по «талонам»\n"
+        "🚫 Пусто — оплат и топлива нет\n"
+        "🛡️ Проверено — больше подтверждений / выше уверенность"
+    )
 
     if len(text) > 4000:
         text = text[:3990] + "\n…"
     return text
 
-def build_keyboard(page: int, total: int) -> types.InlineKeyboardMarkup:
+def build_keyboard(state: dict, page: int) -> types.InlineKeyboardMarkup:
+    stations_f = filtered_stations(state)
+    total = len(stations_f)
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    buttons = []
+    page = max(0, min(page, pages - 1))
+
+    kb = types.InlineKeyboardMarkup()
+
+    nav = []
     if page > 0:
-        buttons.append(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"page:{page - 1}"))
-    buttons.append(types.InlineKeyboardButton(f"{page + 1}/{pages}", callback_data="noop"))
+        nav.append(types.InlineKeyboardButton("⬅️", callback_data=f"page:{page - 1}"))
+    nav.append(types.InlineKeyboardButton(f"{page + 1}/{pages}", callback_data="noop"))
     if page < pages - 1:
-        buttons.append(types.InlineKeyboardButton("Вперёд ➡️", callback_data=f"page:{page + 1}"))
-    kb.add(*buttons)
-    kb.add(types.InlineKeyboardButton("🔄 Обновить", callback_data="refresh"))
+        nav.append(types.InlineKeyboardButton("➡️", callback_data=f"page:{page + 1}"))
+    kb.row(*nav)
+
+    current = state.get("brand_filter")
+    counts = brand_counts(state.get("stations") or [])
+
+    all_label = "• Все •" if not current else "Все"
+    brand_btns = [types.InlineKeyboardButton(all_label, callback_data="brand:")]
+
+    for brand, cnt in counts[:MAX_BRAND_BUTTONS]:
+        cb = f"brand:{brand}"
+        if len(cb.encode("utf-8")) > 64:
+            cb = f"brand:{brand[:40]}"
+        mark = "• " if current and current.lower() == brand.lower() else ""
+        label = f"{mark}{brand} ({cnt})"
+        if len(label) > 30:
+            label = f"{mark}{brand[:18]}… ({cnt})"
+        brand_btns.append(types.InlineKeyboardButton(label, callback_data=cb))
+
+    for i in range(0, len(brand_btns), 3):
+        kb.row(*brand_btns[i : i + 3])
+
+    if len(counts) > MAX_BRAND_BUTTONS:
+        kb.row(
+            types.InlineKeyboardButton(
+                f"Ещё сети ({len(counts) - MAX_BRAND_BUTTONS})…",
+                callback_data="brands_more",
+            )
+        )
+
+    kb.row(types.InlineKeyboardButton("🔄 Обновить", callback_data="refresh"))
     return kb
 
-def fetch_and_store(chat_id: int, city_name: str, lat: float, lon: float) -> Optional[dict]:
+def build_brands_keyboard(state: dict) -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup()
+    counts = brand_counts(state.get("stations") or [])
+    current = state.get("brand_filter")
+
+    kb.row(
+        types.InlineKeyboardButton(
+            "• Все •" if not current else "Все",
+            callback_data="brand:",
+        )
+    )
+
+    row = []
+    for brand, cnt in counts:
+        cb = f"brand:{brand}"
+        if len(cb.encode("utf-8")) > 64:
+            cb = f"brand:{brand[:40]}"
+        mark = "• " if current and current.lower() == brand.lower() else ""
+        label = f"{mark}{brand} ({cnt})"
+        if len(label) > 28:
+            label = f"{mark}{brand[:16]}…({cnt})"
+        row.append(types.InlineKeyboardButton(label, callback_data=cb))
+        if len(row) == 2:
+            kb.row(*row)
+            row = []
+    if row:
+        kb.row(*row)
+
+    kb.row(types.InlineKeyboardButton("« Назад к списку", callback_data="brands_back"))
+    return kb
+
+def fetch_and_store(
+    chat_id: int,
+    city_name: str,
+    lat: float,
+    lon: float,
+    keep_filter: Optional[str] = None,
+) -> Optional[dict]:
     nearby = get_nearby(lat, lon, RADIUS_KM)
     priced = get_stations_bbox(lat, lon, RADIUS_KM + 5)
     stations = merge_stations(nearby, priced)
     if not stations:
         return None
     updated = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    brand_filter = keep_filter
+    if brand_filter:
+        names = {station_brand(s).lower() for s in stations}
+        if brand_filter.lower() not in names:
+            brand_filter = None
+
     state = {
         "city": city_name,
         "lat": lat,
@@ -358,9 +580,21 @@ def fetch_and_store(chat_id: int, city_name: str, lat: float, lon: float) -> Opt
         "stations": stations,
         "page": 0,
         "updated": updated,
+        "brand_filter": brand_filter,
     }
     USER_DATA[chat_id] = state
     return state
+
+def resolve_brand_callback(state: dict, raw: str) -> Optional[str]:
+    if raw is None or raw == "":
+        return None
+    for b, _ in brand_counts(state.get("stations") or []):
+        if b == raw or b.lower() == raw.lower():
+            return b
+    for b, _ in brand_counts(state.get("stations") or []):
+        if b.startswith(raw) or b.lower().startswith(raw.lower()):
+            return b
+    return raw
 
 @bot.message_handler(func=lambda message: message.text == "Найти бенз")
 @check_function_state_decorator('Найти бенз')
@@ -379,92 +613,170 @@ def start_fuel_search(message):
     user_states[chat_id] = {'in_search': True}
     
     text = (
-        "🔍 <b>Поиск бензина на Лукойл и Татнефть</b>\n\n"
-        "Просто напиши название города (например: <code>Чебоксары</code>, <code>Казань</code>, <code>Уфа</code>)"
+        "🔍 <b>Поиск бензина по городу</b>\n\n"
+        "Просто напиши название города (например: <code>Чебоксары</code>, <code>Казань</code>, <code>Уфа</code>) или отправь геопозицию, чтобы найти ближайшие АЗС с актуальными ценами на топливо\n\n"
     )
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
     markup.add('В главное меню')
     
     msg = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
     bot.register_next_step_handler(msg, handle_city_input)
 
-@text_only_handler
 def handle_city_input(message):
     chat_id = message.chat.id
     
     if not user_states.get(chat_id, {}).get('in_search'):
         return
     
-    if message.text == "В главное меню":
+    if message.location:
+        return on_location(message)
+    
+    q = (message.text or "").strip()
+    
+    if q == "В главное меню":
         user_states.pop(chat_id, None)
         USER_DATA.pop(chat_id, None)
         return_to_menu(message)
         return
     
-    q = (message.text or "").strip()
+    if q.startswith("/start") or q.startswith("/admin"):
+        user_states.pop(chat_id, None)
+        USER_DATA.pop(chat_id, None)
+        return
+    
     if not q or q.startswith("/"):
+        msg = bot.reply_to(message, "Напиши название города!")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+        markup.add('В главное меню')
+        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        bot.register_next_step_handler(msg2, handle_city_input)
         return
     if len(q) < 2:
+        msg = bot.reply_to(message, "Напиши название города!")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
         markup.add('В главное меню')
-        msg = bot.send_message(chat_id, "❌ Напиши название города (минимум 2 символа).", reply_markup=markup)
-        bot.register_next_step_handler(msg, handle_city_input)
+        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        bot.register_next_step_handler(msg2, handle_city_input)
         return
 
     wait = bot.send_message(chat_id, f"🔍 Ищу «{q}»...")
 
     cities = search_city(q)
     if not cities:
-        bot.edit_message_text(
-            "Город не найден. Попробуй другое написание.",
-            chat_id=message.chat.id,
-            message_id=wait.message_id,
-        )
+        try:
+            bot.edit_message_text(
+                "❌ Город не найден! Попробуй другое написание...",
+                chat_id=message.chat.id,
+                message_id=wait.message_id,
+            )
+        except Exception:
+            pass
+        
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+        markup.add('В главное меню')
+        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        bot.register_next_step_handler(msg2, handle_city_input)
         return
 
     city = cities[0]
     city_name = city.get("name") or q
     lat, lon = float(city["lat"]), float(city["lon"])
 
-    bot.edit_message_text(
-        f"📍 {city_name}\nСобираю Лукойл и Татнефть...",
-        chat_id=message.chat.id,
-        message_id=wait.message_id,
-    )
+    process_city_point(message, city_name, lat, lon, wait_msg=wait)
 
-    state = fetch_and_store(message.chat.id, city_name, lat, lon)
+def process_city_point(message, city_name: str, lat: float, lon: float, wait_msg=None):
+    chat_id = message.chat.id
+    if wait_msg is None:
+        wait_msg = bot.reply_to(message, f"📍 {city_name}\nСобираю АЗС...")
+    else:
+        try:
+            bot.edit_message_text(
+                f"📍 {city_name}\nСобираю АЗС...",
+                chat_id=chat_id,
+                message_id=wait_msg.message_id,
+            )
+        except Exception:
+            pass
+
+    state = fetch_and_store(chat_id, city_name, lat, lon)
     if not state:
-        bot.edit_message_text(
-            f"В радиусе {RADIUS_KM} км от {city_name} не нашлось Лукойл / Татнефть.",
-            chat_id=message.chat.id,
-            message_id=wait.message_id,
-        )
+        try:
+            bot.edit_message_text(
+                f"❌ В радиусе {RADIUS_KM} км. от {city_name} АЗС не найдено!",
+                chat_id=chat_id,
+                message_id=wait_msg.message_id,
+            )
+        except Exception:
+            bot.reply_to(message, f"❌ В радиусе {RADIUS_KM} км. от {city_name} АЗС не найдено!")
         return
 
-    text = build_page_text(city_name, state["stations"], 0, state["updated"])
-    kb = build_keyboard(0, len(state["stations"]))
-
+    text = build_page_text(state, 0)
+    kb = build_keyboard(state, 0)
     try:
-        bot.delete_message(message.chat.id, wait.message_id)
+        bot.delete_message(chat_id, wait_msg.message_id)
     except Exception:
         pass
 
     sent = bot.send_message(
-        message.chat.id,
+        chat_id,
         text,
         parse_mode="HTML",
         reply_markup=kb,
-        disable_web_page_preview=True,
+        link_preview_options=types.LinkPreviewOptions(is_disabled=True),
     )
     state["message_id"] = sent.message_id
-    print(f"[send] chat={message.chat.id} stations={len(state['stations'])} msg={sent.message_id}")
-    
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('В главное меню')
-    msg = bot.send_message(message.chat.id, "Используй кнопки выше для навигации или вернись в меню:", reply_markup=markup)
-    bot.register_next_step_handler(msg, handle_city_input)
 
-@bot.callback_query_handler(func=lambda c: c.data in ("noop", "refresh") or c.data.startswith("page:"))
+@bot.message_handler(content_types=["location"])
+def on_location(message):
+    chat_id = message.chat.id
+    
+    if not user_states.get(chat_id, {}).get('in_search'):
+        return
+    
+    if not message.location:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('В главное меню')
+        bot.send_message(chat_id, "❌ Не удалось прочитать геопозицию! Попробуй снова...", reply_markup=markup)
+        return
+    
+    lat = float(message.location.latitude)
+    lon = float(message.location.longitude)
+    wait = bot.send_message(chat_id, "Определяю город по геопозиции...")
+    city = reverse_city(lat, lon)
+    city_name = city.get("name") or "Рядом с вами"
+    process_city_point(message, city_name, lat, lon, wait_msg=wait)
+
+@check_function_state_decorator('Найти бенз')
+@track_usage('Найти бенз (geo)')
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@check_subscription
+@check_subscription_chanal
+@text_only_handler
+@rate_limit_with_captcha
+def cmd_geo(message):
+    chat_id = message.chat.id
+    
+    if not user_states.get(chat_id, {}).get('in_search'):
+        return
+    
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+    kb.add('В главное меню')
+    bot.send_message(
+        chat_id,
+        "Нажми кнопку, чтобы отправить геопозицию!",
+        reply_markup=kb,
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data in ("noop", "refresh", "brands_more", "brands_back") or c.data.startswith("page:") or c.data.startswith("brand:"))
 @text_only_handler
 def on_callback(call):
     data = (call.data or "").strip()
@@ -493,38 +805,80 @@ def on_callback(call):
 
         state = USER_DATA.get(chat_id)
         if not state:
-            answer("Данные устарели — напиши город заново", alert=True)
+            answer("Данные устарели — напиши город заново...", alert=True)
+            return
+
+        if data == "brands_more":
+            answer()
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    reply_markup=build_brands_keyboard(state),
+                )
+            except Exception as e:
+                print("brands_more error:", e)
+            return
+
+        if data == "brands_back":
+            answer()
+            page = state.get("page", 0)
+            try:
+                bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    reply_markup=build_keyboard(state, page),
+                )
+            except Exception as e:
+                print("brands_back error:", e)
             return
 
         if data == "refresh":
-            answer("Обновляю…")
-            new_state = fetch_and_store(chat_id, state["city"], state["lat"], state["lon"])
+            answer("Обновляю...")
+            new_state = fetch_and_store(
+                chat_id,
+                state["city"],
+                state["lat"],
+                state["lon"],
+                keep_filter=state.get("brand_filter"),
+            )
             if not new_state:
-                answer("Сейчас пусто", alert=True)
+                answer("Сейчас пусто!", alert=True)
                 return
             state = new_state
             page = 0
+            state["page"] = 0
+
         elif data.startswith("page:"):
             try:
                 page = int(data.split(":", 1)[1])
             except ValueError:
-                answer("Ошибка страницы")
+                answer("Ошибка страницы!")
                 return
-            total = len(state["stations"])
+            total = len(filtered_stations(state))
             pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
             page = max(0, min(page, pages - 1))
             state["page"] = page
             answer()
+
+        elif data.startswith("brand:"):
+            raw = data[6:]
+            brand = resolve_brand_callback(state, raw)
+            state["brand_filter"] = brand
+            state["page"] = 0
+            page = 0
+            answer(f"Фильтр: {brand}" if brand else "Все АЗС")
+
         else:
             answer()
             return
 
         page = state.get("page", 0)
-        text = build_page_text(state["city"], state["stations"], page, state["updated"])
-        kb = build_keyboard(page, len(state["stations"]))
+        text = build_page_text(state, page)
+        kb = build_keyboard(state, page)
 
         if not msg_id:
-            answer("Нет сообщения для обновления", alert=True)
+            answer("Нет сообщения для обновления!", alert=True)
             return
 
         try:
@@ -534,9 +888,9 @@ def on_callback(call):
                 message_id=msg_id,
                 parse_mode="HTML",
                 reply_markup=kb,
-                disable_web_page_preview=True,
+                link_preview_options=types.LinkPreviewOptions(is_disabled=True),
             )
-            print(f"[edit ok] page={page}")
+            print(f"[edit ok] page={page} filter={state.get('brand_filter')}")
         except Exception as e:
             err = str(e).lower()
             print("edit_message_text error:", e)
@@ -554,18 +908,17 @@ def on_callback(call):
                     chat_id=chat_id,
                     message_id=msg_id,
                     reply_markup=kb,
-                    disable_web_page_preview=True,
+                    link_preview_options=types.LinkPreviewOptions(is_disabled=True),
                 )
-                print("[edit fallback ok]")
             except Exception as e2:
                 print("fallback edit error:", e2)
                 traceback.print_exc()
-                answer("Не удалось обновить. Напиши город снова.", alert=True)
+                answer("❌ Не удалось обновить! Напиши город снова...", alert=True)
 
     except Exception as e:
         print("callback fatal:", e)
         traceback.print_exc()
-        answer("Ошибка. Напиши город снова.", alert=True)
+        answer("❌ Ошибка. Напиши город снова...", alert=True)
 
 @bot.message_handler(func=lambda message: message.text == "В главное меню" and user_states.get(message.chat.id, {}).get('in_search'))
 @check_function_state_decorator('В главное меню')
