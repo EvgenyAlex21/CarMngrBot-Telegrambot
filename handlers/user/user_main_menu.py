@@ -571,6 +571,7 @@ def send_special_offer_invoice(call):
 def create_main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     itembuysub = types.KeyboardButton("Подписка на бота")
+    item12 = types.KeyboardButton("Найти бенз")
     item1 = types.KeyboardButton("Калькуляторы")
     item2 = types.KeyboardButton("Траты и ремонты")
     item3 = types.KeyboardButton("Найти транспорт")
@@ -584,6 +585,7 @@ def create_main_menu():
     item11 = types.KeyboardButton("Прочее")
 
     markup.add(itembuysub)
+    markup.add(item12)
     markup.add(item1, item2)
     markup.add(item3, item4)
     markup.add(item5, item6)

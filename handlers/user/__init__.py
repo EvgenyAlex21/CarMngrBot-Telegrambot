@@ -8,6 +8,7 @@ from . import codes_obd2
 from . import expenses_and_repairs
 from . import findtransport
 from . import fuel_prices
+from . import gde_benz
 from . import others
 from . import placesearch
 from . import reminders
