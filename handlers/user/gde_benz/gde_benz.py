@@ -565,7 +565,7 @@ def fetch_and_store(
     stations = merge_stations(nearby, priced)
     if not stations:
         return None
-    updated = datetime.now().strftime("%d.%m.%Y %H:%M")
+    updated = datetime.now().strftime("%d.%m.%Y %H:%M:%S")  
 
     brand_filter = keep_filter
     if brand_filter:
@@ -610,55 +610,61 @@ def resolve_brand_callback(state: dict, raw: str) -> Optional[str]:
 @rate_limit_with_captcha
 def start_fuel_search(message):
     chat_id = message.chat.id
-    user_states[chat_id] = {'in_search': True}
-    
+    user_states[chat_id] = {"in_search": True, "results_shown": False}
+    USER_DATA.pop(chat_id, None)
+
     text = (
         "🔍 <b>Поиск бензина по городу</b>\n\n"
-        "Просто напиши название города (например: <code>Чебоксары</code>, <code>Казань</code>, <code>Уфа</code>) или отправь геопозицию, чтобы найти ближайшие АЗС с актуальными ценами на топливо\n\n"
+        "Просто Напишите название города (например: <code>Чебоксары</code>, <code>Казань</code>, <code>Уфа</code>) или отправь геопозицию, чтобы найти ближайшие АЗС с актуальными ценами на топливо\n\n"
     )
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
-    markup.add('В главное меню')
-    
+    markup.add("В главное меню")
+
     msg = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
     bot.register_next_step_handler(msg, handle_city_input)
 
 def handle_city_input(message):
     chat_id = message.chat.id
-    
-    if not user_states.get(chat_id, {}).get('in_search'):
+
+    st = user_states.get(chat_id) or {}
+    if not st.get("in_search"):
         return
-    
+
+    if st.get("results_shown"):
+        return handle_after_results(message)
+
     if message.location:
         return on_location(message)
-    
+
     q = (message.text or "").strip()
-    
+
     if q == "В главное меню":
-        user_states.pop(chat_id, None)
-        USER_DATA.pop(chat_id, None)
+        clear_gde_benz_state(chat_id)
         return_to_menu(message)
         return
-    
+
+    if q == "Другой город":
+        return other_city(message)
+
     if q.startswith("/start") or q.startswith("/admin"):
-        user_states.pop(chat_id, None)
-        USER_DATA.pop(chat_id, None)
+        clear_gde_benz_state(chat_id)
         return
-    
+
     if not q or q.startswith("/"):
-        msg = bot.reply_to(message, "Напиши название города!")
+        msg = bot.reply_to(message, "Напишите название города!")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
-        markup.add('В главное меню')
-        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        markup.add("В главное меню")
+        msg2 = bot.send_message(chat_id, "Попробуйте еще раз...", reply_markup=markup)
         bot.register_next_step_handler(msg2, handle_city_input)
         return
     if len(q) < 2:
-        msg = bot.reply_to(message, "Напиши название города!")
+        msg = bot.reply_to(message, "Напишите название города!")
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
-        markup.add('В главное меню')
-        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        markup.add("В главное меню")
+        msg2 = bot.send_message(chat_id, "Попробуйте еще раз...", reply_markup=markup)
         bot.register_next_step_handler(msg2, handle_city_input)
         return
 
@@ -668,7 +674,7 @@ def handle_city_input(message):
     if not cities:
         try:
             bot.edit_message_text(
-                "❌ Город не найден! Попробуй другое написание...",
+                "❌ Город не найден! Попробуйте другое написание...",
                 chat_id=message.chat.id,
                 message_id=wait.message_id,
             )
@@ -678,7 +684,7 @@ def handle_city_input(message):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
         markup.add('В главное меню')
-        msg2 = bot.send_message(chat_id, "Попробуй еще раз...", reply_markup=markup)
+        msg2 = bot.send_message(chat_id, "Попробуйте еще раз...", reply_markup=markup)
         bot.register_next_step_handler(msg2, handle_city_input)
         return
 
@@ -691,11 +697,11 @@ def handle_city_input(message):
 def process_city_point(message, city_name: str, lat: float, lon: float, wait_msg=None):
     chat_id = message.chat.id
     if wait_msg is None:
-        wait_msg = bot.reply_to(message, f"📍 {city_name}\nСобираю АЗС...")
+        wait_msg = bot.reply_to(message, f"Собираю АЗС по городу {city_name}...")
     else:
         try:
             bot.edit_message_text(
-                f"📍 {city_name}\nСобираю АЗС...",
+                f"Собираю АЗС по городу {city_name}...",
                 chat_id=chat_id,
                 message_id=wait_msg.message_id,
             )
@@ -712,6 +718,12 @@ def process_city_point(message, city_name: str, lat: float, lon: float, wait_msg
             )
         except Exception:
             bot.reply_to(message, f"❌ В радиусе {RADIUS_KM} км. от {city_name} АЗС не найдено!")
+        user_states[chat_id] = {"in_search": True, "results_shown": False}
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+        markup.add("В главное меню")
+        msg2 = bot.send_message(chat_id, "Попробуйте другой город или геопозицию...", reply_markup=markup)
+        bot.register_next_step_handler(msg2, handle_city_input)
         return
 
     text = build_page_text(state, 0)
@@ -730,19 +742,40 @@ def process_city_point(message, city_name: str, lat: float, lon: float, wait_msg
     )
     state["message_id"] = sent.message_id
 
+    user_states[chat_id] = {"in_search": True, "results_shown": True}
+
+    bottom_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    bottom_markup.row("Другой город")
+    bottom_markup.row("В главное меню")
+    msg_bottom = bot.send_message(
+        chat_id,
+        "Вы можете посмотреть обстановку в другом городе или вернуться в главное меню...",
+        reply_markup=bottom_markup,
+    )
+    bot.register_next_step_handler(msg_bottom, handle_after_results)
+
 @bot.message_handler(content_types=["location"])
 def on_location(message):
     chat_id = message.chat.id
-    
-    if not user_states.get(chat_id, {}).get('in_search'):
+
+    st = user_states.get(chat_id) or {}
+    if not st.get("in_search"):
         return
-    
+
+    if st.get("results_shown"):
+        bot.send_message(
+            chat_id,
+            "Чтобы искать в другом месте, нажмите «Другой город».",
+        )
+        bot.register_next_step_handler(message, handle_after_results)
+        return
+
     if not message.location:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('В главное меню')
-        bot.send_message(chat_id, "❌ Не удалось прочитать геопозицию! Попробуй снова...", reply_markup=markup)
+        markup.add("В главное меню")
+        bot.send_message(chat_id, "❌ Не удалось прочитать геопозицию! Попробуйте снова...", reply_markup=markup)
         return
-    
+
     lat = float(message.location.latitude)
     lon = float(message.location.longitude)
     wait = bot.send_message(chat_id, "Определяю город по геопозиции...")
@@ -751,7 +784,7 @@ def on_location(message):
     process_city_point(message, city_name, lat, lon, wait_msg=wait)
 
 @check_function_state_decorator('Найти бенз')
-@track_usage('Найти бенз (geo)')
+@track_usage('Найти бенз')
 @restricted
 @track_user_activity
 @check_chat_state
@@ -772,7 +805,7 @@ def cmd_geo(message):
     kb.add('В главное меню')
     bot.send_message(
         chat_id,
-        "Нажми кнопку, чтобы отправить геопозицию!",
+        "Нажмите кнопку, чтобы отправить геопозицию!",
         reply_markup=kb,
     )
 
@@ -805,7 +838,7 @@ def on_callback(call):
 
         state = USER_DATA.get(chat_id)
         if not state:
-            answer("Данные устарели — напиши город заново...", alert=True)
+            answer("Данные устарели — напишите город заново...", alert=True)
             return
 
         if data == "brands_more":
@@ -893,9 +926,11 @@ def on_callback(call):
             print(f"[edit ok] page={page} filter={state.get('brand_filter')}")
         except Exception as e:
             err = str(e).lower()
-            print("edit_message_text error:", e)
             if "message is not modified" in err:
+                if data == "refresh":
+                    answer("Уже актуально", alert=False)
                 return
+            print("edit_message_text error:", e)
             try:
                 plain = (
                     text.replace("<b>", "")
@@ -911,18 +946,91 @@ def on_callback(call):
                     link_preview_options=types.LinkPreviewOptions(is_disabled=True),
                 )
             except Exception as e2:
+                err2 = str(e2).lower()
+                if "message is not modified" in err2:
+                    if data == "refresh":
+                        answer("Уже актуально", alert=False)
+                    return
                 print("fallback edit error:", e2)
                 traceback.print_exc()
-                answer("❌ Не удалось обновить! Напиши город снова...", alert=True)
+                answer("❌ Не удалось обновить! Нажмите на кнопку другой город или введи город снова...", alert=True)
 
     except Exception as e:
         print("callback fatal:", e)
         traceback.print_exc()
-        answer("❌ Ошибка. Напиши город снова...", alert=True)
+        answer("❌ Ошибка! Нажмите на кнопку другой город или введи город снова...", alert=True)
 
-@bot.message_handler(func=lambda message: message.text == "В главное меню" and user_states.get(message.chat.id, {}).get('in_search'))
-@check_function_state_decorator('В главное меню')
-@track_usage('В главное меню (gde_benz)')
+def clear_gde_benz_state(chat_id: int) -> None:
+    user_states.pop(chat_id, None)
+    USER_DATA.pop(chat_id, None)
+    try:
+        bot.clear_step_handler_by_chat_id(chat_id)
+    except Exception:
+        pass
+
+def handle_after_results(message):
+    chat_id = message.chat.id
+    st = user_states.get(chat_id) or {}
+
+    if not st.get("in_search") or not st.get("results_shown"):
+        return
+
+    q = (message.text or "").strip() if message.text else ""
+
+    if q == "Другой город":
+        other_city(message)
+        return
+
+    if q == "В главное меню":
+        clear_gde_benz_state(chat_id)
+        return_to_menu(message)
+        return
+
+    if q.startswith("/start") or q.startswith("/admin"):
+        clear_gde_benz_state(chat_id)
+        return
+
+    if message.location:
+        bot.send_message(
+            chat_id,
+            "Чтобы искать в другом городе, нажмите на соответствующую кнопку!",
+        )
+        bot.register_next_step_handler(message, handle_after_results)
+        return
+
+    bot.send_message(
+        chat_id,
+        "Чтобы искать в другом городе, нажмите на соответствующую кнопку!",
+    )
+    bot.register_next_step_handler(message, handle_after_results)
+
+def other_city(message):
+    chat_id = message.chat.id
+    USER_DATA.pop(chat_id, None)
+    try:
+        bot.clear_step_handler_by_chat_id(chat_id)
+    except Exception:
+        pass
+    user_states[chat_id] = {"in_search": True, "results_shown": False}
+
+    text = (
+        "🔍 <b>Поиск бензина по городу</b>\n\n"
+        "Просто Напишите название города (например: <code>Чебоксары</code>, <code>Казань</code>, <code>Уфа</code>) "
+        "или отправь геопозицию, чтобы найти ближайшие АЗС с актуальными ценами на топливо\n\n"
+    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("Отправить геопозицию", request_location=True))
+    markup.add("В главное меню")
+
+    msg = bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
+    bot.register_next_step_handler(msg, handle_city_input)
+
+@bot.message_handler(
+    func=lambda message: message.text == "Другой город"
+    and bool(user_states.get(message.chat.id, {}).get("in_search"))
+)
+@check_function_state_decorator("Найти бенз")
+@track_usage("Другой город")
 @restricted
 @track_user_activity
 @check_chat_state
@@ -931,8 +1039,24 @@ def on_callback(call):
 @check_subscription_chanal
 @text_only_handler
 @rate_limit_with_captcha
+def other_city_handler(message):
+    other_city(message)
+
+@bot.message_handler(
+    func=lambda message: message.text == "В главное меню"
+    and bool(user_states.get(message.chat.id, {}).get("in_search"))
+)
+@track_usage("В главное меню (gde_benz)")
+@restricted
+@track_user_activity
+@check_chat_state
+@check_user_blocked
+@log_user_actions
+@text_only_handler
 def exit_fuel_search(message):
-    chat_id = message.chat.id
-    user_states.pop(chat_id, None)
-    USER_DATA.pop(chat_id, None)
+    clear_gde_benz_state(message.chat.id)
     return_to_menu(message)
+
+@bot.message_handler(func=lambda message: (message.text or "").strip() == "В главное меню")
+def gde_benz_clear_on_main_menu(message):
+    clear_gde_benz_state(message.chat.id)
