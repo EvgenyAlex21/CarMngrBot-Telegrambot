@@ -54,7 +54,6 @@ def search_city(query: str) -> list:
         r.raise_for_status()
         return r.json().get("results") or []
     except Exception as e:
-        print("city error:", e)
         return []
 
 def reverse_city(lat: float, lon: float) -> Optional[dict]:
@@ -102,7 +101,6 @@ def get_nearby(lat: float, lon: float, radius_km: float) -> list:
         r.raise_for_status()
         return r.json().get("stations") or []
     except Exception as e:
-        print("nearby error:", e)
         return []
 
 def get_stations_bbox(lat: float, lon: float, radius_km: float) -> list:
@@ -125,7 +123,6 @@ def get_stations_bbox(lat: float, lon: float, radius_km: float) -> list:
         data = r.json()
         return data if isinstance(data, list) else (data.get("stations") or [])
     except Exception as e:
-        print("stations error:", e)
         return []
 
 def station_brand(s: dict) -> str:
@@ -815,8 +812,6 @@ def on_callback(call):
     data = (call.data or "").strip()
     chat_id = call.message.chat.id if call.message else call.from_user.id
     msg_id = call.message.message_id if call.message else None
-
-    print(f"[callback] chat={chat_id} data={data!r} msg={msg_id}")
     
     if not user_states.get(chat_id, {}).get('in_search'):
         try:
@@ -923,7 +918,6 @@ def on_callback(call):
                 reply_markup=kb,
                 link_preview_options=types.LinkPreviewOptions(is_disabled=True),
             )
-            print(f"[edit ok] page={page} filter={state.get('brand_filter')}")
         except Exception as e:
             err = str(e).lower()
             if "message is not modified" in err:
